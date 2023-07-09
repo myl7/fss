@@ -167,7 +167,7 @@ where
     }
 }
 
-/// `CW`
+/// `CW`. Correclation word.
 #[derive(Clone)]
 pub struct CW<const LAMBDA: usize> {
     pub s: [u8; LAMBDA],
@@ -176,7 +176,10 @@ pub struct CW<const LAMBDA: usize> {
     pub tr: bool,
 }
 
-/// `k`
+/// `k`.
+///
+/// `cws` and `cw_np1` is shared by the 2 parties.
+/// Only `s0s[0]` is different.
 #[derive(Clone)]
 pub struct Share<const LAMBDA: usize> {
     /// For the output of `gen`, its length is 2.
@@ -188,7 +191,7 @@ pub struct Share<const LAMBDA: usize> {
     pub cw_np1: [u8; LAMBDA],
 }
 
-/// Matyas-Meyer-Oseas one-way compression function with AES256 and precreated keys implementation of [`DCF`]
+/// Matyas-Meyer-Oseas one-way compression function with AES256 and precreated keys as an implementation of [`PRF`].
 #[derive(Clone)]
 pub struct AES256MatyasMeyerOseasPRG {
     ciphers: [Aes256; 5],

@@ -5,9 +5,13 @@
 
 Distributed comparison function implementation
 
-<!-- TODO: Def of comparison functions -->
+## References
 
-<!-- TODO: References -->
+- Elette Boyle, Nishanth Chandran, Niv Gilboa, Divya Gupta, Yuval Ishai, Nishant Kumar, and Mayank Rathee. "[Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation](https://link.springer.com/chapter/10.1007/978-3-030-77886-6_30)." In _EUROCRYPT_. 2021.
+- Leo de Castro and Anitgoni Polychroniadou. "[Lightweight, Maliciously Secure Verifiable Function Secret Sharing](https://eprint.iacr.org/2021/580)." In _EUROCRYPT_. 2022.
+  - For the fast PRF.
+- Frank Wang, Catherine Yun, Shafi Goldwasser, Vinod Vaikuntanathan, and Matei Zaharia. "[Splinter: Practical Private Queries on Public Data](https://www.usenix.org/conference/nsdi17/technical-sessions/presentation/wang-frank)." In _NDSI_. 2017.
+  - For the fast PRF.
 
 ## License
 
