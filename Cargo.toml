@@ -1,0 +1,14 @@
+[package]
+name = "dcf"
+version = "0.1.0"
+authors = ["myl7 <myl@myl.moe>"]
+edition = "2021"
+description = "Distributed comparison function implementation"
+documentation = "https://github.com/myl7/dcf#readme"
+homepage = "https://github.com/myl7/dcf"
+repository = "https://github.com/myl7/dcf.git"
+license = "Apache-2.0"
+keywords = ["crypto", "dpf", "fss", "dcf", "dist-comparison-fn"]
+categories = ["cryptography"]
+
+[dependencies]
