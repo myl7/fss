@@ -13,3 +13,7 @@ categories = ["cryptography"]
 
 [dependencies]
 bitvec = "1.0.1"
+aes = "0.8.3"
+
+[dev-dependencies]
+rand = { version = "0.8.5", features = ["std", "std_rng"] }
