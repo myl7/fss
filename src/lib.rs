@@ -34,7 +34,7 @@ where
 
 /// Comparison function.
 ///
-/// - `N` is the byte size of the domain.
+/// - `N` is the **byte** size of the domain.
 /// - `LAMBDA` here is used as the **byte** size of the range, unlike the one in the paper.
 pub struct CmpFn<const N: usize, const LAMBDA: usize> {
     /// `$\alpha$`
