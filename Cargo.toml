@@ -1,6 +1,6 @@
 [package]
 name = "dcf"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["myl7 <myl@myl.moe>"]
 edition = "2021"
 description = "Distributed comparison function implementation"
