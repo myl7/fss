@@ -3,8 +3,6 @@
 
 //! See [`Dcf`]
 
-use std::marker::PhantomData;
-
 use aes::cipher::generic_array::GenericArray;
 use aes::cipher::{BlockEncrypt, KeyInit};
 use aes::Aes256;
@@ -13,23 +11,17 @@ use bitvec::prelude::*;
 /// API of Distributed comparison function.
 ///
 /// See [`CmpFn`] for `N` and `LAMBDA`.
-///
-/// `prg` is passed as an argument because it needs instantiation.
-/// The same seeds can be mapped to different outputs by different program instances.
-pub trait Dcf<const N: usize, const LAMBDA: usize, PrgImpl>
-where
-    PrgImpl: Prg<LAMBDA>,
-{
+pub trait Dcf<const N: usize, const LAMBDA: usize> {
     /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
     fn gen(
+        &self,
         f: &CmpFn<N, LAMBDA>,
         s0s: [&[u8; LAMBDA]; 2],
         bound: BoundState,
-        prg: PrgImpl,
     ) -> Share<LAMBDA>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
-    fn eval(b: bool, k: &Share<LAMBDA>, x: &[u8; N], prg: PrgImpl) -> [u8; LAMBDA];
+    fn eval(&self, b: bool, k: &Share<LAMBDA>, x: &[u8; N]) -> [u8; LAMBDA];
 }
 
 /// Comparison function.
@@ -53,26 +45,34 @@ pub trait Prg<const LAMBDA: usize> {
 /// Implementation of [`Dcf`].
 ///
 /// `$\alpha$` itself is not included, which means `$f(\alpha)$ = 0`.
-pub struct DcfImpl<const N: usize, const LAMBDA: usize, PrgImpl>
+pub struct DcfImpl<const N: usize, const LAMBDA: usize, PrgT>
 where
-    PrgImpl: Prg<LAMBDA>,
+    PrgT: Prg<LAMBDA>,
 {
-    _prg: PhantomData<PrgImpl>,
+    prg: PrgT,
+}
+
+impl<const N: usize, const LAMBDA: usize, PrgT> DcfImpl<N, LAMBDA, PrgT>
+where
+    PrgT: Prg<LAMBDA>,
+{
+    pub fn new(prg: PrgT) -> Self {
+        Self { prg }
+    }
 }
 
 const IDX_L: usize = 0;
 const IDX_R: usize = 1;
 
-impl<const N: usize, const LAMBDA: usize, PrgImpl> Dcf<N, LAMBDA, PrgImpl>
-    for DcfImpl<N, LAMBDA, PrgImpl>
+impl<const N: usize, const LAMBDA: usize, PrgT> Dcf<N, LAMBDA> for DcfImpl<N, LAMBDA, PrgT>
 where
-    PrgImpl: Prg<LAMBDA>,
+    PrgT: Prg<LAMBDA>,
 {
     fn gen(
+        &self,
         f: &CmpFn<N, LAMBDA>,
         s0s: [&[u8; LAMBDA]; 2],
         bound: BoundState,
-        prg: PrgImpl,
     ) -> Share<LAMBDA> {
         // The bit size of `$\alpha$`
         let n = 8 * N;
@@ -85,8 +85,8 @@ where
         ts.push([false, true]);
         let mut cws = Vec::<Cw<LAMBDA>>::with_capacity(n);
         for i in 1..n + 1 {
-            let [(s0l, v0l, t0l), (s0r, v0r, t0r)] = prg.gen(&ss[i - 1][0]);
-            let [(s1l, v1l, t1l), (s1r, v1r, t1r)] = prg.gen(&ss[i - 1][1]);
+            let [(s0l, v0l, t0l), (s0r, v0r, t0r)] = self.prg.gen(&ss[i - 1][0]);
+            let [(s1l, v1l, t1l), (s1r, v1r, t1r)] = self.prg.gen(&ss[i - 1][1]);
             // MSB is required since we index from high to low in arrays
             let alpha_i = f.alpha.view_bits::<Msb0>()[i - 1];
             let (keep, lose) = if alpha_i {
@@ -145,7 +145,7 @@ where
         }
     }
 
-    fn eval(b: bool, k: &Share<LAMBDA>, x: &[u8; N], prg: PrgImpl) -> [u8; LAMBDA] {
+    fn eval(&self, b: bool, k: &Share<LAMBDA>, x: &[u8; N]) -> [u8; LAMBDA] {
         let n = k.cws.len();
         assert_eq!(n, N * 8);
         let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
@@ -156,7 +156,7 @@ where
         for i in 1..n + 1 {
             let cw = &k.cws[i - 1];
             // `*_hat` before in-place xor
-            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = prg.gen(&ss[i - 1]);
+            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i - 1]);
             xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
             xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
             tl ^= ts[i - 1] & cw.tl;
@@ -220,7 +220,6 @@ pub enum BoundState {
 }
 
 /// Matyas-Meyer-Oseas one-way compression function with AES256 and precreated keys as an implementation of [`PRF`].
-#[derive(Clone)]
 pub struct Aes256MatyasMeyerOseasPrg {
     ciphers: [Aes256; 5],
 }
@@ -303,44 +302,38 @@ mod tests {
     ];
     const BETA: &[u8; 16] = b"\x03\x11\x97\x12C\x8a\xe9#\x81\xa8\xde\xa8\x8f \xc0\xbb";
 
-    type PrgImpl = Aes256MatyasMeyerOseasPrg;
-
     #[test]
     fn test_dcf_gen_then_eval_ok() {
         let prg = Aes256MatyasMeyerOseasPrg::new(KEYS);
+        let dcf = DcfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.to_owned(),
         };
-        let k = DcfImpl::<16, 16, PrgImpl>::gen(
-            &f,
-            [&s0s[0], &s0s[1]],
-            BoundState::LtBeta,
-            prg.clone(),
-        );
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[0], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[0], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[0]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[0]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, BETA.to_owned());
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[1], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[1], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[1]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[1]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, BETA.to_owned());
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[2], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[2], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[2]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[2]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, [0; 16]);
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[3], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[3], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[3]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[3]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, [0; 16]);
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[4], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[4], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[4]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[4]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, [0; 16]);
     }
@@ -348,39 +341,35 @@ mod tests {
     #[test]
     fn test_dcf_gen_gt_beta_then_eval_ok() {
         let prg = Aes256MatyasMeyerOseasPrg::new(KEYS);
+        let dcf = DcfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.to_owned(),
         };
-        let k = DcfImpl::<16, 16, PrgImpl>::gen(
-            &f,
-            [&s0s[0], &s0s[1]],
-            BoundState::GtBeta,
-            prg.clone(),
-        );
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::GtBeta);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[0], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[0], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[0]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[0]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, [0; 16]);
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[1], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[1], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[1]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[1]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, [0; 16]);
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[2], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[2], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[2]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[2]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, [0; 16]);
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[3], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[3], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[3]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[3]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, BETA.to_owned());
-        let y0 = DcfImpl::<16, 16, PrgImpl>::eval(false, &k0, ALPHAS[4], prg.clone());
-        let y1 = DcfImpl::<16, 16, PrgImpl>::eval(true, &k1, ALPHAS[4], prg.clone());
+        let y0 = dcf.eval(false, &k0, ALPHAS[4]);
+        let y1 = dcf.eval(true, &k1, ALPHAS[4]);
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, BETA.to_owned());
     }
