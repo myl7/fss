@@ -21,7 +21,12 @@ where
     PRGImpl: PRG<LAMBDA>,
 {
     /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
-    fn gen(f: &CmpFn<N, LAMBDA>, s0s: [&[u8; LAMBDA]; 2], prg: PRGImpl) -> Share<LAMBDA>;
+    fn gen(
+        f: &CmpFn<N, LAMBDA>,
+        s0s: [&[u8; LAMBDA]; 2],
+        bound: BoundState,
+        prg: PRGImpl,
+    ) -> Share<LAMBDA>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
     fn eval(b: bool, k: &Share<LAMBDA>, x: &[u8; N], prg: PRGImpl) -> [u8; LAMBDA];
@@ -63,7 +68,12 @@ impl<const N: usize, const LAMBDA: usize, PRGImpl> DCF<N, LAMBDA, PRGImpl>
 where
     PRGImpl: PRG<LAMBDA>,
 {
-    fn gen(f: &CmpFn<N, LAMBDA>, s0s: [&[u8; LAMBDA]; 2], prg: PRGImpl) -> Share<LAMBDA> {
+    fn gen(
+        f: &CmpFn<N, LAMBDA>,
+        s0s: [&[u8; LAMBDA]; 2],
+        bound: BoundState,
+        prg: PRGImpl,
+    ) -> Share<LAMBDA> {
         // The bit size of `$\alpha$`
         let n = 8 * N;
         let mut v_alpha = [0; LAMBDA];
@@ -86,8 +96,17 @@ where
             };
             let s_cw = xor(&[[&s0l, &s0r][lose], [&s1l, &s1r][lose]]);
             let mut v_cw = xor(&[[&v0l, &v0r][lose], [&v1l, &v1r][lose], &v_alpha]);
-            if lose == IDX_L {
-                xor_inplace(&mut v_cw, &[&f.beta]);
+            match bound {
+                BoundState::LtBeta => {
+                    if lose == IDX_L {
+                        xor_inplace(&mut v_cw, &[&f.beta]);
+                    }
+                }
+                BoundState::GtBeta => {
+                    if lose == IDX_R {
+                        xor_inplace(&mut v_cw, &[&f.beta]);
+                    }
+                }
             }
             xor_inplace(
                 &mut v_alpha,
@@ -191,6 +210,15 @@ pub struct Share<const LAMBDA: usize> {
     pub cw_np1: [u8; LAMBDA],
 }
 
+pub enum BoundState {
+    /// `$f(x) = \beta$` iff. `$x < \alpha$`.
+    ///
+    /// This is the preference in the paper.
+    LtBeta,
+    /// `$f(x) = \beta$` iff. `$x > \alpha$`
+    GtBeta,
+}
+
 /// Matyas-Meyer-Oseas one-way compression function with AES256 and precreated keys as an implementation of [`PRF`].
 #[derive(Clone)]
 pub struct AES256MatyasMeyerOseasPRG {
@@ -285,7 +313,12 @@ mod tests {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.to_owned(),
         };
-        let k = DCFImpl::<16, 16, PRGImpl>::gen(&f, [&s0s[0], &s0s[1]], prg.clone());
+        let k = DCFImpl::<16, 16, PRGImpl>::gen(
+            &f,
+            [&s0s[0], &s0s[1]],
+            BoundState::LtBeta,
+            prg.clone(),
+        );
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
@@ -310,5 +343,45 @@ mod tests {
         let y1 = DCFImpl::<16, 16, PRGImpl>::eval(true, &k1, ALPHAS[4], prg.clone());
         let y = xor(&[&y0, &y1]);
         assert_eq!(y, [0; 16]);
+    }
+
+    #[test]
+    fn test_dcf_gen_gt_beta_then_eval_ok() {
+        let prg = AES256MatyasMeyerOseasPRG::new(KEYS);
+        let s0s: [[u8; 16]; 2] = thread_rng().gen();
+        let f = CmpFn {
+            alpha: ALPHAS[2].to_owned(),
+            beta: BETA.to_owned(),
+        };
+        let k = DCFImpl::<16, 16, PRGImpl>::gen(
+            &f,
+            [&s0s[0], &s0s[1]],
+            BoundState::GtBeta,
+            prg.clone(),
+        );
+        let mut k0 = k.clone();
+        k0.s0s = vec![k0.s0s[0]];
+        let mut k1 = k.clone();
+        k1.s0s = vec![k1.s0s[1]];
+        let y0 = DCFImpl::<16, 16, PRGImpl>::eval(false, &k0, ALPHAS[0], prg.clone());
+        let y1 = DCFImpl::<16, 16, PRGImpl>::eval(true, &k1, ALPHAS[0], prg.clone());
+        let y = xor(&[&y0, &y1]);
+        assert_eq!(y, [0; 16]);
+        let y0 = DCFImpl::<16, 16, PRGImpl>::eval(false, &k0, ALPHAS[1], prg.clone());
+        let y1 = DCFImpl::<16, 16, PRGImpl>::eval(true, &k1, ALPHAS[1], prg.clone());
+        let y = xor(&[&y0, &y1]);
+        assert_eq!(y, [0; 16]);
+        let y0 = DCFImpl::<16, 16, PRGImpl>::eval(false, &k0, ALPHAS[2], prg.clone());
+        let y1 = DCFImpl::<16, 16, PRGImpl>::eval(true, &k1, ALPHAS[2], prg.clone());
+        let y = xor(&[&y0, &y1]);
+        assert_eq!(y, [0; 16]);
+        let y0 = DCFImpl::<16, 16, PRGImpl>::eval(false, &k0, ALPHAS[3], prg.clone());
+        let y1 = DCFImpl::<16, 16, PRGImpl>::eval(true, &k1, ALPHAS[3], prg.clone());
+        let y = xor(&[&y0, &y1]);
+        assert_eq!(y, BETA.to_owned());
+        let y0 = DCFImpl::<16, 16, PRGImpl>::eval(false, &k0, ALPHAS[4], prg.clone());
+        let y1 = DCFImpl::<16, 16, PRGImpl>::eval(true, &k1, ALPHAS[4], prg.clone());
+        let y = xor(&[&y0, &y1]);
+        assert_eq!(y, BETA.to_owned());
     }
 }
