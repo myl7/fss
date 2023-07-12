@@ -219,7 +219,7 @@ pub enum BoundState {
     GtBeta,
 }
 
-/// Matyas-Meyer-Oseas one-way compression function with AES256 and precreated keys as an implementation of [`PRF`].
+/// Matyas-Meyer-Oseas one-way compression function with AES256 and precreated keys as an implementation of [`Prg`].
 pub struct Aes256MatyasMeyerOseasPrg {
     ciphers: [Aes256; 5],
 }
