@@ -11,9 +11,12 @@ license = "Apache-2.0"
 keywords = ["crypto", "dpf", "fss", "dcf", "dist-comparison-fn"]
 categories = ["cryptography"]
 
+[features]
+prg = ["aes"]
+
 [dependencies]
 bitvec = "1.0.1"
-aes = "0.8.3"
+aes = { version = "0.8.3", optional = true }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["std", "std_rng"] }
