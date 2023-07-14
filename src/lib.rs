@@ -229,14 +229,11 @@ mod tests {
 
     use rand::{thread_rng, Rng};
 
-    use crate::prg::Aes256MatyasMeyerOseasPrg;
+    use crate::prg::Aes256HirosePrg;
 
-    const KEYS: [&[u8; 32]; 5] = [
+    const KEYS: [&[u8; 32]; 2] = [
         b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d",
         b"\x9b\x15\xc8\x0f\xb7\xbc!q\x9e\x89\xb8\xf7\x0e\xa0S\x9dN\xfa\x0c;\x16\xe4\x98\x82b\xfcdy\xb5\x8c{\xc2",
-        b"\xea\xb5TM\xd59\xf9\xa1e\x912l\xc8\xe0\xc2\xf0\x9e\xee\x7ft\xc9E'\xef\xaef-\x0e\x13\x93\xf8:",
-        b"\x05\xad\x0b\xbc\x95\xb3\xdf\xe4k\xf1$\xa5M\xc2\x9e\x85\x04\xb1\x0e\xae\xad\x0b\xc4b\x9dbb\xc0\xe4\xd0\x86\xab",
-        b"H\x8f\x1c\x86\x88\x81\xff\x7fZ\xd8\xe5\xe2\x9a\xd3;\xcf\"\x8e\xfb\xe1\x052)\x16\xf9z\xcf\x83j\xcd\xed>",
     ];
     const ALPHAS: &[&[u8; 16]] = &[
         b"K\xa9W\xf5\xdd\x05\xe9\xfc?\x04\xf6\xfbUo\xa8C",
@@ -249,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_dcf_gen_then_eval_ok() {
-        let prg = Aes256MatyasMeyerOseasPrg::new(KEYS);
+        let prg = Aes256HirosePrg::new(KEYS);
         let dcf = DcfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
@@ -285,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_dcf_gen_gt_beta_then_eval_ok() {
-        let prg = Aes256MatyasMeyerOseasPrg::new(KEYS);
+        let prg = Aes256HirosePrg::new(KEYS);
         let dcf = DcfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
