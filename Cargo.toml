@@ -16,6 +16,11 @@ name = "dcf"
 harness = false
 required-features = ["prg"]
 
+[[bench]]
+name = "dcf_batch_eval"
+harness = false
+required-features = ["prg"]
+
 [features]
 prg = ["aes"]
 
