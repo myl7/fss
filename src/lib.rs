@@ -6,7 +6,7 @@
 #[cfg(feature = "prg")]
 pub mod prg;
 
-pub(crate) mod utils;
+mod utils;
 
 use bitvec::prelude::*;
 
