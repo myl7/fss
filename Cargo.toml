@@ -11,6 +11,11 @@ license = "Apache-2.0"
 keywords = ["crypto", "dpf", "fss", "dcf", "dist-comparison-fn"]
 categories = ["cryptography"]
 
+[[bench]]
+name = "dcf"
+harness = false
+required-features = ["prg"]
+
 [features]
 prg = ["aes"]
 
@@ -20,3 +25,4 @@ aes = { version = "0.8.3", optional = true }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["std", "std_rng"] }
+criterion = "0.5.1"
