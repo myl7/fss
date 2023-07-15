@@ -9,6 +9,8 @@ pub mod prg;
 mod utils;
 
 use bitvec::prelude::*;
+#[cfg(feature = "multithread")]
+use rayon::prelude::*;
 
 use crate::utils::{xor, xor_inplace};
 
@@ -42,6 +44,11 @@ pub struct CmpFn<const N: usize, const LAMBDA: usize> {
 /// Pseudorandom generator used in the algorithm.
 ///
 /// `$\{0, 1\}^{\lambda} \rightarrow \{0, 1\}^{2(2\lambda + 1)}$`.
+#[cfg(feature = "multithread")]
+pub trait Prg<const LAMBDA: usize>: Sync {
+    fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2];
+}
+#[cfg(not(feature = "multithread"))]
 pub trait Prg<const LAMBDA: usize> {
     fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2];
 }
@@ -152,7 +159,7 @@ where
     fn eval(&self, b: bool, k: &Share<LAMBDA>, xs: &[&[u8; N]], ys: &mut [&mut [u8; LAMBDA]]) {
         let n = k.cws.len();
         assert_eq!(n, N * 8);
-        xs.iter().zip(ys.iter_mut()).for_each(|(&x, y)| {
+        let f = |x: &[u8; N], y: &mut [u8; LAMBDA]| {
             let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
             ss.push(k.s0s[0].to_owned());
             let mut ts = Vec::<bool>::with_capacity(n + 1);
@@ -179,7 +186,17 @@ where
             }
             assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
             xor_inplace(v, &[&ss[n], if ts[n] { &k.cw_np1 } else { &[0; LAMBDA] }]);
-        })
+        };
+        #[cfg(feature = "multithread")]
+        {
+            xs.par_iter()
+                .zip(ys.par_iter_mut())
+                .for_each(|(x, y)| f(x, y));
+        }
+        #[cfg(not(feature = "multithread"))]
+        {
+            xs.iter().zip(ys.iter_mut()).for_each(|(x, y)| f(x, y));
+        }
     }
 }
 
