@@ -36,7 +36,10 @@ pub fn bench_eval(c: &mut Criterion) {
             let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
             let dcf = DcfImpl::<16, 16, _>::new(prg);
             let x: [u8; 16] = thread_rng().gen();
-            dcf.eval(false, &k, &x)
+            let mut y = [0; 16];
+            dcf.eval(false, &k, &[&x], &mut [&mut y]);
+            assert_ne!(y, [0; 16]);
+            y
         })
     });
 }

@@ -44,16 +44,17 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA
         let seed_p = xor(&[seed, &Self::c()]);
         let mut result_buf0 = [[0; LAMBDA]; 2];
         let mut result_buf1 = [[0; LAMBDA]; 2];
+        let mut out_blocks = [GenericArray::default(); 2];
         (0..2usize).zip(0..LAMBDA / 16).for_each(|(i, j)| {
             let in_block0 = GenericArray::from_slice(&seed[j * 16..(j + 1) * 16]);
             let in_block1 = GenericArray::from_slice(&seed_p[j * 16..(j + 1) * 16]);
-            let out_block0 =
-                GenericArray::from_mut_slice(&mut result_buf0[i][j * 16..(j + 1) * 16]);
-            let out_block1 =
-                GenericArray::from_mut_slice(&mut result_buf1[i][j * 16..(j + 1) * 16]);
             self.ciphers[i * 16 + j]
-                .encrypt_blocks_b2b(&[*in_block0, *in_block1], &mut [*out_block0, *out_block1])
+                .encrypt_blocks_b2b(&[*in_block0, *in_block1], &mut out_blocks)
                 .unwrap();
+            result_buf0[i][j * 16..(j + 1) * 16].copy_from_slice(out_blocks[0].as_ref());
+            result_buf1[i][j * 16..(j + 1) * 16].copy_from_slice(out_blocks[1].as_ref());
+            // TODO: Add a test for this
+            assert_ne!(&result_buf0[i][j * 16..(j + 1) * 16], &[0; 16]);
         });
         result_buf0
             .iter_mut()

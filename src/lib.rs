@@ -26,7 +26,7 @@ pub trait Dcf<const N: usize, const LAMBDA: usize> {
     ) -> Share<LAMBDA>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
-    fn eval(&self, b: bool, k: &Share<LAMBDA>, x: &[u8; N]) -> [u8; LAMBDA];
+    fn eval(&self, b: bool, k: &Share<LAMBDA>, xs: &[&[u8; N]], ys: &mut [&mut [u8; LAMBDA]]);
 }
 
 /// Comparison function.
@@ -150,44 +150,37 @@ where
         }
     }
 
-    fn eval(&self, b: bool, k: &Share<LAMBDA>, x: &[u8; N]) -> [u8; LAMBDA] {
+    fn eval(&self, b: bool, k: &Share<LAMBDA>, xs: &[&[u8; N]], ys: &mut [&mut [u8; LAMBDA]]) {
         let n = k.cws.len();
         assert_eq!(n, N * 8);
-        let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
-        ss.push(k.s0s[0].to_owned());
-        let mut ts = Vec::<bool>::with_capacity(n + 1);
-        ts.push(b);
-        let mut v = [0; LAMBDA];
-        for i in 1..n + 1 {
-            let cw = &k.cws[i - 1];
-            // `*_hat` before in-place xor
-            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i - 1]);
-            xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-            xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-            tl ^= ts[i - 1] & cw.tl;
-            tr ^= ts[i - 1] & cw.tr;
-            if x.view_bits::<Msb0>()[i - 1] {
-                xor_inplace(
-                    &mut v,
-                    &[&vr_hat, if ts[i - 1] { &cw.v } else { &[0; LAMBDA] }],
-                );
-                ss.push(sr);
-                ts.push(tr);
-            } else {
-                xor_inplace(
-                    &mut v,
-                    &[&vl_hat, if ts[i - 1] { &cw.v } else { &[0; LAMBDA] }],
-                );
-                ss.push(sl);
-                ts.push(tl);
+        xs.iter().zip(ys.iter_mut()).for_each(|(&x, y)| {
+            let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
+            ss.push(k.s0s[0].to_owned());
+            let mut ts = Vec::<bool>::with_capacity(n + 1);
+            ts.push(b);
+            y.fill(0);
+            let v = y;
+            for i in 1..n + 1 {
+                let cw = &k.cws[i - 1];
+                // `*_hat` before in-place xor
+                let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i - 1]);
+                xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
+                xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
+                tl ^= ts[i - 1] & cw.tl;
+                tr ^= ts[i - 1] & cw.tr;
+                if x.view_bits::<Msb0>()[i - 1] {
+                    xor_inplace(v, &[&vr_hat, if ts[i - 1] { &cw.v } else { &[0; LAMBDA] }]);
+                    ss.push(sr);
+                    ts.push(tr);
+                } else {
+                    xor_inplace(v, &[&vl_hat, if ts[i - 1] { &cw.v } else { &[0; LAMBDA] }]);
+                    ss.push(sl);
+                    ts.push(tl);
+                }
             }
-        }
-        assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
-        xor_inplace(
-            &mut v,
-            &[&ss[n], if ts[n] { &k.cw_np1 } else { &[0; LAMBDA] }],
-        );
-        v
+            assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
+            xor_inplace(v, &[&ss[n], if ts[n] { &k.cw_np1 } else { &[0; LAMBDA] }]);
+        })
     }
 }
 
@@ -259,26 +252,15 @@ mod tests {
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let y0 = dcf.eval(false, &k0, ALPHAS[0]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[0]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, BETA.to_owned());
-        let y0 = dcf.eval(false, &k0, ALPHAS[1]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[1]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, BETA.to_owned());
-        let y0 = dcf.eval(false, &k0, ALPHAS[2]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[2]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, [0; 16]);
-        let y0 = dcf.eval(false, &k0, ALPHAS[3]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[3]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, [0; 16]);
-        let y0 = dcf.eval(false, &k0, ALPHAS[4]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[4]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, [0; 16]);
+        let mut ys0 = vec![[0; 16]; ALPHAS.len()];
+        let mut ys1 = vec![[0; 16]; ALPHAS.len()];
+        dcf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dcf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
+        ys0.iter_mut()
+            .zip(ys1.iter())
+            .for_each(|(y0, y1)| xor_inplace(y0, &[y1]));
+        ys1 = vec![BETA.to_owned(), BETA.to_owned(), [0; 16], [0; 16], [0; 16]];
+        assert_eq!(ys0, ys1);
     }
 
     #[test]
@@ -295,25 +277,36 @@ mod tests {
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let y0 = dcf.eval(false, &k0, ALPHAS[0]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[0]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, [0; 16]);
-        let y0 = dcf.eval(false, &k0, ALPHAS[1]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[1]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, [0; 16]);
-        let y0 = dcf.eval(false, &k0, ALPHAS[2]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[2]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, [0; 16]);
-        let y0 = dcf.eval(false, &k0, ALPHAS[3]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[3]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, BETA.to_owned());
-        let y0 = dcf.eval(false, &k0, ALPHAS[4]);
-        let y1 = dcf.eval(true, &k1, ALPHAS[4]);
-        let y = xor(&[&y0, &y1]);
-        assert_eq!(y, BETA.to_owned());
+        let mut ys0 = vec![[0; 16]; ALPHAS.len()];
+        let mut ys1 = vec![[0; 16]; ALPHAS.len()];
+        dcf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dcf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
+        ys0.iter_mut()
+            .zip(ys1.iter())
+            .for_each(|(y0, y1)| xor_inplace(y0, &[y1]));
+        ys1 = vec![[0; 16], [0; 16], [0; 16], BETA.to_owned(), BETA.to_owned()];
+        assert_eq!(ys0, ys1);
+    }
+
+    #[test]
+    fn test_dcf_gen_then_eval_not_zeros() {
+        let prg = Aes256HirosePrg::new(KEYS);
+        let dcf = DcfImpl::<16, 16, _>::new(prg);
+        let s0s: [[u8; 16]; 2] = thread_rng().gen();
+        let f = CmpFn {
+            alpha: ALPHAS[2].to_owned(),
+            beta: BETA.to_owned(),
+        };
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
+        let mut k0 = k.clone();
+        k0.s0s = vec![k0.s0s[0]];
+        let mut k1 = k.clone();
+        k1.s0s = vec![k1.s0s[1]];
+        let mut ys0 = vec![[0; 16]; ALPHAS.len()];
+        let mut ys1 = vec![[0; 16]; ALPHAS.len()];
+        dcf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dcf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
+        assert_ne!(ys0[2], [0; 16]);
+        assert_ne!(ys1[2], [0; 16]);
     }
 }

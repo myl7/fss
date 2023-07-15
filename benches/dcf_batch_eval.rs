@@ -25,9 +25,14 @@ pub fn bench_rand(c: &mut Criterion) {
             let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
             let cached_prg = CachedPrg::new(prg, HashMap::new());
             let dcf = DcfImpl::<16, 16, _>::new(cached_prg);
-            xs.iter()
-                .map(|x| dcf.eval(false, &k, x))
-                .collect::<Vec<_>>()
+            let mut ys = [[0; 16]; N];
+            dcf.eval(
+                false,
+                &k,
+                &xs.iter().collect::<Vec<_>>(),
+                &mut ys.iter_mut().collect::<Vec<_>>(),
+            );
+            ys
         })
     });
 }
