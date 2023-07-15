@@ -41,7 +41,7 @@ impl<const LAMBDA: usize, const N: usize> Aes256HirosePrg<LAMBDA, N> {
 impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA, N> {
     fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2] {
         // `$p(G_{i - 1})$`
-        let seed_p = xor(&[&seed, &Self::c()]);
+        let seed_p = xor(&[seed, &Self::c()]);
         let mut result_buf0 = [[0; LAMBDA]; 2];
         let mut result_buf1 = [[0; LAMBDA]; 2];
         (0..2usize).zip(0..LAMBDA / 16).for_each(|(i, j)| {
@@ -57,7 +57,7 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA
         });
         result_buf0
             .iter_mut()
-            .for_each(|buf| xor_inplace(buf, &[&seed]));
+            .for_each(|buf| xor_inplace(buf, &[seed]));
         result_buf1
             .iter_mut()
             .for_each(|buf| xor_inplace(buf, &[&seed_p]));
