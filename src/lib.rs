@@ -3,7 +3,6 @@
 
 //! See [`Dcf`]
 
-pub mod cache;
 #[cfg(feature = "prg")]
 pub mod prg;
 

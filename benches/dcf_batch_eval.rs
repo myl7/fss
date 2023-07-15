@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::{thread_rng, Rng};
 
-use dcf::cache::CachedPrg;
 use dcf::prg::Aes256HirosePrg;
 use dcf::{BoundState, CmpFn, Dcf, DcfImpl};
 
@@ -23,8 +20,7 @@ pub fn bench(c: &mut Criterion) {
     c.bench_function("xs_100k_lambda_16", |b| {
         b.iter(|| {
             let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
-            let cached_prg = CachedPrg::new(prg, HashMap::new());
-            let dcf = DcfImpl::<16, 16, _>::new(cached_prg);
+            let dcf = DcfImpl::<16, 16, _>::new(prg);
             let mut ys = [[0; 16]; N];
             dcf.eval(
                 false,
