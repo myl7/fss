@@ -15,7 +15,7 @@ pub fn bench_gen(c: &mut Criterion) {
                 alpha: thread_rng().gen(),
                 beta: thread_rng().gen(),
             };
-            dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta)
+            dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
         })
     });
 }
@@ -38,8 +38,6 @@ pub fn bench_eval(c: &mut Criterion) {
             let x: [u8; 16] = thread_rng().gen();
             let mut y = [0; 16];
             dcf.eval(false, &k, &[&x], &mut [&mut y]);
-            assert_ne!(y, [0; 16]);
-            y
         })
     });
 }
