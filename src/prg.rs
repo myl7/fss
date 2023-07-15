@@ -53,8 +53,6 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA
                 .unwrap();
             result_buf0[i][j * 16..(j + 1) * 16].copy_from_slice(out_blocks[0].as_ref());
             result_buf1[i][j * 16..(j + 1) * 16].copy_from_slice(out_blocks[1].as_ref());
-            // TODO: Add a test for this
-            assert_ne!(&result_buf0[i][j * 16..(j + 1) * 16], &[0; 16]);
         });
         result_buf0
             .iter_mut()
@@ -72,5 +70,28 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA
             (result_buf0[0], result_buf1[0], bit0),
             (result_buf0[1], result_buf1[1], bit1),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KEYS: [&[u8; 32]; 2] = [
+        b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d",
+        b"\x9b\x15\xc8\x0f\xb7\xbc!q\x9e\x89\xb8\xf7\x0e\xa0S\x9dN\xfa\x0c;\x16\xe4\x98\x82b\xfcdy\xb5\x8c{\xc2",
+    ];
+    const SEED: &[u8; 16] = b"*L\x8f%y\x12Z\x94*E\x8f$+NH\x19";
+
+    #[test]
+    fn test_prg_gen_not_zeros() {
+        let prg = Aes256HirosePrg::<16, 2>::new(KEYS);
+        let out = prg.gen(SEED);
+        (0..2).for_each(|i| {
+            assert_ne!(out[i].0, [0; 16]);
+            assert_ne!(out[i].1, [0; 16]);
+            assert_ne!(xor(&[&out[i].0, SEED]), [0; 16]);
+            assert_ne!(xor(&[&out[i].1, SEED]), [0; 16]);
+        });
     }
 }
