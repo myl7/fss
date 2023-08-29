@@ -11,6 +11,9 @@ license = "Apache-2.0"
 keywords = ["crypto", "dpf", "fss", "dcf", "dist-comparison-fn"]
 categories = ["cryptography"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [[bench]]
 name = "dcf"
 harness = false
