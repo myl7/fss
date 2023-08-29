@@ -3,6 +3,7 @@
 
 //! See [`Dcf`]
 
+pub mod group;
 #[cfg(feature = "prg")]
 pub mod prg;
 
@@ -12,33 +13,40 @@ use bitvec::prelude::*;
 #[cfg(feature = "multithread")]
 use rayon::prelude::*;
 
+use crate::group::Group;
 use crate::utils::{xor, xor_inplace};
 
 /// API of Distributed comparison function.
 ///
 /// See [`CmpFn`] for `N` and `LAMBDA`.
-pub trait Dcf<const N: usize, const LAMBDA: usize> {
+pub trait Dcf<const N: usize, const LAMBDA: usize, G>
+where
+    G: Group<LAMBDA>,
+{
     /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
     fn gen(
         &self,
-        f: &CmpFn<N, LAMBDA>,
+        f: &CmpFn<N, LAMBDA, G>,
         s0s: [&[u8; LAMBDA]; 2],
         bound: BoundState,
-    ) -> Share<LAMBDA>;
+    ) -> Share<LAMBDA, G>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
-    fn eval(&self, b: bool, k: &Share<LAMBDA>, xs: &[&[u8; N]], ys: &mut [&mut [u8; LAMBDA]]);
+    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]);
 }
 
 /// Comparison function.
 ///
 /// - `N` is the **byte** size of the domain.
 /// - `LAMBDA` here is used as the **byte** size of the range, unlike the one in the paper.
-pub struct CmpFn<const N: usize, const LAMBDA: usize> {
+pub struct CmpFn<const N: usize, const LAMBDA: usize, G>
+where
+    G: Group<LAMBDA>,
+{
     /// `$\alpha$`
     pub alpha: [u8; N],
     /// `$\beta$`
-    pub beta: [u8; LAMBDA],
+    pub beta: G,
 }
 
 /// Pseudorandom generator used in the algorithm.
@@ -75,26 +83,27 @@ where
 const IDX_L: usize = 0;
 const IDX_R: usize = 1;
 
-impl<const N: usize, const LAMBDA: usize, PrgT> Dcf<N, LAMBDA> for DcfImpl<N, LAMBDA, PrgT>
+impl<const N: usize, const LAMBDA: usize, PrgT, G> Dcf<N, LAMBDA, G> for DcfImpl<N, LAMBDA, PrgT>
 where
     PrgT: Prg<LAMBDA>,
+    G: Group<LAMBDA>,
 {
     fn gen(
         &self,
-        f: &CmpFn<N, LAMBDA>,
+        f: &CmpFn<N, LAMBDA, G>,
         s0s: [&[u8; LAMBDA]; 2],
         bound: BoundState,
-    ) -> Share<LAMBDA> {
+    ) -> Share<LAMBDA, G> {
         // The bit size of `$\alpha$`
         let n = 8 * N;
-        let mut v_alpha = [0; LAMBDA];
+        let mut v_alpha = G::zero();
         let mut ss = Vec::<[[u8; LAMBDA]; 2]>::with_capacity(n + 1);
         // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`
         ss.push([s0s[0].to_owned(), s0s[1].to_owned()]);
         let mut ts = Vec::<[bool; 2]>::with_capacity(n + 1);
         // Set `$t^{(0)}_0$` and `$t^{(0)}_1$`
         ts.push([false, true]);
-        let mut cws = Vec::<Cw<LAMBDA>>::with_capacity(n);
+        let mut cws = Vec::<Cw<LAMBDA, G>>::with_capacity(n);
         for i in 1..n + 1 {
             let [(s0l, v0l, t0l), (s0r, v0r, t0r)] = self.prg.gen(&ss[i - 1][0]);
             let [(s1l, v1l, t1l), (s1r, v1r, t1r)] = self.prg.gen(&ss[i - 1][1]);
@@ -106,23 +115,27 @@ where
                 (IDX_L, IDX_R)
             };
             let s_cw = xor(&[[&s0l, &s0r][lose], [&s1l, &s1r][lose]]);
-            let mut v_cw = xor(&[[&v0l, &v0r][lose], [&v1l, &v1r][lose], &v_alpha]);
+            let mut v_cw = G::add_inverse_if(
+                G::convert_ref([&v0l, &v0r][lose])
+                    + G::convert_ref([&v1l, &v1r][lose]).add_inverse()
+                    + v_alpha.clone().add_inverse(),
+                ts[i - 1][1],
+            );
             match bound {
                 BoundState::LtBeta => {
                     if lose == IDX_L {
-                        xor_inplace(&mut v_cw, &[&f.beta]);
+                        v_cw += f.beta.clone()
                     }
                 }
                 BoundState::GtBeta => {
                     if lose == IDX_R {
-                        xor_inplace(&mut v_cw, &[&f.beta]);
+                        v_cw += f.beta.clone()
                     }
                 }
             }
-            xor_inplace(
-                &mut v_alpha,
-                &[[&v0l, &v0r][keep], [&v1l, &v1r][keep], &v_cw],
-            );
+            v_alpha += G::convert_ref([&v0l, &v0r][keep]).add_inverse()
+                + G::convert_ref([&v1l, &v1r][keep])
+                + v_cw.clone().add_inverse_if(ts[i - 1][1]);
             let tl_cw = t0l ^ t1l ^ alpha_i ^ true;
             let tr_cw = t0r ^ t1r ^ alpha_i;
             let cw = Cw {
@@ -148,7 +161,10 @@ where
             ]);
         }
         assert_eq!((ss.len(), ts.len(), cws.len()), (n + 1, n + 1, n));
-        let cw_np1 = xor(&[&ss[n][0], &ss[n][1], &v_alpha]);
+        let cw_np1 = (G::convert_ref(&ss[n][0])
+            + G::convert_ref(&ss[n][1]).add_inverse()
+            + v_alpha.add_inverse())
+        .add_inverse_if(ts[n][1]);
         Share {
             s0s: vec![s0s[0].to_owned(), s0s[1].to_owned()],
             cws,
@@ -156,16 +172,15 @@ where
         }
     }
 
-    fn eval(&self, b: bool, k: &Share<LAMBDA>, xs: &[&[u8; N]], ys: &mut [&mut [u8; LAMBDA]]) {
+    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]) {
         let n = k.cws.len();
         assert_eq!(n, N * 8);
-        let f = |x: &[u8; N], y: &mut [u8; LAMBDA]| {
+        let f = |x: &[u8; N], v: &mut G| {
             let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
             ss.push(k.s0s[0].to_owned());
             let mut ts = Vec::<bool>::with_capacity(n + 1);
             ts.push(b);
-            y.fill(0);
-            let v = y;
+            *v = G::zero();
             for i in 1..n + 1 {
                 let cw = &k.cws[i - 1];
                 // `*_hat` before in-place xor
@@ -175,17 +190,20 @@ where
                 tl ^= ts[i - 1] & cw.tl;
                 tr ^= ts[i - 1] & cw.tr;
                 if x.view_bits::<Msb0>()[i - 1] {
-                    xor_inplace(v, &[&vr_hat, if ts[i - 1] { &cw.v } else { &[0; LAMBDA] }]);
+                    *v += (G::convert(vr_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                        .add_inverse_if(b);
                     ss.push(sr);
                     ts.push(tr);
                 } else {
-                    xor_inplace(v, &[&vl_hat, if ts[i - 1] { &cw.v } else { &[0; LAMBDA] }]);
+                    *v += (G::convert(vl_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                        .add_inverse_if(b);
                     ss.push(sl);
                     ts.push(tl);
                 }
             }
             assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
-            xor_inplace(v, &[&ss[n], if ts[n] { &k.cw_np1 } else { &[0; LAMBDA] }]);
+            *v += (G::convert(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
+                .add_inverse_if(b);
         };
         #[cfg(feature = "multithread")]
         {
@@ -202,9 +220,12 @@ where
 
 /// `Cw`. Correclation word.
 #[derive(Clone)]
-pub struct Cw<const LAMBDA: usize> {
+pub struct Cw<const LAMBDA: usize, G>
+where
+    G: Group<LAMBDA>,
+{
     pub s: [u8; LAMBDA],
-    pub v: [u8; LAMBDA],
+    pub v: G,
     pub tl: bool,
     pub tr: bool,
 }
@@ -214,14 +235,17 @@ pub struct Cw<const LAMBDA: usize> {
 /// `cws` and `cw_np1` is shared by the 2 parties.
 /// Only `s0s[0]` is different.
 #[derive(Clone)]
-pub struct Share<const LAMBDA: usize> {
+pub struct Share<const LAMBDA: usize, G>
+where
+    G: Group<LAMBDA>,
+{
     /// For the output of `gen`, its length is 2.
     /// For the input of `eval`, the first one is used.
     pub s0s: Vec<[u8; LAMBDA]>,
     /// The length of `cws` must be `n = 8 * N`
-    pub cws: Vec<Cw<LAMBDA>>,
+    pub cws: Vec<Cw<LAMBDA, G>>,
     /// `$CW^{(n + 1)}$`
-    pub cw_np1: [u8; LAMBDA],
+    pub cw_np1: G,
 }
 
 pub enum BoundState {
@@ -239,6 +263,7 @@ mod tests {
 
     use rand::{thread_rng, Rng};
 
+    use crate::group::ByteGroup;
     use crate::prg::Aes256HirosePrg;
 
     const KEYS: [&[u8; 32]; 2] = [
@@ -261,21 +286,27 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: BETA.to_owned(),
+            beta: ByteGroup::convert_ref(BETA),
         };
         let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let mut ys0 = vec![[0; 16]; ALPHAS.len()];
-        let mut ys1 = vec![[0; 16]; ALPHAS.len()];
+        let mut ys0 = vec![ByteGroup::zero(); ALPHAS.len()];
+        let mut ys1 = vec![ByteGroup::zero(); ALPHAS.len()];
         dcf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
         dcf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
         ys0.iter_mut()
             .zip(ys1.iter())
-            .for_each(|(y0, y1)| xor_inplace(y0, &[y1]));
-        ys1 = vec![BETA.to_owned(), BETA.to_owned(), [0; 16], [0; 16], [0; 16]];
+            .for_each(|(y0, y1)| *y0 += y1.clone());
+        ys1 = vec![
+            ByteGroup::convert_ref(BETA),
+            ByteGroup::convert_ref(BETA),
+            ByteGroup::zero(),
+            ByteGroup::zero(),
+            ByteGroup::zero(),
+        ];
         assert_eq!(ys0, ys1);
     }
 
@@ -286,21 +317,27 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: BETA.to_owned(),
+            beta: ByteGroup::convert_ref(BETA),
         };
         let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::GtBeta);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let mut ys0 = vec![[0; 16]; ALPHAS.len()];
-        let mut ys1 = vec![[0; 16]; ALPHAS.len()];
+        let mut ys0 = vec![ByteGroup::zero(); ALPHAS.len()];
+        let mut ys1 = vec![ByteGroup::zero(); ALPHAS.len()];
         dcf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
         dcf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
         ys0.iter_mut()
             .zip(ys1.iter())
-            .for_each(|(y0, y1)| xor_inplace(y0, &[y1]));
-        ys1 = vec![[0; 16], [0; 16], [0; 16], BETA.to_owned(), BETA.to_owned()];
+            .for_each(|(y0, y1)| *y0 += y1.clone());
+        ys1 = vec![
+            ByteGroup::zero(),
+            ByteGroup::zero(),
+            ByteGroup::zero(),
+            ByteGroup::convert_ref(BETA),
+            ByteGroup::convert_ref(BETA),
+        ];
         assert_eq!(ys0, ys1);
     }
 
@@ -311,18 +348,18 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: BETA.to_owned(),
+            beta: ByteGroup::convert_ref(BETA),
         };
         let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let mut ys0 = vec![[0; 16]; ALPHAS.len()];
-        let mut ys1 = vec![[0; 16]; ALPHAS.len()];
+        let mut ys0 = vec![ByteGroup::zero(); ALPHAS.len()];
+        let mut ys1 = vec![ByteGroup::zero(); ALPHAS.len()];
         dcf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
         dcf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
-        assert_ne!(ys0[2], [0; 16]);
-        assert_ne!(ys1[2], [0; 16]);
+        assert_ne!(ys0[2], ByteGroup::zero());
+        assert_ne!(ys1[2], ByteGroup::zero());
     }
 }

@@ -1,4 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use dcf::group::{ByteGroup, Group};
 use rand::{thread_rng, Rng};
 
 use dcf::prg::Aes256HirosePrg;
@@ -11,7 +12,7 @@ pub fn bench(c: &mut Criterion) {
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
     let f = CmpFn {
         alpha: thread_rng().gen(),
-        beta: thread_rng().gen(),
+        beta: ByteGroup(thread_rng().gen()),
     };
     let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
     const N: usize = 100_000;
@@ -21,7 +22,7 @@ pub fn bench(c: &mut Criterion) {
         b.iter(|| {
             let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
             let dcf = DcfImpl::<16, 16, _>::new(prg);
-            let mut ys = [[0; 16]; N];
+            let mut ys = vec![ByteGroup::zero(); N];
             dcf.eval(
                 false,
                 &k,
