@@ -3,11 +3,7 @@
 
 pub fn xor<const LAMBDA: usize>(xs: &[&[u8; LAMBDA]]) -> [u8; LAMBDA] {
     let mut res = [0; LAMBDA];
-    for i in 0..LAMBDA {
-        for x in xs {
-            res[i] ^= x[i];
-        }
-    }
+    xor_inplace(&mut res, xs);
     res
 }
 
