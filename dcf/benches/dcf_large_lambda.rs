@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use dcf::group::{ByteGroup, Group};
+use group::byte::ByteGroup;
+use group::Group;
 use rand::{thread_rng, Rng, RngCore};
 
 use dcf::prg::Aes256HirosePrg;

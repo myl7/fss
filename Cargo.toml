@@ -1,2 +1,10 @@
 [workspace]
-members = ["dcf"]
+members = ["dcf", "group"]
+
+[workspace.package]
+edition = "2021"
+authors = ["myl7 <myl@myl.moe>"]
+documentation = "https://github.com/myl7/fss#readme" # Not used by all
+homepage = "https://github.com/myl7/fss"
+repository = "https://github.com/myl7/fss.git"
+license = "Apache-2.0"

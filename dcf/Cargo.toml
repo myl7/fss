@@ -1,15 +1,15 @@
 [package]
 name = "dcf"
 version = "0.2.2"
-authors = ["myl7 <myl@myl.moe>"]
-edition = "2021"
+edition.workspace = true
 description = "Distributed comparison function implementation"
 documentation = "https://docs.rs/dcf"
-homepage = "https://github.com/myl7/dcf"
-repository = "https://github.com/myl7/dcf.git"
-license = "Apache-2.0"
 keywords = ["crypto", "dpf", "fss", "dcf", "dist-comparison-fn"]
 categories = ["cryptography"]
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
@@ -36,6 +36,7 @@ multithread = ["rayon"]
 
 [dependencies]
 bitvec = "1.0.1"
+group = { path = "../group", features = ["byte"] }
 aes = { version = "0.8.3", optional = true }
 rayon = { version = "1.7.0", optional = true }
 
