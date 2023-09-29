@@ -3,6 +3,8 @@
 
 //! See [`Dcf`]
 
+extern crate group_math as group;
+
 #[cfg(feature = "prg")]
 pub mod prg;
 

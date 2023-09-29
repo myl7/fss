@@ -1,3 +1,5 @@
+extern crate group_math as group;
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use group::byte::ByteGroup;
 use group::Group;
