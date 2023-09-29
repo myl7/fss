@@ -5,9 +5,10 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  test:
-    name: Test
+  test-dcf:
+    name: Test dcf
     runs-on: ubuntu-latest
+    working-directory: dcf
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
