@@ -8,7 +8,9 @@ jobs:
   test-dcf:
     name: Test dcf
     runs-on: ubuntu-latest
-    working-directory: dcf
+    defaults:
+      run:
+        working-directory: dcf
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
