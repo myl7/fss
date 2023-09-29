@@ -18,7 +18,7 @@ where
     fn convert(y: [u8; LAMBDA]) -> Self;
     /// Helper to convert from a byte array to a group element by cloning the byte array
     fn clone_convert(y: &[u8; LAMBDA]) -> Self {
-        Self::convert(y.clone())
+        Self::convert(*y)
     }
 
     /// Zero in the group
