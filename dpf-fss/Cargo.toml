@@ -14,6 +14,8 @@ license.workspace = true
 [features]
 default = ["multithread"]
 prg = ["aes"]
+# Not including `dcf/multithread` because we only use its traits and types
+# TODO: Standalone package for the traits and types
 multithread = ["rayon"]
 
 [dependencies]

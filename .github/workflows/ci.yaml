@@ -20,5 +20,28 @@ jobs:
         run: cargo test -F prg
       - name: Test without multithreading
         run: cargo test -F prg --no-default-features
+  test-dpf:
+    name: Test dpf
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dpf
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Test with multithreading
+        run: cargo test -F prg
+      - name: Test without multithreading
+        run: cargo test -F prg --no-default-features
+  test-misc:
+    name: Test misc stuff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --all-features -- --no-deps -Dwarnings
