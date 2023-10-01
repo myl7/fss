@@ -1,0 +1,28 @@
+[package]
+name = "dpf-fss"
+version = "0.1.0"
+edition.workspace = true
+description = "Distributed point function implementation"
+documentation.workspace = true
+keywords = ["crypto", "dpf", "fss", "dist-point-fn"]
+categories = ["cryptography"]
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = ["multithread"]
+prg = ["aes"]
+multithread = ["rayon"]
+
+[dependencies]
+bitvec = "1.0.1"
+group-math = { version = "0.1.0", path = "../group-math", features = ["byte"] }
+aes = { version = "0.8.3", optional = true }
+rayon = { version = "1.7.0", optional = true }
+dcf = { version = "0.2.2", path = "../dcf" }
+
+[dev-dependencies]
+rand = { version = "0.8.5", features = ["std", "std_rng"] }
+criterion = "0.5.1"

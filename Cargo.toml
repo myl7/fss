@@ -1,5 +1,5 @@
 [workspace]
-members = ["dcf", "group-math"]
+members = ["dcf", "dpf-fss", "group-math"]
 
 [workspace.package]
 edition = "2021"
