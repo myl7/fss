@@ -6,7 +6,7 @@ on:
     branches: [main]
 jobs:
   test-dcf:
-    name: Test dcf
+    name: Test DCF
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,11 +21,11 @@ jobs:
       - name: Test without multithreading
         run: cargo test -F prg --no-default-features
   test-dpf:
-    name: Test dpf
+    name: Test DPF
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: dpf
+        working-directory: dpf-fss
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
