@@ -159,8 +159,8 @@ where
             ]);
         }
         assert_eq!((ss.len(), ts.len(), cws.len()), (n + 1, n + 1, n));
-        let cw_np1 = (G::clone_convert(&ss[n][0])
-            + G::clone_convert(&ss[n][1]).add_inverse()
+        let cw_np1 = (G::clone_convert(&ss[n][1])
+            + G::clone_convert(&ss[n][0]).add_inverse()
             + v_alpha.add_inverse())
         .add_inverse_if(ts[n][1]);
         Share {
