@@ -7,8 +7,8 @@ use aes::cipher::generic_array::GenericArray;
 use aes::cipher::{BlockEncrypt, KeyInit};
 use aes::Aes256;
 use bitvec::prelude::*;
-use group::byte::utils::{xor, xor_inplace};
 
+use crate::utils::{xor, xor_inplace};
 use crate::Prg;
 
 /// Hirose double-block-length one-way compression function with AES256 and precreated keys

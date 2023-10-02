@@ -26,24 +26,38 @@ macro_rules! decl_int_group {
         }
 
         impl<const LAMBDA: usize> Group<LAMBDA> for $t_impl {
-            fn convert(y: [u8; LAMBDA]) -> Self {
-                if cfg!(not(feature = "int-be")) {
-                    $t_impl(<$t>::from_le_bytes(
-                        (&y[..size_of::<$t>()]).clone().try_into().unwrap(),
-                    ))
-                } else {
-                    $t_impl(<$t>::from_be_bytes(
-                        (&y[..size_of::<$t>()]).clone().try_into().unwrap(),
-                    ))
-                }
-            }
-
             fn zero() -> Self {
                 $t_impl(0)
             }
 
             fn add_inverse(self) -> Self {
                 $t_impl(self.0.wrapping_neg())
+            }
+        }
+
+        impl<const LAMBDA: usize> From<[u8; LAMBDA]> for $t_impl {
+            fn from(value: [u8; LAMBDA]) -> Self {
+                if cfg!(not(feature = "int-be")) {
+                    $t_impl(<$t>::from_le_bytes(
+                        (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
+                    ))
+                } else {
+                    $t_impl(<$t>::from_be_bytes(
+                        (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
+                    ))
+                }
+            }
+        }
+
+        impl<const LAMBDA: usize> From<$t_impl> for [u8; LAMBDA] {
+            fn from(value: $t_impl) -> Self {
+                let mut bs = [0; LAMBDA];
+                if cfg!(not(feature = "int-be")) {
+                    bs[..size_of::<$t>()].copy_from_slice(&value.0.to_le_bytes());
+                } else {
+                    bs[..size_of::<$t>()].copy_from_slice(&value.0.to_be_bytes());
+                }
+                bs
             }
         }
     };

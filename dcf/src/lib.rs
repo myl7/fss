@@ -9,10 +9,11 @@ extern crate group_math as group;
 pub mod prg;
 
 use bitvec::prelude::*;
-use group::byte::utils::{xor, xor_inplace};
 use group::Group;
 #[cfg(feature = "multithread")]
 use rayon::prelude::*;
+
+use utils::{xor, xor_inplace};
 
 /// API of Distributed comparison function.
 ///
@@ -113,12 +114,10 @@ where
                 (IDX_L, IDX_R)
             };
             let s_cw = xor(&[[&s0l, &s0r][lose], [&s1l, &s1r][lose]]);
-            let mut v_cw = G::add_inverse_if(
-                G::clone_convert([&v0l, &v0r][lose])
-                    + G::clone_convert([&v1l, &v1r][lose]).add_inverse()
-                    + v_alpha.clone().add_inverse(),
-                ts[i - 1][1],
-            );
+            let mut v_cw = (Into::<G>::into(*[&v0l, &v0r][lose])
+                + Into::<G>::into(*[&v1l, &v1r][lose]).add_inverse()
+                + v_alpha.clone().add_inverse())
+            .add_inverse_if(ts[i - 1][1]);
             match bound {
                 BoundState::LtBeta => {
                     if lose == IDX_L {
@@ -131,8 +130,8 @@ where
                     }
                 }
             }
-            v_alpha += G::clone_convert([&v0l, &v0r][keep]).add_inverse()
-                + G::clone_convert([&v1l, &v1r][keep])
+            v_alpha += Into::<G>::into(*[&v0l, &v0r][keep]).add_inverse()
+                + (*[&v1l, &v1r][keep]).into()
                 + v_cw.clone().add_inverse_if(ts[i - 1][1]);
             let tl_cw = t0l ^ t1l ^ alpha_i ^ true;
             let tr_cw = t0r ^ t1r ^ alpha_i;
@@ -159,8 +158,8 @@ where
             ]);
         }
         assert_eq!((ss.len(), ts.len(), cws.len()), (n + 1, n + 1, n));
-        let cw_np1 = (G::clone_convert(&ss[n][1])
-            + G::clone_convert(&ss[n][0]).add_inverse()
+        let cw_np1 = (Into::<G>::into(ss[n][1])
+            + Into::<G>::into(ss[n][0]).add_inverse()
             + v_alpha.add_inverse())
         .add_inverse_if(ts[n][1]);
         Share {
@@ -188,19 +187,21 @@ where
                 tl ^= ts[i - 1] & cw.tl;
                 tr ^= ts[i - 1] & cw.tr;
                 if x.view_bits::<Msb0>()[i - 1] {
-                    *v += (G::convert(vr_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
-                        .add_inverse_if(b);
+                    *v += (Into::<G>::into(vr_hat)
+                        + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                    .add_inverse_if(b);
                     ss.push(sr);
                     ts.push(tr);
                 } else {
-                    *v += (G::convert(vl_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
-                        .add_inverse_if(b);
+                    *v += (Into::<G>::into(vl_hat)
+                        + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                    .add_inverse_if(b);
                     ss.push(sl);
                     ts.push(tl);
                 }
             }
             assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
-            *v += (G::convert(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
+            *v += (Into::<G>::into(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
                 .add_inverse_if(b);
         };
         #[cfg(feature = "multithread")]
@@ -255,6 +256,22 @@ pub enum BoundState {
     GtBeta,
 }
 
+mod utils {
+    pub fn xor<const LAMBDA: usize>(xs: &[&[u8; LAMBDA]]) -> [u8; LAMBDA] {
+        let mut res = [0; LAMBDA];
+        xor_inplace(&mut res, xs);
+        res
+    }
+
+    pub fn xor_inplace<const LAMBDA: usize>(lhs: &mut [u8; LAMBDA], rhss: &[&[u8; LAMBDA]]) {
+        for i in 0..LAMBDA {
+            for rhs in rhss {
+                lhs[i] ^= rhs[i];
+            }
+        }
+    }
+}
+
 #[cfg(all(test, feature = "prg"))]
 mod tests {
     use super::*;
@@ -284,7 +301,7 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: ByteGroup::clone_convert(BETA),
+            beta: BETA.clone().into(),
         };
         let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
         let mut k0 = k.clone();
@@ -299,8 +316,8 @@ mod tests {
             .zip(ys1.iter())
             .for_each(|(y0, y1)| *y0 += y1.clone());
         ys1 = vec![
-            ByteGroup::clone_convert(BETA),
-            ByteGroup::clone_convert(BETA),
+            BETA.clone().into(),
+            BETA.clone().into(),
             ByteGroup::zero(),
             ByteGroup::zero(),
             ByteGroup::zero(),
@@ -315,7 +332,7 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: ByteGroup::clone_convert(BETA),
+            beta: BETA.clone().into(),
         };
         let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::GtBeta);
         let mut k0 = k.clone();
@@ -333,8 +350,8 @@ mod tests {
             ByteGroup::zero(),
             ByteGroup::zero(),
             ByteGroup::zero(),
-            ByteGroup::clone_convert(BETA),
-            ByteGroup::clone_convert(BETA),
+            BETA.clone().into(),
+            BETA.clone().into(),
         ];
         assert_eq!(ys0, ys1);
     }
@@ -346,7 +363,7 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: ByteGroup::clone_convert(BETA),
+            beta: BETA.clone().into(),
         };
         let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
         let mut k0 = k.clone();

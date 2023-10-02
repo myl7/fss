@@ -9,11 +9,12 @@ extern crate group_math as group;
 pub mod prg;
 
 use bitvec::prelude::*;
-use dcf::{CmpFn, Cw, Prg, Share};
-use group::byte::utils::{xor, xor_inplace};
+pub use dcf::{CmpFn, Cw, Prg, Share};
 use group::Group;
 #[cfg(feature = "multithread")]
 use rayon::prelude::*;
+
+use utils::{xor, xor_inplace};
 
 /// API of Distributed point function.
 ///
@@ -129,10 +130,8 @@ where
             ]);
         }
         assert_eq!((ss.len(), ts.len(), cws.len()), (n + 1, n + 1, n));
-        let cw_np1 = (f.beta.clone()
-            + G::clone_convert(&ss[n][0]).add_inverse()
-            + G::clone_convert(&ss[n][1]))
-        .add_inverse_if(ts[n][1]);
+        let cw_np1 = (f.beta.clone() + Into::<G>::into(ss[n][0]).add_inverse() + ss[n][1].into())
+            .add_inverse_if(ts[n][1]);
         Share {
             s0s: vec![s0s[0].to_owned(), s0s[1].to_owned()],
             cws,
@@ -165,7 +164,7 @@ where
                 }
             }
             assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
-            *v = (G::convert(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
+            *v = (Into::<G>::into(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
                 .add_inverse_if(b);
         };
         #[cfg(feature = "multithread")]
@@ -211,6 +210,22 @@ where
 //     pub cw_np1: G,
 // }
 
+mod utils {
+    pub fn xor<const LAMBDA: usize>(xs: &[&[u8; LAMBDA]]) -> [u8; LAMBDA] {
+        let mut res = [0; LAMBDA];
+        xor_inplace(&mut res, xs);
+        res
+    }
+
+    pub fn xor_inplace<const LAMBDA: usize>(lhs: &mut [u8; LAMBDA], rhss: &[&[u8; LAMBDA]]) {
+        for i in 0..LAMBDA {
+            for rhs in rhss {
+                lhs[i] ^= rhs[i];
+            }
+        }
+    }
+}
+
 #[cfg(all(test, feature = "prg"))]
 mod tests {
     use super::*;
@@ -240,7 +255,7 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: ByteGroup::clone_convert(BETA),
+            beta: BETA.clone().into(),
         };
         let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
         let mut k0 = k.clone();
@@ -257,7 +272,7 @@ mod tests {
         ys1 = vec![
             ByteGroup::zero(),
             ByteGroup::zero(),
-            ByteGroup::clone_convert(BETA),
+            BETA.clone().into(),
             ByteGroup::zero(),
             ByteGroup::zero(),
         ];
@@ -271,7 +286,7 @@ mod tests {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
-            beta: ByteGroup::clone_convert(BETA),
+            beta: BETA.clone().into(),
         };
         let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
         let mut k0 = k.clone();

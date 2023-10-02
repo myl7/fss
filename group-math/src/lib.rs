@@ -10,17 +10,21 @@ pub mod byte;
 pub mod int;
 
 /// Group (mathematics) that can be converted from a byte array
+///
+/// `Into<[u8; LAMBDA]>` is not used so not included, but implemented by [`byte`] and [`int`]
 pub trait Group<const LAMBDA: usize>
 where
-    Self: Add<Output = Self> + AddAssign + PartialEq + Eq + Debug + Sized + Clone + Sync + Send,
+    Self: Add<Output = Self>
+        + AddAssign
+        + PartialEq
+        + Eq
+        + Debug
+        + Sized
+        + Clone
+        + Sync
+        + Send
+        + From<[u8; LAMBDA]>,
 {
-    /// Convert from a byte array to a group element
-    fn convert(y: [u8; LAMBDA]) -> Self;
-    /// Helper to convert from a byte array to a group element by cloning the byte array
-    fn clone_convert(y: &[u8; LAMBDA]) -> Self {
-        Self::convert(*y)
-    }
-
     /// Zero in the group
     fn zero() -> Self;
 
