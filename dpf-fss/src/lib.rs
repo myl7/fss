@@ -10,7 +10,7 @@ pub mod prg;
 
 use bitvec::prelude::*;
 pub use dcf::{CmpFn, Cw, Prg, Share};
-use group::Group;
+pub use group::Group;
 #[cfg(feature = "multithread")]
 use rayon::prelude::*;
 

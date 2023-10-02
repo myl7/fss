@@ -9,7 +9,7 @@ extern crate group_math as group;
 pub mod prg;
 
 use bitvec::prelude::*;
-use group::Group;
+pub use group::Group;
 #[cfg(feature = "multithread")]
 use rayon::prelude::*;
 
