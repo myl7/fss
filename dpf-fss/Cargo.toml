@@ -11,19 +11,29 @@ homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[[bench]]
+name = "dpf"
+harness = false
+required-features = ["prg"]
+
+[[bench]]
+name = "dpf_eval"
+harness = false
+required-features = ["prg"]
+
 [features]
 default = ["multithread"]
 prg = ["aes"]
 # Not including `dcf/multithread` because we only use its traits and types
 # TODO: Standalone package for the traits and types
-multithread = ["rayon"]
+multithread = ["rayon", "dcf/multithread"]
 
 [dependencies]
 bitvec = "1.0.1"
 group-math = { version = "0.2.0", path = "../group-math", features = ["byte"] }
 aes = { version = "0.8.3", optional = true }
 rayon = { version = "1.7.0", optional = true }
-dcf = { version = "0.4.0", path = "../dcf" }
+dcf = { version = "0.4.0", path = "../dcf", default-features = false }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["std", "std_rng"] }
