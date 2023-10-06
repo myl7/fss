@@ -9,6 +9,7 @@ extern crate group_math as group;
 pub mod prg;
 
 use bitvec::prelude::*;
+pub use dcf::CmpFn as PointFn;
 pub use dcf::{CmpFn, Cw, Prg, Share};
 use group::byte::utils::{xor, xor_inplace};
 pub use group::Group;
@@ -17,43 +18,17 @@ use rayon::prelude::*;
 
 /// API of Distributed point function.
 ///
-/// See [`CmpFn`] for `N` and `LAMBDA`.
+/// See [`PointFn`] for `N` and `LAMBDA`.
 pub trait Dpf<const N: usize, const LAMBDA: usize, G>
 where
     G: Group<LAMBDA>,
 {
     /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
-    fn gen(&self, f: &CmpFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G>;
+    fn gen(&self, f: &PointFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
     fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]);
 }
-
-/// Point function.
-///
-/// - `N` is the **byte** size of the domain.
-/// - `LAMBDA` here is used as the **byte** size of the range, unlike the one in the paper.
-// pub struct CmpFn<const N: usize, const LAMBDA: usize, G>
-// where
-//     G: Group<LAMBDA>,
-// {
-//     /// `$\alpha$`
-//     pub alpha: [u8; N],
-//     /// `$\beta$`
-//     pub beta: G,
-// }
-
-/// Pseudorandom generator used in the algorithm.
-///
-/// `$\{0, 1\}^{\lambda} \rightarrow \{0, 1\}^{2(2\lambda + 1)}$`.
-// #[cfg(feature = "multithread")]
-// pub trait Prg<const LAMBDA: usize>: Sync {
-//     fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2];
-// }
-// #[cfg(not(feature = "multithread"))]
-// pub trait Prg<const LAMBDA: usize> {
-//     fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2];
-// }
 
 /// Implementation of [`Dpf`].
 ///
@@ -82,7 +57,7 @@ where
     PrgT: Prg<LAMBDA>,
     G: Group<LAMBDA>,
 {
-    fn gen(&self, f: &CmpFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
+    fn gen(&self, f: &PointFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
         // The bit size of `$\alpha$`
         let n = 8 * N;
         // let mut v_alpha = G::zero();
@@ -179,36 +154,6 @@ where
     }
 }
 
-/// `Cw`. Correclation word.
-// #[derive(Clone)]
-// pub struct Cw<const LAMBDA: usize, G>
-// where
-//     G: Group<LAMBDA>,
-// {
-//     pub s: [u8; LAMBDA],
-//     pub v: G,
-//     pub tl: bool,
-//     pub tr: bool,
-// }
-
-/// `k`.
-///
-/// `cws` and `cw_np1` is shared by the 2 parties.
-/// Only `s0s[0]` is different.
-// #[derive(Clone)]
-// pub struct Share<const LAMBDA: usize, G>
-// where
-//     G: Group<LAMBDA>,
-// {
-//     /// For the output of `gen`, its length is 2.
-//     /// For the input of `eval`, the first one is used.
-//     pub s0s: Vec<[u8; LAMBDA]>,
-//     /// The length of `cws` must be `n = 8 * N`
-//     pub cws: Vec<Cw<LAMBDA, G>>,
-//     /// `$CW^{(n + 1)}$`
-//     pub cw_np1: G,
-// }
-
 #[cfg(all(test, feature = "prg"))]
 mod tests {
     use super::*;
@@ -236,7 +181,7 @@ mod tests {
         let prg = Aes256HirosePrg::new(KEYS);
         let dpf = DpfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
-        let f = CmpFn {
+        let f = PointFn {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.clone().into(),
         };
@@ -267,7 +212,7 @@ mod tests {
         let prg = Aes256HirosePrg::new(KEYS);
         let dpf = DpfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
-        let f = CmpFn {
+        let f = PointFn {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.clone().into(),
         };
