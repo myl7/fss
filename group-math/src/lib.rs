@@ -1,6 +1,8 @@
 // Copyright (C) myl7
 // SPDX-License-Identifier: Apache-2.0
 
+#![feature(portable_simd)]
+
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign};
 

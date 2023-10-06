@@ -9,11 +9,10 @@ extern crate group_math as group;
 pub mod prg;
 
 use bitvec::prelude::*;
+use group::byte::utils::{xor, xor_inplace};
 pub use group::Group;
 #[cfg(feature = "multithread")]
 use rayon::prelude::*;
-
-use utils::{xor, xor_inplace};
 
 /// API of Distributed comparison function.
 ///
@@ -254,22 +253,6 @@ pub enum BoundState {
     LtBeta,
     /// `$f(x) = \beta$` iff. `$x > \alpha$`
     GtBeta,
-}
-
-mod utils {
-    pub fn xor<const LAMBDA: usize>(xs: &[&[u8; LAMBDA]]) -> [u8; LAMBDA] {
-        let mut res = [0; LAMBDA];
-        xor_inplace(&mut res, xs);
-        res
-    }
-
-    pub fn xor_inplace<const LAMBDA: usize>(lhs: &mut [u8; LAMBDA], rhss: &[&[u8; LAMBDA]]) {
-        for i in 0..LAMBDA {
-            for rhs in rhss {
-                lhs[i] ^= rhs[i];
-            }
-        }
-    }
 }
 
 #[cfg(all(test, feature = "prg"))]
