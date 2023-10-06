@@ -24,8 +24,7 @@ required-features = ["prg"]
 [features]
 default = ["multithread"]
 prg = ["aes"]
-# Not including `dcf/multithread` because we only use its traits and types
-multithread = ["rayon"]
+multithread = ["rayon", "dcf/multithread"]
 
 [dependencies]
 bitvec = "1.0.1"
