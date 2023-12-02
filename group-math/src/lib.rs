@@ -10,6 +10,8 @@ use std::ops::{Add, AddAssign};
 pub mod byte;
 #[cfg(feature = "int")]
 pub mod int;
+#[cfg(feature = "int-prime")]
+pub mod int_prime;
 
 /// Group (mathematics) that can be converted from a byte array
 ///

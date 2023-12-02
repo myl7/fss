@@ -12,9 +12,11 @@ repository.workspace = true
 license.workspace = true
 
 [features]
-impl = ["byte", "int"]
+default = ["impl"]
+impl = ["byte", "int", "int-prime"]
 byte = []
 int = []
+int-prime = []
 int-be = []
 
 [dependencies]
