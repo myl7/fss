@@ -1,4 +1,8 @@
-//! Group of a integer which defines addition as integer (wrapping) addition
+//! Group of an integer which defines addition as integer (wrapping) addition
+//!
+//! - Associative operation: Integer wrapping addition, `$(a + b) \mod 2^N$`
+//! - Identity element: 0
+//! - Inverse element: `-x`
 
 use std::mem::size_of;
 use std::ops::{Add, AddAssign};
@@ -7,7 +11,7 @@ use crate::Group;
 
 macro_rules! decl_int_group {
     ($t:ty, $t_impl:ident) => {
-        /// See [`crate::int`]
+        /// See [`self`]
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub struct $t_impl(pub $t);
 

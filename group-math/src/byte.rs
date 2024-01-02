@@ -1,11 +1,15 @@
-//! Group of bytes which defines addition as XOR
+//! Group of bytes
+//!
+//! - Associative operation: Xor
+//! - Identity element: All zero
+//! - Inverse element: `x` itself
 
 use std::ops::{Add, AddAssign};
 
 use crate::Group;
 use utils::xor_inplace;
 
-/// See [`crate::byte`]
+/// See [`self`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ByteGroup<const LAMBDA: usize>(pub [u8; LAMBDA]);
 

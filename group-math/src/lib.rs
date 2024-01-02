@@ -15,7 +15,8 @@ pub mod int_prime;
 
 /// Group (mathematics) that can be converted from a byte array
 ///
-/// `Into<[u8; LAMBDA]>` is not used so not included, but implemented by [`byte`] and [`int`]
+/// `Into<[u8; LAMBDA]>` is not used in any fss crate so not included.
+/// But it is implemented by all groups in the submodules.
 pub trait Group<const LAMBDA: usize>
 where
     Self: Add<Output = Self>

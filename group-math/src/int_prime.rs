@@ -1,6 +1,10 @@
-//! Prime ring.
-//! `MOD` is a prime number as the cardinality of the prime ring.
-//! Some prime numbers that are the max ones less than or equal to `u*::MAX` is provided as `PRIME_MAX_LE_U*_MAX`.
+//! Group of an integer which is a `$p$`-group.
+//! `MOD` as the `$p$` is a prime number as the cardinality of the group.
+//! Some prime numbers that are the max ones less than or equal to `u*::MAX` are provided as `PRIME_MAX_LE_U*_MAX`.
+//!
+//! - Associative operation: Integer addition modulo `MOD`, `$(a + b) \mod MOD$`
+//! - Identity element: 0
+//! - Inverse element: `-x`
 
 use std::mem::size_of;
 use std::ops::{Add, AddAssign};
@@ -9,7 +13,7 @@ use crate::Group;
 
 macro_rules! decl_int_prime_group {
     ($t:ty, $t_impl:ident) => {
-        /// See [`crate::int_prime`]
+        /// See [`self`]
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub struct $t_impl<const MOD: $t>(
             /// Always less than `MOD`
