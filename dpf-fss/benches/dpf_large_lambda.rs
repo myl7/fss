@@ -7,7 +7,7 @@ use group::Group;
 use rand::{thread_rng, Rng, RngCore};
 
 use dpf::prg::Aes256HirosePrg;
-use dpf::{CmpFn, Dpf, DpfImpl};
+use dpf::{Dpf, DpfImpl, PointFn};
 
 pub fn bench(c: &mut Criterion) {
     let mut keys = vec![[0; 32]; 2048];
@@ -17,7 +17,7 @@ pub fn bench(c: &mut Criterion) {
     let mut s0s = vec![[0; 16384]; 2];
     thread_rng().fill_bytes(&mut s0s[0]);
     thread_rng().fill_bytes(&mut s0s[1]);
-    let mut f = Box::new(CmpFn {
+    let mut f = Box::new(PointFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup::zero(),
     });

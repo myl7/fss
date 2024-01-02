@@ -9,6 +9,7 @@ extern crate group_math as group;
 pub mod prg;
 
 use bitvec::prelude::*;
+use fss_types::{decl_prg_trait, Cw, PointFn, Share};
 use group::byte::utils::{xor, xor_inplace};
 pub use group::Group;
 #[cfg(feature = "multithread")]
@@ -22,12 +23,7 @@ where
     G: Group<LAMBDA>,
 {
     /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
-    fn gen(
-        &self,
-        f: &CmpFn<N, LAMBDA, G>,
-        s0s: [&[u8; LAMBDA]; 2],
-        bound: BoundState,
-    ) -> Share<LAMBDA, G>;
+    fn gen(&self, f: &CmpFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
     fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]);
@@ -35,8 +31,8 @@ where
 
 /// Comparison function.
 ///
-/// - `N` is the **byte** size of the domain.
-/// - `LAMBDA` here is used as the **byte** size of the range, unlike the one in the paper.
+/// See [`BoundState`] for the meaning for different `bound`.
+/// See [`PointFn`] for `N`, `LAMBDA`, and fields `alpha` and `beta`.
 pub struct CmpFn<const N: usize, const LAMBDA: usize, G>
 where
     G: Group<LAMBDA>,
@@ -45,19 +41,24 @@ where
     pub alpha: [u8; N],
     /// `$\beta$`
     pub beta: G,
+    /// See [`BoundState`]
+    pub bound: BoundState,
 }
 
-/// Pseudorandom generator used in the algorithm.
-///
-/// `$\{0, 1\}^{\lambda} \rightarrow \{0, 1\}^{2(2\lambda + 1)}$`.
-#[cfg(feature = "multithread")]
-pub trait Prg<const LAMBDA: usize>: Sync {
-    fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2];
+impl<const N: usize, const LAMBDA: usize, G> CmpFn<N, LAMBDA, G>
+where
+    G: Group<LAMBDA>,
+{
+    pub fn from_point(point: PointFn<N, LAMBDA, G>, bound: BoundState) -> Self {
+        Self {
+            alpha: point.alpha,
+            beta: point.beta,
+            bound,
+        }
+    }
 }
-#[cfg(not(feature = "multithread"))]
-pub trait Prg<const LAMBDA: usize> {
-    fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2];
-}
+
+decl_prg_trait!(([u8; LAMBDA], [u8; LAMBDA], bool));
 
 /// Implementation of [`Dcf`].
 ///
@@ -86,12 +87,7 @@ where
     PrgT: Prg<LAMBDA>,
     G: Group<LAMBDA>,
 {
-    fn gen(
-        &self,
-        f: &CmpFn<N, LAMBDA, G>,
-        s0s: [&[u8; LAMBDA]; 2],
-        bound: BoundState,
-    ) -> Share<LAMBDA, G> {
+    fn gen(&self, f: &CmpFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
         // The bit size of `$\alpha$`
         let n = 8 * N;
         let mut v_alpha = G::zero();
@@ -117,7 +113,7 @@ where
                 + Into::<G>::into(*[&v1l, &v1r][lose]).add_inverse()
                 + v_alpha.clone().add_inverse())
             .add_inverse_if(ts[i - 1][1]);
-            match bound {
+            match f.bound {
                 BoundState::LtBeta => {
                     if lose == IDX_L {
                         v_cw += f.beta.clone()
@@ -216,42 +212,12 @@ where
     }
 }
 
-/// `Cw`. Correclation word.
-#[derive(Clone)]
-pub struct Cw<const LAMBDA: usize, G>
-where
-    G: Group<LAMBDA>,
-{
-    pub s: [u8; LAMBDA],
-    pub v: G,
-    pub tl: bool,
-    pub tr: bool,
-}
-
-/// `k`.
-///
-/// `cws` and `cw_np1` is shared by the 2 parties.
-/// Only `s0s[0]` is different.
-#[derive(Clone)]
-pub struct Share<const LAMBDA: usize, G>
-where
-    G: Group<LAMBDA>,
-{
-    /// For the output of `gen`, its length is 2.
-    /// For the input of `eval`, the first one is used.
-    pub s0s: Vec<[u8; LAMBDA]>,
-    /// The length of `cws` must be `n = 8 * N`
-    pub cws: Vec<Cw<LAMBDA, G>>,
-    /// `$CW^{(n + 1)}$`
-    pub cw_np1: G,
-}
-
 pub enum BoundState {
-    /// `$f(x) = \beta$` iff. `$x < \alpha$`.
+    /// `$f(x) = \beta$` iff. `$x < \alpha$`, otherwise `$f(x) = 0$`
     ///
     /// This is the preference in the paper.
     LtBeta,
-    /// `$f(x) = \beta$` iff. `$x > \alpha$`
+    /// `$f(x) = \beta$` iff. `$x > \alpha$`, otherwise `$f(x) = 0$`
     GtBeta,
 }
 
@@ -285,8 +251,9 @@ mod tests {
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.clone().into(),
+            bound: BoundState::LtBeta,
         };
-        let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
@@ -316,8 +283,9 @@ mod tests {
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.clone().into(),
+            bound: BoundState::GtBeta,
         };
-        let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::GtBeta);
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
@@ -347,8 +315,9 @@ mod tests {
         let f = CmpFn {
             alpha: ALPHAS[2].to_owned(),
             beta: BETA.clone().into(),
+            bound: BoundState::LtBeta,
         };
-        let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();

@@ -16,11 +16,12 @@ pub fn bench_gen(c: &mut Criterion) {
     let f = CmpFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup(thread_rng().gen()),
+        bound: BoundState::LtBeta,
     };
 
     c.bench_function("dcf gen", |b| {
         b.iter(|| {
-            dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
+            dcf.gen(&f, [&s0s[0], &s0s[1]]);
         })
     });
 }
@@ -33,9 +34,10 @@ pub fn bench_eval(c: &mut Criterion) {
     let f = CmpFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup(thread_rng().gen()),
+        bound: BoundState::LtBeta,
     };
 
-    let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
+    let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
     let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
     let dcf = DcfImpl::<16, 16, _>::new(prg);
     let x: [u8; 16] = thread_rng().gen();

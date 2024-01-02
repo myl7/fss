@@ -7,14 +7,14 @@ use group::Group;
 use rand::{thread_rng, Rng};
 
 use dpf::prg::Aes256HirosePrg;
-use dpf::{CmpFn, Dpf, DpfImpl};
+use dpf::{Dpf, DpfImpl, PointFn};
 
 pub fn bench(c: &mut Criterion) {
     let keys: [[u8; 32]; 2] = thread_rng().gen();
     let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
     let dpf = DpfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
-    let f = CmpFn {
+    let f = PointFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup(thread_rng().gen()),
     };

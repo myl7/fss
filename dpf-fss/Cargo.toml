@@ -29,14 +29,14 @@ required-features = ["prg"]
 [features]
 default = ["multithread"]
 prg = ["aes"]
-multithread = ["rayon", "dcf/multithread"]
+multithread = ["rayon"]
 
 [dependencies]
 bitvec = "1.0.1"
 group-math = { version = "0.2", path = "../group-math", features = ["byte"] }
 aes = { version = "0.8.3", optional = true }
 rayon = { version = "1.7.0", optional = true }
-dcf = { version = "0.5.0", path = "../dcf", default-features = false }
+fss-types = { version = "0.1", path = "../fss-types" }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["std", "std_rng"] }

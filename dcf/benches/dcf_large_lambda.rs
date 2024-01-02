@@ -19,9 +19,10 @@ pub fn bench(c: &mut Criterion) {
     let mut f = Box::new(CmpFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup::zero(),
+        bound: BoundState::LtBeta,
     });
     thread_rng().fill_bytes(&mut f.beta.0);
-    let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
+    let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
     const N: usize = 10_000;
     let xs: Vec<[u8; 16]> = (0..N).map(|_| thread_rng().gen()).collect();
 

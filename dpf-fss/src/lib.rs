@@ -9,14 +9,16 @@ extern crate group_math as group;
 pub mod prg;
 
 use bitvec::prelude::*;
-pub use dcf::CmpFn as PointFn;
-pub use dcf::{CmpFn, Cw, Prg, Share};
+pub use fss_types::PointFn;
+use fss_types::{decl_prg_trait, Cw, Share};
 use group::byte::utils::{xor, xor_inplace};
 pub use group::Group;
 #[cfg(feature = "multithread")]
 use rayon::prelude::*;
 
 /// API of Distributed point function.
+///
+/// `PointFn` used here means `$f(x) = \beta$` iff. `$x = \alpha$`, otherwise `$f(x) = 0$`.
 ///
 /// See [`PointFn`] for `N` and `LAMBDA`.
 pub trait Dpf<const N: usize, const LAMBDA: usize, G>
@@ -29,6 +31,8 @@ where
     /// `b` is the party. `false` is 0 and `true` is 1.
     fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]);
 }
+
+decl_prg_trait!(([u8; LAMBDA], bool));
 
 /// Implementation of [`Dpf`].
 ///
@@ -69,8 +73,8 @@ where
         ts.push([false, true]);
         let mut cws = Vec::<Cw<LAMBDA, G>>::with_capacity(n);
         for i in 1..n + 1 {
-            let [(s0l, _v0l, t0l), (s0r, _v0r, t0r)] = self.prg.gen(&ss[i - 1][0]);
-            let [(s1l, _v1l, t1l), (s1r, _v1r, t1r)] = self.prg.gen(&ss[i - 1][1]);
+            let [(s0l, t0l), (s0r, t0r)] = self.prg.gen(&ss[i - 1][0]);
+            let [(s1l, t1l), (s1r, t1r)] = self.prg.gen(&ss[i - 1][1]);
             // MSB is required since we index from high to low in arrays
             let alpha_i = f.alpha.view_bits::<Msb0>()[i - 1];
             let (keep, lose) = if alpha_i {
@@ -123,8 +127,7 @@ where
             ts.push(b);
             for i in 1..n + 1 {
                 let cw = &k.cws[i - 1];
-                let [(mut sl, _vl_hat, mut tl), (mut sr, _vr_hat, mut tr)] =
-                    self.prg.gen(&ss[i - 1]);
+                let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&ss[i - 1]);
                 xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
                 xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
                 tl ^= ts[i - 1] & cw.tl;

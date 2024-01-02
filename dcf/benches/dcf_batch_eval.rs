@@ -16,8 +16,9 @@ pub fn bench(c: &mut Criterion) {
     let f = CmpFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup(thread_rng().gen()),
+        bound: BoundState::LtBeta,
     };
-    let k = dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
+    let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
     const N: usize = 100_000;
     let xs: [[u8; 16]; N] = std::array::from_fn(|_| thread_rng().gen());
 
