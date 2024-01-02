@@ -1,11 +1,11 @@
 # fss
 
-| Name                | Crate name                 | crates.io                                                                                       | Docs                                                                             |
-| ------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| DCF                 | [dcf](./dcf)               | [![Crates.io](https://img.shields.io/crates/d/dcf)](https://crates.io/crates/dcf)               | [![docs.rs](https://img.shields.io/docsrs/dcf)](https://docs.rs/dcf)             |
-| DPF                 | [dpf-fss](./dpf-fss)       | [![Crates.io](https://img.shields.io/crates/d/dpf-fss)](https://crates.io/crates/dpf-fss)       | Coming soon                                                                      |
-| Group (mathematics) | [group-math](./group-math) | [![Crates.io](https://img.shields.io/crates/d/group-math)](https://crates.io/crates/group-math) | Coming soon                                                                      |
-| Common types        | [fss-types](./fss-types)   | [![Crates.io](https://img.shields.io/crates/d/fss-types)](https://crates.io/crates/fss-types)   | [![docs.rs](https://img.shields.io/docsrs/fss-types)](https://docs.rs/fss-types) |
+| Name                | Crate name                 | crates.io                                                                                       | Docs                                                                               |
+| ------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| DCF                 | [dcf](./dcf)               | [![Crates.io](https://img.shields.io/crates/d/dcf)](https://crates.io/crates/dcf)               | [![docs.rs](https://img.shields.io/docsrs/dcf)](https://docs.rs/dcf)               |
+| DPF                 | [dpf-fss](./dpf-fss)       | [![Crates.io](https://img.shields.io/crates/d/dpf-fss)](https://crates.io/crates/dpf-fss)       | Coming soon                                                                        |
+| Group (mathematics) | [group-math](./group-math) | [![Crates.io](https://img.shields.io/crates/d/group-math)](https://crates.io/crates/group-math) | [![docs.rs](https://img.shields.io/docsrs/group-math)](https://docs.rs/group-math) |
+| Common types        | [fss-types](./fss-types)   | [![Crates.io](https://img.shields.io/crates/d/fss-types)](https://crates.io/crates/fss-types)   | [![docs.rs](https://img.shields.io/docsrs/fss-types)](https://docs.rs/fss-types)   |
 
 Function secret sharing implementations including distributed comparison & point function
 

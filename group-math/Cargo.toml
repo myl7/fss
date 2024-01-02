@@ -1,9 +1,9 @@
 [package]
 name = "group-math"
-version = "0.2.2"
+version = "0.2.3"
 edition.workspace = true
 description = "Group (mathematics) interface and implementations"
-documentation.workspace = true
+documentation = "https://docs.rs/group-math"
 keywords = ["crypto", "group", "math"]
 categories = ["cryptography"]
 authors.workspace = true
@@ -18,5 +18,3 @@ byte = []
 int = []
 int-prime = []
 int-be = []
-
-[dependencies]
