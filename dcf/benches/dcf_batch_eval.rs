@@ -21,7 +21,7 @@ pub fn bench(c: &mut Criterion) {
     const N: usize = 100_000;
     let xs: [[u8; 16]; N] = std::array::from_fn(|_| thread_rng().gen());
 
-    c.bench_function("xs_100k_lambda_16", |b| {
+    c.bench_function("dcf eval 100k xs", |b| {
         b.iter(|| {
             let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
             let dcf = DcfImpl::<16, 16, _>::new(prg);

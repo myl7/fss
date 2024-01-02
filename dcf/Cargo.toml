@@ -20,11 +20,6 @@ harness = false
 required-features = ["prg"]
 
 [[bench]]
-name = "dcf_eval"
-harness = false
-required-features = ["prg"]
-
-[[bench]]
 name = "dcf_batch_eval"
 harness = false
 required-features = ["prg"]

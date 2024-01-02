@@ -19,7 +19,7 @@ pub fn bench_gen(c: &mut Criterion) {
         beta: ByteGroup(thread_rng().gen()),
     };
 
-    c.bench_function("gen", |b| {
+    c.bench_function("dpf gen", |b| {
         b.iter(|| {
             dpf.gen(&f, [&s0s[0], &s0s[1]]);
         })
@@ -42,7 +42,7 @@ pub fn bench_eval(c: &mut Criterion) {
     let x: [u8; 16] = thread_rng().gen();
     let mut y = ByteGroup::zero();
 
-    c.bench_function("eval", |b| {
+    c.bench_function("dpf eval", |b| {
         b.iter(|| {
             dpf.eval(false, &k, &[&x], &mut [&mut y]);
         })

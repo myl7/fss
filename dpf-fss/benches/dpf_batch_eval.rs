@@ -21,12 +21,12 @@ pub fn bench(c: &mut Criterion) {
     let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
     let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
     let dpf = DpfImpl::<16, 16, _>::new(prg);
-    const N: usize = 100000;
+    const N: usize = 100_000;
     let mut xs = vec![[0; 16]; N];
     xs.iter_mut().for_each(|x| *x = thread_rng().gen());
     let mut ys = vec![ByteGroup::zero(); N];
 
-    c.bench_function("eval_n", |b| {
+    c.bench_function("dpf eval 100k xs", |b| {
         b.iter(|| {
             dpf.eval(
                 false,

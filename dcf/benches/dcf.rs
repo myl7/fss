@@ -18,7 +18,7 @@ pub fn bench_gen(c: &mut Criterion) {
         beta: ByteGroup(thread_rng().gen()),
     };
 
-    c.bench_function("gen", |b| {
+    c.bench_function("dcf gen", |b| {
         b.iter(|| {
             dcf.gen(&f, [&s0s[0], &s0s[1]], BoundState::LtBeta);
         })
@@ -41,7 +41,7 @@ pub fn bench_eval(c: &mut Criterion) {
     let x: [u8; 16] = thread_rng().gen();
     let mut y = ByteGroup::zero();
 
-    c.bench_function("eval", |b| {
+    c.bench_function("dcf eval", |b| {
         b.iter(|| {
             dcf.eval(false, &k, &[&x], &mut [&mut y]);
         })
