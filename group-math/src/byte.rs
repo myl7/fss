@@ -63,21 +63,22 @@ pub mod utils {
                 if left >= 64 {
                     let lhs_simd = u8x64::from_slice(&lhs[i..i + 64]);
                     let rhs_simd = u8x64::from_slice(&rhs[i..i + 64]);
-                    lhs.copy_from_slice((lhs_simd ^ rhs_simd).as_array());
+                    lhs[i..i + 64].copy_from_slice((lhs_simd ^ rhs_simd).as_array());
                     i += 64;
                 } else if left >= 32 {
                     let lhs_simd = u8x32::from_slice(&lhs[i..i + 32]);
                     let rhs_simd = u8x32::from_slice(&rhs[i..i + 32]);
-                    lhs.copy_from_slice((lhs_simd ^ rhs_simd).as_array());
+                    lhs[i..i + 32].copy_from_slice((lhs_simd ^ rhs_simd).as_array());
                     i += 32;
                 } else if left >= 16 {
                     let lhs_simd = u8x16::from_slice(&lhs[i..i + 16]);
                     let rhs_simd = u8x16::from_slice(&rhs[i..i + 16]);
-                    lhs.copy_from_slice((lhs_simd ^ rhs_simd).as_array());
+                    lhs[i..i + 16].copy_from_slice((lhs_simd ^ rhs_simd).as_array());
                     i += 16;
                 } else {
                     // Since a AES block is 16 bytes, and we usually use AES to construct the PRG,
                     // no need to specially handle the case where LAMBDA % 16 != 0.
+                    // So we just xor them one by one in case wired situations make the program enter here.
                     lhs[i..]
                         .iter_mut()
                         .zip(&rhs[i..])
