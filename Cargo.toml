@@ -9,7 +9,7 @@ bench = [
 
 [package]
 name = "fss-rs"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["myl7 <myl@myl.moe>"]
 description = "Function secret sharing including distributed comparison & point functions"
