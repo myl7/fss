@@ -1,12 +1,10 @@
-extern crate group_math as group;
-
 use criterion::{criterion_group, criterion_main, Criterion};
-use group::byte::ByteGroup;
-use group::Group;
 use rand::{thread_rng, Rng};
 
-use dcf::prg::Aes256HirosePrg;
-use dcf::{BoundState, CmpFn, Dcf, DcfImpl};
+use fss_rs::dcf::prg::Aes256HirosePrg;
+use fss_rs::dcf::{BoundState, CmpFn, Dcf, DcfImpl};
+use fss_rs::group::byte::ByteGroup;
+use fss_rs::group::Group;
 
 pub fn bench(c: &mut Criterion) {
     let keys: [[u8; 32]; 2] = thread_rng().gen();

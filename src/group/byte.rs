@@ -6,7 +6,7 @@
 
 use std::ops::{Add, AddAssign};
 
-use crate::Group;
+use super::{Group, GroupEmbed};
 use utils::xor_inplace;
 
 /// See [`self`]
@@ -37,6 +37,8 @@ impl<const LAMBDA: usize> Group<LAMBDA> for ByteGroup<LAMBDA> {
         self
     }
 }
+
+impl<const LAMBDA: usize> GroupEmbed<LAMBDA> for ByteGroup<LAMBDA> {}
 
 impl<const LAMBDA: usize> From<[u8; LAMBDA]> for ByteGroup<LAMBDA> {
     fn from(value: [u8; LAMBDA]) -> Self {

@@ -9,7 +9,7 @@
 use std::mem::size_of;
 use std::ops::{Add, AddAssign};
 
-use crate::Group;
+use super::{Group, GroupEmbed};
 
 macro_rules! decl_int_prime_group {
     ($t:ty, $t_impl:ident) => {
@@ -77,6 +77,8 @@ macro_rules! decl_int_prime_group {
             }
         }
 
+        impl<const LAMBDA: usize, const MOD: $t> GroupEmbed<LAMBDA> for $t_impl<MOD> {}
+
         impl<const LAMBDA: usize, const MOD: $t> From<[u8; LAMBDA]> for $t_impl<MOD> {
             fn from(value: [u8; LAMBDA]) -> Self {
                 if cfg!(not(feature = "int-be")) {
@@ -111,8 +113,13 @@ decl_int_prime_group!(u32, U32Group);
 decl_int_prime_group!(u64, U64Group);
 decl_int_prime_group!(u128, U128Group);
 
+/// `$2^8 - 5$`
 pub const PRIME_MAX_LE_U8_MAX: u8 = u8::MAX - 5 + 1;
+/// `$2^16 - 15$`
 pub const PRIME_MAX_LE_U16_MAX: u16 = u16::MAX - 15 + 1;
+/// `$2^32 - 5$`
 pub const PRIME_MAX_LE_U32_MAX: u32 = u32::MAX - 5 + 1;
+/// `$2^64 - 59$`
 pub const PRIME_MAX_LE_U64_MAX: u64 = u64::MAX - 59 + 1;
+/// `$2^128 - 159$`
 pub const PRIME_MAX_LE_U128_MAX: u128 = u128::MAX - 159 + 1;

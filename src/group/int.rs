@@ -7,7 +7,7 @@
 use std::mem::size_of;
 use std::ops::{Add, AddAssign};
 
-use crate::Group;
+use super::{Group, GroupEmbed};
 
 macro_rules! decl_int_group {
     ($t:ty, $t_impl:ident) => {
@@ -39,9 +39,11 @@ macro_rules! decl_int_group {
             }
         }
 
+        impl<const LAMBDA: usize> GroupEmbed<LAMBDA> for $t_impl {}
+
         impl<const LAMBDA: usize> From<[u8; LAMBDA]> for $t_impl {
             fn from(value: [u8; LAMBDA]) -> Self {
-                if cfg!(not(feature = "int-be")) {
+                if cfg!(not(feature = "group-int-be")) {
                     $t_impl(<$t>::from_le_bytes(
                         (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
                     ))
@@ -72,11 +74,9 @@ decl_int_group!(u16, U16Group);
 decl_int_group!(u32, U32Group);
 decl_int_group!(u64, U64Group);
 decl_int_group!(u128, U128Group);
-decl_int_group!(usize, UsizeGroup);
 
 decl_int_group!(i8, I8Group);
 decl_int_group!(i16, I16Group);
 decl_int_group!(i32, I32Group);
 decl_int_group!(i64, I64Group);
 decl_int_group!(i128, I128Group);
-decl_int_group!(isize, IsizeGroup);

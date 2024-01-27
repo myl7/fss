@@ -1,27 +1,24 @@
-extern crate group_math as group;
-
 use criterion::{criterion_group, criterion_main, Criterion};
-use group::byte::ByteGroup;
-use group::Group;
 use rand::{thread_rng, Rng};
 
-use dcf::prg::Aes256HirosePrg;
-use dcf::{BoundState, CmpFn, Dcf, DcfImpl};
+use fss_rs::dpf::prg::Aes256HirosePrg;
+use fss_rs::dpf::{Dpf, DpfImpl, PointFn};
+use fss_rs::group::byte::ByteGroup;
+use fss_rs::group::Group;
 
 pub fn bench_gen(c: &mut Criterion) {
     let keys: [[u8; 32]; 2] = thread_rng().gen();
     let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
-    let dcf = DcfImpl::<16, 16, _>::new(prg);
+    let dpf = DpfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
-    let f = CmpFn {
+    let f = PointFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup(thread_rng().gen()),
-        bound: BoundState::LtBeta,
     };
 
-    c.bench_function("dcf gen", |b| {
+    c.bench_function("dpf gen", |b| {
         b.iter(|| {
-            dcf.gen(&f, [&s0s[0], &s0s[1]]);
+            dpf.gen(&f, [&s0s[0], &s0s[1]]);
         })
     });
 }
@@ -29,23 +26,22 @@ pub fn bench_gen(c: &mut Criterion) {
 pub fn bench_eval(c: &mut Criterion) {
     let keys: [[u8; 32]; 2] = thread_rng().gen();
     let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
-    let dcf = DcfImpl::<16, 16, _>::new(prg);
+    let dpf = DpfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
-    let f = CmpFn {
+    let f = PointFn {
         alpha: thread_rng().gen(),
         beta: ByteGroup(thread_rng().gen()),
-        bound: BoundState::LtBeta,
     };
 
-    let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
+    let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
     let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
-    let dcf = DcfImpl::<16, 16, _>::new(prg);
+    let dpf = DpfImpl::<16, 16, _>::new(prg);
     let x: [u8; 16] = thread_rng().gen();
     let mut y = ByteGroup::zero();
 
-    c.bench_function("dcf eval", |b| {
+    c.bench_function("dpf eval", |b| {
         b.iter(|| {
-            dcf.eval(false, &k, &[&x], &mut [&mut y]);
+            dpf.eval(false, &k, &[&x], &mut [&mut y]);
         })
     });
 }

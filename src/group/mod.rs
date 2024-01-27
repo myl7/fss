@@ -1,22 +1,16 @@
 // Copyright (C) myl7
 // SPDX-License-Identifier: Apache-2.0
 
-#![feature(portable_simd)]
+//! See [`Group`]
 
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign};
 
-#[cfg(feature = "byte")]
 pub mod byte;
-#[cfg(feature = "int")]
 pub mod int;
-#[cfg(feature = "int-prime")]
 pub mod int_prime;
 
 /// Group (mathematics) that can be converted from a byte array
-///
-/// `Into<[u8; LAMBDA]>` is not used in any fss crate so not included.
-/// But it is implemented by all groups in the submodules.
 pub trait Group<const LAMBDA: usize>
 where
     Self: Add<Output = Self>
@@ -44,4 +38,12 @@ where
             self
         }
     }
+}
+
+/// `Into<[u8; LAMBDA]>` is not used in the crate.
+/// We include it here and impl it for all PRG embedded in the crate for user convenience.
+trait GroupEmbed<const LAMBDA: usize>
+where
+    Self: Group<LAMBDA> + Into<[u8; LAMBDA]>,
+{
 }

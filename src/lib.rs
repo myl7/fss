@@ -1,11 +1,15 @@
 // Copyright (C) myl7
 // SPDX-License-Identifier: Apache-2.0
 
-//! Some variable names still come from the paper corresponding to the crate dcf.
+//! Many variable names together with the LaTeX math expressions in the doc comment are from the paper _Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation_
 
-extern crate group_math as group;
+#![feature(portable_simd)]
 
-pub use group::Group;
+use group::Group;
+
+pub mod dcf;
+pub mod dpf;
+pub mod group;
 
 /// Point function.
 /// Despite the name, it only ships an element of the domain and an element of the range.
@@ -23,20 +27,20 @@ where
     pub beta: G,
 }
 
-#[macro_export]
 macro_rules! decl_prg_trait {
     ($ret_elem:ty) => {
         /// Pseudorandom generator
-        #[cfg(feature = "multithread")]
+        #[cfg(feature = "multi-thread")]
         pub trait Prg<const LAMBDA: usize>: Sync {
             fn gen(&self, seed: &[u8; LAMBDA]) -> [$ret_elem; 2];
         }
-        #[cfg(not(feature = "multithread"))]
+        #[cfg(not(feature = "multi-thread"))]
         pub trait Prg<const LAMBDA: usize> {
             fn gen(&self, seed: &[u8; LAMBDA]) -> [$ret_elem; 2];
         }
     };
 }
+pub(crate) use decl_prg_trait;
 
 /// `Cw`. Correclation word.
 #[derive(Clone)]

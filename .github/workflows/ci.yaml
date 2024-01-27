@@ -5,43 +5,19 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  test-dcf:
-    name: Test DCF
+  test:
+    name: Test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: dcf
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --no-deps -- -Dwarnings
       - name: Test with multithreading
-        run: cargo test -F prg
+        run: cargo test
       - name: Test without multithreading
-        run: cargo test -F prg --no-default-features
-  test-dpf:
-    name: Test DPF
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: dpf-fss
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt, clippy
-      - name: Test with multithreading
-        run: cargo test -F prg
-      - name: Test without multithreading
-        run: cargo test -F prg --no-default-features
-  test-misc:
-    name: Test misc stuff
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt, clippy
-      - run: cargo fmt --check
-      - run: cargo clippy --all-features -- --no-deps -Dwarnings
+        run: cargo test --no-default-features -F prg
