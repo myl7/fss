@@ -1,5 +1,17 @@
 # fss
 
+## Migration
+
+**We have combined all the following crates into a single crate [fss-rs]**.
+To fss-rs v0.4.0, there are no functional changes.
+You only need to update import paths to migrate.
+
+[fss-rs]: https://crates.io/crates/fss-rs
+
+These legacy crates would be kept as is for compatibility, but no longer receive updates including security updates
+
+---
+
 | Name                | Crate name                 | crates.io                                                                                       | Docs                                                                               |
 | ------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | DCF                 | [dcf](./dcf)               | [![Crates.io](https://img.shields.io/crates/d/dcf)](https://crates.io/crates/dcf)               | [![docs.rs](https://img.shields.io/docsrs/dcf)](https://docs.rs/dcf)               |

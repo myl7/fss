@@ -1,6 +1,6 @@
 [package]
 name = "group-math"
-version = "0.2.3"
+version = "0.2.4"
 edition.workspace = true
 description = "Group (mathematics) interface and implementations"
 documentation = "https://docs.rs/group-math"

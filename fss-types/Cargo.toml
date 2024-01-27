@@ -1,6 +1,6 @@
 [package]
 name = "fss-types"
-version = "0.1.1"
+version = "0.1.2"
 edition.workspace = true
 description = "Common types used in the crate fss"
 documentation = "https://docs.rs/fss-types"
