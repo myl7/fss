@@ -1,13 +1,69 @@
 # fss
 
-| Name                | Crate name                 | crates.io                                                                                       | Docs                                                                               |
-| ------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| DCF                 | [dcf](./dcf)               | [![Crates.io](https://img.shields.io/crates/d/dcf)](https://crates.io/crates/dcf)               | [![docs.rs](https://img.shields.io/docsrs/dcf)](https://docs.rs/dcf)               |
-| DPF                 | [dpf-fss](./dpf-fss)       | [![Crates.io](https://img.shields.io/crates/d/dpf-fss)](https://crates.io/crates/dpf-fss)       | Coming soon                                                                        |
-| Group (mathematics) | [group-math](./group-math) | [![Crates.io](https://img.shields.io/crates/d/group-math)](https://crates.io/crates/group-math) | [![docs.rs](https://img.shields.io/docsrs/group-math)](https://docs.rs/group-math) |
-| Common types        | [fss-types](./fss-types)   | [![Crates.io](https://img.shields.io/crates/d/fss-types)](https://crates.io/crates/fss-types)   | [![docs.rs](https://img.shields.io/docsrs/fss-types)](https://docs.rs/fss-types)   |
+[![Crates.io](https://img.shields.io/crates/d/fss-rs)](https://crates.io/crates/fss-rs)
+[![docs.rs](https://img.shields.io/docsrs/fss-rs)](https://docs.rs/fss-rs)
 
-Function secret sharing implementations including distributed comparison & point function
+Function secret sharing including distributed comparison & point functions
+
+## Get started
+
+First add the crate as a dependency:
+
+```bash
+# Run in your project directory
+cargo add fss-rs
+```
+
+By default the embedded PRG and multi-threading are included.
+You can disable the default feature to select by yourself.
+
+Then construct a PRG implementing the corresponding [`Prg`] trait, and construct an impl `DcfImpl` or `DpfImpl` to use the PRG.
+Check the doc comment for the meanings of the generic parameters.
+
+```rust
+use rand::prelude::*;
+
+use fss_rs::dcf::prg::Aes256HirosePrg;
+use fss_rs::dcf::{Dcf, DcfImpl};
+
+let keys: [[u8; 32]; 2] = thread_rng().gen();
+let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+// DCF for example
+let dcf = DcfImpl::<16, 16, _>::new(prg);
+```
+
+Finally, for key generation, construct the function to be shared together with 2 init keys, and call `gen`:
+
+```rust
+use fss_rs::dcf::{BoundState, CmpFn};
+use fss_rs::group::byte::ByteGroup;
+use fss_rs::group::Group;
+
+let s0s: [[u8; 16]; 2] = thread_rng().gen();
+let f = CmpFn {
+  alpha: thread_rng().gen(),
+  // `ByteGroup` for example
+  beta: ByteGroup(thread_rng().gen()),
+  bound: BoundState::LtBeta,
+};
+let keys = dcf.gen(&f, [&s0s[0], &s0s[1]]);
+```
+
+See the doc comment of the returned `Share` for how to split it into 2 shares.
+The 2 shares are combined like this because they share many fields.
+
+And for evaluation, construct the evaluated points, reverse the output buffer, and call `eval`:
+
+```rust
+let x: [u8; 16] = thread_rng().gen();
+let mut y = ByteGroup::zero();
+// The 2 parties use `true` / `false` to evaluate independently
+dcf.eval(false, &k, &[&x], &mut [&mut y]);
+```
+
+Full domain evaluation has not been implemented yet.
+Use the current batch evaluation consumes near double time than the optimized full domain evaluation.
+We plan to implement it in the future, but no guarantee can be made so far.
 
 ## References
 
