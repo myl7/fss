@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use rand::{thread_rng, Rng, RngCore};
+use rand::prelude::*;
 
 use fss_rs::dcf::prg::Aes256HirosePrg;
 use fss_rs::dcf::{BoundState, CmpFn, Dcf, DcfImpl};

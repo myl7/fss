@@ -159,7 +159,7 @@ where
 
 #[cfg(all(test, feature = "prg"))]
 mod tests {
-    use rand::{thread_rng, Rng};
+    use rand::prelude::*;
 
     use super::prg::Aes256HirosePrg;
     use super::*;
