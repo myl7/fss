@@ -8,6 +8,7 @@ pub fn xor<const LAMBDA: usize>(xs: &[&[u8; LAMBDA]]) -> [u8; LAMBDA] {
 
 pub fn xor_inplace<const LAMBDA: usize>(lhs: &mut [u8; LAMBDA], rhss: &[&[u8; LAMBDA]]) {
     rhss.iter().fold(lhs, |lhs, &rhs| {
+        assert_eq!(lhs.len(), rhs.len());
         let mut i = 0;
         while i < LAMBDA {
             let left = LAMBDA - i;

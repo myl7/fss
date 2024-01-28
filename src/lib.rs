@@ -4,12 +4,16 @@
 //! Many variable names together with the LaTeX math expressions in the doc comment are from the paper _Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation_
 
 #![feature(portable_simd)]
+#![feature(array_chunks)]
 
 use group::Group;
 
 pub mod dcf;
 pub mod dpf;
 pub mod group;
+pub mod owcf;
+#[cfg(feature = "prg")]
+pub mod prg;
 pub mod utils;
 
 /// Point function.
@@ -31,17 +35,25 @@ where
 macro_rules! decl_prg_trait {
     ($ret_elem:ty) => {
         /// Pseudorandom generator
-        #[cfg(feature = "multi-thread")]
+        ///
+        /// Requires `Sync` for multi-threading, which should be still easy for even single-threaded
         pub trait Prg<const LAMBDA: usize>: Sync {
-            fn gen(&self, seed: &[u8; LAMBDA]) -> [$ret_elem; 2];
-        }
-        #[cfg(not(feature = "multi-thread"))]
-        pub trait Prg<const LAMBDA: usize> {
             fn gen(&self, seed: &[u8; LAMBDA]) -> [$ret_elem; 2];
         }
     };
 }
 pub(crate) use decl_prg_trait;
+
+// TODO: Migrate the PRG interfaces
+/// Pseudorandom generator to generate bytes
+///
+/// The output and input sizes are related with the sizes set by users.
+/// They should be checked by the implementation.
+///
+/// Requires `Sync` for multi-threading, which should be still easy for even single-threaded
+pub trait PrgBytes: Sync {
+    fn gen(&self, buf: &mut [u8], src: &[u8]);
+}
 
 /// `Cw`. Correclation word.
 #[derive(Clone)]
