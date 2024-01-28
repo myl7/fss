@@ -18,6 +18,8 @@ pub struct Aes128MatyasMeyerOseasPrg {
 }
 
 impl Aes128MatyasMeyerOseasPrg {
+    /// `keys` length MUST be the output size divided by 16.
+    /// Otherwise the runtime size check would fail and panic.
     pub fn new(keys: &[&[u8; 16]]) -> Self {
         Self {
             ciphers: keys
@@ -70,6 +72,8 @@ pub struct Aes256HirosePrg {
 }
 
 impl Aes256HirosePrg {
+    /// `keys` length MUST be the output size divided by 32.
+    /// Otherwise the runtime size check would fail and panic.
     pub fn new(keys: &[&[u8; 32]]) -> Self {
         Self {
             ciphers: keys
