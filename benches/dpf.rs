@@ -10,7 +10,7 @@ use fss_rs::group::Group;
 use fss_rs::prg::Aes256HirosePrg;
 
 pub fn bench_gen(c: &mut Criterion) {
-    let keys: [[u8; 32]; 2] = thread_rng().gen();
+    let keys: [[u8; 32]; 1] = thread_rng().gen();
     let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
     let dpf = DpfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
@@ -27,7 +27,7 @@ pub fn bench_gen(c: &mut Criterion) {
 }
 
 pub fn bench_eval(c: &mut Criterion) {
-    let keys: [[u8; 32]; 2] = thread_rng().gen();
+    let keys: [[u8; 32]; 1] = thread_rng().gen();
     let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
     let dpf = DpfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();

@@ -10,7 +10,7 @@ use fss_rs::group::Group;
 use fss_rs::prg::Aes256HirosePrg;
 
 pub fn bench(c: &mut Criterion) {
-    let mut keys = vec![[0; 32]; 2048];
+    let mut keys = vec![[0; 32]; 1024];
     keys.iter_mut().for_each(|key| thread_rng().fill_bytes(key));
     let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
     let dpf = DpfImpl::<16, 16384, _>::new(prg);
