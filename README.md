@@ -23,11 +23,11 @@ Check the doc comment for the meanings of the generic parameters.
 ```rust
 use rand::prelude::*;
 
-use fss_rs::prg::Aes256HirosePrg;
+use fss_rs::dcf::prg::Aes256HirosePrg;
 use fss_rs::dcf::{Dcf, DcfImpl};
 
 let keys: [[u8; 32]; 2] = thread_rng().gen();
-let prg = Aes256HirosePrg::new(std::array::from_fn(|i| &keys[i]));
+let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
 // DCF for example
 let dcf = DcfImpl::<16, 16, _>::new(prg);
 ```
