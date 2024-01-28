@@ -7,7 +7,7 @@ use bitvec::prelude::*;
 #[cfg(feature = "multi-thread")]
 use rayon::prelude::*;
 
-use crate::group::byte::utils::{xor, xor_inplace};
+use crate::utils::{xor, xor_inplace};
 use crate::group::Group;
 pub use crate::PointFn;
 use crate::{decl_prg_trait, Cw, Share};

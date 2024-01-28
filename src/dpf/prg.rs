@@ -9,7 +9,7 @@ use aes::Aes256;
 use bitvec::prelude::*;
 
 use super::Prg;
-use crate::group::byte::utils::{xor, xor_inplace};
+use crate::utils::{xor, xor_inplace};
 
 /// Hirose double-block-length one-way compression function with AES256 and precreated keys as an imp of [`Prg`].
 ///

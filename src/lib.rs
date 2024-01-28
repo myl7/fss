@@ -10,6 +10,7 @@ use group::Group;
 pub mod dcf;
 pub mod dpf;
 pub mod group;
+pub mod utils;
 
 /// Point function.
 /// Despite the name, it only ships an element of the domain and an element of the range.
