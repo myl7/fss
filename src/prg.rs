@@ -7,13 +7,14 @@ use aes::cipher::{BlockEncrypt, KeyInit};
 use aes::{Aes128, Aes256};
 
 use crate::owcf::{Hirose, MatyasMeyerOseas};
-use crate::PrgBytes;
+use crate::Prg;
 
-pub struct Aes128MatyasMeyerOseas {
+/// AES128 with the Matyas-Meyer-Oseas single-block-length one-way compression function and precreated keys
+pub struct Aes128MatyasMeyerOseasPrg {
     ciphers: Vec<Aes128MatyasMeyerOseasCipher>,
 }
 
-impl Aes128MatyasMeyerOseas {
+impl Aes128MatyasMeyerOseasPrg {
     pub fn new(keys: &[&[u8; 16]]) -> Self {
         Self {
             ciphers: keys
@@ -24,15 +25,19 @@ impl Aes128MatyasMeyerOseas {
     }
 }
 
-impl PrgBytes for Aes128MatyasMeyerOseas {
+impl Prg for Aes128MatyasMeyerOseasPrg {
     fn gen(&self, buf: &mut [u8], src: &[u8]) {
-        assert_eq!(src.len(), buf.len());
         assert_eq!(src.len() % 16, 0);
-        assert_eq!(src.len() / 16, self.ciphers.len());
-        buf.array_chunks_mut::<16>()
-            .zip(src.array_chunks::<16>())
-            .zip(&self.ciphers)
-            .for_each(|((buf, src), cipher)| cipher.gen_blk(buf, src));
+        assert_eq!(buf.len() % src.len(), 0);
+        let scale = buf.len() / src.len();
+        assert_eq!(self.ciphers.len(), scale * (src.len() / 16));
+        for i in 0..scale {
+            buf[i * src.len()..(i + 1) * src.len()]
+                .array_chunks_mut::<16>()
+                .zip(src.array_chunks::<16>())
+                .zip(self.ciphers[i * (src.len() / 16)..(i + 1) * (src.len() / 16)].iter())
+                .for_each(|((buf, src), cipher)| cipher.gen_blk(buf, src));
+        }
     }
 }
 
@@ -56,11 +61,12 @@ impl MatyasMeyerOseas<16> for Aes128MatyasMeyerOseasCipher {
     }
 }
 
-pub struct Aes256Hirose {
+/// AES256 with the Hirose double-block-length one-way compression function and precreated keys
+pub struct Aes256HirosePrg {
     ciphers: Vec<Aes256HiroseCipher>,
 }
 
-impl Aes256Hirose {
+impl Aes256HirosePrg {
     pub fn new(keys: &[&[u8; 32]]) -> Self {
         Self {
             ciphers: keys
@@ -71,21 +77,25 @@ impl Aes256Hirose {
     }
 }
 
-impl PrgBytes for Aes256Hirose {
+impl Prg for Aes256HirosePrg {
     fn gen(&self, buf: &mut [u8], src: &[u8]) {
-        assert_eq!(src.len() * 2, buf.len());
         assert_eq!(src.len() % 16, 0);
-        assert_eq!(src.len() / 16, self.ciphers.len());
-        buf.array_chunks_mut::<32>()
-            .zip(src.array_chunks::<16>())
-            .zip(&self.ciphers)
-            .for_each(|((buf, src), cipher)| {
-                let mut iter = buf.array_chunks_mut::<16>();
-                let buf1 = iter.next().unwrap();
-                let buf2 = iter.next().unwrap();
-                assert_eq!(iter.next(), None);
-                cipher.gen_blk([buf1, buf2], src);
-            });
+        assert_eq!(buf.len() % (2 * src.len()), 0);
+        let scale = buf.len() / (2 * src.len());
+        assert_eq!(self.ciphers.len(), scale * (src.len() / 16));
+        for i in 0..scale {
+            buf[i * 2 * src.len()..(i + 1) * 2 * src.len()]
+                .array_chunks_mut::<32>()
+                .zip(src.array_chunks::<16>())
+                .zip(self.ciphers[i * (src.len() / 16)..(i + 1) * (src.len() / 16)].iter())
+                .for_each(|((buf, src), cipher)| {
+                    let mut iter = buf.array_chunks_mut::<16>();
+                    let buf1 = iter.next().unwrap();
+                    let buf2 = iter.next().unwrap();
+                    assert_eq!(iter.next(), None);
+                    cipher.gen_blk([buf1, buf2], src);
+                });
+        }
     }
 }
 

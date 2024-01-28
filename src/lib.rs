@@ -5,6 +5,7 @@
 
 #![feature(portable_simd)]
 #![feature(array_chunks)]
+#![feature(iter_array_chunks)]
 
 use group::Group;
 
@@ -44,14 +45,13 @@ macro_rules! decl_prg_trait {
 }
 pub(crate) use decl_prg_trait;
 
-// TODO: Migrate the PRG interfaces
 /// Pseudorandom generator to generate bytes
 ///
 /// The output and input sizes are related with the sizes set by users.
 /// They should be checked by the implementation.
 ///
 /// Requires `Sync` for multi-threading, which should be still easy for even single-threaded
-pub trait PrgBytes: Sync {
+pub trait Prg: Sync {
     fn gen(&self, buf: &mut [u8], src: &[u8]);
 }
 

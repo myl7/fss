@@ -7,8 +7,8 @@ use bitvec::prelude::*;
 #[cfg(feature = "multi-thread")]
 use rayon::prelude::*;
 
-use crate::utils::{xor, xor_inplace};
 use crate::group::Group;
+use crate::utils::{xor, xor_inplace};
 use crate::{decl_prg_trait, Cw, PointFn, Share};
 
 #[cfg(feature = "prg")]
@@ -108,8 +108,8 @@ where
                 (IDX_L, IDX_R)
             };
             let s_cw = xor(&[[&s0l, &s0r][lose], [&s1l, &s1r][lose]]);
-            let mut v_cw = (Into::<G>::into(*[&v0l, &v0r][lose])
-                + Into::<G>::into(*[&v1l, &v1r][lose]).add_inverse()
+            let mut v_cw = (G::from(*[&v0l, &v0r][lose])
+                + G::from(*[&v1l, &v1r][lose]).add_inverse()
                 + v_alpha.clone().add_inverse())
             .add_inverse_if(ts[i - 1][1]);
             match f.bound {
@@ -124,7 +124,7 @@ where
                     }
                 }
             }
-            v_alpha += Into::<G>::into(*[&v0l, &v0r][keep]).add_inverse()
+            v_alpha += G::from(*[&v0l, &v0r][keep]).add_inverse()
                 + (*[&v1l, &v1r][keep]).into()
                 + v_cw.clone().add_inverse_if(ts[i - 1][1]);
             let tl_cw = t0l ^ t1l ^ alpha_i ^ true;
@@ -152,10 +152,8 @@ where
             ]);
         }
         assert_eq!((ss.len(), ts.len(), cws.len()), (n + 1, n + 1, n));
-        let cw_np1 = (Into::<G>::into(ss[n][1])
-            + Into::<G>::into(ss[n][0]).add_inverse()
-            + v_alpha.add_inverse())
-        .add_inverse_if(ts[n][1]);
+        let cw_np1 = (G::from(ss[n][1]) + G::from(ss[n][0]).add_inverse() + v_alpha.add_inverse())
+            .add_inverse_if(ts[n][1]);
         Share {
             s0s: vec![s0s[0].to_owned(), s0s[1].to_owned()],
             cws,
@@ -181,21 +179,19 @@ where
                 tl ^= ts[i - 1] & cw.tl;
                 tr ^= ts[i - 1] & cw.tr;
                 if x.view_bits::<Msb0>()[i - 1] {
-                    *v += (Into::<G>::into(vr_hat)
-                        + if ts[i - 1] { cw.v.clone() } else { G::zero() })
-                    .add_inverse_if(b);
+                    *v += (G::from(vr_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                        .add_inverse_if(b);
                     ss.push(sr);
                     ts.push(tr);
                 } else {
-                    *v += (Into::<G>::into(vl_hat)
-                        + if ts[i - 1] { cw.v.clone() } else { G::zero() })
-                    .add_inverse_if(b);
+                    *v += (G::from(vl_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                        .add_inverse_if(b);
                     ss.push(sl);
                     ts.push(tl);
                 }
             }
             assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
-            *v += (Into::<G>::into(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
+            *v += (G::from(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
                 .add_inverse_if(b);
         };
         // TODO: Seperated entries
@@ -225,11 +221,11 @@ pub enum BoundState {
 mod tests {
     use rand::prelude::*;
 
-    use super::prg::Aes256HirosePrg;
     use super::*;
     use crate::group::byte::ByteGroup;
+    use crate::prg::Aes256HirosePrg;
 
-    const KEYS: [&[u8; 32]; 2] = [
+    const KEYS: &[&[u8; 32]] = &[
         b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d",
         b"\x9b\x15\xc8\x0f\xb7\xbc!q\x9e\x89\xb8\xf7\x0e\xa0S\x9dN\xfa\x0c;\x16\xe4\x98\x82b\xfcdy\xb5\x8c{\xc2",
     ];

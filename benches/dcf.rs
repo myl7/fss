@@ -1,14 +1,14 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::prelude::*;
 
-use fss_rs::dcf::prg::Aes256HirosePrg;
 use fss_rs::dcf::{BoundState, CmpFn, Dcf, DcfImpl};
 use fss_rs::group::byte::ByteGroup;
 use fss_rs::group::Group;
+use fss_rs::prg::Aes256HirosePrg;
 
 pub fn bench_gen(c: &mut Criterion) {
     let keys: [[u8; 32]; 2] = thread_rng().gen();
-    let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+    let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
     let dcf = DcfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
     let f = CmpFn {
@@ -26,7 +26,7 @@ pub fn bench_gen(c: &mut Criterion) {
 
 pub fn bench_eval(c: &mut Criterion) {
     let keys: [[u8; 32]; 2] = thread_rng().gen();
-    let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+    let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
     let dcf = DcfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
     let f = CmpFn {
@@ -36,7 +36,7 @@ pub fn bench_eval(c: &mut Criterion) {
     };
 
     let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
-    let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+    let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
     let dcf = DcfImpl::<16, 16, _>::new(prg);
     let x: [u8; 16] = thread_rng().gen();
     let mut y = ByteGroup::zero();

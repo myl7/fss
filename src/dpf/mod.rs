@@ -7,8 +7,8 @@ use bitvec::prelude::*;
 #[cfg(feature = "multi-thread")]
 use rayon::prelude::*;
 
-use crate::utils::{xor, xor_inplace};
 use crate::group::Group;
+use crate::utils::{xor, xor_inplace};
 pub use crate::PointFn;
 use crate::{decl_prg_trait, Cw, Share};
 
@@ -161,11 +161,11 @@ where
 mod tests {
     use rand::prelude::*;
 
-    use super::prg::Aes256HirosePrg;
     use super::*;
     use crate::group::byte::ByteGroup;
+    use crate::prg::Aes256HirosePrg;
 
-    const KEYS: [&[u8; 32]; 2] = [
+    const KEYS: &[&[u8; 32]] = &[
         b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d",
         b"\x9b\x15\xc8\x0f\xb7\xbc!q\x9e\x89\xb8\xf7\x0e\xa0S\x9dN\xfa\x0c;\x16\xe4\x98\x82b\xfcdy\xb5\x8c{\xc2",
     ];
