@@ -163,7 +163,7 @@ mod tests {
 
     use super::*;
     use crate::group::byte::ByteGroup;
-    use crate::prg::Aes256HirosePrg;
+    use crate::prg::Aes256HirosePrgBytes;
 
     const KEYS: &[&[u8; 32]] =
         &[b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d"];
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_dpf_gen_then_eval() {
-        let prg = Aes256HirosePrg::new(KEYS);
+        let prg = Aes256HirosePrgBytes::new(KEYS);
         let dpf = DpfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn test_dpf_gen_then_eval_not_zeros() {
-        let prg = Aes256HirosePrg::new(KEYS);
+        let prg = Aes256HirosePrgBytes::new(KEYS);
         let dpf = DpfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {

@@ -4,15 +4,15 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::prelude::*;
 
+use fss_rs::dcf::prg::Aes256HirosePrg;
 use fss_rs::dcf::{BoundState, CmpFn, Dcf, DcfImpl};
 use fss_rs::group::byte::ByteGroup;
 use fss_rs::group::Group;
-use fss_rs::prg::Aes256HirosePrg;
 
 pub fn bench(c: &mut Criterion) {
     let mut keys = vec![[0; 32]; 2048];
     keys.iter_mut().for_each(|key| thread_rng().fill_bytes(key));
-    let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
+    let prg = Aes256HirosePrg::<16384, 2048>::new(std::array::from_fn(|i| &keys[i]));
     let dcf = DcfImpl::<16, 16384, _>::new(prg);
     let mut s0s = vec![[0; 16384]; 2];
     thread_rng().fill_bytes(&mut s0s[0]);
@@ -29,7 +29,7 @@ pub fn bench(c: &mut Criterion) {
 
     c.bench_function("dcf eval 10k xs with lambda 16384", |b| {
         b.iter(|| {
-            let prg = Aes256HirosePrg::new(&keys.iter().collect::<Vec<_>>());
+            let prg = Aes256HirosePrg::<16384, 2048>::new(std::array::from_fn(|i| &keys[i]));
             let dcf = DcfImpl::<16, 16384, _>::new(prg);
             let mut ys = vec![ByteGroup::zero(); N];
             dcf.eval(

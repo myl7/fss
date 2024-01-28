@@ -10,14 +10,16 @@ use aes::cipher::{BlockEncrypt, KeyInit};
 use aes::{Aes128, Aes256};
 
 use crate::owcf::{Hirose, MatyasMeyerOseas};
-use crate::Prg;
+use crate::PrgBytes;
 
-/// AES128 with the Matyas-Meyer-Oseas single-block-length one-way compression function and precreated keys
-pub struct Aes128MatyasMeyerOseasPrg {
+/// Pseudorandom generator that generates bytes with AES128, the Matyas-Meyer-Oseas single-block-length one-way compression function, and precreated keys
+///
+/// NOTICE: The impl still has performance issues
+pub struct Aes128MatyasMeyerOseasPrgBytes {
     ciphers: Vec<Aes128MatyasMeyerOseasCipher>,
 }
 
-impl Aes128MatyasMeyerOseasPrg {
+impl Aes128MatyasMeyerOseasPrgBytes {
     /// `keys` length MUST be the output size divided by 16.
     /// Otherwise the runtime size check would fail and panic.
     pub fn new(keys: &[&[u8; 16]]) -> Self {
@@ -30,7 +32,7 @@ impl Aes128MatyasMeyerOseasPrg {
     }
 }
 
-impl Prg for Aes128MatyasMeyerOseasPrg {
+impl PrgBytes for Aes128MatyasMeyerOseasPrgBytes {
     fn gen(&self, buf: &mut [u8], src: &[u8]) {
         assert_eq!(src.len() % 16, 0);
         assert_eq!(buf.len() % src.len(), 0);
@@ -66,12 +68,14 @@ impl MatyasMeyerOseas<16> for Aes128MatyasMeyerOseasCipher {
     }
 }
 
-/// AES256 with the Hirose double-block-length one-way compression function and precreated keys
-pub struct Aes256HirosePrg {
+/// Pseudorandom generator that generates bytes with AES256, the Hirose double-block-length one-way compression function, and precreated keys
+///
+/// NOTICE: The impl still has performance issues
+pub struct Aes256HirosePrgBytes {
     ciphers: Vec<Aes256HiroseCipher>,
 }
 
-impl Aes256HirosePrg {
+impl Aes256HirosePrgBytes {
     /// `keys` length MUST be the output size divided by 32.
     /// Otherwise the runtime size check would fail and panic.
     pub fn new(keys: &[&[u8; 32]]) -> Self {
@@ -84,7 +88,7 @@ impl Aes256HirosePrg {
     }
 }
 
-impl Prg for Aes256HirosePrg {
+impl PrgBytes for Aes256HirosePrgBytes {
     fn gen(&self, buf: &mut [u8], src: &[u8]) {
         assert_eq!(src.len() % 16, 0);
         assert_eq!(buf.len() % (2 * src.len()), 0);

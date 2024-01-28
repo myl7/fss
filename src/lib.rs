@@ -51,7 +51,9 @@ pub(crate) use decl_prg_trait;
 /// They should be checked by the implementation.
 ///
 /// Requires `Sync` for multi-threading, which should be still easy for even single-threaded
-pub trait Prg: Sync {
+///
+/// NOTICE: The trait with the impls still has performance issues
+pub trait PrgBytes: Sync {
     fn gen(&self, buf: &mut [u8], src: &[u8]);
 }
 
