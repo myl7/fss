@@ -4,14 +4,14 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::prelude::*;
 
-use fss_rs::dpf::prg::Aes256HirosePrg;
+use fss_rs::dpf::prg::Aes128MatyasMeyerOseasPrg;
 use fss_rs::dpf::{Dpf, DpfImpl, PointFn};
 use fss_rs::group::byte::ByteGroup;
 use fss_rs::group::Group;
 
 pub fn bench_gen(c: &mut Criterion) {
-    let keys: [[u8; 32]; 2] = thread_rng().gen();
-    let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+    let keys: [[u8; 16]; 2] = thread_rng().gen();
+    let prg = Aes128MatyasMeyerOseasPrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
     let dpf = DpfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
     let f = PointFn {
@@ -27,8 +27,8 @@ pub fn bench_gen(c: &mut Criterion) {
 }
 
 pub fn bench_eval(c: &mut Criterion) {
-    let keys: [[u8; 32]; 2] = thread_rng().gen();
-    let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+    let keys: [[u8; 16]; 2] = thread_rng().gen();
+    let prg = Aes128MatyasMeyerOseasPrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
     let dpf = DpfImpl::<16, 16, _>::new(prg);
     let s0s: [[u8; 16]; 2] = thread_rng().gen();
     let f = PointFn {
@@ -37,7 +37,7 @@ pub fn bench_eval(c: &mut Criterion) {
     };
 
     let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
-    let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+    let prg = Aes128MatyasMeyerOseasPrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
     let dpf = DpfImpl::<16, 16, _>::new(prg);
     let x: [u8; 16] = thread_rng().gen();
     let mut y = ByteGroup::zero();
