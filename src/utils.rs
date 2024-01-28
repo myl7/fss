@@ -1,3 +1,6 @@
+// Copyright (C) myl7
+// SPDX-License-Identifier: Apache-2.0
+
 use std::simd::{u8x16, u8x32, u8x64};
 
 pub fn xor<const LAMBDA: usize>(xs: &[&[u8; LAMBDA]]) -> [u8; LAMBDA] {

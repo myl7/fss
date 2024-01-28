@@ -1,3 +1,6 @@
+// Copyright (C) myl7
+// SPDX-License-Identifier: Apache-2.0
+
 //! Group of an integer which is a `$p$`-group.
 //! `MOD` as the `$p$` is a prime number as the cardinality of the group.
 //! Some prime numbers that are the max ones less than or equal to `u*::MAX` are provided as `PRIME_MAX_LE_U*_MAX`.

@@ -1,3 +1,6 @@
+// Copyright (C) myl7
+// SPDX-License-Identifier: Apache-2.0
+
 //! One-way compression function wrappers to make PRGs.
 //! https://wikipedia.org/wiki/One-way_compression_function .
 //!

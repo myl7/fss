@@ -1,3 +1,6 @@
+// Copyright (C) myl7
+// SPDX-License-Identifier: Apache-2.0
+
 //! Group of bytes
 //!
 //! - Associative operation: Xor

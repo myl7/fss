@@ -1,3 +1,6 @@
+// Copyright (C) myl7
+// SPDX-License-Identifier: Apache-2.0
+
 //! Group of an integer which defines addition as integer (wrapping) addition
 //!
 //! - Associative operation: Integer wrapping addition, `$(a + b) \mod 2^N$`

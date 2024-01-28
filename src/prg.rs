@@ -1,3 +1,6 @@
+// Copyright (C) myl7
+// SPDX-License-Identifier: Apache-2.0
+
 //! Embedded PRGs.
 //!
 //! Including the ones from AES-series, combined with one-way compression functions.
