@@ -33,9 +33,9 @@ impl<const LAMBDA: usize, const N: usize> Aes256HirosePrg<LAMBDA, N> {
         Self { ciphers }
     }
 
-    /// Get the arbitrary non-zero constant c
-    fn c() -> [u8; LAMBDA] {
-        std::array::from_fn(|_| 0xff)
+    /// The arbitrary non-zero constant c for the arbitrary fixed-point-free permutation, typically just xor c
+    const fn c() -> [u8; LAMBDA] {
+        [0xff; LAMBDA]
     }
 }
 
