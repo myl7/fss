@@ -62,18 +62,18 @@ decl_prg_trait!(([u8; LAMBDA], [u8; LAMBDA], bool));
 /// [`Dcf`] impl
 ///
 /// `$\alpha$` itself is not included, which means `$f(\alpha)$ = 0`.
-pub struct DcfImpl<const N: usize, const LAMBDA: usize, PrgT>
+pub struct DcfImpl<const N: usize, const LAMBDA: usize, P>
 where
-    PrgT: Prg<LAMBDA>,
+    P: Prg<LAMBDA>,
 {
-    prg: PrgT,
+    prg: P,
 }
 
-impl<const N: usize, const LAMBDA: usize, PrgT> DcfImpl<N, LAMBDA, PrgT>
+impl<const N: usize, const LAMBDA: usize, P> DcfImpl<N, LAMBDA, P>
 where
-    PrgT: Prg<LAMBDA>,
+    P: Prg<LAMBDA>,
 {
-    pub fn new(prg: PrgT) -> Self {
+    pub fn new(prg: P) -> Self {
         Self { prg }
     }
 }
@@ -81,9 +81,9 @@ where
 const IDX_L: usize = 0;
 const IDX_R: usize = 1;
 
-impl<const N: usize, const LAMBDA: usize, PrgT, G> Dcf<N, LAMBDA, G> for DcfImpl<N, LAMBDA, PrgT>
+impl<const N: usize, const LAMBDA: usize, P, G> Dcf<N, LAMBDA, G> for DcfImpl<N, LAMBDA, P>
 where
-    PrgT: Prg<LAMBDA>,
+    P: Prg<LAMBDA>,
     G: Group<LAMBDA>,
 {
     fn gen(&self, f: &CmpFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
