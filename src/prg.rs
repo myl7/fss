@@ -14,7 +14,8 @@ use crate::PrgBytes;
 
 /// Pseudorandom generator that generates bytes with AES128, the Matyas-Meyer-Oseas single-block-length one-way compression function, and precreated keys
 ///
-/// NOTICE: The impl still has performance issues
+/// NOTICE: The impl still has performance issues.
+/// Use [`crate::dpf::prg`] or [`crate::dcf::prg`] instead.
 pub struct Aes128MatyasMeyerOseasPrgBytes {
     ciphers: Vec<Aes128MatyasMeyerOseasCipher>,
 }
@@ -70,7 +71,8 @@ impl MatyasMeyerOseas<16> for Aes128MatyasMeyerOseasCipher {
 
 /// Pseudorandom generator that generates bytes with AES256, the Hirose double-block-length one-way compression function, and precreated keys
 ///
-/// NOTICE: The impl still has performance issues
+/// NOTICE: The impl still has performance issues.
+/// Use [`crate::dpf::prg`] or [`crate::dcf::prg`] instead.
 pub struct Aes256HirosePrgBytes {
     ciphers: Vec<Aes256HiroseCipher>,
 }
