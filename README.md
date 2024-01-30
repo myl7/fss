@@ -17,7 +17,7 @@ cargo add fss-rs
 By default the embedded PRG and multi-threading are included.
 You can disable the default feature to select by yourself.
 
-Then construct a PRG implementing the corresponding [`Prg`] trait, and construct an impl `DcfImpl` or `DpfImpl` to use the PRG.
+Then construct a PRG implementing the corresponding `Prg` trait, and construct an impl `DcfImpl` or `DpfImpl` to use the PRG.
 Check the doc comment for the meanings of the generic parameters.
 
 ```rust

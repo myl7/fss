@@ -21,8 +21,8 @@ pub mod utils;
 /// Despite the name, it only ships an element of the domain and an element of the range.
 /// The actual meaning of the 2 elements is determined by the context.
 ///
-/// - `N` is the **byte** size of the domain.
-/// - `LAMBDA` here is used as the **byte** size of the range, unlike the one in the paper.
+/// - `N` is the **byte** size of the domain
+/// - `LAMBDA` here is used as the **byte** size of the range, unlike the one in the paper
 pub struct PointFn<const N: usize, const LAMBDA: usize, G>
 where
     G: Group<LAMBDA>,
@@ -52,7 +52,7 @@ pub(crate) use decl_prg_trait;
 ///
 /// Requires `Sync` for multi-threading, which should be still easy for even single-threaded
 ///
-/// NOTICE: The trait with the impls still has performance issues,
+/// NOTICE: The trait with the impls still has performance issues.
 /// Use [`crate::dpf::prg`] or [`crate::dcf::prg`] instead.
 pub trait PrgBytes: Sync {
     fn gen(&self, buf: &mut [u8], src: &[u8]);

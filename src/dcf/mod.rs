@@ -28,10 +28,10 @@ where
     fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]);
 }
 
-/// Comparison function.
+/// Comparison function
 ///
-/// See [`BoundState`] for the meaning for different `bound`.
-/// See [`PointFn`] for `N`, `LAMBDA`, and fields `alpha` and `beta`.
+/// - See [`BoundState`] for the meaning for different `bound`
+/// - See [`PointFn`] for `N`, `LAMBDA`, and fields `alpha` and `beta`
 pub struct CmpFn<const N: usize, const LAMBDA: usize, G>
 where
     G: Group<LAMBDA>,
@@ -211,7 +211,7 @@ where
 pub enum BoundState {
     /// `$f(x) = \beta$` iff. `$x < \alpha$`, otherwise `$f(x) = 0$`
     ///
-    /// This is the preference in the paper.
+    /// This is the preference in the paper
     LtBeta,
     /// `$f(x) = \beta$` iff. `$x > \alpha$`, otherwise `$f(x) = 0$`
     GtBeta,

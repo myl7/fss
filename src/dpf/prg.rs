@@ -15,8 +15,7 @@ use crate::PrgBytes;
 /// Hirose double-block-length one-way compression function with AES256 and precreated keys.
 /// Integrated impl of [`Prg`] with a good performance.
 ///
-/// To avoid `#![feature(generic_const_exprs)]`, it is **your responsibility**
-/// to ensure `LAMBDA % 16 = 0` and `N = LAMBDA / 16`.
+/// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `N = LAMBDA / 16`
 ///
 /// It actually works for LAMBDA * 4 - 1 bits other than LAMBDA bytes.
 /// The last bit of the output `[u8; LAMBDA]` is always set to 0.
@@ -68,8 +67,7 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA
 /// Matyas-Meyer-Oseas single-block-length one-way compression function with AES128 and precreated keys.
 /// Integrated impl of [`Prg`].
 ///
-/// To avoid `#![feature(generic_const_exprs)]`, it is **your responsibility**
-/// to ensure `LAMBDA % 16 = 0` and `N = 2 * (LAMBDA / 16)`.
+/// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `N = 2 * (LAMBDA / 16)`
 ///
 /// It actually works for LAMBDA * 4 - 1 bits other than LAMBDA bytes.
 /// The last bit of the output `[u8; LAMBDA]` is always set to 0.
