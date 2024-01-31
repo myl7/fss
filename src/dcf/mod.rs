@@ -162,49 +162,75 @@ where
     }
 
     fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]) {
+        #[cfg(feature = "multi-thread")]
+        self.eval_mt(b, k, xs, ys);
+        #[cfg(not(feature = "multi-thread"))]
+        self.eval_st(b, k, xs, ys);
+    }
+}
+
+impl<const N: usize, const LAMBDA: usize, P> DcfImpl<N, LAMBDA, P>
+where
+    P: Prg<LAMBDA>,
+{
+    /// Eval with single-threading.
+    /// See [`Dcf::eval`].
+    pub fn eval_st<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G])
+    where
+        G: Group<LAMBDA>,
+    {
+        xs.iter()
+            .zip(ys.iter_mut())
+            .for_each(|(x, y)| self.eval_point(b, k, x, y));
+    }
+
+    #[cfg(feature = "multi-thread")]
+    /// Eval with multi-threading.
+    /// See [`Dcf::eval`].
+    pub fn eval_mt<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G])
+    where
+        G: Group<LAMBDA>,
+    {
+        xs.par_iter()
+            .zip(ys.par_iter_mut())
+            .for_each(|(x, y)| self.eval_point(b, k, x, y));
+    }
+
+    pub fn eval_point<G>(&self, b: bool, k: &Share<LAMBDA, G>, x: &[u8; N], y: &mut G)
+    where
+        G: Group<LAMBDA>,
+    {
         let n = k.cws.len();
         assert_eq!(n, N * 8);
-        let f = |x: &[u8; N], v: &mut G| {
-            let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
-            ss.push(k.s0s[0].to_owned());
-            let mut ts = Vec::<bool>::with_capacity(n + 1);
-            ts.push(b);
-            *v = G::zero();
-            for i in 1..n + 1 {
-                let cw = &k.cws[i - 1];
-                // `*_hat` before in-place xor
-                let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i - 1]);
-                xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-                xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-                tl ^= ts[i - 1] & cw.tl;
-                tr ^= ts[i - 1] & cw.tr;
-                if x.view_bits::<Msb0>()[i - 1] {
-                    *v += (G::from(vr_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
-                        .add_inverse_if(b);
-                    ss.push(sr);
-                    ts.push(tr);
-                } else {
-                    *v += (G::from(vl_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
-                        .add_inverse_if(b);
-                    ss.push(sl);
-                    ts.push(tl);
-                }
+        let v = y;
+
+        let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
+        ss.push(k.s0s[0].to_owned());
+        let mut ts = Vec::<bool>::with_capacity(n + 1);
+        ts.push(b);
+        *v = G::zero();
+        for i in 1..n + 1 {
+            let cw = &k.cws[i - 1];
+            // `*_hat` before in-place xor
+            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i - 1]);
+            xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
+            xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
+            tl ^= ts[i - 1] & cw.tl;
+            tr ^= ts[i - 1] & cw.tr;
+            if x.view_bits::<Msb0>()[i - 1] {
+                *v += (G::from(vr_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                    .add_inverse_if(b);
+                ss.push(sr);
+                ts.push(tr);
+            } else {
+                *v += (G::from(vl_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                    .add_inverse_if(b);
+                ss.push(sl);
+                ts.push(tl);
             }
-            assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
-            *v += (G::from(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() })
-                .add_inverse_if(b);
-        };
-        // TODO: Seperated entries
-        #[cfg(feature = "multi-thread")]
-        {
-            xs.par_iter()
-                .zip(ys.par_iter_mut())
-                .for_each(|(x, y)| f(x, y));
         }
-        #[cfg(not(feature = "multi-thread"))]
-        {
-            xs.iter().zip(ys.iter_mut()).for_each(|(x, y)| f(x, y));
-        }
+        assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
+        *v += (G::from(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() }).add_inverse_if(b);
     }
 }
 
