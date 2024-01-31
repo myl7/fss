@@ -160,14 +160,14 @@ where
         ss.push(k.s0s[0].to_owned());
         let mut ts = Vec::<bool>::with_capacity(n + 1);
         ts.push(b);
-        for i in 1..n + 1 {
-            let cw = &k.cws[i - 1];
-            let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&ss[i - 1]);
-            xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-            xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-            tl ^= ts[i - 1] & cw.tl;
-            tr ^= ts[i - 1] & cw.tr;
-            if x.view_bits::<Msb0>()[i - 1] {
+        for i in 0..n {
+            let cw = &k.cws[i];
+            let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&ss[i]);
+            xor_inplace(&mut sl, &[if ts[i] { &cw.s } else { &[0; LAMBDA] }]);
+            xor_inplace(&mut sr, &[if ts[i] { &cw.s } else { &[0; LAMBDA] }]);
+            tl ^= ts[i] & cw.tl;
+            tr ^= ts[i] & cw.tr;
+            if x.view_bits::<Msb0>()[i] {
                 ss.push(sr);
                 ts.push(tr);
             } else {

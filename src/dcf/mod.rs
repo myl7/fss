@@ -208,21 +208,21 @@ where
         let mut ts = Vec::<bool>::with_capacity(n + 1);
         ts.push(b);
         *v = G::zero();
-        for i in 1..n + 1 {
-            let cw = &k.cws[i - 1];
+        for i in 0..n {
+            let cw = &k.cws[i];
             // `*_hat` before in-place xor
-            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i - 1]);
-            xor_inplace(&mut sl, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-            xor_inplace(&mut sr, &[if ts[i - 1] { &cw.s } else { &[0; LAMBDA] }]);
-            tl ^= ts[i - 1] & cw.tl;
-            tr ^= ts[i - 1] & cw.tr;
-            if x.view_bits::<Msb0>()[i - 1] {
-                *v += (G::from(vr_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i]);
+            xor_inplace(&mut sl, &[if ts[i] { &cw.s } else { &[0; LAMBDA] }]);
+            xor_inplace(&mut sr, &[if ts[i] { &cw.s } else { &[0; LAMBDA] }]);
+            tl ^= ts[i] & cw.tl;
+            tr ^= ts[i] & cw.tr;
+            if x.view_bits::<Msb0>()[i] {
+                *v += (G::from(vr_hat) + if ts[i] { cw.v.clone() } else { G::zero() })
                     .add_inverse_if(b);
                 ss.push(sr);
                 ts.push(tr);
             } else {
-                *v += (G::from(vl_hat) + if ts[i - 1] { cw.v.clone() } else { G::zero() })
+                *v += (G::from(vl_hat) + if ts[i] { cw.v.clone() } else { G::zero() })
                     .add_inverse_if(b);
                 ss.push(sl);
                 ts.push(tl);
