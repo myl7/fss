@@ -259,33 +259,31 @@ where
         assert_eq!(n, N * 8);
         let v = y;
 
-        let mut ss = Vec::<[u8; LAMBDA]>::with_capacity(n + 1);
-        ss.push(k.s0s[0].to_owned());
-        let mut ts = Vec::<bool>::with_capacity(n + 1);
-        ts.push(b);
+        let mut s_prev = k.s0s[0];
+        let mut t_prev = b;
         *v = G::zero();
         for i in 0..n {
             let cw = &k.cws[i];
             // `*_hat` before in-place xor
-            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&ss[i]);
-            xor_inplace(&mut sl, &[if ts[i] { &cw.s } else { &[0; LAMBDA] }]);
-            xor_inplace(&mut sr, &[if ts[i] { &cw.s } else { &[0; LAMBDA] }]);
-            tl ^= ts[i] & cw.tl;
-            tr ^= ts[i] & cw.tr;
+            let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&s_prev);
+            xor_inplace(&mut sl, &[if t_prev { &cw.s } else { &[0; LAMBDA] }]);
+            xor_inplace(&mut sr, &[if t_prev { &cw.s } else { &[0; LAMBDA] }]);
+            tl ^= t_prev & cw.tl;
+            tr ^= t_prev & cw.tr;
             if x.view_bits::<Msb0>()[i] {
-                *v += (G::from(vr_hat) + if ts[i] { cw.v.clone() } else { G::zero() })
+                *v += (G::from(vr_hat) + if t_prev { cw.v.clone() } else { G::zero() })
                     .add_inverse_if(b);
-                ss.push(sr);
-                ts.push(tr);
+                s_prev = sr;
+                t_prev = tr;
             } else {
-                *v += (G::from(vl_hat) + if ts[i] { cw.v.clone() } else { G::zero() })
+                *v += (G::from(vl_hat) + if t_prev { cw.v.clone() } else { G::zero() })
                     .add_inverse_if(b);
-                ss.push(sl);
-                ts.push(tl);
+                s_prev = sl;
+                t_prev = tl;
             }
         }
-        assert_eq!((ss.len(), ts.len()), (n + 1, n + 1));
-        *v += (G::from(ss[n]) + if ts[n] { k.cw_np1.clone() } else { G::zero() }).add_inverse_if(b);
+        *v +=
+            (G::from(s_prev) + if t_prev { k.cw_np1.clone() } else { G::zero() }).add_inverse_if(b);
     }
 }
 
