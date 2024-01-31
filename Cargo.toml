@@ -2,9 +2,11 @@ bench = [
   { name = "dcf", harness = false },
   { name = "dcf_batch_eval", harness = false },
   { name = "dcf_large_lambda", harness = false },
+  { name = "dcf_full_eval", harness = false },
   { name = "dpf", harness = false },
   { name = "dpf_batch_eval", harness = false },
   { name = "dpf_large_lambda", harness = false },
+  { name = "dpf_full_eval", harness = false },
 ]
 
 [package]
