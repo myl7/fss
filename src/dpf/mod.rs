@@ -29,6 +29,11 @@ where
 
     /// `b` is the party. `false` is 0 and `true` is 1.
     fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]);
+
+    /// Full domain eval.
+    /// See [`Dpf::eval`] for `b`.
+    /// The corresponding `xs` to `ys` is the big endian representation of `0..=u*::MAX`.
+    fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]);
 }
 
 decl_prg_trait!(([u8; LAMBDA], bool));
@@ -119,6 +124,15 @@ where
         #[cfg(not(feature = "multi-thread"))]
         self.eval_st(b, k, xs, ys);
     }
+
+    fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]) {
+        let n = k.cws.len();
+        assert_eq!(n, N * 8);
+
+        let s = k.s0s[0];
+        let t = b;
+        self.full_eval_layer(b, k, ys, 0, (s, t));
+    }
 }
 
 impl<const N: usize, const LAMBDA: usize, P> DpfImpl<N, LAMBDA, P>
@@ -146,6 +160,43 @@ where
         xs.par_iter()
             .zip(ys.par_iter_mut())
             .for_each(|(x, y)| self.eval_point(b, k, x, y));
+    }
+
+    fn full_eval_layer<G>(
+        &self,
+        b: bool,
+        k: &Share<LAMBDA, G>,
+        ys: &mut [&mut G],
+        layer_i: usize,
+        (s, t): ([u8; LAMBDA], bool),
+    ) where
+        G: Group<LAMBDA>,
+    {
+        assert_eq!(ys.len(), 1 << (N * 8 - layer_i));
+        if ys.len() == 1 {
+            *ys[0] = (Into::<G>::into(s) + if t { k.cw_np1.clone() } else { G::zero() })
+                .add_inverse_if(b);
+            return;
+        }
+
+        let cw = &k.cws[layer_i];
+        let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&s);
+        xor_inplace(&mut sl, &[if t { &cw.s } else { &[0; LAMBDA] }]);
+        xor_inplace(&mut sr, &[if t { &cw.s } else { &[0; LAMBDA] }]);
+        tl ^= t & cw.tl;
+        tr ^= t & cw.tr;
+
+        let (ys_l, ys_r) = ys.split_at_mut(ys.len() / 2);
+        #[cfg(feature = "multi-thread")]
+        rayon::join(
+            || self.full_eval_layer(b, k, ys_l, layer_i + 1, (sl, tl)),
+            || self.full_eval_layer(b, k, ys_r, layer_i + 1, (sr, tr)),
+        );
+        #[cfg(not(feature = "multi-thread"))]
+        {
+            self.full_eval_layer(b, k, ys_l, layer_i + 1, (sl, tl));
+            self.full_eval_layer(b, k, ys_r, layer_i + 1, (sr, tr));
+        }
     }
 
     pub fn eval_point<G>(&self, b: bool, k: &Share<LAMBDA, G>, x: &[u8; N], y: &mut G)
@@ -251,5 +302,30 @@ mod tests {
         dpf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
         assert_ne!(ys0[2], ByteGroup::zero());
         assert_ne!(ys1[2], ByteGroup::zero());
+    }
+
+    #[test]
+    fn test_dpf_full_domain_eval() {
+        let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
+        let prg = Aes256HirosePrgBytes::new(KEYS);
+        let dpf = DpfImpl::<2, 16, _>::new(prg);
+        let s0s: [[u8; 16]; 2] = thread_rng().gen();
+        let f = PointFn {
+            alpha: x,
+            beta: BETA.clone().into(),
+        };
+        let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
+        let mut k0 = k.clone();
+        k0.s0s = vec![k0.s0s[0]];
+        let xs: Vec<_> = (0u16..=u16::MAX).map(|i| i.to_be_bytes()).collect();
+        assert_eq!(xs.len(), 1 << (8 * 2));
+        let xs0: Vec<_> = xs.iter().collect();
+        let mut ys0 = vec![ByteGroup::zero(); 1 << (8 * 2)];
+        let mut ys0_full = vec![ByteGroup::zero(); 1 << (8 * 2)];
+        dpf.eval(false, &k0, &xs0, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dpf.full_eval(false, &k0, &mut ys0_full.iter_mut().collect::<Vec<_>>());
+        for (y0, y0_full) in ys0.iter().zip(ys0_full.iter()) {
+            assert_eq!(y0, y0_full);
+        }
     }
 }
