@@ -63,19 +63,16 @@ where
     fn gen(&self, f: &PointFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
         // The bit size of `$\alpha$`
         let n = 8 * N;
-        // let mut v_alpha = G::zero();
-        let mut ss = Vec::<[[u8; LAMBDA]; 2]>::with_capacity(n + 1);
         // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`
-        ss.push([s0s[0].to_owned(), s0s[1].to_owned()]);
-        let mut ts = Vec::<[bool; 2]>::with_capacity(n + 1);
+        let mut ss_prev = [s0s[0].to_owned(), s0s[1].to_owned()];
         // Set `$t^{(0)}_0$` and `$t^{(0)}_1$`
-        ts.push([false, true]);
+        let mut ts_prev = [false, true];
         let mut cws = Vec::<Cw<LAMBDA, G>>::with_capacity(n);
-        for i in 1..n + 1 {
-            let [(s0l, t0l), (s0r, t0r)] = self.prg.gen(&ss[i - 1][0]);
-            let [(s1l, t1l), (s1r, t1r)] = self.prg.gen(&ss[i - 1][1]);
+        for i in 0..n {
             // MSB is required since we index from high to low in arrays
-            let alpha_i = f.alpha.view_bits::<Msb0>()[i - 1];
+            let alpha_i = f.alpha.view_bits::<Msb0>()[i];
+            let [(s0l, t0l), (s0r, t0r)] = self.prg.gen(&ss_prev[0]);
+            let [(s1l, t1l), (s1r, t1r)] = self.prg.gen(&ss_prev[1]);
             let (keep, lose) = if alpha_i {
                 (IDX_R, IDX_L)
             } else {
@@ -91,24 +88,24 @@ where
                 tr: tr_cw,
             };
             cws.push(cw);
-            ss.push([
+            ss_prev = [
                 xor(&[
                     [&s0l, &s0r][keep],
-                    if ts[i - 1][0] { &s_cw } else { &[0; LAMBDA] },
+                    if ts_prev[0] { &s_cw } else { &[0; LAMBDA] },
                 ]),
                 xor(&[
                     [&s1l, &s1r][keep],
-                    if ts[i - 1][1] { &s_cw } else { &[0; LAMBDA] },
+                    if ts_prev[1] { &s_cw } else { &[0; LAMBDA] },
                 ]),
-            ]);
-            ts.push([
-                [t0l, t0r][keep] ^ (ts[i - 1][0] & [tl_cw, tr_cw][keep]),
-                [t1l, t1r][keep] ^ (ts[i - 1][1] & [tl_cw, tr_cw][keep]),
-            ]);
+            ];
+            ts_prev = [
+                [t0l, t0r][keep] ^ (ts_prev[0] & [tl_cw, tr_cw][keep]),
+                [t1l, t1r][keep] ^ (ts_prev[1] & [tl_cw, tr_cw][keep]),
+            ];
         }
-        assert_eq!((ss.len(), ts.len(), cws.len()), (n + 1, n + 1, n));
-        let cw_np1 = (f.beta.clone() + Into::<G>::into(ss[n][0]).add_inverse() + ss[n][1].into())
-            .add_inverse_if(ts[n][1]);
+        let cw_np1 =
+            (f.beta.clone() + Into::<G>::into(ss_prev[0]).add_inverse() + ss_prev[1].into())
+                .add_inverse_if(ts_prev[1]);
         Share {
             s0s: vec![s0s[0].to_owned(), s0s[1].to_owned()],
             cws,
