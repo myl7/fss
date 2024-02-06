@@ -16,6 +16,7 @@ cargo add fss-rs
 
 By default the embedded PRG and multi-threading are included.
 You can disable the default feature to select by yourself.
+**If you are on ARM machines**, see the [_Performance_](#performance) section for hardware acceleration.
 
 Then construct a PRG implementing the corresponding `Prg` trait, and construct an impl `DcfImpl` or `DpfImpl` to use the PRG.
 Check the doc comment for the meanings of the generic parameters.
@@ -71,6 +72,40 @@ We plan to implement it in the future, but no guarantee can be made so far.
 - DPF: Elette Boyle, Niv Gilboa, and Yuval Ishai. "[Function Secret Sharing: Improvements and Extensions](https://eprint.iacr.org/2018/707)." In _CCS_. 2016.
 - Fast PRG: Leo de Castro and Anitgoni Polychroniadou. "[Lightweight, Maliciously Secure Verifiable Function Secret Sharing](https://eprint.iacr.org/2021/580)." In _EUROCRYPT_. 2022.
 - Fast PRG: Frank Wang, Catherine Yun, Shafi Goldwasser, Vinod Vaikuntanathan, and Matei Zaharia. "[Splinter: Practical Private Queries on Public Data](https://www.usenix.org/conference/nsdi17/technical-sessions/presentation/wang-frank)." In _NDSI_. 2017.
+
+## Performance
+
+The hot path of the project is PRG and xor operations.
+We use [Rust std SIMD] for xor operations and the [aes crate of RustCrypto] for PRG.
+
+[Rust std SIMD]: https://doc.rust-lang.org/std/simd/index.html
+[aes crate of RustCrypto]: https://crates.io/crates/aes
+
+For PRG, enabling archtecture-specified CPU intrinsics can largely boost the performance.
+The aes crate by default performs runtime detection of CPU intrinsics and uses them if available.
+
+For x86/x86_64 (`i686`/`x86_64` in targets), AES-NI is used if available, which works out-of-the-box.
+
+For ARMv8 (`aarch64` in targets), while ARMv8 Cryptography Extensions is supported, to use it,
+in addition to the above, you need to set some flags to enable it.
+See the [doc of the aes crate] for details
+We also quote the section here:
+
+[doc of the aes crate]: https://docs.rs/aes/latest/aes/
+
+> From <https://docs.rs/aes/0.8.3/aes/#armv8-intrinsics-rust-161>
+>
+> ## ARMv8 intrinsics (Rust 1.61+)
+>
+> On `aarch64` targets including `aarch64-apple-darwin` (Apple M1) and Linux
+> targets such as `aarch64-unknown-linux-gnu` and `aarch64-unknown-linux-musl`,
+> support for using AES intrinsics provided by the ARMv8 Cryptography Extensions
+> is available when using Rust 1.61 or above, and can be enabled using the
+> `aes_armv8` configuration flag.
+>
+> On Linux and macOS, when the `aes_armv8` flag is enabled support for AES
+> intrinsics is autodetected at runtime. On other platforms the `aes`
+> target feature must be enabled via RUSTFLAGS.
 
 ## Benchmark
 
