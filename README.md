@@ -62,9 +62,10 @@ let mut y = ByteGroup::zero();
 dcf.eval(false, &k, &[&x], &mut [&mut y]);
 ```
 
-Full domain evaluation has not been implemented yet.
-Use the current batch evaluation consumes near double time than the optimized full domain evaluation.
-We plan to implement it in the future, but no guarantee can be made so far.
+For full domain evaluation, use `full_eval` instead.
+While similar to `eval`, `full_eval` does not accept a vector of `x`, and instead expect a vector of `y` whose length is `2 ** (N * 8)` to store all evaluated `y`.
+
+More examples are available as benchmarks in the [benches dir][./benches]
 
 ## References
 
