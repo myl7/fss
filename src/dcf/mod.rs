@@ -300,9 +300,9 @@ pub enum BoundState {
 mod tests {
     use rand::prelude::*;
 
+    use super::prg::Aes256HirosePrg;
     use super::*;
     use crate::group::byte::ByteGroup;
-    use crate::prg::Aes256HirosePrgBytes;
 
     const KEYS: &[&[u8; 32]] = &[
         b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d",
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_dcf_gen_then_eval() {
-        let prg = Aes256HirosePrgBytes::new(KEYS);
+        let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
         let dcf = DcfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_dcf_gen_gt_beta_then_eval() {
-        let prg = Aes256HirosePrgBytes::new(KEYS);
+        let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
         let dcf = DcfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_dcf_gen_then_eval_not_zeros() {
-        let prg = Aes256HirosePrgBytes::new(KEYS);
+        let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
         let dcf = DcfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn test_dcf_full_domain_eval() {
         let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
-        let prg = Aes256HirosePrgBytes::new(KEYS);
+        let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
         let dcf = DcfImpl::<2, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = CmpFn {

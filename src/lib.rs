@@ -12,9 +12,6 @@ use group::Group;
 pub mod dcf;
 pub mod dpf;
 pub mod group;
-pub mod owcf;
-#[cfg(feature = "prg")]
-pub mod prg;
 pub mod utils;
 
 /// Point function.
@@ -44,19 +41,6 @@ macro_rules! decl_prg_trait {
     };
 }
 pub(crate) use decl_prg_trait;
-
-/// Pseudorandom generator to generate bytes
-///
-/// The output and input sizes are related with the sizes set by users.
-/// They should be checked by the implementation.
-///
-/// Requires `Sync` for multi-threading, which should be still easy for even single-threaded
-///
-/// NOTICE: The trait with the impls still has performance issues.
-/// Use [`crate::dpf::prg`] or [`crate::dcf::prg`] instead.
-pub trait PrgBytes: Sync {
-    fn gen(&self, buf: &mut [u8], src: &[u8]);
-}
 
 /// `Cw`. Correclation word.
 #[derive(Clone)]

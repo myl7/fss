@@ -10,7 +10,6 @@ use bitvec::prelude::*;
 
 use super::Prg;
 use crate::utils::{xor, xor_inplace};
-use crate::PrgBytes;
 
 /// Hirose double-block-length one-way compression function with AES256 and precreated keys.
 /// Integrated impl of [`Prg`] with a good performance.
@@ -107,29 +106,9 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes128MatyasMeyerOseas
     }
 }
 
-impl<const LAMBDA: usize, P> Prg<LAMBDA> for P
-where
-    P: PrgBytes,
-{
-    fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], bool); 2] {
-        let mut buf = vec![0; 2 * LAMBDA];
-        PrgBytes::gen(self, &mut buf, seed);
-        let mut iter = buf.into_iter().array_chunks::<LAMBDA>();
-        let mut sl = iter.next().unwrap();
-        let mut sr = iter.next().unwrap();
-        assert_eq!(iter.next(), None);
-        let tl = sl.view_bits::<Lsb0>()[0];
-        sl[LAMBDA - 1].view_bits_mut::<Lsb0>().set(0, false);
-        let tr = sr.view_bits::<Lsb0>()[0];
-        sr[LAMBDA - 1].view_bits_mut::<Lsb0>().set(0, false);
-        [(sl, tl), (sr, tr)]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prg::Aes256HirosePrgBytes;
 
     const KEYS: [&[u8; 32]; 1] =
         [b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d"];
@@ -139,16 +118,6 @@ mod tests {
     fn test_prg_gen_not_zeros() {
         let prg = Aes256HirosePrg::<16, 1>::new(KEYS);
         let out = prg.gen(SEED);
-        (0..2).for_each(|i| {
-            assert_ne!(out[i].0, [0; 16]);
-            assert_ne!(xor(&[&out[i].0, SEED]), [0; 16]);
-        });
-    }
-
-    #[test]
-    fn test_prg_bytes_gen_not_zeros() {
-        let prg = Aes256HirosePrgBytes::new(&KEYS.iter().map(|&k| k).collect::<Vec<_>>());
-        let out = Prg::gen(&prg, SEED);
         (0..2).for_each(|i| {
             assert_ne!(out[i].0, [0; 16]);
             assert_ne!(xor(&[&out[i].0, SEED]), [0; 16]);
