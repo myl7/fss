@@ -42,7 +42,7 @@ where
 
 /// `Into<[u8; LAMBDA]>` is not used in the crate.
 /// We include it here and impl it for all PRG embedded in the crate for user convenience.
-trait GroupEmbed<const LAMBDA: usize>
+pub trait GroupEmbed<const LAMBDA: usize>
 where
     Self: Group<LAMBDA> + Into<[u8; LAMBDA]>,
 {
