@@ -49,7 +49,7 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA
             (0..LAMBDA / 16).for_each(|j| {
                 let in_block0 = GenericArray::from_slice(&seed[j * 16..(j + 1) * 16]);
                 let in_block1 = GenericArray::from_slice(&seed_p[j * 16..(j + 1) * 16]);
-                self.ciphers[i * 16 + j]
+                self.ciphers[i * (LAMBDA / 16) + j]
                     .encrypt_blocks_b2b(&[*in_block0, *in_block1], &mut out_blocks)
                     .unwrap();
                 result_buf0[i][j * 16..(j + 1) * 16].copy_from_slice(out_blocks[0].as_ref());
