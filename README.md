@@ -124,6 +124,11 @@ Notice that we do not close all other programs as many as possible to reduce sch
 [AMD Ryzen 7 5800H with Radeon Graphics]: https://www.amd.com/en/products/apu/amd-ryzen-7-5800h
 [rayon]: https://github.com/rayon-rs/rayon
 
+## Deprecation
+
+`crate::dcf::prg::Aes256HirosePrg` (enabled by default by the `prg` feature, and only this one) has wrong implementation.
+It is fixed in version 0.4.3 of crate fss-rs, versions 0.5.1 and 0.6.2 of crate dcf, and version 0.5.1 of crate dpf-fss.
+
 ## License
 
 Copyright (C) myl7
