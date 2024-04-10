@@ -127,7 +127,7 @@ Notice that we do not close all other programs as many as possible to reduce sch
 ## Deprecation
 
 `crate::dcf::prg::Aes256HirosePrg` (enabled by default by the `prg` feature, and only this one) has wrong implementation.
-It is fixed in version 0.4.3 of crate fss-rs, versions 0.5.1 and 0.6.2 of crate dcf, and version 0.5.1 of crate dpf-fss.
+It is fixed in version 0.4.3 of crate fss-rs, versions 0.5.2 and 0.6.3 of crate dcf, and version 0.5.2 of crate dpf-fss (since it depends on dcf).
 
 ## License
 
