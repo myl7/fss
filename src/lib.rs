@@ -18,14 +18,14 @@ pub mod utils;
 /// Despite the name, it only ships an element of the domain and an element of the range.
 /// The actual meaning of the 2 elements is determined by the context.
 ///
-/// - `N` is the **byte** size of the domain
-/// - `LAMBDA` here is used as the **byte** size of the range, unlike the one in the paper
-pub struct PointFn<const N: usize, const LAMBDA: usize, G>
+/// - `DOM_SZ` is the **byte** length of the size of the domain
+/// - `LAMBDA` here is used as the **byte** length of the size of the range, unlike the one in the paper
+pub struct PointFn<const DOM_SZ: usize, const LAMBDA: usize, G>
 where
     G: Group<LAMBDA>,
 {
     /// `$\alpha$`, or say `x` in `y = f(x)`
-    pub alpha: [u8; N],
+    pub alpha: [u8; DOM_SZ],
     /// `$\beta$`, or say `y` in `y = f(x)`
     pub beta: G,
 }

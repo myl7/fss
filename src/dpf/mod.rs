@@ -19,16 +19,16 @@ pub mod prg;
 ///
 /// `PointFn` used here means `$f(x) = \beta$` iff. `$x = \alpha$`, otherwise `$f(x) = 0$`.
 ///
-/// See [`PointFn`] for `N` and `LAMBDA`.
-pub trait Dpf<const N: usize, const LAMBDA: usize, G>
+/// See [`PointFn`] for `DOM_SZ` and `LAMBDA`.
+pub trait Dpf<const DOM_SZ: usize, const LAMBDA: usize, G>
 where
     G: Group<LAMBDA>,
 {
     /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
-    fn gen(&self, f: &PointFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G>;
+    fn gen(&self, f: &PointFn<DOM_SZ, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
-    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]);
+    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G]);
 
     /// Full domain eval.
     /// See [`Dpf::eval`] for `b`.
@@ -41,14 +41,14 @@ decl_prg_trait!(([u8; LAMBDA], bool));
 /// [`Dpf`] impl
 ///
 /// `$\alpha$` itself is not included, which means `$f(\alpha)$ = 0`.
-pub struct DpfImpl<const N: usize, const LAMBDA: usize, P>
+pub struct DpfImpl<const DOM_SZ: usize, const LAMBDA: usize, P>
 where
     P: Prg<LAMBDA>,
 {
     prg: P,
 }
 
-impl<const N: usize, const LAMBDA: usize, P> DpfImpl<N, LAMBDA, P>
+impl<const DOM_SZ: usize, const LAMBDA: usize, P> DpfImpl<DOM_SZ, LAMBDA, P>
 where
     P: Prg<LAMBDA>,
 {
@@ -60,14 +60,15 @@ where
 const IDX_L: usize = 0;
 const IDX_R: usize = 1;
 
-impl<const N: usize, const LAMBDA: usize, P, G> Dpf<N, LAMBDA, G> for DpfImpl<N, LAMBDA, P>
+impl<const DOM_SZ: usize, const LAMBDA: usize, P, G> Dpf<DOM_SZ, LAMBDA, G>
+    for DpfImpl<DOM_SZ, LAMBDA, P>
 where
     P: Prg<LAMBDA>,
     G: Group<LAMBDA>,
 {
-    fn gen(&self, f: &PointFn<N, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
+    fn gen(&self, f: &PointFn<DOM_SZ, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
         // The bit size of `$\alpha$`
-        let n = 8 * N;
+        let n = 8 * DOM_SZ;
         // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`
         let mut ss_prev = [s0s[0].to_owned(), s0s[1].to_owned()];
         // Set `$t^{(0)}_0$` and `$t^{(0)}_1$`
@@ -118,7 +119,7 @@ where
         }
     }
 
-    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G]) {
+    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G]) {
         #[cfg(feature = "multi-thread")]
         self.eval_mt(b, k, xs, ys);
         #[cfg(not(feature = "multi-thread"))]
@@ -127,7 +128,7 @@ where
 
     fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]) {
         let n = k.cws.len();
-        assert_eq!(n, N * 8);
+        assert_eq!(n, DOM_SZ * 8);
 
         let s = k.s0s[0];
         let t = b;
@@ -135,13 +136,13 @@ where
     }
 }
 
-impl<const N: usize, const LAMBDA: usize, P> DpfImpl<N, LAMBDA, P>
+impl<const DOM_SZ: usize, const LAMBDA: usize, P> DpfImpl<DOM_SZ, LAMBDA, P>
 where
     P: Prg<LAMBDA>,
 {
     /// Eval with single-threading.
     /// See [`Dpf::eval`].
-    pub fn eval_st<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G])
+    pub fn eval_st<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G])
     where
         G: Group<LAMBDA>,
     {
@@ -153,7 +154,7 @@ where
     #[cfg(feature = "multi-thread")]
     /// Eval with multi-threading.
     /// See [`Dpf::eval`].
-    pub fn eval_mt<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; N]], ys: &mut [&mut G])
+    pub fn eval_mt<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G])
     where
         G: Group<LAMBDA>,
     {
@@ -172,7 +173,7 @@ where
     ) where
         G: Group<LAMBDA>,
     {
-        assert_eq!(ys.len(), 1 << (N * 8 - layer_i));
+        assert_eq!(ys.len(), 1 << (DOM_SZ * 8 - layer_i));
         if ys.len() == 1 {
             *ys[0] = (Into::<G>::into(s) + if t { k.cw_np1.clone() } else { G::zero() })
                 .add_inverse_if(b);
@@ -199,12 +200,12 @@ where
         }
     }
 
-    pub fn eval_point<G>(&self, b: bool, k: &Share<LAMBDA, G>, x: &[u8; N], y: &mut G)
+    pub fn eval_point<G>(&self, b: bool, k: &Share<LAMBDA, G>, x: &[u8; DOM_SZ], y: &mut G)
     where
         G: Group<LAMBDA>,
     {
         let n = k.cws.len();
-        assert_eq!(n, N * 8);
+        assert_eq!(n, DOM_SZ * 8);
         let v = y;
 
         let mut s_prev = k.s0s[0];

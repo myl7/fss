@@ -14,16 +14,16 @@ use crate::utils::{xor, xor_inplace};
 /// Hirose double-block-length one-way compression function with AES256 and precreated keys.
 /// Integrated impl of [`Prg`] with a good performance.
 ///
-/// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `N = 2 * (LAMBDA / 16)`
+/// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `CIPHER_N = 2 * (LAMBDA / 16)`
 ///
 /// It actually works for LAMBDA * 8 - 1 bits other than LAMBDA bytes.
 /// The last bit of the output `[u8; LAMBDA]` is always set to 0.
-pub struct Aes256HirosePrg<const LAMBDA: usize, const N: usize> {
-    ciphers: [Aes256; N],
+pub struct Aes256HirosePrg<const LAMBDA: usize, const CIPHER_N: usize> {
+    ciphers: [Aes256; CIPHER_N],
 }
 
-impl<const LAMBDA: usize, const N: usize> Aes256HirosePrg<LAMBDA, N> {
-    pub fn new(keys: [&[u8; 32]; N]) -> Self {
+impl<const LAMBDA: usize, const CIPHER_N: usize> Aes256HirosePrg<LAMBDA, CIPHER_N> {
+    pub fn new(keys: [&[u8; 32]; CIPHER_N]) -> Self {
         let ciphers = std::array::from_fn(|i| {
             let key_block = GenericArray::from_slice(keys[i]);
             Aes256::new(key_block)
@@ -37,7 +37,7 @@ impl<const LAMBDA: usize, const N: usize> Aes256HirosePrg<LAMBDA, N> {
     }
 }
 
-impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA, N> {
+impl<const LAMBDA: usize, const CIPHER_N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA, CIPHER_N> {
     fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2] {
         // `$p(G_{i - 1})$`
         let seed_p = xor(&[seed, &Self::c()]);
@@ -77,16 +77,16 @@ impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes256HirosePrg<LAMBDA
 /// Matyas-Meyer-Oseas single-block-length one-way compression function with AES128 and precreated keys.
 /// Integrated impl of [`Prg`].
 ///
-/// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `N = 4 * (LAMBDA / 16)`
+/// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `CIPHER_N = 4 * (LAMBDA / 16)`
 ///
 /// It actually works for LAMBDA * 8 - 1 bits other than LAMBDA bytes.
 /// The last bit of the output `[u8; LAMBDA]` is always set to 0.
-pub struct Aes128MatyasMeyerOseasPrg<const LAMBDA: usize, const N: usize> {
-    ciphers: [Aes128; N],
+pub struct Aes128MatyasMeyerOseasPrg<const LAMBDA: usize, const CIPHER_N: usize> {
+    ciphers: [Aes128; CIPHER_N],
 }
 
-impl<const LAMBDA: usize, const N: usize> Aes128MatyasMeyerOseasPrg<LAMBDA, N> {
-    pub fn new(keys: [&[u8; 16]; N]) -> Self {
+impl<const LAMBDA: usize, const CIPHER_N: usize> Aes128MatyasMeyerOseasPrg<LAMBDA, CIPHER_N> {
+    pub fn new(keys: [&[u8; 16]; CIPHER_N]) -> Self {
         let ciphers = std::array::from_fn(|i| {
             let key_block = GenericArray::from_slice(keys[i]);
             Aes128::new(key_block)
@@ -95,7 +95,9 @@ impl<const LAMBDA: usize, const N: usize> Aes128MatyasMeyerOseasPrg<LAMBDA, N> {
     }
 }
 
-impl<const LAMBDA: usize, const N: usize> Prg<LAMBDA> for Aes128MatyasMeyerOseasPrg<LAMBDA, N> {
+impl<const LAMBDA: usize, const CIPHER_N: usize> Prg<LAMBDA>
+    for Aes128MatyasMeyerOseasPrg<LAMBDA, CIPHER_N>
+{
     fn gen(&self, seed: &[u8; LAMBDA]) -> [([u8; LAMBDA], [u8; LAMBDA], bool); 2] {
         let mut result_buf0 = [[0; LAMBDA]; 2];
         let mut result_buf1 = [[0; LAMBDA]; 2];
