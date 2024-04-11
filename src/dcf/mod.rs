@@ -72,6 +72,7 @@ where
     P: Prg<LAMBDA>,
 {
     prg: P,
+    filter_bitn: usize,
 }
 
 impl<const DOM_SZ: usize, const LAMBDA: usize, P> DcfImpl<DOM_SZ, LAMBDA, P>
@@ -79,7 +80,16 @@ where
     P: Prg<LAMBDA>,
 {
     pub fn new(prg: P) -> Self {
-        Self { prg }
+        Self {
+            prg,
+            filter_bitn: 8 * DOM_SZ,
+        }
+    }
+
+    // TODO
+    pub fn new_with_filter(prg: P, filter_bitn: usize) -> Self {
+        assert!(filter_bitn <= 8 * DOM_SZ && filter_bitn > 1);
+        Self { prg, filter_bitn }
     }
 }
 
@@ -94,7 +104,7 @@ where
 {
     fn gen(&self, f: &CmpFn<DOM_SZ, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
         // The bit size of `$\alpha$`
-        let n = 8 * DOM_SZ;
+        let n = self.filter_bitn;
         let mut v_alpha = G::zero();
         // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`
         let mut ss_prev = [*s0s[0], *s0s[1]];
@@ -175,7 +185,7 @@ where
 
     fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]) {
         let n = k.cws.len();
-        assert_eq!(n, DOM_SZ * 8);
+        assert_eq!(n, self.filter_bitn);
 
         let s = k.s0s[0];
         let v = G::zero();
@@ -221,7 +231,7 @@ where
     ) where
         G: Group<LAMBDA>,
     {
-        assert_eq!(ys.len(), 1 << (DOM_SZ * 8 - layer_i));
+        assert_eq!(ys.len(), 1 << (self.filter_bitn - layer_i));
         if ys.len() == 1 {
             *ys[0] =
                 v + (G::from(s) + if t { k.cw_np1.clone() } else { G::zero() }).add_inverse_if(b);
@@ -257,7 +267,7 @@ where
         G: Group<LAMBDA>,
     {
         let n = k.cws.len();
-        assert_eq!(n, DOM_SZ * 8);
+        assert_eq!(n, self.filter_bitn);
         let v = y;
 
         let mut s_prev = k.s0s[0];
@@ -383,6 +393,38 @@ mod tests {
     }
 
     #[test]
+    fn test_dcf_gen_then_eval_with_filter() {
+        let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
+        let dcf = DcfImpl::<16, 16, _>::new_with_filter(prg, 127);
+        let s0s: [[u8; 16]; 2] = thread_rng().gen();
+        let f = CmpFn {
+            alpha: ALPHAS[2].to_owned(),
+            beta: BETA.clone().into(),
+            bound: BoundState::GtBeta,
+        };
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
+        let mut k0 = k.clone();
+        k0.s0s = vec![k0.s0s[0]];
+        let mut k1 = k.clone();
+        k1.s0s = vec![k1.s0s[1]];
+        let mut ys0 = vec![ByteGroup::zero(); ALPHAS.len()];
+        let mut ys1 = vec![ByteGroup::zero(); ALPHAS.len()];
+        dcf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dcf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
+        ys0.iter_mut()
+            .zip(ys1.iter())
+            .for_each(|(y0, y1)| *y0 += y1.clone());
+        ys1 = vec![
+            ByteGroup::zero(),
+            ByteGroup::zero(),
+            ByteGroup::zero(),
+            ByteGroup::zero(),
+            BETA.clone().into(),
+        ];
+        assert_eq!(ys0, ys1);
+    }
+
+    #[test]
     fn test_dcf_gen_then_eval_not_zeros() {
         let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
         let dcf = DcfImpl::<16, 16, _>::new(prg);
@@ -406,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dcf_full_domain_eval() {
+    fn test_dcf_full_eval() {
         let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
         let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
         let dcf = DcfImpl::<2, 16, _>::new(prg);
@@ -424,6 +466,34 @@ mod tests {
         let xs0: Vec<_> = xs.iter().collect();
         let mut ys0 = vec![ByteGroup::zero(); 1 << (8 * 2)];
         let mut ys0_full = vec![ByteGroup::zero(); 1 << (8 * 2)];
+        dcf.eval(false, &k0, &xs0, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dcf.full_eval(false, &k0, &mut ys0_full.iter_mut().collect::<Vec<_>>());
+        for (y0, y0_full) in ys0.iter().zip(ys0_full.iter()) {
+            assert_eq!(y0, y0_full);
+        }
+    }
+
+    #[test]
+    fn test_dcf_full_eval_with_filter() {
+        let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
+        let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| KEYS[i]));
+        let dcf = DcfImpl::<2, 16, _>::new_with_filter(prg, 15);
+        let s0s: [[u8; 16]; 2] = thread_rng().gen();
+        let f = CmpFn {
+            alpha: x,
+            beta: BETA.clone().into(),
+            bound: BoundState::LtBeta,
+        };
+        let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
+        let mut k0 = k.clone();
+        k0.s0s = vec![k0.s0s[0]];
+        let xs: Vec<_> = (0u16..=u16::MAX >> 1)
+            .map(|i| (i << 1).to_be_bytes())
+            .collect();
+        assert_eq!(xs.len(), 1 << 15);
+        let xs0: Vec<_> = xs.iter().collect();
+        let mut ys0 = vec![ByteGroup::zero(); 1 << 15];
+        let mut ys0_full = vec![ByteGroup::zero(); 1 << 15];
         dcf.eval(false, &k0, &xs0, &mut ys0.iter_mut().collect::<Vec<_>>());
         dcf.full_eval(false, &k0, &mut ys0_full.iter_mut().collect::<Vec<_>>());
         for (y0, y0_full) in ys0.iter().zip(ys0_full.iter()) {
