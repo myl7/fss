@@ -35,29 +35,27 @@ fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER
 
     let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
 
-    // TODO: Bit mask and 1 bit drop
-    let mut ys = vec![ByteGroup::zero(); 2usize.pow(DOM_SZ as u32 * 8 - 1)];
-    let mut ys_iter: Vec<_> = ys.iter_mut().collect();
+    let mut x = [0; DOM_SZ];
+    thread_rng().fill_bytes(&mut x);
+    let mut y = ByteGroup::zero();
 
     c.bench_with_input(
-        BenchmarkId::new(
-            "dcf full_eval",
-            format!("{}b -> {}B", DOM_SZ * 8 - 1, LAMBDA),
-        ),
+        BenchmarkId::new("dcf eval", format!("{}b -> {}B", DOM_SZ * 8 - 1, LAMBDA)),
         &(DOM_SZ, LAMBDA),
         |b, &_| {
             b.iter(|| {
-                dcf.full_eval(false, &k, &mut ys_iter);
+                dcf.eval(false, &k, &[&x], &mut [&mut y]);
             });
         },
     );
 }
 
-// TODO: Bit mask
 fn bench(c: &mut Criterion) {
-    from_domain_range_size::<2, 16, 4>(c);
-    // from_domain_range_size::<2, 16, 4>(c); // 18
-    // from_domain_range_size::<2, 16, 4>(c); // 20
+    from_domain_range_size::<16, 16, 4>(c);
+    from_domain_range_size::<24, 16, 4>(c);
+    from_domain_range_size::<32, 16, 4>(c);
+    from_domain_range_size::<16, 256, 64>(c);
+    from_domain_range_size::<16, 16384, 4096>(c);
 }
 
 criterion_group!(benches, bench);

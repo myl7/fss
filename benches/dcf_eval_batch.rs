@@ -9,6 +9,8 @@ use fss_rs::dcf::{BoundState, CmpFn, Dcf, DcfImpl};
 use fss_rs::group::byte::ByteGroup;
 use fss_rs::group::Group;
 
+const POINT_NUM: usize = 10000;
+
 fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER_N: usize>(
     c: &mut Criterion,
 ) {
@@ -35,29 +37,31 @@ fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER
 
     let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
 
-    // TODO: Bit mask and 1 bit drop
-    let mut ys = vec![ByteGroup::zero(); 2usize.pow(DOM_SZ as u32 * 8 - 1)];
+    let mut xs = vec![[0; DOM_SZ]; POINT_NUM];
+    xs.iter_mut().for_each(|x| thread_rng().fill_bytes(x));
+    let xs_iter: Vec<_> = xs.iter().collect();
+    let mut ys = vec![ByteGroup::zero(); POINT_NUM];
     let mut ys_iter: Vec<_> = ys.iter_mut().collect();
 
     c.bench_with_input(
         BenchmarkId::new(
-            "dcf full_eval",
-            format!("{}b -> {}B", DOM_SZ * 8 - 1, LAMBDA),
+            "dcf eval batch",
+            format!("{} points, {}b -> {}B", POINT_NUM, DOM_SZ * 8 - 1, LAMBDA),
         ),
-        &(DOM_SZ, LAMBDA),
+        &(POINT_NUM, DOM_SZ, LAMBDA),
         |b, &_| {
             b.iter(|| {
-                dcf.full_eval(false, &k, &mut ys_iter);
+                dcf.eval(false, &k, &xs_iter, &mut ys_iter);
             });
         },
     );
 }
 
-// TODO: Bit mask
 fn bench(c: &mut Criterion) {
-    from_domain_range_size::<2, 16, 4>(c);
-    // from_domain_range_size::<2, 16, 4>(c); // 18
-    // from_domain_range_size::<2, 16, 4>(c); // 20
+    from_domain_range_size::<16, 16, 4>(c);
+    from_domain_range_size::<24, 16, 4>(c);
+    from_domain_range_size::<32, 16, 4>(c);
+    from_domain_range_size::<16, 256, 64>(c);
 }
 
 criterion_group!(benches, bench);
