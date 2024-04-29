@@ -86,7 +86,6 @@ where
         }
     }
 
-    // TODO
     pub fn new_with_filter(prg: P, filter_bitn: usize) -> Self {
         assert!(filter_bitn <= 8 * DOM_SZ && filter_bitn > 1);
         Self { prg, filter_bitn }

@@ -50,7 +50,6 @@ fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER
     );
 }
 
-// TODO: Bit mask
 fn bench(c: &mut Criterion) {
     from_domain_range_size::<2, 16, 4>(c, 16);
     from_domain_range_size::<3, 16, 4>(c, 18);

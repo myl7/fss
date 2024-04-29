@@ -32,7 +32,6 @@ fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER
 
     let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
 
-    // TODO: Bit mask and 1 bit drop
     let mut ys = vec![ByteGroup::zero(); 1 << filter_bitn];
     let mut ys_iter: Vec<_> = ys.iter_mut().collect();
 
@@ -47,7 +46,6 @@ fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER
     );
 }
 
-// TODO: Bit mask
 fn bench(c: &mut Criterion) {
     from_domain_range_size::<2, 16, 4>(c, 16);
     from_domain_range_size::<3, 16, 4>(c, 18);
