@@ -20,6 +20,7 @@ You can disable the default feature to select by yourself.
 
 Then construct a PRG implementing the corresponding `Prg` trait, and construct an impl `DcfImpl` or `DpfImpl` to use the PRG.
 Check the doc comment for the meanings of the generic parameters.
+If you want to set the *bit* size of the domain, check `new_with_filter` method.
 
 ```rust
 use rand::prelude::*;
