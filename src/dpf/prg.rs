@@ -16,7 +16,7 @@ use crate::utils::{xor, xor_inplace};
 ///
 /// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `CIPHER_N = LAMBDA / 16`
 ///
-/// It actually works for LAMBDA * 4 - 1 bits other than LAMBDA bytes.
+/// It actually works for LAMBDA * 8 - 1 bits other than LAMBDA bytes.
 /// The last bit of the output `[u8; LAMBDA]` is always set to 0.
 pub struct Aes256HirosePrg<const LAMBDA: usize, const CIPHER_N: usize> {
     ciphers: [Aes256; CIPHER_N],
@@ -68,7 +68,7 @@ impl<const LAMBDA: usize, const CIPHER_N: usize> Prg<LAMBDA> for Aes256HirosePrg
 ///
 /// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `LAMBDA % 16 = 0` and `CIPHER_N = 2 * (LAMBDA / 16)`
 ///
-/// It actually works for LAMBDA * 4 - 1 bits other than LAMBDA bytes.
+/// It actually works for LAMBDA * 8 - 1 bits other than LAMBDA bytes.
 /// The last bit of the output `[u8; LAMBDA]` is always set to 0.
 pub struct Aes128MatyasMeyerOseasPrg<const LAMBDA: usize, const CIPHER_N: usize> {
     ciphers: [Aes128; CIPHER_N],
