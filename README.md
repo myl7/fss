@@ -93,7 +93,7 @@ For x86/x86_64 (`i686`/`x86_64` in targets), AES-NI is used if available, which 
 
 For ARMv8 (`aarch64` in targets), while ARMv8 Cryptography Extensions is supported, to use it,
 in addition to the above, you need to set some flags to enable it.
-See the [doc of the aes crate] for details
+See the [doc of the aes crate] for details.
 We also quote the section here:
 
 [doc of the aes crate]: https://docs.rs/aes/latest/aes/
