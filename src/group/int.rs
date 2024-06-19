@@ -46,7 +46,7 @@ macro_rules! decl_int_group {
 
         impl<const LAMBDA: usize> From<[u8; LAMBDA]> for $t_impl {
             fn from(value: [u8; LAMBDA]) -> Self {
-                if cfg!(not(feature = "group-int-be")) {
+                if cfg!(not(feature = "int-be")) {
                     $t_impl(<$t>::from_le_bytes(
                         (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
                     ))

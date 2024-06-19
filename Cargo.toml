@@ -28,7 +28,7 @@ default = ["full"]
 full = ["prg", "multi-thread"]
 prg = ["aes"]
 multi-thread = ["rayon"]
-group-int-be = []
+int-be = []
 
 [dependencies]
 bitvec = "1.0.1"
