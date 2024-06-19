@@ -20,16 +20,19 @@ You can disable the default feature to select by yourself.
 
 Then construct a PRG implementing the corresponding `Prg` trait, and construct an impl `DcfImpl` or `DpfImpl` to use the PRG.
 Check the doc comment for the meanings of the generic parameters.
-If you want to set the *bit* size of the domain, check `new_with_filter` method.
+If you want to set the **bit** length of the **domain** (input domain, instead of the range that is the output domain), check `new_with_filter` method.
 
 ```rust
 use rand::prelude::*;
 
-use fss_rs::dcf::prg::Aes256HirosePrg;
+// Matyas-Meyer-Oseas (via AES128) provides 128-bit security and should be enough.
+// Hirose (via AES256) still only provides 128-bit security because the output is not chained.
+// But Hirose can be helpful is you are forced to choose AES256.
+use fss_rs::dcf::prg::Aes128MatyasMeyerOseasPrg;
 use fss_rs::dcf::{Dcf, DcfImpl};
 
 let keys: [[u8; 32]; 2] = thread_rng().gen();
-let prg = Aes256HirosePrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+let prg = Aes128MatyasMeyerOseasPrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
 // DCF for example
 let dcf = DcfImpl::<16, 16, _>::new(prg);
 ```
@@ -64,7 +67,7 @@ dcf.eval(false, &k, &[&x], &mut [&mut y]);
 ```
 
 For full domain evaluation, use `full_eval` instead.
-While similar to `eval`, `full_eval` does not accept a vector of `x`, and instead expect a vector of `y` whose length is `2 ** (N * 8)` to store all evaluated `y`.
+While similar to `eval`, `full_eval` does not accept a vector of `x`, and instead expect a vector of `y` whose length is `2 ** (DOM_SZ * 8)` to store all evaluated `y`.
 
 More examples are available as benchmarks in the [benches dir](./benches)
 
