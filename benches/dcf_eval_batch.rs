@@ -46,7 +46,7 @@ fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER
     c.bench_with_input(
         BenchmarkId::new(
             "dcf eval batch",
-            format!("{} points, {}b -> {}B", POINT_NUM, DOM_SZ * 8 - 1, LAMBDA),
+            format!("{} points, {}b -> {}B", POINT_NUM, DOM_SZ * 8, LAMBDA),
         ),
         &(POINT_NUM, DOM_SZ, LAMBDA),
         |b, &_| {

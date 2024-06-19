@@ -33,7 +33,7 @@ fn from_domain_range_size<const DOM_SZ: usize, const LAMBDA: usize, const CIPHER
     };
 
     c.bench_with_input(
-        BenchmarkId::new("dcf gen", format!("{}b -> {}B", DOM_SZ * 8 - 1, LAMBDA)),
+        BenchmarkId::new("dcf gen", format!("{}b -> {}B", DOM_SZ * 8, LAMBDA)),
         &(DOM_SZ, LAMBDA),
         |b, &_| {
             b.iter(|| {
