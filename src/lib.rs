@@ -21,7 +21,9 @@ pub mod utils;
 /// The actual meaning of the 2 elements is determined by the context.
 ///
 /// - `IN_BLEN` is the **byte** length of the size of the input domain.
-/// - `OUT_BLEN` is the **byte** length of the size of the output domain. `$\lambda$` (but the byte length).
+///   `$n$` or `$\lceil \log_2 |\mathbb{G}^{in}| \rceil$` (but the byte length).
+/// - `OUT_BLEN` is the **byte** length of the size of the output domain.
+///   `$\lambda$` or `$\lceil \log_2 |\mathbb{G}^{out}| \rceil$` (but the byte length).
 pub struct PointFn<const IN_BLEN: usize, const OUT_BLEN: usize, G>
 where
     G: Group<OUT_BLEN>,
