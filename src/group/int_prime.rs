@@ -1,5 +1,5 @@
-// Copyright (C) myl7
 // SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2023 Yulong Ming (myl7)
 
 //! Group of an integer which is a `$p$`-group.
 //! `MOD` as the `$p$` is a prime number as the cardinality of the group.

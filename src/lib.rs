@@ -1,5 +1,5 @@
-// Copyright (C) myl7
 // SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2023 Yulong Ming (myl7)
 
 //! Many variable names together with the LaTeX math expressions in the doc comment are from the paper _Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation_
 

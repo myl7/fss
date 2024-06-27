@@ -1,5 +1,5 @@
-// Copyright (C) myl7
 // SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2023 Yulong Ming (myl7)
 
 use std::simd::{u8x16, u8x32, u8x64};
 
