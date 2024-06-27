@@ -12,6 +12,8 @@ use group::Group;
 pub mod dcf;
 pub mod dpf;
 pub mod group;
+#[cfg(feature = "prg")]
+pub mod prg;
 pub mod utils;
 
 /// Point function.
@@ -30,18 +32,13 @@ where
     pub beta: G,
 }
 
-macro_rules! decl_prg_trait {
-    ($ret_elem:ty) => {
-        /// Pseudorandom generator.
-        ///
-        /// Requires `Sync` for multi-threading.
-        /// We still require it for single-threading since it should be still easy to be included.
-        pub trait Prg<const OUT_BLEN: usize>: Sync {
-            fn gen(&self, seed: &[u8; OUT_BLEN]) -> [$ret_elem; 2];
-        }
-    };
+/// Pseudorandom generator (PRG).
+///
+/// Requires `Sync` for multi-threading.
+/// We still require it for single-threading since it should be still easy to be included.
+pub trait Prg<const BLEN: usize, const BLEN_N: usize>: Sync {
+    fn gen(&self, seed: &[u8; BLEN]) -> [([[u8; BLEN]; BLEN_N], bool); 2];
 }
-pub(crate) use decl_prg_trait;
 
 /// `Cw`. Correclation word.
 #[derive(Clone)]

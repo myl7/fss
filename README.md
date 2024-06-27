@@ -28,11 +28,11 @@ use rand::prelude::*;
 // Matyas-Meyer-Oseas (via AES128) provides 128-bit security and should be enough.
 // Hirose (via AES256) still only provides 128-bit security because the output is not chained.
 // But Hirose can be helpful is you are forced to choose AES256.
-use fss_rs::dcf::prg::Aes128MatyasMeyerOseasPrg;
+use fss_rs::prg::Aes128MatyasMeyerOseasPrg;
 use fss_rs::dcf::{Dcf, DcfImpl};
 
 let keys: [[u8; 32]; 2] = thread_rng().gen();
-let prg = Aes128MatyasMeyerOseasPrg::<16, 2>::new(std::array::from_fn(|i| &keys[i]));
+let prg = Aes128MatyasMeyerOseasPrg::<16, 2, 2>::new(std::array::from_fn(|i| &keys[i]));
 // DCF for example
 let dcf = DcfImpl::<16, 16, _>::new(prg);
 ```

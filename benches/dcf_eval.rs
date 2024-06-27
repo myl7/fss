@@ -4,10 +4,10 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::prelude::*;
 
-use fss_rs::dcf::prg::Aes128MatyasMeyerOseasPrg;
 use fss_rs::dcf::{BoundState, CmpFn, Dcf, DcfImpl};
 use fss_rs::group::byte::ByteGroup;
 use fss_rs::group::Group;
+use fss_rs::prg::Aes128MatyasMeyerOseasPrg;
 
 fn from_domain_range_size<const IN_BLEN: usize, const OUT_BLEN: usize, const CIPHER_N: usize>(
     c: &mut Criterion,
@@ -16,7 +16,7 @@ fn from_domain_range_size<const IN_BLEN: usize, const OUT_BLEN: usize, const CIP
     keys.iter_mut().for_each(|k| thread_rng().fill_bytes(k));
     let keys_iter = std::array::from_fn(|i| &keys[i]);
 
-    let prg = Aes128MatyasMeyerOseasPrg::<OUT_BLEN, CIPHER_N>::new(keys_iter);
+    let prg = Aes128MatyasMeyerOseasPrg::<OUT_BLEN, 2, CIPHER_N>::new(keys_iter);
     let dcf = DcfImpl::<IN_BLEN, OUT_BLEN, _>::new(prg);
 
     let mut s0s = [[0; OUT_BLEN]; 2];

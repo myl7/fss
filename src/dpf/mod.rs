@@ -10,10 +10,7 @@ use rayon::prelude::*;
 use crate::group::Group;
 use crate::utils::{xor, xor_inplace};
 pub use crate::PointFn;
-use crate::{decl_prg_trait, Cw, Share};
-
-#[cfg(feature = "prg")]
-pub mod prg;
+use crate::{Cw, Prg, Share};
 
 /// Distributed point function API.
 ///
@@ -41,12 +38,10 @@ where
     fn full_eval(&self, b: bool, k: &Share<OUT_BLEN, G>, ys: &mut [&mut G]);
 }
 
-decl_prg_trait!(([u8; OUT_BLEN], bool));
-
 /// [`Dpf`] impl.
 pub struct DpfImpl<const IN_BLEN: usize, const OUT_BLEN: usize, P>
 where
-    P: Prg<OUT_BLEN>,
+    P: Prg<OUT_BLEN, 1>,
 {
     prg: P,
     filter_bitn: usize,
@@ -54,7 +49,7 @@ where
 
 impl<const IN_BLEN: usize, const OUT_BLEN: usize, P> DpfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<OUT_BLEN>,
+    P: Prg<OUT_BLEN, 1>,
 {
     pub fn new(prg: P) -> Self {
         Self {
@@ -75,7 +70,7 @@ const IDX_R: usize = 1;
 impl<const IN_BLEN: usize, const OUT_BLEN: usize, P, G> Dpf<IN_BLEN, OUT_BLEN, G>
     for DpfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<OUT_BLEN>,
+    P: Prg<OUT_BLEN, 1>,
     G: Group<OUT_BLEN>,
 {
     fn gen(
@@ -93,8 +88,8 @@ where
         for i in 0..n {
             // MSB is required since we index from high to low in arrays.
             let alpha_i = f.alpha.view_bits::<Msb0>()[i];
-            let [(s0l, t0l), (s0r, t0r)] = self.prg.gen(&ss_prev[0]);
-            let [(s1l, t1l), (s1r, t1r)] = self.prg.gen(&ss_prev[1]);
+            let [([s0l], t0l), ([s0r], t0r)] = self.prg.gen(&ss_prev[0]);
+            let [([s1l], t1l), ([s1r], t1r)] = self.prg.gen(&ss_prev[1]);
             let (keep, lose) = if alpha_i {
                 (IDX_R, IDX_L)
             } else {
@@ -154,7 +149,7 @@ where
 
 impl<const IN_BLEN: usize, const OUT_BLEN: usize, P> DpfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<OUT_BLEN>,
+    P: Prg<OUT_BLEN, 1>,
 {
     /// Eval with single-threading.
     /// See [`Dpf::eval`].
@@ -207,7 +202,7 @@ where
         }
 
         let cw = &k.cws[layer_i];
-        let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&s);
+        let [([mut sl], mut tl), ([mut sr], mut tr)] = self.prg.gen(&s);
         xor_inplace(&mut sl, &[if t { &cw.s } else { &[0; OUT_BLEN] }]);
         xor_inplace(&mut sr, &[if t { &cw.s } else { &[0; OUT_BLEN] }]);
         tl ^= t & cw.tl;
@@ -238,7 +233,7 @@ where
         let mut t_prev = b;
         for i in 0..n {
             let cw = &k.cws[i];
-            let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&s_prev);
+            let [([mut sl], mut tl), ([mut sr], mut tr)] = self.prg.gen(&s_prev);
             xor_inplace(&mut sl, &[if t_prev { &cw.s } else { &[0; OUT_BLEN] }]);
             xor_inplace(&mut sr, &[if t_prev { &cw.s } else { &[0; OUT_BLEN] }]);
             tl ^= t_prev & cw.tl;
@@ -260,9 +255,9 @@ where
 mod tests {
     use rand::prelude::*;
 
-    use super::prg::Aes256HirosePrg;
     use super::*;
     use crate::group::byte::ByteGroup;
+    use crate::prg::Aes256HirosePrg;
 
     const KEYS: &[&[u8; 32]] =
         &[b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d"];
@@ -277,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_dpf_gen_then_eval() {
-        let prg = Aes256HirosePrg::<16, 1>::new(std::array::from_fn(|i| KEYS[i]));
+        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
         let dpf = DpfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {
@@ -308,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_dpf_gen_then_eval_with_filter() {
-        let prg = Aes256HirosePrg::<16, 1>::new(std::array::from_fn(|i| KEYS[i]));
+        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
         let dpf = DpfImpl::<16, 16, _>::new_with_filter(prg, 127);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {
@@ -339,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_dpf_gen_then_eval_not_zeros() {
-        let prg = Aes256HirosePrg::<16, 1>::new(std::array::from_fn(|i| KEYS[i]));
+        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
         let dpf = DpfImpl::<16, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {
@@ -362,7 +357,7 @@ mod tests {
     #[test]
     fn test_dpf_full_eval() {
         let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
-        let prg = Aes256HirosePrg::<16, 1>::new(std::array::from_fn(|i| KEYS[i]));
+        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
         let dpf = DpfImpl::<2, 16, _>::new(prg);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {
@@ -387,7 +382,7 @@ mod tests {
     #[test]
     fn test_dpf_full_eval_with_filter() {
         let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
-        let prg = Aes256HirosePrg::<16, 1>::new(std::array::from_fn(|i| KEYS[i]));
+        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
         let dpf = DpfImpl::<2, 16, _>::new_with_filter(prg, 15);
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {
