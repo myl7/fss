@@ -5,7 +5,6 @@ set -euo pipefail
 # See https://bheisler.github.io/criterion.rs/book/faq.html#cargo-bench-gives-unrecognized-option-errors-for-valid-command-line-options
 # for the reason why the script is created.
 
-ulimit -s 16384 # For bench dpf_large_lambda after changing to use Matyas-Meyer-Oseas
 bench_dirs=(benches)
 bench_args=($(find $bench_dirs -type f -exec basename -s .rs {} \; | sed 's/^/--bench /'))
 cargo bench $bench_args $@

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2023 Yulong Ming (myl7)
 
-//! See [`Dcf`]
+//! See [`Dcf`].
 
 use bitvec::prelude::*;
 #[cfg(feature = "multi-thread")]
@@ -14,46 +14,48 @@ use crate::{decl_prg_trait, Cw, PointFn, Share};
 #[cfg(feature = "prg")]
 pub mod prg;
 
-/// Distributed comparison function API
+/// Distributed comparison function API.
 ///
-/// See [`CmpFn`] for `DOM_SZ` and `LAMBDA`.
-pub trait Dcf<const DOM_SZ: usize, const LAMBDA: usize, G>
+/// See [`CmpFn`] for `IN_BLEN` and `OUT_BLEN`.
+/// See [`DcfImpl`] for the implementation.
+pub trait Dcf<const IN_BLEN: usize, const OUT_BLEN: usize, G>
 where
-    G: Group<LAMBDA>,
+    G: Group<OUT_BLEN>,
 {
-    /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
-    fn gen(&self, f: &CmpFn<DOM_SZ, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G>;
+    /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled.
+    fn gen(&self, f: &CmpFn<IN_BLEN, OUT_BLEN, G>, s0s: [&[u8; OUT_BLEN]; 2])
+        -> Share<OUT_BLEN, G>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
-    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G]);
+    fn eval(&self, b: bool, k: &Share<OUT_BLEN, G>, xs: &[&[u8; IN_BLEN]], ys: &mut [&mut G]);
 
     /// Full domain eval.
     /// See [`Dcf::eval`] for `b`.
     /// The corresponding `xs` to `ys` is the big endian representation of `0..=u*::MAX`.
-    fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]);
+    fn full_eval(&self, b: bool, k: &Share<OUT_BLEN, G>, ys: &mut [&mut G]);
 }
 
-/// Comparison function
+/// Comparison function.
 ///
-/// - See [`BoundState`] for the meaning for different `bound`
-/// - See [`PointFn`] for `DOM_SZ`, `LAMBDA`, and fields `alpha` and `beta`
-pub struct CmpFn<const DOM_SZ: usize, const LAMBDA: usize, G>
+/// See [`BoundState`] for the meaning for different `bound`.
+/// See [`PointFn`] for `IN_BLEN`, `OUT_BLEN`, `alpha`, and `beta`.
+pub struct CmpFn<const IN_BLEN: usize, const OUT_BLEN: usize, G>
 where
-    G: Group<LAMBDA>,
+    G: Group<OUT_BLEN>,
 {
     /// `$\alpha$`
-    pub alpha: [u8; DOM_SZ],
+    pub alpha: [u8; IN_BLEN],
     /// `$\beta$`
     pub beta: G,
     /// See [`BoundState`]
     pub bound: BoundState,
 }
 
-impl<const DOM_SZ: usize, const LAMBDA: usize, G> CmpFn<DOM_SZ, LAMBDA, G>
+impl<const IN_BLEN: usize, const OUT_BLEN: usize, G> CmpFn<IN_BLEN, OUT_BLEN, G>
 where
-    G: Group<LAMBDA>,
+    G: Group<OUT_BLEN>,
 {
-    pub fn from_point(point: PointFn<DOM_SZ, LAMBDA, G>, bound: BoundState) -> Self {
+    pub fn from_point(point: PointFn<IN_BLEN, OUT_BLEN, G>, bound: BoundState) -> Self {
         Self {
             alpha: point.alpha,
             beta: point.beta,
@@ -62,32 +64,32 @@ where
     }
 }
 
-decl_prg_trait!(([u8; LAMBDA], [u8; LAMBDA], bool));
+decl_prg_trait!(([u8; OUT_BLEN], [u8; OUT_BLEN], bool));
 
-/// [`Dcf`] impl
+/// [`Dcf`] impl.
 ///
-/// `$\alpha$` itself is not included, which means `$f(\alpha)$ = 0`.
-pub struct DcfImpl<const DOM_SZ: usize, const LAMBDA: usize, P>
+/// `$\alpha$` itself is not included (or say exclusive endpoint), which means `$f(\alpha)$ = 0`.
+pub struct DcfImpl<const IN_BLEN: usize, const OUT_BLEN: usize, P>
 where
-    P: Prg<LAMBDA>,
+    P: Prg<OUT_BLEN>,
 {
     prg: P,
     filter_bitn: usize,
 }
 
-impl<const DOM_SZ: usize, const LAMBDA: usize, P> DcfImpl<DOM_SZ, LAMBDA, P>
+impl<const IN_BLEN: usize, const OUT_BLEN: usize, P> DcfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<LAMBDA>,
+    P: Prg<OUT_BLEN>,
 {
     pub fn new(prg: P) -> Self {
         Self {
             prg,
-            filter_bitn: 8 * DOM_SZ,
+            filter_bitn: 8 * IN_BLEN,
         }
     }
 
     pub fn new_with_filter(prg: P, filter_bitn: usize) -> Self {
-        assert!(filter_bitn <= 8 * DOM_SZ && filter_bitn > 1);
+        assert!(filter_bitn <= 8 * IN_BLEN && filter_bitn > 1);
         Self { prg, filter_bitn }
     }
 }
@@ -95,27 +97,31 @@ where
 const IDX_L: usize = 0;
 const IDX_R: usize = 1;
 
-impl<const DOM_SZ: usize, const LAMBDA: usize, P, G> Dcf<DOM_SZ, LAMBDA, G>
-    for DcfImpl<DOM_SZ, LAMBDA, P>
+impl<const IN_BLEN: usize, const OUT_BLEN: usize, P, G> Dcf<IN_BLEN, OUT_BLEN, G>
+    for DcfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<LAMBDA>,
-    G: Group<LAMBDA>,
+    P: Prg<OUT_BLEN>,
+    G: Group<OUT_BLEN>,
 {
-    fn gen(&self, f: &CmpFn<DOM_SZ, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
-        // The bit size of `$\alpha$`
+    fn gen(
+        &self,
+        f: &CmpFn<IN_BLEN, OUT_BLEN, G>,
+        s0s: [&[u8; OUT_BLEN]; 2],
+    ) -> Share<OUT_BLEN, G> {
+        // The bit size of `$\alpha$`.
         let n = self.filter_bitn;
         let mut v_alpha = G::zero();
-        // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`
+        // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`.
         let mut ss_prev = [*s0s[0], *s0s[1]];
-        // Set `$t^{(0)}_0$` and `$t^{(0)}_1$`
+        // Set `$t^{(0)}_0$` and `$t^{(0)}_1$`.
         let mut ts_prev = [false, true];
-        let mut cws = Vec::<Cw<LAMBDA, G>>::with_capacity(n);
+        let mut cws = Vec::<Cw<OUT_BLEN, G>>::with_capacity(n);
         for i in 0..n {
-            // MSB is required since we index from high to low in arrays
+            // MSB is required since we index from high to low in arrays.
             let alpha_i = f.alpha.view_bits::<Msb0>()[i];
             let [(s0l, v0l, t0l), (s0r, v0r, t0r)] = self.prg.gen(&ss_prev[0]);
             let [(s1l, v1l, t1l), (s1r, v1r, t1r)] = self.prg.gen(&ss_prev[1]);
-            // MSB is required since we index from high to low in arrays
+            // MSB is required since we index from high to low in arrays.
             let (keep, lose) = if alpha_i {
                 (IDX_R, IDX_L)
             } else {
@@ -153,11 +159,11 @@ where
             ss_prev = [
                 xor(&[
                     [&s0l, &s0r][keep],
-                    if ts_prev[0] { &s_cw } else { &[0; LAMBDA] },
+                    if ts_prev[0] { &s_cw } else { &[0; OUT_BLEN] },
                 ]),
                 xor(&[
                     [&s1l, &s1r][keep],
-                    if ts_prev[1] { &s_cw } else { &[0; LAMBDA] },
+                    if ts_prev[1] { &s_cw } else { &[0; OUT_BLEN] },
                 ]),
             ];
             ts_prev = [
@@ -175,14 +181,14 @@ where
         }
     }
 
-    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G]) {
+    fn eval(&self, b: bool, k: &Share<OUT_BLEN, G>, xs: &[&[u8; IN_BLEN]], ys: &mut [&mut G]) {
         #[cfg(feature = "multi-thread")]
         self.eval_mt(b, k, xs, ys);
         #[cfg(not(feature = "multi-thread"))]
         self.eval_st(b, k, xs, ys);
     }
 
-    fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]) {
+    fn full_eval(&self, b: bool, k: &Share<OUT_BLEN, G>, ys: &mut [&mut G]) {
         let n = k.cws.len();
         assert_eq!(n, self.filter_bitn);
 
@@ -193,15 +199,20 @@ where
     }
 }
 
-impl<const DOM_SZ: usize, const LAMBDA: usize, P> DcfImpl<DOM_SZ, LAMBDA, P>
+impl<const IN_BLEN: usize, const OUT_BLEN: usize, P> DcfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<LAMBDA>,
+    P: Prg<OUT_BLEN>,
 {
     /// Eval with single-threading.
     /// See [`Dcf::eval`].
-    pub fn eval_st<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G])
-    where
-        G: Group<LAMBDA>,
+    pub fn eval_st<G>(
+        &self,
+        b: bool,
+        k: &Share<OUT_BLEN, G>,
+        xs: &[&[u8; IN_BLEN]],
+        ys: &mut [&mut G],
+    ) where
+        G: Group<OUT_BLEN>,
     {
         xs.iter()
             .zip(ys.iter_mut())
@@ -211,9 +222,14 @@ where
     #[cfg(feature = "multi-thread")]
     /// Eval with multi-threading.
     /// See [`Dcf::eval`].
-    pub fn eval_mt<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G])
-    where
-        G: Group<LAMBDA>,
+    pub fn eval_mt<G>(
+        &self,
+        b: bool,
+        k: &Share<OUT_BLEN, G>,
+        xs: &[&[u8; IN_BLEN]],
+        ys: &mut [&mut G],
+    ) where
+        G: Group<OUT_BLEN>,
     {
         xs.par_iter()
             .zip(ys.par_iter_mut())
@@ -223,12 +239,12 @@ where
     fn full_eval_layer<G>(
         &self,
         b: bool,
-        k: &Share<LAMBDA, G>,
+        k: &Share<OUT_BLEN, G>,
         ys: &mut [&mut G],
         layer_i: usize,
-        (s, v, t): ([u8; LAMBDA], G, bool),
+        (s, v, t): ([u8; OUT_BLEN], G, bool),
     ) where
-        G: Group<LAMBDA>,
+        G: Group<OUT_BLEN>,
     {
         assert_eq!(ys.len(), 1 << (self.filter_bitn - layer_i));
         if ys.len() == 1 {
@@ -238,10 +254,10 @@ where
         }
 
         let cw = &k.cws[layer_i];
-        // `*_hat` before in-place xor
+        // `*_hat` before in-place XOR.
         let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&s);
-        xor_inplace(&mut sl, &[if t { &cw.s } else { &[0; LAMBDA] }]);
-        xor_inplace(&mut sr, &[if t { &cw.s } else { &[0; LAMBDA] }]);
+        xor_inplace(&mut sl, &[if t { &cw.s } else { &[0; OUT_BLEN] }]);
+        xor_inplace(&mut sr, &[if t { &cw.s } else { &[0; OUT_BLEN] }]);
         tl ^= t & cw.tl;
         tr ^= t & cw.tr;
         let vl = v.clone()
@@ -261,9 +277,9 @@ where
         }
     }
 
-    pub fn eval_point<G>(&self, b: bool, k: &Share<LAMBDA, G>, x: &[u8; DOM_SZ], y: &mut G)
+    pub fn eval_point<G>(&self, b: bool, k: &Share<OUT_BLEN, G>, x: &[u8; IN_BLEN], y: &mut G)
     where
-        G: Group<LAMBDA>,
+        G: Group<OUT_BLEN>,
     {
         let n = k.cws.len();
         assert_eq!(n, self.filter_bitn);
@@ -274,10 +290,10 @@ where
         *v = G::zero();
         for i in 0..n {
             let cw = &k.cws[i];
-            // `*_hat` before in-place xor
+            // `*_hat` before in-place XOR.
             let [(mut sl, vl_hat, mut tl), (mut sr, vr_hat, mut tr)] = self.prg.gen(&s_prev);
-            xor_inplace(&mut sl, &[if t_prev { &cw.s } else { &[0; LAMBDA] }]);
-            xor_inplace(&mut sr, &[if t_prev { &cw.s } else { &[0; LAMBDA] }]);
+            xor_inplace(&mut sl, &[if t_prev { &cw.s } else { &[0; OUT_BLEN] }]);
+            xor_inplace(&mut sr, &[if t_prev { &cw.s } else { &[0; OUT_BLEN] }]);
             tl ^= t_prev & cw.tl;
             tr ^= t_prev & cw.tr;
             if x.view_bits::<Msb0>()[i] {
@@ -298,11 +314,11 @@ where
 }
 
 pub enum BoundState {
-    /// `$f(x) = \beta$` iff. `$x < \alpha$`, otherwise `$f(x) = 0$`
+    /// `$f(x) = \beta$` iff. `$x < \alpha$`, otherwise `$f(x) = 0$`.
     ///
-    /// This is the preference in the paper
+    /// This is the preference in the paper.
     LtBeta,
-    /// `$f(x) = \beta$` iff. `$x > \alpha$`, otherwise `$f(x) = 0$`
+    /// `$f(x) = \beta$` iff. `$x > \alpha$`, otherwise `$f(x) = 0$`.
     GtBeta,
 }
 

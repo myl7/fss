@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2023 Yulong Ming (myl7)
 
-//! Group of an integer which is a `$p$`-group.
+//! Integers as a group which is a `$p$`-group.
 //! `MOD` as the `$p$` is a prime number as the cardinality of the group.
 //! Some prime numbers that are the max ones less than or equal to `u*::MAX` are provided as `PRIME_MAX_LE_U*_MAX`.
 //!
-//! - Associative operation: Integer addition modulo `MOD`, `$(a + b) \mod MOD$`
-//! - Identity element: 0
-//! - Inverse element: `-x`
+//! - Associative operation: Integer addition modulo `MOD`, `$(a + b) \mod MOD$`.
+//! - Identity element: 0.
+//! - Inverse element: `-x`.
 
 use std::mem::size_of;
 use std::ops::{Add, AddAssign};
@@ -60,7 +60,7 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const LAMBDA: usize, const MOD: $t> Group<LAMBDA> for $t_impl<MOD> {
+        impl<const OUT_BLEN: usize, const MOD: $t> Group<OUT_BLEN> for $t_impl<MOD> {
             fn zero() -> Self {
                 $t_impl(0)
             }
@@ -80,10 +80,10 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const LAMBDA: usize, const MOD: $t> GroupEmbed<LAMBDA> for $t_impl<MOD> {}
+        impl<const OUT_BLEN: usize, const MOD: $t> GroupEmbed<OUT_BLEN> for $t_impl<MOD> {}
 
-        impl<const LAMBDA: usize, const MOD: $t> From<[u8; LAMBDA]> for $t_impl<MOD> {
-            fn from(value: [u8; LAMBDA]) -> Self {
+        impl<const OUT_BLEN: usize, const MOD: $t> From<[u8; OUT_BLEN]> for $t_impl<MOD> {
+            fn from(value: [u8; OUT_BLEN]) -> Self {
                 if cfg!(not(feature = "int-be")) {
                     $t_impl(<$t>::from_le_bytes(
                         (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
@@ -96,9 +96,9 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const LAMBDA: usize, const MOD: $t> From<$t_impl<MOD>> for [u8; LAMBDA] {
+        impl<const OUT_BLEN: usize, const MOD: $t> From<$t_impl<MOD>> for [u8; OUT_BLEN] {
             fn from(value: $t_impl<MOD>) -> Self {
-                let mut bs = [0; LAMBDA];
+                let mut bs = [0; OUT_BLEN];
                 if cfg!(not(feature = "int-be")) {
                     bs[..size_of::<$t>()].copy_from_slice(&value.0.to_le_bytes());
                 } else {

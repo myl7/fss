@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2023 Yulong Ming (myl7)
 
-//! See [`Dpf`]
+//! See [`Dpf`].
 
 use bitvec::prelude::*;
 #[cfg(feature = "multi-thread")]
@@ -15,53 +15,56 @@ use crate::{decl_prg_trait, Cw, Share};
 #[cfg(feature = "prg")]
 pub mod prg;
 
-/// Distributed point function API
+/// Distributed point function API.
 ///
 /// `PointFn` used here means `$f(x) = \beta$` iff. `$x = \alpha$`, otherwise `$f(x) = 0$`.
 ///
-/// See [`PointFn`] for `DOM_SZ` and `LAMBDA`.
-pub trait Dpf<const DOM_SZ: usize, const LAMBDA: usize, G>
+/// See [`PointFn`] for `IN_BLEN` and `OUT_BLEN`.
+/// See [`DpfImpl`] for the implementation.
+pub trait Dpf<const IN_BLEN: usize, const OUT_BLEN: usize, G>
 where
-    G: Group<LAMBDA>,
+    G: Group<OUT_BLEN>,
 {
-    /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled
-    fn gen(&self, f: &PointFn<DOM_SZ, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G>;
+    /// `s0s` is `$s^{(0)}_0$` and `$s^{(0)}_1$` which should be randomly sampled.
+    fn gen(
+        &self,
+        f: &PointFn<IN_BLEN, OUT_BLEN, G>,
+        s0s: [&[u8; OUT_BLEN]; 2],
+    ) -> Share<OUT_BLEN, G>;
 
     /// `b` is the party. `false` is 0 and `true` is 1.
-    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G]);
+    fn eval(&self, b: bool, k: &Share<OUT_BLEN, G>, xs: &[&[u8; IN_BLEN]], ys: &mut [&mut G]);
 
     /// Full domain eval.
     /// See [`Dpf::eval`] for `b`.
     /// The corresponding `xs` to `ys` is the big endian representation of `0..=u*::MAX`.
-    fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]);
+    fn full_eval(&self, b: bool, k: &Share<OUT_BLEN, G>, ys: &mut [&mut G]);
 }
 
-decl_prg_trait!(([u8; LAMBDA], bool));
+decl_prg_trait!(([u8; OUT_BLEN], bool));
 
-/// [`Dpf`] impl
-///
-/// `$\alpha$` itself is not included, which means `$f(\alpha)$ = 0`.
-pub struct DpfImpl<const DOM_SZ: usize, const LAMBDA: usize, P>
+/// [`Dpf`] impl.
+pub struct DpfImpl<const IN_BLEN: usize, const OUT_BLEN: usize, P>
 where
-    P: Prg<LAMBDA>,
+    P: Prg<OUT_BLEN>,
 {
     prg: P,
     filter_bitn: usize,
 }
 
-impl<const DOM_SZ: usize, const LAMBDA: usize, P> DpfImpl<DOM_SZ, LAMBDA, P>
+impl<const IN_BLEN: usize, const OUT_BLEN: usize, P> DpfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<LAMBDA>,
+    P: Prg<OUT_BLEN>,
 {
     pub fn new(prg: P) -> Self {
         Self {
             prg,
-            filter_bitn: 8 * DOM_SZ,
+            filter_bitn: 8 * IN_BLEN,
         }
     }
 
     pub fn new_with_filter(prg: P, filter_bitn: usize) -> Self {
-        assert!(filter_bitn <= 8 * DOM_SZ && filter_bitn > 1);
+        assert!(filter_bitn <= 8 * IN_BLEN && filter_bitn > 1);
         Self { prg, filter_bitn }
     }
 }
@@ -69,22 +72,26 @@ where
 const IDX_L: usize = 0;
 const IDX_R: usize = 1;
 
-impl<const DOM_SZ: usize, const LAMBDA: usize, P, G> Dpf<DOM_SZ, LAMBDA, G>
-    for DpfImpl<DOM_SZ, LAMBDA, P>
+impl<const IN_BLEN: usize, const OUT_BLEN: usize, P, G> Dpf<IN_BLEN, OUT_BLEN, G>
+    for DpfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<LAMBDA>,
-    G: Group<LAMBDA>,
+    P: Prg<OUT_BLEN>,
+    G: Group<OUT_BLEN>,
 {
-    fn gen(&self, f: &PointFn<DOM_SZ, LAMBDA, G>, s0s: [&[u8; LAMBDA]; 2]) -> Share<LAMBDA, G> {
-        // The bit size of `$\alpha$`
+    fn gen(
+        &self,
+        f: &PointFn<IN_BLEN, OUT_BLEN, G>,
+        s0s: [&[u8; OUT_BLEN]; 2],
+    ) -> Share<OUT_BLEN, G> {
+        // The bit size of `$\alpha$`.
         let n = self.filter_bitn;
-        // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`
+        // Set `$s^{(1)}_0$` and `$s^{(1)}_1$`.
         let mut ss_prev = [s0s[0].to_owned(), s0s[1].to_owned()];
-        // Set `$t^{(0)}_0$` and `$t^{(0)}_1$`
+        // Set `$t^{(0)}_0$` and `$t^{(0)}_1$`.
         let mut ts_prev = [false, true];
-        let mut cws = Vec::<Cw<LAMBDA, G>>::with_capacity(n);
+        let mut cws = Vec::<Cw<OUT_BLEN, G>>::with_capacity(n);
         for i in 0..n {
-            // MSB is required since we index from high to low in arrays
+            // MSB is required since we index from high to low in arrays.
             let alpha_i = f.alpha.view_bits::<Msb0>()[i];
             let [(s0l, t0l), (s0r, t0r)] = self.prg.gen(&ss_prev[0]);
             let [(s1l, t1l), (s1r, t1r)] = self.prg.gen(&ss_prev[1]);
@@ -106,11 +113,11 @@ where
             ss_prev = [
                 xor(&[
                     [&s0l, &s0r][keep],
-                    if ts_prev[0] { &s_cw } else { &[0; LAMBDA] },
+                    if ts_prev[0] { &s_cw } else { &[0; OUT_BLEN] },
                 ]),
                 xor(&[
                     [&s1l, &s1r][keep],
-                    if ts_prev[1] { &s_cw } else { &[0; LAMBDA] },
+                    if ts_prev[1] { &s_cw } else { &[0; OUT_BLEN] },
                 ]),
             ];
             ts_prev = [
@@ -128,14 +135,14 @@ where
         }
     }
 
-    fn eval(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G]) {
+    fn eval(&self, b: bool, k: &Share<OUT_BLEN, G>, xs: &[&[u8; IN_BLEN]], ys: &mut [&mut G]) {
         #[cfg(feature = "multi-thread")]
         self.eval_mt(b, k, xs, ys);
         #[cfg(not(feature = "multi-thread"))]
         self.eval_st(b, k, xs, ys);
     }
 
-    fn full_eval(&self, b: bool, k: &Share<LAMBDA, G>, ys: &mut [&mut G]) {
+    fn full_eval(&self, b: bool, k: &Share<OUT_BLEN, G>, ys: &mut [&mut G]) {
         let n = k.cws.len();
         assert_eq!(n, self.filter_bitn);
 
@@ -145,15 +152,20 @@ where
     }
 }
 
-impl<const DOM_SZ: usize, const LAMBDA: usize, P> DpfImpl<DOM_SZ, LAMBDA, P>
+impl<const IN_BLEN: usize, const OUT_BLEN: usize, P> DpfImpl<IN_BLEN, OUT_BLEN, P>
 where
-    P: Prg<LAMBDA>,
+    P: Prg<OUT_BLEN>,
 {
     /// Eval with single-threading.
     /// See [`Dpf::eval`].
-    pub fn eval_st<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G])
-    where
-        G: Group<LAMBDA>,
+    pub fn eval_st<G>(
+        &self,
+        b: bool,
+        k: &Share<OUT_BLEN, G>,
+        xs: &[&[u8; IN_BLEN]],
+        ys: &mut [&mut G],
+    ) where
+        G: Group<OUT_BLEN>,
     {
         xs.iter()
             .zip(ys.iter_mut())
@@ -163,9 +175,14 @@ where
     #[cfg(feature = "multi-thread")]
     /// Eval with multi-threading.
     /// See [`Dpf::eval`].
-    pub fn eval_mt<G>(&self, b: bool, k: &Share<LAMBDA, G>, xs: &[&[u8; DOM_SZ]], ys: &mut [&mut G])
-    where
-        G: Group<LAMBDA>,
+    pub fn eval_mt<G>(
+        &self,
+        b: bool,
+        k: &Share<OUT_BLEN, G>,
+        xs: &[&[u8; IN_BLEN]],
+        ys: &mut [&mut G],
+    ) where
+        G: Group<OUT_BLEN>,
     {
         xs.par_iter()
             .zip(ys.par_iter_mut())
@@ -175,12 +192,12 @@ where
     fn full_eval_layer<G>(
         &self,
         b: bool,
-        k: &Share<LAMBDA, G>,
+        k: &Share<OUT_BLEN, G>,
         ys: &mut [&mut G],
         layer_i: usize,
-        (s, t): ([u8; LAMBDA], bool),
+        (s, t): ([u8; OUT_BLEN], bool),
     ) where
-        G: Group<LAMBDA>,
+        G: Group<OUT_BLEN>,
     {
         assert_eq!(ys.len(), 1 << (self.filter_bitn - layer_i));
         if ys.len() == 1 {
@@ -191,8 +208,8 @@ where
 
         let cw = &k.cws[layer_i];
         let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&s);
-        xor_inplace(&mut sl, &[if t { &cw.s } else { &[0; LAMBDA] }]);
-        xor_inplace(&mut sr, &[if t { &cw.s } else { &[0; LAMBDA] }]);
+        xor_inplace(&mut sl, &[if t { &cw.s } else { &[0; OUT_BLEN] }]);
+        xor_inplace(&mut sr, &[if t { &cw.s } else { &[0; OUT_BLEN] }]);
         tl ^= t & cw.tl;
         tr ^= t & cw.tr;
 
@@ -209,9 +226,9 @@ where
         }
     }
 
-    pub fn eval_point<G>(&self, b: bool, k: &Share<LAMBDA, G>, x: &[u8; DOM_SZ], y: &mut G)
+    pub fn eval_point<G>(&self, b: bool, k: &Share<OUT_BLEN, G>, x: &[u8; IN_BLEN], y: &mut G)
     where
-        G: Group<LAMBDA>,
+        G: Group<OUT_BLEN>,
     {
         let n = k.cws.len();
         assert_eq!(n, self.filter_bitn);
@@ -222,8 +239,8 @@ where
         for i in 0..n {
             let cw = &k.cws[i];
             let [(mut sl, mut tl), (mut sr, mut tr)] = self.prg.gen(&s_prev);
-            xor_inplace(&mut sl, &[if t_prev { &cw.s } else { &[0; LAMBDA] }]);
-            xor_inplace(&mut sr, &[if t_prev { &cw.s } else { &[0; LAMBDA] }]);
+            xor_inplace(&mut sl, &[if t_prev { &cw.s } else { &[0; OUT_BLEN] }]);
+            xor_inplace(&mut sr, &[if t_prev { &cw.s } else { &[0; OUT_BLEN] }]);
             tl ^= t_prev & cw.tl;
             tr ^= t_prev & cw.tr;
             if x.view_bits::<Msb0>()[i] {

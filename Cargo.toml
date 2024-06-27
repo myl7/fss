@@ -2,11 +2,10 @@ bench = [
   { name = "dcf_gen", harness = false },
   { name = "dcf_eval", harness = false },
   { name = "dcf_eval_batch", harness = false },
+  { name = "dcf_full_eval", harness = false },
   { name = "dpf_gen", harness = false },
   { name = "dpf_eval", harness = false },
   { name = "dpf_eval_batch", harness = false },
-
-  { name = "dcf_full_eval", harness = false },
   { name = "dpf_full_eval", harness = false },
 ]
 

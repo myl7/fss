@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2023 Yulong Ming (myl7)
 
-//! Group of bytes
+//! Byte vectors as a group.
 //!
-//! - Associative operation: Xor
-//! - Identity element: All zero
-//! - Inverse element: `x` itself
+//! - Associative operation: XOR.
+//! - Identity element: All bits zero.
+//! - Inverse element: `x` itself.
 
 use std::ops::{Add, AddAssign};
 
 use super::{Group, GroupEmbed};
 use crate::utils::xor_inplace;
 
-/// See [`self`]
+/// See [`self`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ByteGroup<const LAMBDA: usize>(pub [u8; LAMBDA]);
+pub struct ByteGroup<const OUT_BLEN: usize>(pub [u8; OUT_BLEN]);
 
-impl<const LAMBDA: usize> Add for ByteGroup<LAMBDA> {
+impl<const OUT_BLEN: usize> Add for ByteGroup<OUT_BLEN> {
     type Output = Self;
 
     fn add(mut self, rhs: Self) -> Self::Output {
@@ -25,15 +25,15 @@ impl<const LAMBDA: usize> Add for ByteGroup<LAMBDA> {
     }
 }
 
-impl<const LAMBDA: usize> AddAssign for ByteGroup<LAMBDA> {
+impl<const OUT_BLEN: usize> AddAssign for ByteGroup<OUT_BLEN> {
     fn add_assign(&mut self, rhs: Self) {
         xor_inplace(&mut self.0, &[&rhs.0])
     }
 }
 
-impl<const LAMBDA: usize> Group<LAMBDA> for ByteGroup<LAMBDA> {
+impl<const OUT_BLEN: usize> Group<OUT_BLEN> for ByteGroup<OUT_BLEN> {
     fn zero() -> Self {
-        ByteGroup([0; LAMBDA])
+        ByteGroup([0; OUT_BLEN])
     }
 
     fn add_inverse(self) -> Self {
@@ -41,16 +41,16 @@ impl<const LAMBDA: usize> Group<LAMBDA> for ByteGroup<LAMBDA> {
     }
 }
 
-impl<const LAMBDA: usize> GroupEmbed<LAMBDA> for ByteGroup<LAMBDA> {}
+impl<const OUT_BLEN: usize> GroupEmbed<OUT_BLEN> for ByteGroup<OUT_BLEN> {}
 
-impl<const LAMBDA: usize> From<[u8; LAMBDA]> for ByteGroup<LAMBDA> {
-    fn from(value: [u8; LAMBDA]) -> Self {
+impl<const OUT_BLEN: usize> From<[u8; OUT_BLEN]> for ByteGroup<OUT_BLEN> {
+    fn from(value: [u8; OUT_BLEN]) -> Self {
         Self(value)
     }
 }
 
-impl<const LAMBDA: usize> From<ByteGroup<LAMBDA>> for [u8; LAMBDA] {
-    fn from(value: ByteGroup<LAMBDA>) -> Self {
+impl<const OUT_BLEN: usize> From<ByteGroup<OUT_BLEN>> for [u8; OUT_BLEN] {
+    fn from(value: ByteGroup<OUT_BLEN>) -> Self {
         value.0
     }
 }

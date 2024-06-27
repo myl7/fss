@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2023 Yulong Ming (myl7)
 
-//! See [`Group`]
+//! See [`Group`].
 
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign};
@@ -10,8 +10,8 @@ pub mod byte;
 pub mod int;
 pub mod int_prime;
 
-/// Group (mathematics) that can be converted from a byte array
-pub trait Group<const LAMBDA: usize>
+/// Group (mathematics) that can be converted from a byte array.
+pub trait Group<const OUT_BLEN: usize>
 where
     Self: Add<Output = Self>
         + AddAssign
@@ -22,12 +22,12 @@ where
         + Clone
         + Sync
         + Send
-        + From<[u8; LAMBDA]>,
+        + From<[u8; OUT_BLEN]>,
 {
-    /// Zero in the group
+    /// Zero in the group.
     fn zero() -> Self;
 
-    /// Additive inverse in the group, e.g., `-x` for `x` in the integer group
+    /// Additive inverse in the group, e.g., `-x` for `x` in the integer group.
     fn add_inverse(self) -> Self;
     /// Helper to get the additive inverse if true.
     /// Used for expressions like `$(-1)^n x$`, in which `t` can be computed from `n`.
@@ -40,10 +40,10 @@ where
     }
 }
 
-/// `Into<[u8; LAMBDA]>` is not used in the crate.
+/// `Into<[u8; OUT_BLEN]>` is not used in the crate.
 /// We include it here and impl it for all PRG embedded in the crate for user convenience.
-pub trait GroupEmbed<const LAMBDA: usize>
+pub trait GroupEmbed<const OUT_BLEN: usize>
 where
-    Self: Group<LAMBDA> + Into<[u8; LAMBDA]>,
+    Self: Group<OUT_BLEN> + Into<[u8; OUT_BLEN]>,
 {
 }

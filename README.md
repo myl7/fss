@@ -67,7 +67,7 @@ dcf.eval(false, &k, &[&x], &mut [&mut y]);
 ```
 
 For full domain evaluation, use `full_eval` instead.
-While similar to `eval`, `full_eval` does not accept a vector of `x`, and instead expects a vector of `y` whose length is `2 ** (DOM_SZ * 8)` to store all evaluated `y`.
+While similar to `eval`, `full_eval` does not accept a vector of `x`, and instead expects a vector of `y` whose length is `2 ** (IN_BLEN * 8)` to store all evaluated `y`.
 
 More examples are available as benchmarks in the [benches dir](./benches)
 
