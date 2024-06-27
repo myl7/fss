@@ -6,6 +6,11 @@
 //! - Associative operation: Integer wrapping addition, `$(a + b) \mod 2^N$`
 //! - Identity element: 0
 //! - Inverse element: `-x`
+//!
+//! # Security
+//!
+//! Such a group whose cardinality is not a prime number cannot provide the attribute that: if `a` and `b` are random, `a * b` is still random.
+//! If you need this attribute (e.g., for some verification), use [`crate::group::int_prime`] instead.
 
 use std::mem::size_of;
 use std::ops::{Add, AddAssign};
