@@ -57,7 +57,6 @@ fn bench(c: &mut Criterion) {
     from_domain_range_size::<16, 16, 2>(c);
     from_domain_range_size::<24, 16, 2>(c);
     from_domain_range_size::<32, 16, 2>(c);
-    from_domain_range_size::<16, 256, 32>(c);
 }
 
 criterion_group!(benches, bench);
