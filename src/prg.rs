@@ -146,22 +146,34 @@ impl<const OUT_BLEN: usize, const OUT_BLEN_N: usize, const CIPHER_N: usize>
 
 #[cfg(test)]
 mod tests {
+    use hex_literal::hex;
+
     use super::*;
 
-    const KEYS: [&[u8; 32]; 2] = [
-        b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d",
-        b"\x9b\x15\xc8\x0f\xb7\xbc!q\x9e\x89\xb8\xf7\x0e\xa0S\x9dN\xfa\x0c;\x16\xe4\x98\x82b\xfcdy\xb5\x8c{\xc2",
+    const PRG_KEYS: [&[u8; 32]; 2] = [
+        &hex!(
+            "
+            8f 33 7c b9 55 4b 9f ba 3a 3d 78 2a 8b 7f cf 5d
+            8c 8c 26 5c 05 06 46 ad ff d2 41 be 2f 82 06 ec
+            "
+        ),
+        &hex!(
+            "
+            de 13 be fd 93 61 51 cf b5 5e aa a8 58 90 be 69
+            62 de 78 81 8e d2 a4 61 35 eb bd c6 28 36 28 b5
+            "
+        ),
     ];
-    const SEED: &[u8; 16] = b"*L\x8f%y\x12Z\x94*E\x8f$+NH\x19";
+    const SEED: &[u8; 16] = &hex!("65 4d 82 7b 3f 77 35 0b 9b d4 df ce 86 c1 1b 87");
 
     #[test]
-    fn test_aes128_prg_gen_not_zeros() {
+    fn test_prg_128_not_trivial() {
         let prg = Aes128MatyasMeyerOseasPrg::<16, 2, 4>::new(
             [
-                &KEYS[0][0..16],
-                &KEYS[0][16..32],
-                &KEYS[1][0..16],
-                &KEYS[1][16..32],
+                &PRG_KEYS[0][..16],
+                &PRG_KEYS[0][16..],
+                &PRG_KEYS[1][..16],
+                &PRG_KEYS[1][16..],
             ]
             .map(|a| a.try_into().unwrap()),
         );
@@ -177,8 +189,8 @@ mod tests {
     }
 
     #[test]
-    fn test_aes256_prg_gen_not_zeros() {
-        let prg = Aes256HirosePrg::<16, 2, 2>::new(KEYS);
+    fn test_prg_256_not_trivial() {
+        let prg = Aes256HirosePrg::<16, 2, 2>::new(PRG_KEYS);
         let out = prg.gen(SEED);
         (0..2).for_each(|i| {
             assert_ne!(out[i].0[0], [0; 16]);

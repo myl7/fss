@@ -253,156 +253,194 @@ where
 
 #[cfg(all(test, feature = "prg"))]
 mod tests {
+    use std::iter;
+
+    use hex_literal::hex;
     use rand::prelude::*;
 
     use super::*;
     use crate::group::byte::ByteGroup;
-    use crate::prg::Aes256HirosePrg;
+    use crate::prg::Aes128MatyasMeyerOseasPrg;
 
-    const KEYS: &[&[u8; 32]] =
-        &[b"j9\x1b_\xb3X\xf33\xacW\x15\x1b\x0812K\xb3I\xb9\x90r\x1cN\xb5\xee9W\xd3\xbb@\xc6d"];
-    const ALPHAS: &[&[u8; 16]] = &[
-        b"K\xa9W\xf5\xdd\x05\xe9\xfc?\x04\xf6\xfbUo\xa8C",
-        b"\xc2GK\xda\xc6\xbb\x99\x98Fq\"f\xb7\x8csU",
-        b"\xc2GK\xda\xc6\xbb\x99\x98Fq\"f\xb7\x8csV",
-        b"\xc2GK\xda\xc6\xbb\x99\x98Fq\"f\xb7\x8csW",
-        b"\xef\x96\x97\xd7\x8f\x8a\xa4AP\n\xb35\xb5k\xff\x97",
+    type GroupImpl = ByteGroup<16>;
+    type PrgImpl = Aes128MatyasMeyerOseasPrg<16, 1, 2>;
+    type DpfImplImpl = DpfImpl<2, 16, PrgImpl>;
+    type ShareImpl = Share<16, GroupImpl>;
+
+    const PRG_KEYS: [&[u8; 16]; 2] = [
+        &hex!("fe 1f 07 26 11 2b d1 2a b4 09 05 9f 22 85 f4 f8"),
+        &hex!("a6 9f 94 53 53 6c cf c4 17 59 ce d2 9a c3 54 41"),
     ];
-    const BETA: &[u8; 16] = b"\x03\x11\x97\x12C\x8a\xe9#\x81\xa8\xde\xa8\x8f \xc0\xbb";
 
-    #[test]
-    fn test_dpf_gen_then_eval() {
-        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
-        let dpf = DpfImpl::<16, 16, _>::new(prg);
+    const XS: [&[u8; 2]; 15] = [
+        &hex!("09 ed"),
+        &hex!("2d 62"),
+        &hex!("2f 1b"),
+        &hex!("3e bb"),
+        &hex!("52 2f"),
+        //
+        &hex!("58 0a"),
+        &hex!("58 0b"),
+        &hex!("58 0c"),
+        &hex!("58 0d"),
+        &hex!("58 0e"),
+        //
+        &hex!("69 3d"),
+        &hex!("77 c4"),
+        &hex!("86 55"),
+        &hex!("91 c5"),
+        &hex!("a5 37"),
+    ];
+    const ALPHA_I: usize = 7;
+    const BETA_B: [u8; 16] = hex!("c4 c5 38 92 d2 2b 3b fb 87 81 29 6b f3 60 dc a5");
+
+    fn dpf_gen(dpf: &DpfImplImpl) -> (ShareImpl, ShareImpl) {
         let s0s: [[u8; 16]; 2] = thread_rng().gen();
         let f = PointFn {
-            alpha: ALPHAS[2].to_owned(),
-            beta: BETA.clone().into(),
+            alpha: XS[ALPHA_I].to_owned(),
+            beta: BETA_B.into(),
         };
         let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
         let mut k0 = k.clone();
         k0.s0s = vec![k0.s0s[0]];
         let mut k1 = k.clone();
         k1.s0s = vec![k1.s0s[1]];
-        let mut ys0 = vec![ByteGroup::zero(); ALPHAS.len()];
-        let mut ys1 = vec![ByteGroup::zero(); ALPHAS.len()];
-        dpf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
-        dpf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
-        ys0.iter_mut()
-            .zip(ys1.iter())
-            .for_each(|(y0, y1)| *y0 += y1.clone());
-        ys1 = vec![
-            ByteGroup::zero(),
-            ByteGroup::zero(),
-            BETA.clone().into(),
-            ByteGroup::zero(),
-            ByteGroup::zero(),
-        ];
-        assert_eq!(ys0, ys1);
+        (k0, k1)
     }
 
-    #[test]
-    fn test_dpf_gen_then_eval_with_filter() {
-        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
-        let dpf = DpfImpl::<16, 16, _>::new_with_filter(prg, 127);
-        let s0s: [[u8; 16]; 2] = thread_rng().gen();
-        let f = PointFn {
-            alpha: ALPHAS[2].to_owned(),
-            beta: BETA.clone().into(),
-        };
-        let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
-        let mut k0 = k.clone();
-        k0.s0s = vec![k0.s0s[0]];
-        let mut k1 = k.clone();
-        k1.s0s = vec![k1.s0s[1]];
-        let mut ys0 = vec![ByteGroup::zero(); ALPHAS.len()];
-        let mut ys1 = vec![ByteGroup::zero(); ALPHAS.len()];
-        dpf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
-        dpf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
-        ys0.iter_mut()
-            .zip(ys1.iter())
-            .for_each(|(y0, y1)| *y0 += y1.clone());
-        ys1 = vec![
-            ByteGroup::zero(),
-            ByteGroup::zero(),
-            BETA.clone().into(),
-            BETA.clone().into(),
-            ByteGroup::zero(),
-        ];
-        assert_eq!(ys0, ys1);
+    fn dpf_eval(
+        dpf: &DpfImplImpl,
+        k0: &ShareImpl,
+        k1: &ShareImpl,
+    ) -> (Vec<GroupImpl>, Vec<GroupImpl>) {
+        let mut ys0 = vec![GroupImpl::zero(); XS.len()];
+        let mut ys1 = vec![GroupImpl::zero(); XS.len()];
+        dpf.eval(false, k0, &XS, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dpf.eval(true, k1, &XS, &mut ys1.iter_mut().collect::<Vec<_>>());
+        (ys0, ys1)
     }
 
-    #[test]
-    fn test_dpf_gen_then_eval_not_zeros() {
-        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
-        let dpf = DpfImpl::<16, 16, _>::new(prg);
-        let s0s: [[u8; 16]; 2] = thread_rng().gen();
-        let f = PointFn {
-            alpha: ALPHAS[2].to_owned(),
-            beta: BETA.clone().into(),
-        };
-        let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
-        let mut k0 = k.clone();
-        k0.s0s = vec![k0.s0s[0]];
-        let mut k1 = k.clone();
-        k1.s0s = vec![k1.s0s[1]];
-        let mut ys0 = vec![ByteGroup::zero(); ALPHAS.len()];
-        let mut ys1 = vec![ByteGroup::zero(); ALPHAS.len()];
-        dpf.eval(false, &k0, ALPHAS, &mut ys0.iter_mut().collect::<Vec<_>>());
-        dpf.eval(true, &k1, ALPHAS, &mut ys1.iter_mut().collect::<Vec<_>>());
-        assert_ne!(ys0[2], ByteGroup::zero());
-        assert_ne!(ys1[2], ByteGroup::zero());
-    }
-
-    #[test]
-    fn test_dpf_full_eval() {
-        let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
-        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
-        let dpf = DpfImpl::<2, 16, _>::new(prg);
-        let s0s: [[u8; 16]; 2] = thread_rng().gen();
-        let f = PointFn {
-            alpha: x,
-            beta: BETA.clone().into(),
-        };
-        let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
-        let mut k0 = k.clone();
-        k0.s0s = vec![k0.s0s[0]];
-        let xs: Vec<_> = (0u16..=u16::MAX).map(|i| i.to_be_bytes()).collect();
-        assert_eq!(xs.len(), 1 << (8 * 2));
-        let xs0: Vec<_> = xs.iter().collect();
-        let mut ys0 = vec![ByteGroup::zero(); 1 << (8 * 2)];
-        let mut ys0_full = vec![ByteGroup::zero(); 1 << (8 * 2)];
-        dpf.eval(false, &k0, &xs0, &mut ys0.iter_mut().collect::<Vec<_>>());
-        dpf.full_eval(false, &k0, &mut ys0_full.iter_mut().collect::<Vec<_>>());
-        for (y0, y0_full) in ys0.iter().zip(ys0_full.iter()) {
-            assert_eq!(y0, y0_full);
-        }
-    }
-
-    #[test]
-    fn test_dpf_full_eval_with_filter() {
-        let x: [u8; 2] = ALPHAS[2][..2].try_into().unwrap();
-        let prg = Aes256HirosePrg::<16, 1, 1>::new(std::array::from_fn(|i| KEYS[i]));
-        let dpf = DpfImpl::<2, 16, _>::new_with_filter(prg, 15);
-        let s0s: [[u8; 16]; 2] = thread_rng().gen();
-        let f = PointFn {
-            alpha: x,
-            beta: BETA.clone().into(),
-        };
-        let k = dpf.gen(&f, [&s0s[0], &s0s[1]]);
-        let mut k0 = k.clone();
-        k0.s0s = vec![k0.s0s[0]];
-        let xs: Vec<_> = (0u16..=u16::MAX >> 1)
-            .map(|i| (i << 1).to_be_bytes())
+    fn assert_dpf_full_domain_eval(
+        dpf: &DpfImplImpl,
+        k0: &ShareImpl,
+        k1: &ShareImpl,
+        filter_bitn: usize,
+    ) {
+        let xs: Vec<_> = (0u16..=u16::MAX >> (16 - filter_bitn))
+            .map(|i| (i << (16 - filter_bitn)).to_be_bytes())
             .collect();
-        assert_eq!(xs.len(), 1 << 15);
-        let xs0: Vec<_> = xs.iter().collect();
-        let mut ys0 = vec![ByteGroup::zero(); 1 << 15];
-        let mut ys0_full = vec![ByteGroup::zero(); 1 << 15];
-        dpf.eval(false, &k0, &xs0, &mut ys0.iter_mut().collect::<Vec<_>>());
-        dpf.full_eval(false, &k0, &mut ys0_full.iter_mut().collect::<Vec<_>>());
-        for (y0, y0_full) in ys0.iter().zip(ys0_full.iter()) {
-            assert_eq!(y0, y0_full);
+        assert_eq!(xs.len(), 1 << filter_bitn);
+
+        let mut ys0 = vec![ByteGroup::zero(); 1 << filter_bitn];
+        let mut ys0_batch = vec![ByteGroup::zero(); 1 << filter_bitn];
+        dpf.full_eval(false, &k0, &mut ys0.iter_mut().collect::<Vec<_>>());
+        dpf.eval(
+            false,
+            &k0,
+            &xs.iter().collect::<Vec<_>>(),
+            &mut ys0_batch.iter_mut().collect::<Vec<_>>(),
+        );
+        assert_ys_eq(&ys0, &ys0_batch, "ys0");
+
+        let mut ys1 = vec![ByteGroup::zero(); 1 << filter_bitn];
+        let mut ys1_batch = vec![ByteGroup::zero(); 1 << filter_bitn];
+        dpf.full_eval(true, &k1, &mut ys1.iter_mut().collect::<Vec<_>>());
+        dpf.eval(
+            true,
+            &k1,
+            &xs.iter().collect::<Vec<_>>(),
+            &mut ys1_batch.iter_mut().collect::<Vec<_>>(),
+        );
+        assert_ys_eq(&ys1, &ys1_batch, "ys1")
+    }
+
+    fn assert_ys_eq(ys: &[GroupImpl], ys_expected: &[GroupImpl], ys_type: &str) {
+        for (i, (y, y_expected)) in ys.iter().zip(ys_expected.iter()).enumerate() {
+            assert_eq!(y, y_expected, "{} at index {}", ys_type, i);
         }
+    }
+
+    #[test]
+    fn test_dpf() {
+        let prg = PrgImpl::new(PRG_KEYS);
+        let dpf = DpfImplImpl::new(prg);
+        let (k0, k1) = dpf_gen(&dpf);
+        let (ys0, ys1) = dpf_eval(&dpf, &k0, &k1);
+        let ys: Vec<_> = ys0
+            .iter()
+            .zip(ys1.iter())
+            .map(|(y0, y1)| y0.clone() + y1.clone())
+            .collect();
+        let ys_expected: Vec<_> = iter::repeat(GroupImpl::zero())
+            .take(5)
+            .chain([
+                GroupImpl::zero(),
+                GroupImpl::zero(),
+                BETA_B.into(),
+                GroupImpl::zero(),
+                GroupImpl::zero(),
+            ])
+            .chain(iter::repeat(GroupImpl::zero()).take(5))
+            .collect();
+        assert_ys_eq(&ys, &ys_expected, "ys");
+    }
+
+    #[test]
+    fn test_dpf_with_filter() {
+        let prg = PrgImpl::new(PRG_KEYS);
+        let dpf = DpfImplImpl::new_with_filter(prg, 15);
+        // Choose gt and lt does not work because the last bit of `BETA_B` is 0.
+        // `a < b < c < d < e` => `5 = 5 < 6 = 6 < 7`.
+        let (k0, k1) = dpf_gen(&dpf);
+        let (ys0, ys1) = dpf_eval(&dpf, &k0, &k1);
+        let ys: Vec<_> = ys0
+            .iter()
+            .zip(ys1.iter())
+            .map(|(y0, y1)| y0.clone() + y1.clone())
+            .collect();
+        let ys_expected: Vec<_> = iter::repeat(GroupImpl::zero())
+            .take(5)
+            .chain([
+                GroupImpl::zero(),
+                GroupImpl::zero(),
+                BETA_B.into(),
+                BETA_B.into(),
+                GroupImpl::zero(),
+            ])
+            .chain(iter::repeat(GroupImpl::zero()).take(5))
+            .collect();
+        assert_ys_eq(&ys, &ys_expected, "ys");
+    }
+
+    #[test]
+    fn test_dpf_not_trivial() {
+        let prg = PrgImpl::new(PRG_KEYS);
+        let dpf = DpfImplImpl::new_with_filter(prg, 15);
+        let (k0, k1) = dpf_gen(&dpf);
+        let (ys0, ys1) = dpf_eval(&dpf, &k0, &k1);
+        ys0.iter().enumerate().for_each(|(i, y0)| {
+            assert_ne!(*y0, GroupImpl::zero(), "ys0 at index {}", i);
+            assert_ne!(*y0, [255; 16].into(), "ys0 at index {}", i);
+        });
+        ys1.iter().enumerate().for_each(|(i, y1)| {
+            assert_ne!(*y1, GroupImpl::zero(), "ys1 at index {}", i);
+            assert_ne!(*y1, [255; 16].into(), "ys1 at index {}", i);
+        });
+    }
+
+    #[test]
+    fn test_dpf_full_domain() {
+        let prg = PrgImpl::new(PRG_KEYS);
+        let dpf = DpfImplImpl::new(prg);
+        let (k0, k1) = dpf_gen(&dpf);
+        assert_dpf_full_domain_eval(&dpf, &k0, &k1, 16);
+    }
+
+    #[test]
+    fn test_dpf_full_domain_with_filter() {
+        let prg = PrgImpl::new(PRG_KEYS);
+        let dpf = DpfImplImpl::new_with_filter(prg, 15);
+        let (k0, k1) = dpf_gen(&dpf);
+        assert_dpf_full_domain_eval(&dpf, &k0, &k1, 15);
     }
 }
