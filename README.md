@@ -118,20 +118,30 @@ We use [Criterion.rs] for benchmarking.
 Criterion.rs reports `criterion.tar.zst` are included in releases.
 
 We use a (my) laptop as the benchmarking machine.
-It is charged to 100% with the power plugged in when benchmarking.
+It is charged with the power plugged in when benchmarking.
 Its CPU is [AMD Ryzen 7 5800H with Radeon Graphics], which is 8C16T.
 We use [rayon] as the data-parallelism library, which establishes 16 threads when benchmarking with multithreading.
-We ensure that its memory is enough for benchmarking, which is 16GB and has more than 5GB left when benchmarking.
-Notice that we do not close all other programs as many as possible to reduce scheduling, though we do avoid doing any other thing at the same time.
+We ensure its memory is enough for benchmarking.
+Notice that we do not close other programs as many as possible to reduce scheduling, though all GUI applications except VSCode are closed and we do avoid doing any other things at the same time.
 
 [Criterion.rs]: https://github.com/bheisler/criterion.rs
 [AMD Ryzen 7 5800H with Radeon Graphics]: https://www.amd.com/en/products/apu/amd-ryzen-7-5800h
 [rayon]: https://github.com/rayon-rs/rayon
 
-## Deprecation
+## Migrations
 
-`crate::dcf::prg::Aes256HirosePrg` (enabled by default by the `prg` feature, and only this one) has wrong implementation.
-It is fixed in version 0.4.3 of crate fss-rs, versions 0.5.2 and 0.6.3 of crate dcf, and version 0.5.2 of crate dpf-fss (since it depends on dcf).
+### Require v0.4.3 at least
+
+`crate::dcf::prg::Aes256HirosePrg` (enabled by default by the `prg` feature) has wrong implementation.
+It is fixed at v0.4.3 of the crate fss-rs, v0.5.2 and v0.6.3 of the crate dcf, and v0.5.2 of the crate dpf-fss (since it depends on the crate dcf).
+Other similar PRGs, e.g., `crate::dpf::prg::Aes256HirosePrg`, are not affected.
+
+### Migrate to v0.5
+
+- v0.5 adds a new generic parameter `OUT_BLEN_N` to `Prg`.
+  Please set it to the literal `1` for DPFs and `2` for DCFs.
+- `Prg` implementations are moved from `crate::dcf/dpf::prg` to `crate::prg`.
+  Now DPFs and DCFs share some same PRG implementations.
 
 ## License
 
