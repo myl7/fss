@@ -31,8 +31,8 @@ use rand::prelude::*;
 use fss_rs::prg::Aes128MatyasMeyerOseasPrg;
 use fss_rs::dcf::{Dcf, DcfImpl};
 
-let keys: [[u8; 32]; 2] = thread_rng().gen();
-let prg = Aes128MatyasMeyerOseasPrg::<16, 2, 2>::new(std::array::from_fn(|i| &keys[i]));
+let keys: [[u8; 16]; 4] = thread_rng().gen();
+let prg = Aes128MatyasMeyerOseasPrg::<16, 2, 4>::new(std::array::from_fn(|i| &keys[i]));
 // DCF for example
 let dcf = DcfImpl::<16, 16, _>::new(prg);
 ```
