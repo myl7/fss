@@ -119,13 +119,13 @@ Criterion.rs reports `criterion.tar.zst` are included in releases.
 
 We use a (my) laptop as the benchmarking machine.
 It is charged with the power plugged in when benchmarking.
-Its CPU is [AMD Ryzen 7 5800H with Radeon Graphics], which is 8C16T.
+Its CPU is [AMD Ryzen 7 5800H], which is 8C16T.
 We use [rayon] as the data-parallelism library, which establishes 16 threads when benchmarking with multithreading.
 We ensure its memory is enough for benchmarking.
 Notice that we do not close other programs as many as possible to reduce scheduling, though all GUI applications except VSCode are closed and we do avoid doing any other things at the same time.
 
 [Criterion.rs]: https://github.com/bheisler/criterion.rs
-[AMD Ryzen 7 5800H with Radeon Graphics]: https://www.amd.com/en/products/apu/amd-ryzen-7-5800h
+[AMD Ryzen 7 5800H]: https://www.amd.com/en/product/10821
 [rayon]: https://github.com/rayon-rs/rayon
 
 ## Migrations
