@@ -11,7 +11,6 @@ use bitvec::prelude::*;
 use crate::utils::{xor, xor_inplace};
 use crate::Prg;
 
-// TODO: BLEN_N
 /// Hirose double-block-length one-way compression function with AES256 and precreated keys.
 ///
 /// To avoid `#![feature(generic_const_exprs)]`, you MUST ensure `OUT_BLEN % 16 = 0` and `CIPHER_N = (OUT_BLEN / 16) * OUT_BLEN_N`.

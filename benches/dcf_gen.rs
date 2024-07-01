@@ -29,7 +29,7 @@ fn from_domain_range_size<const IN_BLEN: usize, const OUT_BLEN: usize, const CIP
     let f = CmpFn {
         alpha,
         beta,
-        bound: BoundState::LtBeta,
+        bound: BoundState::LtAlpha,
     };
 
     c.bench_with_input(
