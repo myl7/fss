@@ -12,12 +12,12 @@ use crate::utils::{xor, xor_inplace};
 pub use crate::PointFn;
 use crate::{Cw, Prg, Share};
 
-/// Distributed point function API.
+/// API of distributed point functions (DPFs).
 ///
 /// `PointFn` used here means `$f(x) = \beta$` iff. `$x = \alpha$`, otherwise `$f(x) = 0$`.
 ///
-/// See [`PointFn`] for `IN_BLEN` and `OUT_BLEN`.
-/// See [`DpfImpl`] for the implementation.
+/// - See [`PointFn`] for `IN_BLEN` and `OUT_BLEN`.
+/// - See [`DpfImpl`] for the implementation.
 pub trait Dpf<const IN_BLEN: usize, const OUT_BLEN: usize, G>
 where
     G: Group<OUT_BLEN>,
@@ -38,7 +38,7 @@ where
     fn full_eval(&self, b: bool, k: &Share<OUT_BLEN, G>, ys: &mut [&mut G]);
 }
 
-/// [`Dpf`] impl.
+/// Implementation of [`Dpf`].
 pub struct DpfImpl<const IN_BLEN: usize, const OUT_BLEN: usize, P>
 where
     P: Prg<OUT_BLEN, 1>,
