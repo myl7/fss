@@ -32,7 +32,7 @@ fn from_domain_range_size<const IN_BLEN: usize, const OUT_BLEN: usize, const CIP
     let f = CmpFn {
         alpha,
         beta,
-        bound: BoundState::LtBeta,
+        bound: BoundState::LtAlpha,
     };
 
     let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);

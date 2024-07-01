@@ -128,12 +128,12 @@ where
                 + v_alpha.clone().add_inverse())
             .add_inverse_if(ts_prev[1]);
             match f.bound {
-                BoundState::LtBeta => {
+                BoundState::LtAlpha => {
                     if lose == IDX_L {
                         v_cw += f.beta.clone()
                     }
                 }
-                BoundState::GtBeta => {
+                BoundState::GtAlpha => {
                     if lose == IDX_R {
                         v_cw += f.beta.clone()
                     }
@@ -309,13 +309,12 @@ where
 }
 
 pub enum BoundState {
-    // TODO: Fix the names
     /// `$f(x) = \beta$` iff. `$x < \alpha$`, otherwise `$f(x) = 0$`.
     ///
     /// This is the preference in the paper.
-    LtBeta,
+    LtAlpha,
     /// `$f(x) = \beta$` iff. `$x > \alpha$`, otherwise `$f(x) = 0$`.
-    GtBeta,
+    GtAlpha,
 }
 
 #[cfg(all(test, feature = "prg"))]
@@ -434,7 +433,7 @@ mod tests {
     fn test_dcf() {
         let prg = PrgImpl::new(PRG_KEYS);
         let dcf = DcfImplImpl::new(prg);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtBeta);
+        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
         let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
         let ys: Vec<_> = ys0
             .iter()
@@ -459,7 +458,7 @@ mod tests {
     fn test_dcf_gt() {
         let prg = PrgImpl::new(PRG_KEYS);
         let dcf = DcfImplImpl::new(prg);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::GtBeta);
+        let (k0, k1) = dcf_gen(&dcf, BoundState::GtAlpha);
         let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
         let ys: Vec<_> = ys0
             .iter()
@@ -486,7 +485,7 @@ mod tests {
         let dcf = DcfImplImpl::new_with_filter(prg, 15);
         // Choose gt and lt does not work because the last bit of `BETA_B` is 0.
         // `a < b < c < d < e` => `5 = 5 < 6 = 6 < 7`.
-        let (k0, k1) = dcf_gen(&dcf, BoundState::GtBeta);
+        let (k0, k1) = dcf_gen(&dcf, BoundState::GtAlpha);
         let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
         let ys: Vec<_> = ys0
             .iter()
@@ -511,7 +510,7 @@ mod tests {
     fn test_dcf_not_trivial() {
         let prg = PrgImpl::new(PRG_KEYS);
         let dcf = DcfImplImpl::new_with_filter(prg, 15);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtBeta);
+        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
         let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
         ys0.iter().enumerate().for_each(|(i, y0)| {
             assert_ne!(*y0, GroupImpl::zero(), "ys0 at index {}", i);
@@ -527,7 +526,7 @@ mod tests {
     fn test_dcf_full_domain() {
         let prg = PrgImpl::new(PRG_KEYS);
         let dcf = DcfImplImpl::new(prg);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtBeta);
+        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
         assert_dcf_full_domain_eval(&dcf, &k0, &k1, 16);
     }
 
@@ -535,7 +534,7 @@ mod tests {
     fn test_dcf_full_domain_with_filter() {
         let prg = PrgImpl::new(PRG_KEYS);
         let dcf = DcfImplImpl::new_with_filter(prg, 15);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtBeta);
+        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
         assert_dcf_full_domain_eval(&dcf, &k0, &k1, 15);
     }
 }
