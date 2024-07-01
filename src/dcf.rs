@@ -11,10 +11,10 @@ use crate::group::Group;
 use crate::utils::{xor, xor_inplace};
 use crate::{Cw, PointFn, Prg, Share};
 
-/// Distributed comparison function API.
+/// API of distributed comparison functions (DCFs).
 ///
-/// See [`CmpFn`] for `IN_BLEN` and `OUT_BLEN`.
-/// See [`DcfImpl`] for the implementation.
+/// - See [`CmpFn`] for `IN_BLEN` and `OUT_BLEN`.
+/// - See [`DcfImpl`] for the implementation.
 pub trait Dcf<const IN_BLEN: usize, const OUT_BLEN: usize, G>
 where
     G: Group<OUT_BLEN>,
@@ -34,17 +34,17 @@ where
 
 /// Comparison function.
 ///
-/// See [`BoundState`] for the meaning for different `bound`.
-/// See [`PointFn`] for `IN_BLEN`, `OUT_BLEN`, `alpha`, and `beta`.
+/// - See [`BoundState`] for available `bound` values.
+/// - See [`PointFn`] for `IN_BLEN`, `OUT_BLEN`, `alpha`, and `beta`.
 pub struct CmpFn<const IN_BLEN: usize, const OUT_BLEN: usize, G>
 where
     G: Group<OUT_BLEN>,
 {
-    /// `$\alpha$`
+    /// `$\alpha$`.
     pub alpha: [u8; IN_BLEN],
-    /// `$\beta$`
+    /// `$\beta$`.
     pub beta: G,
-    /// See [`BoundState`]
+    /// See [`BoundState`].
     pub bound: BoundState,
 }
 
@@ -61,7 +61,7 @@ where
     }
 }
 
-/// [`Dcf`] impl.
+/// Implementation of [`Dcf`].
 ///
 /// `$\alpha$` itself is not included (or say exclusive endpoint), which means `$f(\alpha)$ = 0`.
 pub struct DcfImpl<const IN_BLEN: usize, const OUT_BLEN: usize, P>
@@ -311,7 +311,7 @@ where
 pub enum BoundState {
     /// `$f(x) = \beta$` iff. `$x < \alpha$`, otherwise `$f(x) = 0$`.
     ///
-    /// This is the preference in the paper.
+    /// This is the choice of the paper.
     LtAlpha,
     /// `$f(x) = \beta$` iff. `$x > \alpha$`, otherwise `$f(x) = 0$`.
     GtAlpha,
