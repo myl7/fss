@@ -4,7 +4,7 @@
 //! See [`Group`].
 
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Neg};
 
 pub mod byte;
 pub mod int;
@@ -15,6 +15,7 @@ pub trait Group<const BLEN: usize>
 where
     Self: Add<Output = Self>
         + AddAssign
+        + Neg<Output = Self>
         + PartialEq
         + Eq
         + Debug
@@ -27,13 +28,12 @@ where
     /// Zero in the group.
     fn zero() -> Self;
 
-    /// Additive inverse in the group, e.g., `-x` for `x` in the integer group.
-    fn add_inverse(self) -> Self;
-    /// Helper to get the additive inverse if true.
+    /// Helper to get the inverse if true.
+    ///
     /// Used for expressions like `$(-1)^n x$`, in which `t` can be computed from `n`.
-    fn add_inverse_if(self, t: bool) -> Self {
+    fn neg_if(self, t: bool) -> Self {
         if t {
-            self.add_inverse()
+            -self
         } else {
             self
         }

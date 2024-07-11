@@ -10,7 +10,7 @@
 //! - Inverse element: `-x`.
 
 use std::mem::size_of;
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Neg};
 
 use super::{Group, GroupEmbed};
 
@@ -60,12 +60,10 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const BLEN: usize, const MOD: $t> Group<BLEN> for $t_impl<MOD> {
-            fn zero() -> Self {
-                $t_impl(0)
-            }
+        impl<const MOD: $t> Neg for $t_impl<MOD> {
+            type Output = Self;
 
-            fn add_inverse(mut self) -> Self {
+            fn neg(mut self) -> Self::Output {
                 self.0 = match self.0.checked_add(MOD) {
                     Some(x) => x % MOD,
                     None => {
@@ -77,6 +75,12 @@ macro_rules! decl_int_prime_group {
                     }
                 };
                 self
+            }
+        }
+
+        impl<const BLEN: usize, const MOD: $t> Group<BLEN> for $t_impl<MOD> {
+            fn zero() -> Self {
+                $t_impl(0)
             }
         }
 

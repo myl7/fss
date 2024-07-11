@@ -121,8 +121,7 @@ where
             ];
         }
         let cw_np1 =
-            (f.beta.clone() + Into::<G>::into(ss_prev[0]).add_inverse() + ss_prev[1].into())
-                .add_inverse_if(ts_prev[1]);
+            (f.beta.clone() + -Into::<G>::into(ss_prev[0]) + ss_prev[1].into()).neg_if(ts_prev[1]);
         Share {
             s0s: vec![s0s[0].to_owned(), s0s[1].to_owned()],
             cws,
@@ -196,8 +195,7 @@ where
     {
         assert_eq!(ys.len(), 1 << (self.filter_bitn - layer_i));
         if ys.len() == 1 {
-            *ys[0] = (Into::<G>::into(s) + if t { k.cw_np1.clone() } else { G::zero() })
-                .add_inverse_if(b);
+            *ys[0] = (Into::<G>::into(s) + if t { k.cw_np1.clone() } else { G::zero() }).neg_if(b);
             return;
         }
 
@@ -246,8 +244,8 @@ where
                 t_prev = tl;
             }
         }
-        *v = (Into::<G>::into(s_prev) + if t_prev { k.cw_np1.clone() } else { G::zero() })
-            .add_inverse_if(b);
+        *v =
+            (Into::<G>::into(s_prev) + if t_prev { k.cw_np1.clone() } else { G::zero() }).neg_if(b);
     }
 }
 

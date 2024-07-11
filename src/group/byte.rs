@@ -7,7 +7,7 @@
 //! - Identity element: All bits zero.
 //! - Inverse element: `x` itself.
 
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Neg};
 
 use super::{Group, GroupEmbed};
 use crate::utils::xor_inplace;
@@ -31,13 +31,17 @@ impl<const BLEN: usize> AddAssign for ByteGroup<BLEN> {
     }
 }
 
+impl<const BLEN: usize> Neg for ByteGroup<BLEN> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self
+    }
+}
+
 impl<const BLEN: usize> Group<BLEN> for ByteGroup<BLEN> {
     fn zero() -> Self {
         ByteGroup([0; BLEN])
-    }
-
-    fn add_inverse(self) -> Self {
-        self
     }
 }
 

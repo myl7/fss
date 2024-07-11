@@ -123,10 +123,9 @@ where
                 (IDX_L, IDX_R)
             };
             let s_cw = xor(&[[&s0l, &s0r][lose], [&s1l, &s1r][lose]]);
-            let mut v_cw = (G::from(*[&v0l, &v0r][lose])
-                + G::from(*[&v1l, &v1r][lose]).add_inverse()
-                + v_alpha.clone().add_inverse())
-            .add_inverse_if(ts_prev[1]);
+            let mut v_cw =
+                (G::from(*[&v0l, &v0r][lose]) + -G::from(*[&v1l, &v1r][lose]) + -v_alpha.clone())
+                    .neg_if(ts_prev[1]);
             match f.bound {
                 BoundState::LtAlpha => {
                     if lose == IDX_L {
@@ -139,9 +138,9 @@ where
                     }
                 }
             }
-            v_alpha += G::from(*[&v0l, &v0r][keep]).add_inverse()
+            v_alpha += -G::from(*[&v0l, &v0r][keep])
                 + (*[&v1l, &v1r][keep]).into()
-                + v_cw.clone().add_inverse_if(ts_prev[1]);
+                + v_cw.clone().neg_if(ts_prev[1]);
             let tl_cw = t0l ^ t1l ^ alpha_i ^ true;
             let tr_cw = t0r ^ t1r ^ alpha_i;
             let cw = Cw {
@@ -166,9 +165,7 @@ where
                 [t1l, t1r][keep] ^ (ts_prev[1] & [tl_cw, tr_cw][keep]),
             ];
         }
-        let cw_np1 =
-            (G::from(ss_prev[1]) + G::from(ss_prev[0]).add_inverse() + v_alpha.add_inverse())
-                .add_inverse_if(ts_prev[1]);
+        let cw_np1 = (G::from(ss_prev[1]) + -G::from(ss_prev[0]) + -v_alpha).neg_if(ts_prev[1]);
         Share {
             s0s: vec![s0s[0].to_owned(), s0s[1].to_owned()],
             cws,
@@ -243,8 +240,7 @@ where
     {
         assert_eq!(ys.len(), 1 << (self.filter_bitn - layer_i));
         if ys.len() == 1 {
-            *ys[0] =
-                v + (G::from(s) + if t { k.cw_np1.clone() } else { G::zero() }).add_inverse_if(b);
+            *ys[0] = v + (G::from(s) + if t { k.cw_np1.clone() } else { G::zero() }).neg_if(b);
             return;
         }
 
@@ -255,9 +251,8 @@ where
         xor_inplace(&mut sr, &[if t { &cw.s } else { &[0; OUT_BLEN] }]);
         tl ^= t & cw.tl;
         tr ^= t & cw.tr;
-        let vl = v.clone()
-            + (G::from(vl_hat) + if t { cw.v.clone() } else { G::zero() }).add_inverse_if(b);
-        let vr = v + (G::from(vr_hat) + if t { cw.v.clone() } else { G::zero() }).add_inverse_if(b);
+        let vl = v.clone() + (G::from(vl_hat) + if t { cw.v.clone() } else { G::zero() }).neg_if(b);
+        let vr = v + (G::from(vr_hat) + if t { cw.v.clone() } else { G::zero() }).neg_if(b);
 
         let (ys_l, ys_r) = ys.split_at_mut(ys.len() / 2);
         #[cfg(feature = "multi-thread")]
@@ -292,19 +287,16 @@ where
             tl ^= t_prev & cw.tl;
             tr ^= t_prev & cw.tr;
             if x.view_bits::<Msb0>()[i] {
-                *v += (G::from(vr_hat) + if t_prev { cw.v.clone() } else { G::zero() })
-                    .add_inverse_if(b);
+                *v += (G::from(vr_hat) + if t_prev { cw.v.clone() } else { G::zero() }).neg_if(b);
                 s_prev = sr;
                 t_prev = tr;
             } else {
-                *v += (G::from(vl_hat) + if t_prev { cw.v.clone() } else { G::zero() })
-                    .add_inverse_if(b);
+                *v += (G::from(vl_hat) + if t_prev { cw.v.clone() } else { G::zero() }).neg_if(b);
                 s_prev = sl;
                 t_prev = tl;
             }
         }
-        *v +=
-            (G::from(s_prev) + if t_prev { k.cw_np1.clone() } else { G::zero() }).add_inverse_if(b);
+        *v += (G::from(s_prev) + if t_prev { k.cw_np1.clone() } else { G::zero() }).neg_if(b);
     }
 }
 

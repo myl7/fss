@@ -13,7 +13,7 @@
 //! If you need this attribute (e.g., for some verification), use [`crate::group::int_prime`] instead.
 
 use std::mem::size_of;
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Neg};
 
 use super::{Group, GroupEmbed};
 
@@ -37,13 +37,17 @@ macro_rules! decl_int_group {
             }
         }
 
+        impl Neg for $t_impl {
+            type Output = Self;
+
+            fn neg(self) -> Self::Output {
+                $t_impl(self.0.wrapping_neg())
+            }
+        }
+
         impl<const BLEN: usize> Group<BLEN> for $t_impl {
             fn zero() -> Self {
                 $t_impl(0)
-            }
-
-            fn add_inverse(self) -> Self {
-                $t_impl(self.0.wrapping_neg())
             }
         }
 
