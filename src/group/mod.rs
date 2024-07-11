@@ -11,7 +11,7 @@ pub mod int;
 pub mod int_prime;
 
 /// Group (mathematics) that can be converted from a byte array.
-pub trait Group<const OUT_BLEN: usize>
+pub trait Group<const BLEN: usize>
 where
     Self: Add<Output = Self>
         + AddAssign
@@ -22,7 +22,7 @@ where
         + Clone
         + Sync
         + Send
-        + From<[u8; OUT_BLEN]>,
+        + From<[u8; BLEN]>,
 {
     /// Zero in the group.
     fn zero() -> Self;
@@ -40,10 +40,10 @@ where
     }
 }
 
-/// `Into<[u8; OUT_BLEN]>` is not used in the crate.
+/// `Into<[u8; BLEN]>` is not used in the crate.
 /// We include it here and impl it for all PRG embedded in the crate for user convenience.
-pub trait GroupEmbed<const OUT_BLEN: usize>
+pub trait GroupEmbed<const BLEN: usize>
 where
-    Self: Group<OUT_BLEN> + Into<[u8; OUT_BLEN]>,
+    Self: Group<BLEN> + Into<[u8; BLEN]>,
 {
 }

@@ -60,7 +60,7 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const OUT_BLEN: usize, const MOD: $t> Group<OUT_BLEN> for $t_impl<MOD> {
+        impl<const BLEN: usize, const MOD: $t> Group<BLEN> for $t_impl<MOD> {
             fn zero() -> Self {
                 $t_impl(0)
             }
@@ -80,10 +80,10 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const OUT_BLEN: usize, const MOD: $t> GroupEmbed<OUT_BLEN> for $t_impl<MOD> {}
+        impl<const BLEN: usize, const MOD: $t> GroupEmbed<BLEN> for $t_impl<MOD> {}
 
-        impl<const OUT_BLEN: usize, const MOD: $t> From<[u8; OUT_BLEN]> for $t_impl<MOD> {
-            fn from(value: [u8; OUT_BLEN]) -> Self {
+        impl<const BLEN: usize, const MOD: $t> From<[u8; BLEN]> for $t_impl<MOD> {
+            fn from(value: [u8; BLEN]) -> Self {
                 if cfg!(not(feature = "int-be")) {
                     $t_impl(<$t>::from_le_bytes(
                         (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
@@ -96,9 +96,9 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const OUT_BLEN: usize, const MOD: $t> From<$t_impl<MOD>> for [u8; OUT_BLEN] {
+        impl<const BLEN: usize, const MOD: $t> From<$t_impl<MOD>> for [u8; BLEN] {
             fn from(value: $t_impl<MOD>) -> Self {
-                let mut bs = [0; OUT_BLEN];
+                let mut bs = [0; BLEN];
                 if cfg!(not(feature = "int-be")) {
                     bs[..size_of::<$t>()].copy_from_slice(&value.0.to_le_bytes());
                 } else {

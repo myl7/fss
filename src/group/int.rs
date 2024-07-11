@@ -9,7 +9,7 @@
 //!
 //! # Security
 //!
-//! Such a group whose cardinality is not a prime number cannot provide the attribute that: if `a` and `b` are random, `a * b` (integer multiplication) is still random.
+//! Such a group whose cardinality is not a prime number cannot provide the attribute that: if `a` and `b` are individually indistinguishable with random elements, `a * b` (integer multiplication) is still that.
 //! If you need this attribute (e.g., for some verification), use [`crate::group::int_prime`] instead.
 
 use std::mem::size_of;
@@ -37,7 +37,7 @@ macro_rules! decl_int_group {
             }
         }
 
-        impl<const OUT_BLEN: usize> Group<OUT_BLEN> for $t_impl {
+        impl<const BLEN: usize> Group<BLEN> for $t_impl {
             fn zero() -> Self {
                 $t_impl(0)
             }
@@ -47,10 +47,10 @@ macro_rules! decl_int_group {
             }
         }
 
-        impl<const OUT_BLEN: usize> GroupEmbed<OUT_BLEN> for $t_impl {}
+        impl<const BLEN: usize> GroupEmbed<BLEN> for $t_impl {}
 
-        impl<const OUT_BLEN: usize> From<[u8; OUT_BLEN]> for $t_impl {
-            fn from(value: [u8; OUT_BLEN]) -> Self {
+        impl<const BLEN: usize> From<[u8; BLEN]> for $t_impl {
+            fn from(value: [u8; BLEN]) -> Self {
                 if cfg!(not(feature = "int-be")) {
                     $t_impl(<$t>::from_le_bytes(
                         (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
@@ -63,9 +63,9 @@ macro_rules! decl_int_group {
             }
         }
 
-        impl<const OUT_BLEN: usize> From<$t_impl> for [u8; OUT_BLEN] {
+        impl<const BLEN: usize> From<$t_impl> for [u8; BLEN] {
             fn from(value: $t_impl) -> Self {
-                let mut bs = [0; OUT_BLEN];
+                let mut bs = [0; BLEN];
                 if cfg!(not(feature = "int-be")) {
                     bs[..size_of::<$t>()].copy_from_slice(&value.0.to_le_bytes());
                 } else {
