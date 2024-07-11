@@ -12,14 +12,14 @@
 use std::mem::size_of;
 use std::ops::{Add, AddAssign, Neg};
 
-use super::{Group, GroupEmbed};
+use super::{Group, GroupToBytes};
 
 macro_rules! decl_int_prime_group {
     ($t:ty, $t_impl:ident) => {
-        /// See [`self`]
+        /// See [`self`].
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub struct $t_impl<const MOD: $t>(
-            /// Always less than `MOD`
+            /// Always less than `MOD`.
             $t,
         );
 
@@ -84,7 +84,7 @@ macro_rules! decl_int_prime_group {
             }
         }
 
-        impl<const BLEN: usize, const MOD: $t> GroupEmbed<BLEN> for $t_impl<MOD> {}
+        impl<const BLEN: usize, const MOD: $t> GroupToBytes<BLEN> for $t_impl<MOD> {}
 
         impl<const BLEN: usize, const MOD: $t> From<[u8; BLEN]> for $t_impl<MOD> {
             fn from(value: [u8; BLEN]) -> Self {

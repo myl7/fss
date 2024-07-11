@@ -14,7 +14,7 @@ First add the crate as a dependency:
 cargo add fss-rs
 ```
 
-By default the embedded PRG and multi-threading are included.
+By default the PRG implementations and multi-threading are included.
 You can disable the default feature to select by yourself.
 **If you are on ARM machines**, see the [_Performance_](#performance) section for hardware acceleration.
 

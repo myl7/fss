@@ -15,11 +15,11 @@
 use std::mem::size_of;
 use std::ops::{Add, AddAssign, Neg};
 
-use super::{Group, GroupEmbed};
+use super::{Group, GroupToBytes};
 
 macro_rules! decl_int_group {
     ($t:ty, $t_impl:ident) => {
-        /// See [`self`]
+        /// See [`self`].
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub struct $t_impl(pub $t);
 
@@ -51,7 +51,7 @@ macro_rules! decl_int_group {
             }
         }
 
-        impl<const BLEN: usize> GroupEmbed<BLEN> for $t_impl {}
+        impl<const BLEN: usize> GroupToBytes<BLEN> for $t_impl {}
 
         impl<const BLEN: usize> From<[u8; BLEN]> for $t_impl {
             fn from(value: [u8; BLEN]) -> Self {

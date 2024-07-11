@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2023 Yulong Ming (myl7)
 
+//! Group (mathematics).
+//!
 //! See [`Group`].
 
 use std::fmt::Debug;
@@ -10,7 +12,7 @@ pub mod byte;
 pub mod int;
 pub mod int_prime;
 
-/// Group (mathematics) that can be converted from a byte array.
+/// Group that can be converted from bytes.
 pub trait Group<const BLEN: usize>
 where
     Self: Add<Output = Self>
@@ -25,7 +27,9 @@ where
         + Send
         + From<[u8; BLEN]>,
 {
-    /// Zero in the group.
+    /// Additive identity.
+    ///
+    /// E.g., 0 in the integer group.
     fn zero() -> Self;
 
     /// Helper to get the inverse if true.
@@ -41,9 +45,5 @@ where
 }
 
 /// `Into<[u8; BLEN]>` is not used in the crate.
-/// We include it here and impl it for all PRG embedded in the crate for user convenience.
-pub trait GroupEmbed<const BLEN: usize>
-where
-    Self: Group<BLEN> + Into<[u8; BLEN]>,
-{
-}
+/// But it is implemented by all included PRGs for user convenience.
+pub trait GroupToBytes<const BLEN: usize>: Into<[u8; BLEN]> {}
