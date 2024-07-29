@@ -91,6 +91,12 @@ macro_rules! decl_int_prime_group {
             }
         }
 
+        impl<const MOD: $t> From<$t> for $t_impl<MOD> {
+            fn from(value: $t) -> Self {
+                <$t_impl<MOD>>::new(value)
+            }
+        }
+
         impl<const BLEN: usize, const MOD: $t> From<$t_impl<MOD>> for [u8; BLEN] {
             fn from(value: $t_impl<MOD>) -> Self {
                 let mut bs = [0; BLEN];
@@ -100,6 +106,12 @@ macro_rules! decl_int_prime_group {
                     bs[..size_of::<$t>()].copy_from_slice(&value.0.to_be_bytes());
                 }
                 bs
+            }
+        }
+
+        impl<const MOD: $t> From<$t_impl<MOD>> for $t {
+            fn from(value: $t_impl<MOD>) -> Self {
+                value.0
             }
         }
     };

@@ -67,6 +67,12 @@ macro_rules! decl_int_group {
             }
         }
 
+        impl From<$t> for $t_impl {
+            fn from(value: $t) -> Self {
+                $t_impl(value)
+            }
+        }
+
         impl<const BLEN: usize> From<$t_impl> for [u8; BLEN] {
             fn from(value: $t_impl) -> Self {
                 let mut bs = [0; BLEN];
@@ -78,6 +84,12 @@ macro_rules! decl_int_group {
                 bs
             }
         }
+
+        impl From<$t_impl> for $t {
+            fn from(value: $t_impl) -> Self {
+                value.0
+            }
+        }
     };
 }
 
@@ -86,9 +98,3 @@ decl_int_group!(u16, U16Group);
 decl_int_group!(u32, U32Group);
 decl_int_group!(u64, U64Group);
 decl_int_group!(u128, U128Group);
-
-decl_int_group!(i8, I8Group);
-decl_int_group!(i16, I16Group);
-decl_int_group!(i32, I32Group);
-decl_int_group!(i64, I64Group);
-decl_int_group!(i128, I128Group);
