@@ -64,16 +64,7 @@ macro_rules! decl_int_prime_group {
             type Output = Self;
 
             fn neg(mut self) -> Self::Output {
-                self.0 = match self.0.checked_add(MOD) {
-                    Some(x) => x % MOD,
-                    None => {
-                        self.0
-                            .wrapping_add(MOD)
-                            .wrapping_add(<$t>::MAX % MOD)
-                            .wrapping_add(1)
-                            % MOD
-                    }
-                };
+                self.0 = (MOD - self.0) % MOD;
                 self
             }
         }
