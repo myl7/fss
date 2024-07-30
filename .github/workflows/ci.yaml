@@ -8,16 +8,21 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: ['nightly', 'stable']
+        feat_multi_thread: ['', 'multi-thread']
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
       - name: Format
         run: cargo fmt --check
+      - name: Set feat_toolchain
+        run: echo "feat_toolchain=$(if [ '${{ matrix.toolchain }}' = 'stable' ]; then printf 'stable'; fi)" >> "$GITHUB_ENV"
       - name: Lint
-        run: cargo clippy --no-deps -- -Dwarnings
-      - name: Test with multithreading
-        run: cargo test
-      - name: Test without multithreading
-        run: cargo test --no-default-features -F prg
+        run: cargo clippy --no-deps --no-default-features -F prg,${{ matrix.feat_multi_thread }},"$feat_toolchain" -- -Dwarnings
+      - name: Test
+        run: cargo test --no-default-features -F prg,${{ matrix.feat_multi_thread }},"$feat_toolchain"
