@@ -5,7 +5,7 @@
 
 Function secret sharing including distributed comparison & point functions
 
-## Get started
+## Get Started
 
 First add the crate as a dependency:
 
@@ -130,23 +130,12 @@ Notice that we do not close other programs as many as possible to reduce schedul
 [AMD Ryzen 7 5800H]: https://www.amd.com/en/product/10821
 [rayon]: https://github.com/rayon-rs/rayon
 
-## Migrations
+## Changelog
 
-### Require v0.4.3 at least
-
-`crate::dcf::prg::Aes256HirosePrg` (enabled by default by the `prg` feature) has wrong implementation.
-It is fixed at v0.4.3 of the crate fss-rs, v0.5.2 and v0.6.3 of the crate dcf, and v0.5.2 of the crate dpf-fss (since it depends on the crate dcf).
-Other similar PRGs, e.g., `crate::dpf::prg::Aes256HirosePrg`, are not affected.
-
-### Migrate to v0.5
-
-- v0.5 adds a new generic parameter `OUT_BLEN_N` to `Prg`.
-  Please set it to the literal `1` for DPFs and `2` for DCFs.
-- `Prg` implementations are moved from `crate::dcf/dpf::prg` to `crate::prg`.
-  Now DPFs and DCFs share some same PRG implementations.
+See [CHANGELOG.md](./CHANGELOG.md).
 
 ## License
 
-Copyright (C) myl7
+Copyright (C) 2023 Yulong Ming (myl7)
 
 SPDX-License-Identifier: Apache-2.0
