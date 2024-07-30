@@ -58,3 +58,11 @@ impl<const BLEN: usize> From<ByteGroup<BLEN>> for [u8; BLEN] {
         value.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_group_axioms;
+
+    test_group_axioms!(test_group_axioms, ByteGroup<16>, 16);
+}

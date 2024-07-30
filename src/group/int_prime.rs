@@ -133,3 +133,15 @@ pub const PRIME_MAX_LE_U32_MAX: u32 = u32::MAX - 5 + 1;
 pub const PRIME_MAX_LE_U64_MAX: u64 = u64::MAX - 59 + 1;
 /// `$2^128 - 159$`
 pub const PRIME_MAX_LE_U128_MAX: u128 = u128::MAX - 159 + 1;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_group_axioms;
+
+    test_group_axioms!(test_u8_group_axioms, U8Group<PRIME_MAX_LE_U8_MAX>, 1);
+    test_group_axioms!(test_u16_group_axioms, U16Group<PRIME_MAX_LE_U16_MAX>, 2);
+    test_group_axioms!(test_u32_group_axioms, U32Group<PRIME_MAX_LE_U32_MAX>, 4);
+    test_group_axioms!(test_u64_group_axioms, U64Group<PRIME_MAX_LE_U64_MAX>, 8);
+    test_group_axioms!(test_u128_group_axioms, U128Group<PRIME_MAX_LE_U128_MAX>, 16);
+}

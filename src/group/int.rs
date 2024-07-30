@@ -98,3 +98,15 @@ decl_int_group!(u16, U16Group);
 decl_int_group!(u32, U32Group);
 decl_int_group!(u64, U64Group);
 decl_int_group!(u128, U128Group);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_group_axioms;
+
+    test_group_axioms!(test_u8_group_axioms, U8Group, 1);
+    test_group_axioms!(test_u16_group_axioms, U16Group, 2);
+    test_group_axioms!(test_u32_group_axioms, U32Group, 4);
+    test_group_axioms!(test_u64_group_axioms, U64Group, 8);
+    test_group_axioms!(test_u128_group_axioms, U128Group, 16);
+}
