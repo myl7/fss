@@ -4,8 +4,6 @@
 //! Many variable names and the LaTeX math expressions in the doc comment are from the paper _Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation_.
 
 #![feature(portable_simd)]
-#![feature(array_chunks)]
-#![feature(iter_array_chunks)]
 
 use group::Group;
 
