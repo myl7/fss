@@ -80,11 +80,13 @@ More examples are available as benchmarks in the [benches dir](./benches)
 
 ## Performance
 
-The hot path of the project is PRG and xor operations.
-We use [Rust std SIMD] for xor operations and the [aes crate of RustCrypto] for PRG.
+The hot path of the project is PRG and XOR operations.
+We use the [aes crate of RustCrypto] for PRG.
+For XOR operations, We use [Rust std SIMD] for nightly Rust, or the [wide crate] that has 9M all-time downloads for stable Rust.
 
 [Rust std SIMD]: https://doc.rust-lang.org/std/simd/index.html
 [aes crate of RustCrypto]: https://crates.io/crates/aes
+[wide crate]: https://crates.io/crates/wide
 
 For PRG, enabling archtecture-specified CPU intrinsics can largely boost the performance.
 The aes crate by default performs runtime detection of CPU intrinsics and uses them if available.
