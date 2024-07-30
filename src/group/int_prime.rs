@@ -80,13 +80,17 @@ macro_rules! decl_int_prime_group {
         impl<const BLEN: usize, const MOD: $t> From<[u8; BLEN]> for $t_impl<MOD> {
             fn from(value: [u8; BLEN]) -> Self {
                 if cfg!(not(feature = "int-be")) {
-                    $t_impl(<$t>::from_le_bytes(
-                        (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
-                    ))
+                    $t_impl(
+                        <$t>::from_le_bytes(
+                            (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
+                        ) % MOD,
+                    )
                 } else {
-                    $t_impl(<$t>::from_be_bytes(
-                        (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
-                    ))
+                    $t_impl(
+                        <$t>::from_be_bytes(
+                            (&value[..size_of::<$t>()]).clone().try_into().unwrap(),
+                        ) % MOD,
+                    )
                 }
             }
         }
