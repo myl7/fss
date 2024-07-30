@@ -132,7 +132,12 @@ Notice that we do not close other programs as many as possible to reduce schedul
 
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md).
+Correctness fixes:
+
+- `fss_rs::group::int_prime` impl is corrected at v0.6.0.
+- `fss_rs::dcf::prg::Aes256HirosePrg` impl is corrected at v0.4.3 of the crate fss-rs, v0.5.2 and v0.6.3 of the crate dcf, and v0.5.2 of the crate dpf-fss (since it depends on the crate dcf).
+
+See [CHANGELOG.md](./CHANGELOG.md) for the full changelog.
 
 ## License
 
