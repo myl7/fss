@@ -21,16 +21,17 @@ keywords = ["crypto", "fss", "dcf", "dpf"]
 categories = ["cryptography"]
 
 [features]
-default = ["full"]
-full = ["prg", "multi-thread"]
+default = ["prg", "multi-thread"]
 prg = ["aes"]
 multi-thread = ["rayon"]
+stable = ["wide"]
 int-be = []
 
 [dependencies]
 bitvec = "1.0.1"
 aes = { version = "0.8.3", optional = true }
 rayon = { version = "1.7.0", optional = true }
+wide = { version = "0.7.26", optional = true }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["std", "std_rng"] }

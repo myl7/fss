@@ -3,7 +3,7 @@
 
 //! Many variable names and the LaTeX math expressions in the doc comment are from the paper _Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation_.
 
-#![feature(portable_simd)]
+#![cfg_attr(not(feature = "stable"), feature(portable_simd))]
 
 use group::Group;
 
