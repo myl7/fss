@@ -12,7 +12,7 @@
 use std::mem::size_of;
 use std::ops::{Add, AddAssign, Neg};
 
-use super::{Group, GroupToBytes};
+use super::Group;
 
 macro_rules! decl_int_prime_group {
     ($t:ty, $t_impl:ident) => {
@@ -74,8 +74,6 @@ macro_rules! decl_int_prime_group {
                 $t_impl(0)
             }
         }
-
-        impl<const BLEN: usize, const MOD: $t> GroupToBytes<BLEN> for $t_impl<MOD> {}
 
         impl<const BLEN: usize, const MOD: $t> From<[u8; BLEN]> for $t_impl<MOD> {
             fn from(value: [u8; BLEN]) -> Self {

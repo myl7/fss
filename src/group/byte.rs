@@ -9,7 +9,7 @@
 
 use std::ops::{Add, AddAssign, Neg};
 
-use super::{Group, GroupToBytes};
+use super::Group;
 use crate::utils::xor_inplace;
 
 /// See [`self`].
@@ -44,8 +44,6 @@ impl<const BLEN: usize> Group<BLEN> for ByteGroup<BLEN> {
         ByteGroup([0; BLEN])
     }
 }
-
-impl<const BLEN: usize> GroupToBytes<BLEN> for ByteGroup<BLEN> {}
 
 impl<const BLEN: usize> From<[u8; BLEN]> for ByteGroup<BLEN> {
     fn from(value: [u8; BLEN]) -> Self {

@@ -15,7 +15,7 @@
 use std::mem::size_of;
 use std::ops::{Add, AddAssign, Neg};
 
-use super::{Group, GroupToBytes};
+use super::Group;
 
 macro_rules! decl_int_group {
     ($t:ty, $t_impl:ident) => {
@@ -50,8 +50,6 @@ macro_rules! decl_int_group {
                 $t_impl(0)
             }
         }
-
-        impl<const BLEN: usize> GroupToBytes<BLEN> for $t_impl {}
 
         impl<const BLEN: usize> From<[u8; BLEN]> for $t_impl {
             fn from(value: [u8; BLEN]) -> Self {
