@@ -321,8 +321,7 @@ pub enum BoundState {
 mod tests {
     use std::iter;
 
-    use hex_literal::hex;
-    use rand::prelude::*;
+    use arbtest::arbtest;
 
     use super::*;
     use crate::group::byte::ByteGroup;
@@ -331,210 +330,117 @@ mod tests {
     type GroupImpl = ByteGroup<16>;
     type PrgImpl = Aes128MatyasMeyerOseasPrg<16, 2, 4>;
     type DcfImplImpl = DcfImpl<2, 16, PrgImpl>;
-    type ShareImpl = Share<16, GroupImpl>;
 
-    const PRG_KEYS: [&[u8; 16]; 4] = [
-        &hex!("fe 1f 07 26 11 2b d1 2a b4 09 05 9f 22 85 f4 f8"),
-        &hex!("a6 9f 94 53 53 6c cf c4 17 59 ce d2 9a c3 54 41"),
-        &hex!("13 bc 1e 68 a3 7a 92 91 9d 5c 7c 6f db 47 ef 7c"),
-        &hex!("20 a0 c2 3c 48 99 7e dc f4 59 21 33 95 ac 93 ff"),
-    ];
+    #[test]
+    fn test_correctness() {
+        arbtest(|u| {
+            let keys: [[u8; 16]; 4] = u.arbitrary()?;
+            let prg = PrgImpl::new(&std::array::from_fn(|i| &keys[i]));
+            let filter_bitn = u.arbitrary::<usize>()? % 15 + 2; // 2..=16
+            let dcf = DcfImplImpl::new_with_filter(prg, filter_bitn);
+            let s0s: [[u8; 16]; 2] = u.arbitrary()?;
+            let alpha_i: u16 = u.arbitrary::<u16>()? >> (16 - filter_bitn);
+            let alpha: [u8; 2] = (alpha_i << (16 - filter_bitn)).to_be_bytes();
+            let beta: [u8; 16] = u.arbitrary()?;
+            let bound_is_gt: bool = u.arbitrary()?;
+            let f = CmpFn {
+                alpha,
+                beta: beta.into(),
+                bound: if bound_is_gt {
+                    BoundState::GtAlpha
+                } else {
+                    BoundState::LtAlpha
+                },
+            };
+            let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
+            let mut k0 = k.clone();
+            k0.s0s = vec![k0.s0s[0]];
+            let mut k1 = k;
+            k1.s0s = vec![k1.s0s[1]];
 
-    const XS: [&[u8; 2]; 15] = [
-        &hex!("09 ed"),
-        &hex!("2d 62"),
-        &hex!("2f 1b"),
-        &hex!("3e bb"),
-        &hex!("52 2f"),
-        //
-        &hex!("58 0a"),
-        &hex!("58 0b"),
-        &hex!("58 0c"),
-        &hex!("58 0d"),
-        &hex!("58 0e"),
-        //
-        &hex!("69 3d"),
-        &hex!("77 c4"),
-        &hex!("86 55"),
-        &hex!("91 c5"),
-        &hex!("a5 37"),
-    ];
-    const ALPHA_I: usize = 7;
-    const BETA_B: [u8; 16] = hex!("c4 c5 38 92 d2 2b 3b fb 87 81 29 6b f3 60 dc a5");
-
-    fn dcf_gen(dcf: &DcfImplImpl, bound: BoundState) -> (ShareImpl, ShareImpl) {
-        let s0s: [[u8; 16]; 2] = thread_rng().gen();
-        let f = CmpFn {
-            alpha: XS[ALPHA_I].to_owned(),
-            beta: BETA_B.into(),
-            bound,
-        };
-        let k = dcf.gen(&f, [&s0s[0], &s0s[1]]);
-        let mut k0 = k.clone();
-        k0.s0s = vec![k0.s0s[0]];
-        let mut k1 = k.clone();
-        k1.s0s = vec![k1.s0s[1]];
-        (k0, k1)
-    }
-
-    fn dcf_eval(
-        dcf: &DcfImplImpl,
-        k0: &ShareImpl,
-        k1: &ShareImpl,
-    ) -> (Vec<GroupImpl>, Vec<GroupImpl>) {
-        let mut ys0 = vec![GroupImpl::zero(); XS.len()];
-        let mut ys1 = vec![GroupImpl::zero(); XS.len()];
-        dcf.eval(false, k0, &XS, &mut ys0.iter_mut().collect::<Vec<_>>());
-        dcf.eval(true, k1, &XS, &mut ys1.iter_mut().collect::<Vec<_>>());
-        (ys0, ys1)
-    }
-
-    fn assert_dcf_full_domain_eval(
-        dcf: &DcfImplImpl,
-        k0: &ShareImpl,
-        k1: &ShareImpl,
-        filter_bitn: usize,
-    ) {
-        let xs: Vec<_> = (0u16..=u16::MAX >> (16 - filter_bitn))
-            .map(|i| (i << (16 - filter_bitn)).to_be_bytes())
+            let xs: Vec<_> = (0u16..=u16::MAX >> (16 - filter_bitn))
+                .map(|i| (i << (16 - filter_bitn)).to_be_bytes())
+                .collect();
+            assert_eq!(xs.len(), 1 << filter_bitn);
+            let xs_lt_num = alpha_i;
+            let xs_gt_num = (u16::MAX >> (16 - filter_bitn)) - alpha_i;
+            let ys_expected: Vec<_> = iter::repeat(if bound_is_gt {
+                GroupImpl::zero()
+            } else {
+                beta.into()
+            })
+            .take(xs_lt_num as usize)
+            .chain([GroupImpl::zero()])
+            .chain(
+                iter::repeat({
+                    if bound_is_gt {
+                        beta.into()
+                    } else {
+                        GroupImpl::zero()
+                    }
+                })
+                .take(xs_gt_num as usize),
+            )
             .collect();
-        assert_eq!(xs.len(), 1 << filter_bitn);
 
-        let mut ys0 = vec![ByteGroup::zero(); 1 << filter_bitn];
-        let mut ys0_batch = vec![ByteGroup::zero(); 1 << filter_bitn];
-        dcf.full_eval(false, &k0, &mut ys0.iter_mut().collect::<Vec<_>>());
-        dcf.eval(
-            false,
-            &k0,
-            &xs.iter().collect::<Vec<_>>(),
-            &mut ys0_batch.iter_mut().collect::<Vec<_>>(),
-        );
-        assert_ys_eq(&ys0, &ys0_batch, "ys0");
+            let mut ys0 = vec![GroupImpl::zero(); xs.len()];
+            let mut ys1 = vec![GroupImpl::zero(); xs.len()];
+            dcf.eval(
+                false,
+                &k0,
+                &xs.iter().collect::<Vec<_>>(),
+                &mut ys0.iter_mut().collect::<Vec<_>>(),
+            );
+            ys0.iter().for_each(|y0| {
+                assert_ne!(*y0, GroupImpl::zero());
+                assert_ne!(*y0, [0xff; 16].into());
+            });
+            dcf.eval(
+                true,
+                &k1,
+                &xs.iter().collect::<Vec<_>>(),
+                &mut ys1.iter_mut().collect::<Vec<_>>(),
+            );
+            ys1.iter().for_each(|y1| {
+                assert_ne!(*y1, GroupImpl::zero());
+                assert_ne!(*y1, [0xff; 16].into());
+            });
+            let ys: Vec<_> = ys0
+                .iter()
+                .zip(ys1.iter())
+                .map(|(y0, y1)| y0.clone() + y1.clone())
+                .collect();
+            assert_ys_eq(&ys, &ys_expected, &xs, &alpha);
 
-        let mut ys1 = vec![ByteGroup::zero(); 1 << filter_bitn];
-        let mut ys1_batch = vec![ByteGroup::zero(); 1 << filter_bitn];
-        dcf.full_eval(true, &k1, &mut ys1.iter_mut().collect::<Vec<_>>());
-        dcf.eval(
-            true,
-            &k1,
-            &xs.iter().collect::<Vec<_>>(),
-            &mut ys1_batch.iter_mut().collect::<Vec<_>>(),
-        );
-        assert_ys_eq(&ys1, &ys1_batch, "ys1")
+            let mut ys0_full_eval = vec![ByteGroup::zero(); 1 << filter_bitn];
+            dcf.full_eval(
+                false,
+                &k0,
+                &mut ys0_full_eval.iter_mut().collect::<Vec<_>>(),
+            );
+            assert_ys_eq(&ys0_full_eval, &ys0, &xs, &alpha);
+            let mut ys1_full_eval = vec![ByteGroup::zero(); 1 << filter_bitn];
+            dcf.full_eval(true, &k1, &mut ys1_full_eval.iter_mut().collect::<Vec<_>>());
+            assert_ys_eq(&ys1_full_eval, &ys1, &xs, &alpha);
+
+            Ok(())
+        });
     }
 
-    fn assert_ys_eq(ys: &[GroupImpl], ys_expected: &[GroupImpl], ys_type: &str) {
-        for (i, (y, y_expected)) in ys.iter().zip(ys_expected.iter()).enumerate() {
-            assert_eq!(y, y_expected, "{} at index {}", ys_type, i);
+    fn assert_ys_eq(ys: &[GroupImpl], ys_expected: &[GroupImpl], xs: &[[u8; 2]], alpha: &[u8; 2]) {
+        let alpha_int = u16::from_be_bytes(*alpha);
+        for (i, (x, (y, y_expected))) in
+            xs.iter().zip(ys.iter().zip(ys_expected.iter())).enumerate()
+        {
+            let x_int = u16::from_be_bytes(*x);
+            let cmp = if x_int < alpha_int {
+                "<"
+            } else if x_int > alpha_int {
+                ">"
+            } else {
+                "="
+            };
+            assert_eq!(y, y_expected, "where i={}, x={:?}, x{}alpha", i, *x, cmp);
         }
-    }
-
-    #[test]
-    fn test_dcf() {
-        let prg = PrgImpl::new(PRG_KEYS);
-        let dcf = DcfImplImpl::new(prg);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
-        let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
-        let ys: Vec<_> = ys0
-            .iter()
-            .zip(ys1.iter())
-            .map(|(y0, y1)| y0.clone() + y1.clone())
-            .collect();
-        let ys_expected: Vec<_> = iter::repeat(BETA_B.into())
-            .take(5)
-            .chain([
-                BETA_B.into(),
-                BETA_B.into(),
-                GroupImpl::zero(),
-                GroupImpl::zero(),
-                GroupImpl::zero(),
-            ])
-            .chain(iter::repeat(GroupImpl::zero()).take(5))
-            .collect();
-        assert_ys_eq(&ys, &ys_expected, "ys");
-    }
-
-    #[test]
-    fn test_dcf_gt() {
-        let prg = PrgImpl::new(PRG_KEYS);
-        let dcf = DcfImplImpl::new(prg);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::GtAlpha);
-        let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
-        let ys: Vec<_> = ys0
-            .iter()
-            .zip(ys1.iter())
-            .map(|(y0, y1)| y0.clone() + y1.clone())
-            .collect();
-        let ys_expected: Vec<_> = iter::repeat(GroupImpl::zero())
-            .take(5)
-            .chain([
-                GroupImpl::zero(),
-                GroupImpl::zero(),
-                GroupImpl::zero(),
-                BETA_B.into(),
-                BETA_B.into(),
-            ])
-            .chain(iter::repeat(BETA_B.into()).take(5))
-            .collect();
-        assert_ys_eq(&ys, &ys_expected, "ys");
-    }
-
-    #[test]
-    fn test_dcf_with_filter() {
-        let prg = PrgImpl::new(PRG_KEYS);
-        let dcf = DcfImplImpl::new_with_filter(prg, 15);
-        // Choose gt and lt does not work because the last bit of `BETA_B` is 0.
-        // `a < b < c < d < e` => `5 = 5 < 6 = 6 < 7`.
-        let (k0, k1) = dcf_gen(&dcf, BoundState::GtAlpha);
-        let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
-        let ys: Vec<_> = ys0
-            .iter()
-            .zip(ys1.iter())
-            .map(|(y0, y1)| y0.clone() + y1.clone())
-            .collect();
-        let ys_expected: Vec<_> = iter::repeat(GroupImpl::zero())
-            .take(5)
-            .chain([
-                GroupImpl::zero(),
-                GroupImpl::zero(),
-                GroupImpl::zero(),
-                GroupImpl::zero(),
-                BETA_B.into(),
-            ])
-            .chain(iter::repeat(BETA_B.into()).take(5))
-            .collect();
-        assert_ys_eq(&ys, &ys_expected, "ys");
-    }
-
-    #[test]
-    fn test_dcf_not_trivial() {
-        let prg = PrgImpl::new(PRG_KEYS);
-        let dcf = DcfImplImpl::new_with_filter(prg, 15);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
-        let (ys0, ys1) = dcf_eval(&dcf, &k0, &k1);
-        ys0.iter().enumerate().for_each(|(i, y0)| {
-            assert_ne!(*y0, GroupImpl::zero(), "ys0 at index {}", i);
-            assert_ne!(*y0, [255; 16].into(), "ys0 at index {}", i);
-        });
-        ys1.iter().enumerate().for_each(|(i, y1)| {
-            assert_ne!(*y1, GroupImpl::zero(), "ys1 at index {}", i);
-            assert_ne!(*y1, [255; 16].into(), "ys1 at index {}", i);
-        });
-    }
-
-    #[test]
-    fn test_dcf_full_domain() {
-        let prg = PrgImpl::new(PRG_KEYS);
-        let dcf = DcfImplImpl::new(prg);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
-        assert_dcf_full_domain_eval(&dcf, &k0, &k1, 16);
-    }
-
-    #[test]
-    fn test_dcf_full_domain_with_filter() {
-        let prg = PrgImpl::new(PRG_KEYS);
-        let dcf = DcfImplImpl::new_with_filter(prg, 15);
-        let (k0, k1) = dcf_gen(&dcf, BoundState::LtAlpha);
-        assert_dcf_full_domain_eval(&dcf, &k0, &k1, 15);
     }
 }

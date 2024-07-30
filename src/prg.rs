@@ -145,59 +145,44 @@ impl<const OUT_BLEN: usize, const OUT_BLEN_N: usize, const CIPHER_N: usize>
 
 #[cfg(test)]
 mod tests {
-    use hex_literal::hex;
+    use arbtest::arbtest;
 
     use super::*;
 
-    const PRG_KEYS: [&[u8; 32]; 2] = [
-        &hex!(
-            "
-            8f 33 7c b9 55 4b 9f ba 3a 3d 78 2a 8b 7f cf 5d
-            8c 8c 26 5c 05 06 46 ad ff d2 41 be 2f 82 06 ec
-            "
-        ),
-        &hex!(
-            "
-            de 13 be fd 93 61 51 cf b5 5e aa a8 58 90 be 69
-            62 de 78 81 8e d2 a4 61 35 eb bd c6 28 36 28 b5
-            "
-        ),
-    ];
-    const SEED: &[u8; 16] = &hex!("65 4d 82 7b 3f 77 35 0b 9b d4 df ce 86 c1 1b 87");
-
     #[test]
-    fn test_prg_128_not_trivial() {
-        let prg = Aes128MatyasMeyerOseasPrg::<16, 2, 4>::new(
-            [
-                &PRG_KEYS[0][..16],
-                &PRG_KEYS[0][16..],
-                &PRG_KEYS[1][..16],
-                &PRG_KEYS[1][16..],
-            ]
-            .map(|a| a.try_into().unwrap()),
-        );
-        let out = prg.gen(SEED);
-        (0..2).for_each(|i| {
-            assert_ne!(out[i].0[0], [0; 16]);
-            assert_ne!(out[i].0[1], [0; 16]);
-            assert_ne!(xor(&[&out[i].0[0], SEED]), [0; 16]);
-            assert_ne!(xor(&[&out[i].0[1], SEED]), [0; 16]);
-            assert_ne!(xor(&[&out[i].0[0], SEED]), [0xff; 16]);
-            assert_ne!(xor(&[&out[i].0[1], SEED]), [0xff; 16]);
+    fn test_128_not_trivial() {
+        arbtest(|u| {
+            let keys: [[u8; 16]; 4] = u.arbitrary()?;
+            let seed: [u8; 16] = u.arbitrary()?;
+            let prg =
+                Aes128MatyasMeyerOseasPrg::<16, 2, 4>::new(&std::array::from_fn(|i| &keys[i]));
+            let out = prg.gen(&seed);
+            (0..2).for_each(|i| {
+                (0..2).for_each(|j| {
+                    assert_ne!(out[i].0[j], [0; 16]);
+                    assert_ne!(xor(&[&out[i].0[j], &seed]), [0; 16]);
+                    assert_ne!(xor(&[&out[i].0[j], &seed]), [0xff; 16]);
+                });
+            });
+            Ok(())
         });
     }
 
     #[test]
-    fn test_prg_256_not_trivial() {
-        let prg = Aes256HirosePrg::<16, 2, 2>::new(PRG_KEYS);
-        let out = prg.gen(SEED);
-        (0..2).for_each(|i| {
-            assert_ne!(out[i].0[0], [0; 16]);
-            assert_ne!(out[i].0[1], [0; 16]);
-            assert_ne!(xor(&[&out[i].0[0], SEED]), [0; 16]);
-            assert_ne!(xor(&[&out[i].0[1], SEED]), [0; 16]);
-            assert_ne!(xor(&[&out[i].0[0], SEED]), [0xff; 16]);
-            assert_ne!(xor(&[&out[i].0[1], SEED]), [0xff; 16]);
+    fn test_256_not_trivial() {
+        arbtest(|u| {
+            let keys: [[u8; 32]; 4] = u.arbitrary()?;
+            let seed: [u8; 16] = u.arbitrary()?;
+            let prg = Aes256HirosePrg::<16, 2, 2>::new(&std::array::from_fn(|i| &keys[i]));
+            let out = prg.gen(&seed);
+            (0..2).for_each(|i| {
+                (0..2).for_each(|j| {
+                    assert_ne!(out[i].0[j], [0; 16]);
+                    assert_ne!(xor(&[&out[i].0[j], &seed]), [0; 16]);
+                    assert_ne!(xor(&[&out[i].0[j], &seed]), [0xff; 16]);
+                });
+            });
+            Ok(())
         });
     }
 }
