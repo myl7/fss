@@ -16,7 +16,7 @@ fn from_domain_range_size<const IN_BLEN: usize, const OUT_BLEN: usize, const CIP
     keys.iter_mut().for_each(|k| thread_rng().fill_bytes(k));
     let keys_iter = std::array::from_fn(|i| &keys[i]);
 
-    let prg = Aes128MatyasMeyerOseasPrg::<OUT_BLEN, 1, CIPHER_N>::new(keys_iter);
+    let prg = Aes128MatyasMeyerOseasPrg::<OUT_BLEN, 1, CIPHER_N>::new(&keys_iter);
     let dpf = DpfImpl::<IN_BLEN, OUT_BLEN, _>::new(prg);
 
     let mut s0s = [[0; OUT_BLEN]; 2];

@@ -25,7 +25,7 @@ pub struct Aes256HirosePrg<const OUT_BLEN: usize, const OUT_BLEN_N: usize, const
 impl<const OUT_BLEN: usize, const OUT_BLEN_N: usize, const CIPHER_N: usize>
     Aes256HirosePrg<OUT_BLEN, OUT_BLEN_N, CIPHER_N>
 {
-    pub fn new(keys: [&[u8; 32]; CIPHER_N]) -> Self {
+    pub fn new(keys: &[&[u8; 32]; CIPHER_N]) -> Self {
         let ciphers = std::array::from_fn(|i| {
             let key_block = GenericArray::from_slice(keys[i]);
             Aes256::new(key_block)
@@ -96,7 +96,7 @@ pub struct Aes128MatyasMeyerOseasPrg<
 impl<const OUT_BLEN: usize, const OUT_BLEN_N: usize, const CIPHER_N: usize>
     Aes128MatyasMeyerOseasPrg<OUT_BLEN, OUT_BLEN_N, CIPHER_N>
 {
-    pub fn new(keys: [&[u8; 16]; CIPHER_N]) -> Self {
+    pub fn new(keys: &[&[u8; 16]; CIPHER_N]) -> Self {
         let ciphers = std::array::from_fn(|i| {
             let key_block = GenericArray::from_slice(keys[i]);
             Aes128::new(key_block)
