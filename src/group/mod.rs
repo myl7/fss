@@ -34,7 +34,10 @@ where
     /// If the compiler cannot infer `BLEN` with this static method, you can use the fully qualified syntax like:
     ///
     /// ```
-    /// let e: ByteGroup<16> = Group::<BLEN>::zero();
+    /// use fss_rs::group::Group;
+    /// use fss_rs::group::byte::ByteGroup;
+    ///
+    /// let e: ByteGroup<16> = Group::<16>::zero();
     /// ```
     fn zero() -> Self;
 
@@ -64,7 +67,7 @@ mod tests {
                     let b: $t_impl = b_bs.into();
                     let c_bs: [u8; $blen] = u.arbitrary()?;
                     let c: $t_impl = c_bs.into();
-                    let e: $t_impl = Group::<$blen>::zero();
+                    let e: $t_impl = crate::group::Group::<$blen>::zero();
                     let a_inv = -a.clone();
 
                     let l = a.clone() + (b.clone() + c.clone());
