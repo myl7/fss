@@ -9,7 +9,7 @@
 #define kLambda 16
 #endif
 
-int prg(uint8_t *out, const uint8_t *seed);
+void prg(uint8_t *out, const uint8_t *seed);
 
 void group_add(uint8_t *val, const uint8_t *rhs);
 void group_neg(uint8_t *val);

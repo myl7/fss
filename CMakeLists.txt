@@ -11,5 +11,8 @@ project(
 add_library(
   dpf STATIC
   src/dpf.c include/dpf.h
+  include/dpf_api.h
+  src/utils.h
 )
 target_include_directories(dpf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(dpf PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

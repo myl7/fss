@@ -6,20 +6,22 @@
 #include <stdint.h>
 #include <dpf_api.h>
 
+#define kCwLen (kLambda + 1)
+
 typedef struct {
-  uint8_t *bytes;
+  const uint8_t *bytes;
   int bitlen;
 } Bits;
 
 typedef struct {
   Bits alpha;
-  uint8_t *beta;
+  const uint8_t *beta;
 } PointFunc;
 
 typedef struct {
-  uint8_t **cws;
+  uint8_t *cws;
   uint8_t *cw_np1;
 } DpfKey;
 
-int dpf_gen(DpfKey k, const PointFunc pf, const uint8_t *s0s);
-int dpf_eval(uint8_t *y, uint8_t b, const DpfKey k, Bits x);
+void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf);
+void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x);
