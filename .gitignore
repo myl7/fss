@@ -2,6 +2,9 @@
 .vscode
 .idea
 
+# Build output
+/build
+
 ## C template
 # Prerequisites
 *.d
