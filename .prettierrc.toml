@@ -1,0 +1,9 @@
+printWidth = 120
+
+[[overrides]]
+files = "*.md"
+[overrides.options]
+# Fix invalid list item indent. See also https://python-markdown.github.io/#differences .
+tabWidth = 4
+# `tabWidth = 4` affects code blocks. This disables its formatting.
+embeddedLanguageFormatting = "off"

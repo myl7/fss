@@ -1,0 +1,19 @@
+BasedOnStyle: Google
+ColumnLimit: 120
+# Do not follow the existing alignment and align right instead
+DerivePointerAlignment: false
+PointerAlignment: Right
+# Allow short blocks with readibility on a single line for conciser diff
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+# Do not align wrapped lines to leave more space for left code
+AlignAfterOpenBracket: DontAlign
+AlignEscapedNewlines: DontAlign
+# Do not indent more for continuation
+ConstructorInitializerIndentWidth: 2
+ContinuationIndentWidth: 2
+# Do not sort include and using statements. Manually manage their order.
+SortIncludes: Never
+SortUsingDeclarations: Never
