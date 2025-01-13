@@ -16,3 +16,22 @@ add_library(
 )
 target_include_directories(dpf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(dpf PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+add_executable(
+  sample_dpf_i128_aes_mmo
+  samples/dpf_i128.c
+  samples/group/i128.c
+  samples/prg/aes_mmo.c samples/prg/torchcsprng/aes.c
+)
+target_include_directories(sample_dpf_i128_aes_mmo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(sample_dpf_i128_aes_mmo PRIVATE dpf)
+
+add_executable(
+  sample_dpf_i128_aes_mmo_ni
+  samples/dpf_i128.c
+  samples/group/i128.c
+  samples/prg/aes_mmo_ni.c samples/prg/torchcsprng/aes.c
+)
+target_include_directories(sample_dpf_i128_aes_mmo_ni PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(sample_dpf_i128_aes_mmo_ni PRIVATE dpf)
+target_compile_options(sample_dpf_i128_aes_mmo_ni PRIVATE -msse2 -maes)

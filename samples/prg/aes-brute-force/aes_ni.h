@@ -54,7 +54,7 @@ static __m128i aes_128_key_expansion(__m128i key, __m128i keygened) {
 }
 
 // public API
-static void aes128_load_key_enc_only(uint8_t *enc_key, __m128i *key_schedule) {
+static void aes128_load_key_enc_only(const uint8_t *enc_key, __m128i *key_schedule) {
   key_schedule[0] = _mm_loadu_si128((const __m128i *)enc_key);
   key_schedule[1] = AES_128_key_exp(key_schedule[0], 0x01);
   key_schedule[2] = AES_128_key_exp(key_schedule[1], 0x02);
@@ -68,7 +68,7 @@ static void aes128_load_key_enc_only(uint8_t *enc_key, __m128i *key_schedule) {
   key_schedule[10] = AES_128_key_exp(key_schedule[9], 0x36);
 }
 
-static void aes128_load_key(uint8_t *enc_key, __m128i *key_schedule) {
+static void aes128_load_key(const uint8_t *enc_key, __m128i *key_schedule) {
   aes128_load_key_enc_only(enc_key, key_schedule);
 
   // generate decryption keys in reverse order.
