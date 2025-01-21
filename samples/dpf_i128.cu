@@ -36,17 +36,17 @@ __global__ void gen_kernel(
   dpf_gen(k, pf, sbuf);
 }
 
-// TODO: `const k`
-__global__ void eval_kernel(uint8_t *sbuf_dev, uint8_t b, uint8_t *cw_np1_dev, uint8_t *cws_dev, const uint8_t *x_dev) {
+__global__ void eval_kernel(
+  uint8_t *sbuf_dev, uint8_t b, const uint8_t *cw_np1_dev, const uint8_t *cws_dev, const uint8_t *x_dev) {
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
   if (tid >= kIterNum) return;
 
   uint8_t *sbuf = sbuf_dev + tid * kLambda * 3;
   const uint8_t *x = x_dev + tid * sizeof(uint16_t);
-  uint8_t *cw_np1 = cw_np1_dev + tid * kLambda;
-  uint8_t *cws = cws_dev + tid * kCwLen * kAlphaBitlen;
+  const uint8_t *cw_np1 = cw_np1_dev + tid * kLambda;
+  const uint8_t *cws = cws_dev + tid * kCwLen * kAlphaBitlen;
 
-  DpfKey k = {cws, cw_np1};
+  DpfKey k = {(uint8_t *)cws, (uint8_t *)cw_np1};
   Bits x_bits = {x, kAlphaBitlen};
   dpf_eval(sbuf, b, k, x_bits);
 }

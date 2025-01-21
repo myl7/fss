@@ -88,7 +88,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   if (t1) group_neg(k.cw_np1);
 }
 
-HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, const DpfKey k, Bits x) {
+HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t t;
   load_st(s, &t);
