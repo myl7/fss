@@ -3,13 +3,13 @@
 
 #include <dpf_api.h>
 
-void group_add(uint8_t *val, const uint8_t *rhs) {
+HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs) {
   __int128_t *val128 = (__int128_t *)val;
   const __int128_t *rhs128 = (const __int128_t *)rhs;
   *val128 += *rhs128;
 }
 
-void group_neg(uint8_t *val) {
+HOST_DEVICE void group_neg(uint8_t *val) {
   __int128_t *val128 = (__int128_t *)val;
   *val128 = -*val128;
 }
