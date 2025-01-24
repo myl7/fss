@@ -9,10 +9,11 @@
 
 __m128i gKeySchedules[2][20];
 
-void prg_init(const uint8_t keys[2][16]) {
+void prg_init(const uint8_t *state, int state_len) {
+  assert(state_len == 32);
   assert(kLambda == 16);
-  aes128_load_key(keys[0], gKeySchedules[0]);
-  aes128_load_key(keys[1], gKeySchedules[1]);
+  aes128_load_key(state, gKeySchedules[0]);
+  aes128_load_key(state + 16, gKeySchedules[1]);
 }
 
 void prg(uint8_t *out, const uint8_t *seed) {

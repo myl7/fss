@@ -9,11 +9,11 @@
 #define kLambda 16
 #endif
 
-#ifndef CUDA
-#define CUDA defined(__CUDACC__)
+#ifndef FSS_CUDA
+#define FSS_CUDA defined(__CUDACC__)
 #endif
 
-#if CUDA
+#if FSS_CUDA
 #define HOST_DEVICE __host__ __device__
 #define DEVICE_CONST __constant__
 #else

@@ -14,7 +14,7 @@
 #define kAlphaBitlen 16
 #define kBeta 604
 
-extern void prg_init(const uint32_t nonce[2]);
+extern void prg_init(const uint8_t *state, int state_len);
 
 static inline double get_time() {
   struct timespec ts;
@@ -65,7 +65,7 @@ int main() {
   cudaError_t err;
 
   uint32_t nonce[2] = {0, 1};
-  prg_init(nonce);
+  prg_init((const uint8_t *)nonce, 8);
 
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha_dev;

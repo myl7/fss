@@ -11,10 +11,11 @@ extern void encrypt(uint8_t *state, const uint8_t *RoundKey);
 
 uint8_t gRoundKeys[2][176];
 
-void prg_init(const uint8_t keys[2][16]) {
+void prg_init(const uint8_t *state, int state_len) {
+  assert(state_len == 32);
   assert(kLambda == 16);
-  KeyExpansion(gRoundKeys[0], keys[0]);
-  KeyExpansion(gRoundKeys[1], keys[1]);
+  KeyExpansion(gRoundKeys[0], state);
+  KeyExpansion(gRoundKeys[1], state + 16);
 }
 
 void prg(uint8_t *out, const uint8_t *seed) {

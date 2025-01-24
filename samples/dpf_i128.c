@@ -14,7 +14,7 @@
 #define kBeta 604
 #define kIterNum 1000
 
-extern void prg_init(const uint8_t keys[2][16]);
+extern void prg_init(const uint8_t *state, int state_len);
 
 static inline double get_time() {
   struct timespec ts;
@@ -28,7 +28,7 @@ int main() {
   double t;
 
   uint8_t keys[2][16] = {{0}, {1}};
-  prg_init(keys);
+  prg_init((uint8_t *)keys, 32);
 
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;

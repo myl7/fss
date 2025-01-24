@@ -19,7 +19,7 @@ HOST_DEVICE static inline void set_bit(uint8_t *bytes, int i, uint8_t bit) {
 }
 
 HOST_DEVICE static inline void xor_bytes(uint8_t *val, const uint8_t *rhs, int len) {
-#if CUDA
+#if FSS_CUDA
   for (int i = 0; i < len; i++) {
     val[i] ^= rhs[i];
   }

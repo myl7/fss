@@ -4,8 +4,9 @@
 
 #include <dpf_api.h>
 #include <stdint.h>
+#include <assert.h>
 #include <string.h>
-#if CUDA
+#if FSS_CUDA
 #include <cuda_runtime.h>
 #endif
 
@@ -55,11 +56,12 @@ HOST_DEVICE void salsa20_expand_key(uint32_t x[16]) {
 
 DEVICE_CONST uint32_t gNonce[2];
 
-void prg_init(const uint32_t nonce[2]) {
-#if CUDA
-  cudaMemcpyToSymbol(gNonce, nonce, 8);
+void prg_init(const uint8_t *state, int state_len) {
+  assert(state_len == 8);
+#if FSS_CUDA
+  cudaMemcpyToSymbol(gNonce, state, 8);
 #else
-  memcpy(gNonce, nonce, 8);
+  memcpy(gNonce, state, 8);
 #endif
 }
 
