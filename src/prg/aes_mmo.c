@@ -4,7 +4,7 @@
 #include <dpf_api.h>
 #include <string.h>
 #include <assert.h>
-#include <utils.h>
+#include "../utils.h"
 
 extern void KeyExpansion(uint8_t *RoundKey, const uint8_t *Key);
 extern void encrypt(uint8_t *state, const uint8_t *RoundKey);

@@ -5,7 +5,7 @@
 #include <string.h>
 #include <assert.h>
 #include "aes-brute-force/aes_ni.h"
-#include <utils.h>
+#include "../utils.h"
 
 __m128i gKeySchedules[2][20];
 

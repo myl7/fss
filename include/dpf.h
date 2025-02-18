@@ -23,5 +23,13 @@ typedef struct {
   uint8_t *cw_np1;
 } DpfKey;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf);
 HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x);
+
+#ifdef __cplusplus
+}
+#endif
