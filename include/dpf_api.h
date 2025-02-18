@@ -10,7 +10,11 @@
 #endif
 
 #ifndef FSS_CUDA
-#define FSS_CUDA defined(__CUDACC__)
+#ifdef __CUDACC__
+#define FSS_CUDA 1
+#else
+#define FSS_CUDA 0
+#endif
 #endif
 
 #if FSS_CUDA
