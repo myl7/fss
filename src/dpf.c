@@ -10,10 +10,6 @@ HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
   set_bit(s, kLambda * 8 - 1, 0);
 }
 
-HOST_DEVICE static inline void set_st(uint8_t *s, uint8_t t) {
-  set_bit(s, kLambda * 8 - 1, t);
-}
-
 HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
   load_st(ss, t0);
   load_st(ss + kLambda, t1);
@@ -33,9 +29,8 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   uint8_t *s0 = ss;
   uint8_t *s1 = ss + kLambda;
   uint8_t t0, t1;
-  load_st(s0, &t0);
+  load_sst(ss, &t0, &t1);
   t1 = t0 ^ 1;
-  set_st(s1, t1);
 
   uint8_t *s0s = sbuf + kLambda * 2;
   uint8_t *s0l = s0s;

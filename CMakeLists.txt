@@ -25,7 +25,12 @@ add_executable(
 target_link_libraries(sample_dpf_i128_aes_mmo_ni PRIVATE dpf)
 target_compile_options(sample_dpf_i128_aes_mmo_ni PRIVATE -msse2 -maes)
 
-option(WITH_CUDA "Build with CUDA (including CPU variants)" OFF)
+option(WITH_TEST "Build with tests" OFF)
+if(WITH_TEST)
+  include(test.cmake)
+endif()
+
+option(WITH_CUDA "Build with CUDA" OFF)
 if(WITH_CUDA)
   include(cuda.cmake)
 endif()
