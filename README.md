@@ -11,7 +11,7 @@ For a function $f$ whose input domain is $\mathbb{G}^{in}$ and output domain is 
 
 More formal definitions can be found in the following papers:
 
--   [Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation](doi.org/10.1007/978-3-030-77886-6_30)
+-   [Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation](https://doi.org/10.1007/978-3-030-77886-6_30)
 -   [Secure Computation with Preprocessing via Function Secret Sharing](https://doi.org/10.1007/978-3-030-36030-6_14)
 -   [Function Secret Sharing: Improvements and Extensions](https://doi.org/10.1145/2976749.2978429)
 -   [Function Secret Sharing](https://doi.org/10.1007/978-3-662-46803-6_12)
