@@ -1,6 +1,8 @@
 #include <random>
+#include <cstdlib>
 #include <cstring>
 #include <climits>
+#include <cassert>
 #include <gtest/gtest.h>
 #include <dpf.h>
 
@@ -17,8 +19,9 @@ class DpfTest : public ::testing::Test {
     std::generate(std::begin(keys), std::end(keys), std::ref(rbe));
     prg_init((uint8_t *)keys, 32);
 
-    kS0s = std::make_unique<uint8_t[]>(kLambda * 2);
-    std::generate(kS0s.get(), kS0s.get() + kLambda * 2, std::ref(rbe));
+    kS0s = (uint8_t *)malloc(kLambda * 2);
+    assert(kS0s != NULL);
+    std::generate(kS0s, kS0s + kLambda * 2, std::ref(rbe));
     uint8_t t0 = kS0s[kLambda - 1] & 1;
     uint8_t t1 = t0 ^ 1;
     kS0s[kLambda * 2 - 1] = t1 ? kS0s[kLambda * 2 - 1] | 1 : kS0s[kLambda * 2 - 1] & ~1;
@@ -28,18 +31,18 @@ class DpfTest : public ::testing::Test {
   static constexpr uint16_t kAlphaBitlen = 16;
   static constexpr __uint128_t kBeta = 604;
 
-  std::unique_ptr<uint8_t[]> kS0s;
+  uint8_t *kS0s;
 };
 
 TEST_F(DpfTest, EvalAtAlpha) {
-  uint8_t *sbuf = new uint8_t[kLambda * 6];
-  ASSERT_NE(sbuf, nullptr);
+  uint8_t *sbuf = (uint8_t *)malloc(kLambda * 6);
+  assert(sbuf != NULL);
 
   DpfKey key;
-  key.cw_np1 = new uint8_t[kLambda];
-  ASSERT_NE(key.cw_np1, nullptr);
-  key.cws = new uint8_t[kCwLen * kAlphaBitlen];
-  ASSERT_NE(key.cws, nullptr);
+  key.cw_np1 = (uint8_t *)malloc(kLambda);
+  assert(key.cw_np1 != NULL);
+  key.cws = (uint8_t *)malloc(kCwLen * kAlphaBitlen);
+  assert(key.cws != NULL);
 
   // Prepare point function
   uint16_t alpha_int = kAlpha;
@@ -50,20 +53,20 @@ TEST_F(DpfTest, EvalAtAlpha) {
   PointFunc pf = {alpha_bits, beta};
 
   // Generate DPF
-  memcpy(sbuf, kS0s.get(), kLambda * 2);
+  memcpy(sbuf, kS0s, kLambda * 2);
   dpf_gen(key, pf, sbuf);
 
   // Evaluate at alpha (x = alpha)
   Bits x_bits = {alpha, kAlphaBitlen};
 
   // Party 0 eval
-  memcpy(sbuf, kS0s.get(), kLambda);
+  memcpy(sbuf, kS0s, kLambda);
   dpf_eval(sbuf, 0, key, x_bits);
   __uint128_t y0;
   memcpy(&y0, sbuf, kLambda);
 
   // Party 1 eval
-  memcpy(sbuf, kS0s.get() + kLambda, kLambda);
+  memcpy(sbuf, kS0s + kLambda, kLambda);
   dpf_eval(sbuf, 1, key, x_bits);
   __uint128_t y1;
   memcpy(&y1, sbuf, kLambda);
@@ -71,20 +74,20 @@ TEST_F(DpfTest, EvalAtAlpha) {
   // Check result
   EXPECT_EQ(y0 + y1, kBeta);
 
-  delete[] key.cw_np1;
-  delete[] key.cws;
-  delete[] sbuf;
+  free(key.cw_np1);
+  free(key.cws);
+  free(sbuf);
 }
 
 TEST_F(DpfTest, EvalAtRandPoints) {
-  uint8_t *sbuf = new uint8_t[kLambda * 6];
-  ASSERT_NE(sbuf, nullptr);
+  uint8_t *sbuf = (uint8_t *)malloc(kLambda * 6);
+  assert(sbuf != NULL);
 
   DpfKey key;
-  key.cw_np1 = new uint8_t[kLambda];
-  ASSERT_NE(key.cw_np1, nullptr);
-  key.cws = new uint8_t[kCwLen * kAlphaBitlen];
-  ASSERT_NE(key.cws, nullptr);
+  key.cw_np1 = (uint8_t *)malloc(kLambda);
+  assert(key.cw_np1 != NULL);
+  key.cws = (uint8_t *)malloc(kCwLen * kAlphaBitlen);
+  assert(key.cws != NULL);
 
   // Prepare point function
   uint16_t alpha_int = kAlpha;
@@ -95,7 +98,7 @@ TEST_F(DpfTest, EvalAtRandPoints) {
   PointFunc pf = {alpha_bits, beta};
 
   // Generate DPF
-  memcpy(sbuf, kS0s.get(), kLambda * 2);
+  memcpy(sbuf, kS0s, kLambda * 2);
   dpf_gen(key, pf, sbuf);
 
   // Test at random points
@@ -110,13 +113,13 @@ TEST_F(DpfTest, EvalAtRandPoints) {
     Bits x_bits = {(uint8_t *)&x, 16};
 
     // Party 0 eval
-    memcpy(sbuf, kS0s.get(), kLambda);
+    memcpy(sbuf, kS0s, kLambda);
     dpf_eval(sbuf, 0, key, x_bits);
     __uint128_t y0;
     memcpy(&y0, sbuf, kLambda);
 
     // Party 1 eval
-    memcpy(sbuf, kS0s.get() + kLambda, kLambda);
+    memcpy(sbuf, kS0s + kLambda, kLambda);
     dpf_eval(sbuf, 1, key, x_bits);
     __uint128_t y1;
     memcpy(&y1, sbuf, kLambda);
@@ -129,7 +132,7 @@ TEST_F(DpfTest, EvalAtRandPoints) {
     }
   }
 
-  delete[] key.cw_np1;
-  delete[] key.cws;
-  delete[] sbuf;
+  free(key.cw_np1);
+  free(key.cws);
+  free(sbuf);
 }
