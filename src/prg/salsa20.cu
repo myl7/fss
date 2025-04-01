@@ -58,6 +58,7 @@ DEVICE_CONST uint32_t gNonce[2];
 
 void prg_init(const uint8_t *state, int state_len) {
   assert(state_len == 8);
+  assert(kLambda == 16);
 #if FSS_CUDA
   cudaMemcpyToSymbol(gNonce, state, 8);
 #else
