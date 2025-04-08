@@ -4,7 +4,7 @@
 #pragma once
 
 #include <stdint.h>
-#include <dpf_api.h>
+#include <fss_decl.h>
 
 #define kCwLen (kLambda + 1)
 

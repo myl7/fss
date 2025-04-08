@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2025 Yulong Ming (myl7)
 
-#include <dpf_api.h>
+#include <fss_decl.h>
 
 HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs) {
   __int128_t *val128 = (__int128_t *)val;
