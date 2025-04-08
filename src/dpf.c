@@ -30,7 +30,8 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   uint8_t *s1 = ss + kLambda;
   uint8_t t0, t1;
   load_sst(ss, &t0, &t1);
-  t1 = t0 ^ 1;
+  t0 = 0;
+  t1 = 1;
 
   uint8_t *s0s = sbuf + kLambda * 2;
   uint8_t *s0l = s0s;
@@ -87,6 +88,7 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t t;
   load_st(s, &t);
+  t = b;
 
   uint8_t *ss = sbuf + kLambda;
   uint8_t *sl = ss;

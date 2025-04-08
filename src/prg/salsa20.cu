@@ -6,13 +6,15 @@
 #include <stdint.h>
 #include <assert.h>
 #include <string.h>
+#ifdef __CUDACC__
 #include <cuda_runtime.h>
+#endif
 
 #define ROTL(a, b) (((a) << (b)) | ((a) >> (32 - (b))))
 #define QR(a, b, c, d) (b ^= ROTL(a + d, 7), c ^= ROTL(b + a, 9), d ^= ROTL(c + b, 13), a ^= ROTL(d + c, 18))
 #define ROUNDS 12
 
-__device__ void salsa20_block(uint32_t x[16], uint32_t in[16], uint64_t pos, const uint32_t nonce[2]) {
+HOST_DEVICE void salsa20_block(uint32_t x[16], uint32_t in[16], uint64_t pos, const uint32_t nonce[2]) {
   in[0] = 'e' | ('x' << 8) | ('p' << 16) | ('a' << 24);
   in[5] = 'n' | ('d' << 8) | (' ' << 16) | ('1' << 24);
   in[10] = '6' | ('-' << 8) | ('b' << 16) | ('y' << 24);
@@ -45,22 +47,26 @@ __device__ void salsa20_block(uint32_t x[16], uint32_t in[16], uint64_t pos, con
   }
 }
 
-__device__ void salsa20_expand_key(uint32_t x[16]) {
+HOST_DEVICE void salsa20_expand_key(uint32_t x[16]) {
   x[11] = x[1];
   x[12] = x[2];
   x[13] = x[3];
   x[14] = x[4];
 }
 
-__constant__ uint32_t gNonce[2];
+DEVICE_CONST uint32_t gNonce[2];
 
 void prg_init(const uint8_t *state, int state_len) {
   assert(state_len == 8);
   assert(kLambda == 16);
+#ifdef __CUDACC__
   cudaMemcpyToSymbol(gNonce, state, 8);
+#else
+  memcpy(gNonce, state, 8);
+#endif
 }
 
-__device__ void prg(uint8_t *out, const uint8_t *seed) {
+HOST_DEVICE void prg(uint8_t *out, const uint8_t *seed) {
   uint32_t in[16];
   const uint32_t *seed_int = (const uint32_t *)seed;
   in[1] = seed_int[0];

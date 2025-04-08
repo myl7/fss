@@ -11,8 +11,10 @@
 
 #if __CUDACC__
 #define HOST_DEVICE __host__ __device__
+#define DEVICE_CONST __constant__
 #else
 #define HOST_DEVICE
+#define DEVICE_CONST
 #endif
 
 typedef struct {

@@ -16,15 +16,12 @@ class DpfTest : public ::testing::Test {
     std::random_device rd;
     random_bytes_engine rbe(rd());
     uint8_t keys[32];
-    std::generate(std::begin(keys), std::end(keys), std::ref(rbe));
+    std::generate(keys, keys + 32, std::ref(rbe));
     prg_init((uint8_t *)keys, 32);
 
     kS0s = (uint8_t *)malloc(kLambda * 2);
     assert(kS0s != NULL);
     std::generate(kS0s, kS0s + kLambda * 2, std::ref(rbe));
-    uint8_t t0 = kS0s[kLambda - 1] & 1;
-    uint8_t t1 = t0 ^ 1;
-    kS0s[kLambda * 2 - 1] = t1 ? kS0s[kLambda * 2 - 1] | 1 : kS0s[kLambda * 2 - 1] & ~1;
   }
 
   void TearDown() override {
