@@ -27,6 +27,10 @@ class DpfTest : public ::testing::Test {
     kS0s[kLambda * 2 - 1] = t1 ? kS0s[kLambda * 2 - 1] | 1 : kS0s[kLambda * 2 - 1] & ~1;
   }
 
+  void TearDown() override {
+    free(kS0s);
+  }
+
   static constexpr uint16_t kAlpha = 107;
   static constexpr uint16_t kAlphaBitlen = 16;
   static constexpr __uint128_t kBeta = 604;
