@@ -3,17 +3,7 @@
 
 #pragma once
 
-#include <stdint.h>
-
-#ifndef kLambda
-#define kLambda 16
-#endif
-
-#if __CUDACC__
-#define HOST_DEVICE __host__ __device__
-#else
-#define HOST_DEVICE
-#endif
+#include <fss_prelude.h>
 
 #ifdef __cplusplus
 extern "C" {

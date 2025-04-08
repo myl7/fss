@@ -4,7 +4,7 @@
 #pragma once
 
 #include <stdint.h>
-#include <fss_decl.h>
+#include <fss_prelude.h>
 
 HOST_DEVICE static inline uint8_t get_bit(const uint8_t *bytes, int i) {
   return (bytes[i / 8] >> (7 - i % 8)) & 1;

@@ -6,24 +6,30 @@
 #include <stdint.h>
 #include <fss_prelude.h>
 
-#define kCwLen (kLambda + 1)
+#define kCwLen (kLambda * 2 + 1)
+
+enum Bound {
+  kGtAlpha,
+  kLtAlpha,
+};
 
 typedef struct {
   Bits alpha;
   const uint8_t *beta;
-} PointFunc;
+  Bound bound;
+} CmpFunc;
 
 typedef struct {
   uint8_t *cws;
   uint8_t *cw_np1;
-} DpfKey;
+} DcfKey;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf);
-HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x);
+HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc pf, uint8_t *sbuf);
+HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x);
 
 #ifdef __cplusplus
 }
