@@ -16,7 +16,7 @@ class DpfTest : public ::testing::Test {
     std::random_device rd;
     random_bytes_engine rbe(rd());
     uint8_t keys[32];
-    std::generate(keys, keys + 32, std::ref(rbe));
+    std::generate(std::begin(keys), std::end(keys), std::ref(rbe));
     prg_init((uint8_t *)keys, 32);
 
     kS0s = (uint8_t *)malloc(kLambda * 2);
@@ -42,7 +42,7 @@ TEST_F(DpfTest, EvalAtAlpha) {
   DpfKey key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
-  key.cws = (uint8_t *)malloc(kCwLen * kAlphaBitlen);
+  key.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);
   assert(key.cws != NULL);
 
   // Prepare point function
@@ -63,17 +63,21 @@ TEST_F(DpfTest, EvalAtAlpha) {
   // Party 0 eval
   memcpy(sbuf, kS0s, kLambda);
   dpf_eval(sbuf, 0, key, x_bits);
-  __uint128_t y0;
-  memcpy(&y0, sbuf, kLambda);
+  uint8_t y0[kLambda];
+  memcpy(y0, sbuf, kLambda);
 
   // Party 1 eval
   memcpy(sbuf, kS0s + kLambda, kLambda);
   dpf_eval(sbuf, 1, key, x_bits);
-  __uint128_t y1;
-  memcpy(&y1, sbuf, kLambda);
+  uint8_t y1[kLambda];
+  memcpy(y1, sbuf, kLambda);
+
+  group_add(y0, y1);
+  __uint128_t y_int;
+  memcpy(&y_int, y0, kLambda);
 
   // Check result
-  EXPECT_EQ(y0 + y1, kBeta);
+  EXPECT_EQ(y_int, kBeta);
 
   free(key.cw_np1);
   free(key.cws);
@@ -87,7 +91,7 @@ TEST_F(DpfTest, EvalAtRandPoints) {
   DpfKey key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
-  key.cws = (uint8_t *)malloc(kCwLen * kAlphaBitlen);
+  key.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);
   assert(key.cws != NULL);
 
   // Prepare point function
@@ -111,25 +115,29 @@ TEST_F(DpfTest, EvalAtRandPoints) {
 
   for (int i = 0; i < kNumTrials; i++) {
     uint16_t x = dis(gen);
-    Bits x_bits = {(uint8_t *)&x, 16};
+    Bits x_bits = {(uint8_t *)&x, kAlphaBitlen};
 
     // Party 0 eval
     memcpy(sbuf, kS0s, kLambda);
     dpf_eval(sbuf, 0, key, x_bits);
-    __uint128_t y0;
-    memcpy(&y0, sbuf, kLambda);
+    uint8_t y0[kLambda];
+    memcpy(y0, sbuf, kLambda);
 
     // Party 1 eval
     memcpy(sbuf, kS0s + kLambda, kLambda);
     dpf_eval(sbuf, 1, key, x_bits);
-    __uint128_t y1;
-    memcpy(&y1, sbuf, kLambda);
+    uint8_t y1[kLambda];
+    memcpy(y1, sbuf, kLambda);
+
+    group_add(y0, y1);
+    __uint128_t y_int;
+    memcpy(&y_int, y0, kLambda);
 
     // Check result
     if (x == kAlpha) {
-      EXPECT_EQ(y0 + y1, kBeta);
+      EXPECT_EQ(y_int, kBeta);
     } else {
-      EXPECT_EQ(y0 + y1, 0);
+      EXPECT_EQ(y_int, 0);
     }
   }
 

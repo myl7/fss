@@ -10,20 +10,23 @@ project(
 add_library(dpf STATIC src/dpf.c)
 target_include_directories(dpf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-add_executable(
-  sample_dpf_i128_aes_mmo samples/dpf_i128.c
-  src/group/i128.c
-  src/prg/aes_mmo.c src/prg/torchcsprng/aes.c
-)
-target_link_libraries(sample_dpf_i128_aes_mmo PRIVATE dpf)
+add_library(dcf STATIC src/dcf.c)
+target_include_directories(dcf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 add_executable(
-  sample_dpf_i128_aes_mmo_ni samples/dpf_i128.c
-  src/group/i128.c
+  sample_dpf_u128_le_aes_mmo samples/dpf_u128_le.c
+  src/group/u128_le.c
+  src/prg/aes_mmo.c src/prg/torchcsprng/aes.c
+)
+target_link_libraries(sample_dpf_u128_le_aes_mmo PRIVATE dpf)
+
+add_executable(
+  sample_dpf_u128_le_aes_mmo_ni samples/dpf_u128_le.c
+  src/group/u128_le.c
   src/prg/aes_mmo_ni.c src/prg/torchcsprng/aes.c
 )
-target_link_libraries(sample_dpf_i128_aes_mmo_ni PRIVATE dpf)
-target_compile_options(sample_dpf_i128_aes_mmo_ni PRIVATE -msse2 -maes)
+target_link_libraries(sample_dpf_u128_le_aes_mmo_ni PRIVATE dpf)
+target_compile_options(sample_dpf_u128_le_aes_mmo_ni PRIVATE -msse2 -maes)
 
 option(WITH_TEST "Build with tests" ON)
 if(WITH_TEST)

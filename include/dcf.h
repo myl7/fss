@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <fss_decl.h>
 
-#define kCwLen (kLambda * 2 + 1)
+#define kDcfCwLen (kLambda * 2 + 1)
 
 enum Bound {
   kGtAlpha,
@@ -16,7 +15,7 @@ enum Bound {
 typedef struct {
   Bits alpha;
   const uint8_t *beta;
-  Bound bound;
+  enum Bound bound;
 } CmpFunc;
 
 typedef struct {
@@ -28,7 +27,7 @@ typedef struct {
 extern "C" {
 #endif
 
-HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc pf, uint8_t *sbuf);
+HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf);
 HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x);
 
 #ifdef __cplusplus

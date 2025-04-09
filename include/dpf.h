@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <fss_decl.h>
 
-#define kCwLen (kLambda + 1)
+#define kDpfCwLen (kLambda + 1)
 
 typedef struct {
   Bits alpha;

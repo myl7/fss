@@ -6,15 +6,17 @@
 #include <stdint.h>
 #include <fss_prelude.h>
 
-HOST_DEVICE static inline uint8_t get_bit(const uint8_t *bytes, int i) {
-  return (bytes[i / 8] >> (7 - i % 8)) & 1;
+// Get least significant bit first from little-endian bytes
+HOST_DEVICE static inline uint8_t get_bit_lsb(const uint8_t *bytes_le, int i) {
+  return (bytes_le[i / 8] >> (i % 8)) & 1;
 }
 
-HOST_DEVICE static inline void set_bit(uint8_t *bytes, int i, uint8_t bit) {
+// Set least significant bit first to little-endian bytes
+HOST_DEVICE static inline void set_bit_lsb(uint8_t *bytes_le, int i, uint8_t bit) {
   if (bit) {
-    bytes[i / 8] |= 1 << (7 - i % 8);
+    bytes_le[i / 8] |= 1 << (i % 8);
   } else {
-    bytes[i / 8] &= ~(1 << (7 - i % 8));
+    bytes_le[i / 8] &= ~(1 << (i % 8));
   }
 }
 

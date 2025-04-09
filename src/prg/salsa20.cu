@@ -2,6 +2,10 @@
 // Copyright (C) 2025 Yulong Ming (myl7)
 // Based on https://en.wikipedia.org/wiki/Salsa20
 
+#ifndef BLOCK_NUM
+#define BLOCK_NUM 1
+#endif
+
 #include <fss_decl.h>
 #include <stdint.h>
 #include <assert.h>
@@ -54,15 +58,15 @@ HOST_DEVICE void salsa20_expand_key(uint32_t x[16]) {
   x[14] = x[4];
 }
 
-DEVICE_CONST uint32_t gNonce[2];
+DEVICE_CONST uint32_t gNonces[BLOCK_NUM][2];
 
 void prg_init(const uint8_t *state, int state_len) {
-  assert(state_len == 8);
   assert(kLambda == 16);
+  assert(state_len == BLOCK_NUM * 8);
 #ifdef __CUDACC__
-  cudaMemcpyToSymbol(gNonce, state, 8);
+  cudaMemcpyToSymbol(gNonces, state, state_len);
 #else
-  memcpy(gNonce, state, 8);
+  memcpy(gNonces, state, state_len);
 #endif
 }
 
@@ -75,7 +79,9 @@ HOST_DEVICE void prg(uint8_t *out, const uint8_t *seed) {
   in[4] = seed_int[3];
   salsa20_expand_key(in);
 
-  uint32_t x[16];
-  salsa20_block(x, in, 0, gNonce);
-  memcpy(out, x, 32);
+  for (int i = 0; i < BLOCK_NUM; i++) {
+    uint32_t x[16];
+    salsa20_block(x, in, 0, gNonces[i]);
+    memcpy(out + i * 32, x, 32);
+  }
 }

@@ -5,9 +5,10 @@
 #include <string.h>
 #include "utils.h"
 
+// Load the 1bit t from MSB, so we can truncate during adding
 HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
-  *t = get_bit(s, kLambda * 8 - 1);
-  set_bit(s, kLambda * 8 - 1, 0);
+  *t = get_bit_lsb(s, kLambda * 8 - 1);
+  set_bit_lsb(s, kLambda * 8 - 1, 0);
 }
 
 HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
@@ -15,6 +16,7 @@ HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
   load_st(ss + kLambda, t1);
 }
 
+// Save the 2bit tl tr in an extra byte
 HOST_DEVICE static inline void set_cwt(uint8_t *cw, uint8_t tl, uint8_t tr) {
   cw[kLambda] = tl << 1 | tr;
 }
@@ -24,6 +26,8 @@ HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *
   *tr = cw[kLambda] & 1;
 }
 
+// | s0 | s1 | s0l | s0r | s1l | s1r |
+// | ss      | s0s      | s1s        |
 HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   uint8_t *ss = sbuf;
   uint8_t *s0 = ss;
@@ -47,8 +51,9 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
     load_sst(s0s, &t0l, &t0r);
     load_sst(s1s, &t1l, &t1r);
 
-    uint8_t alpha_i = get_bit(pf.alpha.bytes, i);
-    uint8_t *cw = k.cws + i * kCwLen;
+    // Actually get MSB first
+    uint8_t alpha_i = get_bit_lsb(pf.alpha.bytes, pf.alpha.bitlen - i - 1);
+    uint8_t *cw = k.cws + i * kDpfCwLen;
 
     uint8_t *s0_lose = alpha_i ? s0l : s0r;
     uint8_t *s1_lose = alpha_i ? s1l : s1r;
@@ -56,6 +61,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
     uint8_t *s_cw = cw;
     memcpy(s_cw, s0_lose, kLambda);
     xor_bytes(s_cw, s1_lose, kLambda);
+
     uint8_t tl_cw, tr_cw;
     tl_cw = t0l ^ t1l ^ alpha_i ^ 1;
     tr_cw = t0r ^ t1r ^ alpha_i;
@@ -65,15 +71,16 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
     uint8_t *s1_keep = alpha_i ? s1r : s1l;
     uint8_t t0_keep = alpha_i ? t0r : t0l;
     uint8_t t1_keep = alpha_i ? t1r : t1l;
-    uint8_t t_keep_cw = alpha_i ? tr_cw : tl_cw;
+    uint8_t t_cw_keep = alpha_i ? tr_cw : tl_cw;
 
     memcpy(s0, s0_keep, kLambda);
     if (t0) xor_bytes(s0, s_cw, kLambda);
     memcpy(s1, s1_keep, kLambda);
     if (t1) xor_bytes(s1, s_cw, kLambda);
-    if (t0) t0 = t0_keep ^ t_keep_cw;
+
+    if (t0) t0 = t0_keep ^ t_cw_keep;
     else t0 = t0_keep;
-    if (t1) t1 = t1_keep ^ t_keep_cw;
+    if (t1) t1 = t1_keep ^ t_cw_keep;
     else t1 = t1_keep;
   }
 
@@ -84,6 +91,8 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   if (t1) group_neg(k.cw_np1);
 }
 
+// | s | sl | sr |
+//     | ss      |
 HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t t;
@@ -96,20 +105,23 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
   uint8_t tl, tr;
 
   for (int i = 0; i < x.bitlen; i++) {
-    uint8_t *cw = k.cws + i * kCwLen;
+    uint8_t *cw = k.cws + i * kDpfCwLen;
+    uint8_t *s_cw = cw;
+    uint8_t tl_cw, tr_cw;
+    get_cwt(cw, &tl_cw, &tr_cw);
 
     prg(ss, s);
     load_sst(ss, &tl, &tr);
     if (t) {
-      xor_bytes(sl, cw, kLambda);
-      xor_bytes(sr, cw, kLambda);
-      uint8_t cw_tl, cw_tr;
-      get_cwt(cw, &cw_tl, &cw_tr);
-      tl ^= cw_tl;
-      tr ^= cw_tr;
+      xor_bytes(sl, s_cw, kLambda);
+      xor_bytes(sr, s_cw, kLambda);
+      tl ^= tl_cw;
+      tr ^= tr_cw;
     }
 
-    uint8_t x_i = get_bit(x.bytes, i);
+    // Actually get MSB first
+    uint8_t x_i = get_bit_lsb(x.bytes, x.bitlen - i - 1);
+
     memcpy(s, x_i ? sr : sl, kLambda);
     t = x_i ? tr : tl;
   }

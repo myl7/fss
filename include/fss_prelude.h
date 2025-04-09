@@ -9,6 +9,8 @@
 #define kLambda 16
 #endif
 
+#define kBetaBitlen (kLambda * 8 - 1)
+
 #if __CUDACC__
 #define HOST_DEVICE __host__ __device__
 #define DEVICE_CONST __constant__

@@ -29,7 +29,7 @@ __global__ void gen_kernel(
 
   uint8_t *sbuf = sbuf_dev + tid * kLambda * 6;
   uint8_t *cw_np1 = cw_np1_dev + tid * kLambda;
-  uint8_t *cws = cws_dev + tid * kCwLen * kAlphaBitlen;
+  uint8_t *cws = cws_dev + tid * kDpfCwLen * kAlphaBitlen;
 
   DpfKey k = {cws, cw_np1};
   PointFunc pf = {{alpha_dev, kAlphaBitlen}, beta_dev};
@@ -44,7 +44,7 @@ __global__ void eval_kernel(
   uint8_t *sbuf = sbuf_dev + tid * kLambda * 3;
   const uint8_t *x = x_dev + tid * sizeof(uint16_t);
   const uint8_t *cw_np1 = cw_np1_dev + tid * kLambda;
-  const uint8_t *cws = cws_dev + tid * kCwLen * kAlphaBitlen;
+  const uint8_t *cws = cws_dev + tid * kDpfCwLen * kAlphaBitlen;
 
   DpfKey k = {(uint8_t *)cws, (uint8_t *)cw_np1};
   Bits x_bits = {x, kAlphaBitlen};
@@ -87,7 +87,7 @@ int main() {
   err = cudaMalloc(&cw_np1_dev, kLambda * kIterNum);
   cudaAssert(err);
   uint8_t *cws_dev;
-  err = cudaMalloc(&cws_dev, kCwLen * kAlphaBitlen * kIterNum);
+  err = cudaMalloc(&cws_dev, kDpfCwLen * kAlphaBitlen * kIterNum);
   cudaAssert(err);
 
   uint8_t *s0s = (uint8_t *)malloc(kLambda * 2);

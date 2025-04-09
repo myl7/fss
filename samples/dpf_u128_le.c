@@ -49,7 +49,7 @@ int main() {
   DpfKey k;
   k.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(k.cw_np1 != NULL);
-  k.cws = (uint8_t *)malloc(kCwLen * kAlphaBitlen);
+  k.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);
   assert(k.cws != NULL);
 
   t = get_time();
