@@ -14,7 +14,7 @@ enum Bound {
 
 typedef struct {
   Bits alpha;
-  const uint8_t *beta;
+  uint8_t *beta;
   enum Bound bound;
 } CmpFunc;
 

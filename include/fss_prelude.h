@@ -20,6 +20,6 @@
 #endif
 
 typedef struct {
-  const uint8_t *bytes;
+  uint8_t *bytes;
   int bitlen;
 } Bits;

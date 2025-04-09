@@ -28,7 +28,7 @@ HOST_DEVICE static inline void set_cwt(uint8_t *cw, uint8_t tl, uint8_t tr) {
   cw[kLambda * 2] = tl << 1 | tr;
 }
 
-HOST_DEVICE static inline void get_cwt(uint8_t *cw, uint8_t *tl, uint8_t *tr) {
+HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *tr) {
   *tl = cw[kLambda * 2] >> 1;
   *tr = cw[kLambda * 2] & 1;
 }
@@ -153,9 +153,9 @@ HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x) {
   uint8_t tl, tr;
 
   for (int i = 0; i < x.bitlen; i++) {
-    uint8_t *cw = k.cws + i * kDcfCwLen;
-    uint8_t *s_cw = cw;
-    uint8_t *v_cw = cw + kLambda;
+    const uint8_t *cw = k.cws + i * kDcfCwLen;
+    const uint8_t *s_cw = cw;
+    const uint8_t *v_cw = cw + kLambda;
     uint8_t tl_cw, tr_cw;
     get_cwt(cw, &tl_cw, &tr_cw);
 

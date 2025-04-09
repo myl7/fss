@@ -105,8 +105,8 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
   uint8_t tl, tr;
 
   for (int i = 0; i < x.bitlen; i++) {
-    uint8_t *cw = k.cws + i * kDpfCwLen;
-    uint8_t *s_cw = cw;
+    const uint8_t *cw = k.cws + i * kDpfCwLen;
+    const uint8_t *s_cw = cw;
     uint8_t tl_cw, tr_cw;
     get_cwt(cw, &tl_cw, &tr_cw);
 

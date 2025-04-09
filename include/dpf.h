@@ -9,7 +9,7 @@
 
 typedef struct {
   Bits alpha;
-  const uint8_t *beta;
+  uint8_t *beta;
 } PointFunc;
 
 typedef struct {
