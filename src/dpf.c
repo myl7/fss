@@ -85,6 +85,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   }
 
   memcpy(k.cw_np1, pf.beta, kLambda);
+  set_bit_lsb(k.cw_np1, kLambda * 8 - 1, 0);
   group_neg(s0);
   group_add(k.cw_np1, s0);
   group_add(k.cw_np1, s1);
@@ -92,7 +93,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
 }
 
 // | s | sl | sr |
-//     | ss      |
+// |   | ss      |
 HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t t;

@@ -89,6 +89,7 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf) {
     group_add(v_cw, v0_lose);
     if (t1) group_neg(v_cw);
     memcpy(v0_lose, cf.beta, kLambda);
+    set_bit_lsb(v0_lose, kLambda * 8 - 1, 0);
     if (t1) group_neg(v0_lose);
     switch (cf.bound) {
       case kLtAlpha:

@@ -5,6 +5,9 @@
 # Build output
 /build
 
+# Doc output
+/doc/html
+
 ## C template
 # Prerequisites
 *.d

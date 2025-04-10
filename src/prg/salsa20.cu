@@ -7,7 +7,6 @@
 #endif
 
 #include <fss_decl.h>
-#include <stdint.h>
 #include <assert.h>
 #include <string.h>
 #ifdef __CUDACC__

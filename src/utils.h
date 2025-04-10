@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <fss_prelude.h>
 
 // Get least significant bit first from little-endian bytes
