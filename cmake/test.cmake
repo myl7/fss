@@ -1,7 +1,7 @@
 enable_language(CXX)
 include(CTest)
 enable_testing()
-add_subdirectory(test/googletest)
+add_subdirectory(third_party/googletest)
 include(GoogleTest)
 
 add_executable(
