@@ -7,7 +7,9 @@ project(
   LANGUAGES C
 )
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(OpenMP REQUIRED)
+find_package(Sodium REQUIRED)
 
 add_library(dpf STATIC src/dpf.c)
 target_include_directories(dpf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -16,33 +18,9 @@ target_link_libraries(dpf PUBLIC OpenMP::OpenMP_C)
 add_library(dcf STATIC src/dcf.c)
 target_include_directories(dcf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-add_executable(
-  sample_dpf_u128_le_aes_mmo samples/dpf_u128_le.c
-  src/group/u128_le.c
-  src/prg/aes_mmo.c src/prg/torchcsprng/aes.c
-)
-target_link_libraries(sample_dpf_u128_le_aes_mmo PRIVATE dpf)
-
-add_executable(
-  sample_dpf_u128_le_aes_mmo_ni samples/dpf_u128_le.c
-  src/group/u128_le.c
-  src/prg/aes_mmo_ni.c src/prg/torchcsprng/aes.c
-)
-target_link_libraries(sample_dpf_u128_le_aes_mmo_ni PRIVATE dpf)
-target_compile_options(sample_dpf_u128_le_aes_mmo_ni PRIVATE -msse2 -maes)
-
-add_executable(
-  sample_dpf_full_domain_u128_le_aes_mmo_ni samples/dpf_full_domain_u128_le.c
-  src/group/u128_le.c
-  src/prg/aes_mmo_ni.c src/prg/torchcsprng/aes.c
-)
-target_link_libraries(sample_dpf_full_domain_u128_le_aes_mmo_ni PRIVATE dpf)
-target_compile_options(sample_dpf_full_domain_u128_le_aes_mmo_ni PRIVATE -msse2 -maes)
-
-option(WITH_SODIUM "Build with Libsodium" ON)
-if(WITH_SODIUM)
-  include(cmake/sodium.cmake)
-endif()
+add_library(cw_mac_bytes STATIC src/cw_mac_bytes.c)
+target_include_directories(cw_mac_bytes PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(cw_mac_bytes PRIVATE sodium)
 
 option(WITH_TEST "Build with tests" ON)
 if(WITH_TEST)
@@ -52,4 +30,9 @@ endif()
 option(WITH_CUDA "Build with CUDA" ON)
 if(WITH_CUDA)
   include(cmake/cuda.cmake)
+endif()
+
+option(WITH_SAMPLES "Build with samples" ON)
+if(WITH_SAMPLES)
+  include(cmake/samples.cmake)
 endif()
