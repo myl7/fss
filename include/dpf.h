@@ -70,6 +70,8 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf);
  */
 HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x);
 
+void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, DpfKey k, int x_bitlen);
+
 #ifdef __cplusplus
 }
 #endif

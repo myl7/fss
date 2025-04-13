@@ -11,6 +11,10 @@ HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
   set_bit_lsb(s, kLambda * 8 - 1, 0);
 }
 
+static inline void set_st(uint8_t *s, uint8_t t) {
+  set_bit_lsb(s, kLambda * 8 - 1, t);
+}
+
 HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
   load_st(ss, t0);
   load_st(ss + kLambda, t1);
@@ -129,4 +133,78 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
 
   if (t) group_add(s, k.cw_np1);
   if (b) group_neg(s);
+}
+
+#include <assert.h>
+#include <stdlib.h>
+#include <omp.h>
+
+void dpf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_t b, DpfKey k) {
+  uint8_t *s = sbufl;
+  uint8_t t;
+  load_st(s, &t);
+
+  uint8_t *ss = (uint8_t *)malloc(kLambda * 2);
+  assert(ss != NULL);
+  uint8_t *sl = ss;
+  uint8_t *sr = ss + kLambda;
+  uint8_t tl, tr;
+
+  const uint8_t *cw = k.cws + depth * kDpfCwLen;
+  const uint8_t *s_cw = cw;
+  uint8_t tl_cw, tr_cw;
+  get_cwt(cw, &tl_cw, &tr_cw);
+
+  prg(ss, s);
+  load_sst(ss, &tl, &tr);
+  if (t) {
+    xor_bytes(sl, s_cw, kLambda);
+    xor_bytes(sr, s_cw, kLambda);
+    tl ^= tl_cw;
+    tr ^= tr_cw;
+  }
+
+  memcpy(sbufl, sl, kLambda);
+  set_st(sbufl, tl);
+  memcpy(sbufr, sr, kLambda);
+  set_st(sbufr, tr);
+  free(ss);
+}
+
+void dpf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DpfKey k) {
+  uint8_t *s = sbuf;
+  uint8_t t;
+  load_st(s, &t);
+
+  if (t) group_add(s, k.cw_np1);
+  if (b) group_neg(s);
+}
+
+void dpf_eval_full_domain_subtree(int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DpfKey k, int x_bitlen) {
+  assert(kLambda * (1ULL << (x_bitlen - depth)) == r - l);
+
+  if (depth == x_bitlen) {
+    dpf_eval_full_domain_leaf(sbuf + l, b, k);
+    return;
+  }
+
+  size_t mid = (l + r) / 2;
+  dpf_eval_full_domain_node(depth, sbuf + l, sbuf + mid, b, k);
+
+#pragma omp parallel sections
+  {
+#pragma omp section
+    { dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen); }
+#pragma omp section
+    { dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen); }
+  }
+}
+
+void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, DpfKey k, int x_bitlen) {
+  uint8_t *s = sbuf;
+  uint8_t t = b;
+  set_st(s, t);
+
+  size_t sbuf_len = kLambda * (1ULL << x_bitlen);
+  dpf_eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen);
 }
