@@ -49,7 +49,7 @@ void commit_cw_mac(uint8_t *beta, uint8_t b, const uint8_t *t, const uint8_t *sb
     const uint8_t *pubkey = pubkeys + i * crypto_core_ristretto255_BYTES;
     hash_sbuf(scalar, sbuf);
     if (b) crypto_core_ristretto255_scalar_negate(scalar, scalar);
-    int _ = crypto_scalarmult_ristretto255(t_delta_i, scalar, pubkey);
+    (void)crypto_scalarmult_ristretto255(t_delta_i, scalar, pubkey);
     crypto_core_ristretto255_add(t_delta, t_delta, t_delta_i);
   }
   crypto_core_ristretto255_sub(beta, t_delta, t);
