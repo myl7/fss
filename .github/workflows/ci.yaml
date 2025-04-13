@@ -2,32 +2,57 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  test:
+  test-gcc:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    - name: Install deps
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libsodium-dev
 
-    - name: Configure CMake
-      run: |
-        cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF
+      - name: Configure CMake with GCC
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 
-    - name: Build
-      run: |
-        cmake --build build --config Debug
+      - name: Build
+        run: |
+          cmake --build build --config Debug
 
-    - name: Test
-      run: |
-        cd build
-        ctest --output-on-failure
+      - name: Test
+        run: |
+          cd build
+          ctest --output-on-failure
+
+  test-clang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang cmake libsodium-dev libomp-dev
+
+      - name: Configure CMake with Clang
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Build
+        run: |
+          cmake --build build --config Debug
+
+      - name: Test
+        run: |
+          cd build
+          ctest --output-on-failure
