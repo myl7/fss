@@ -92,31 +92,204 @@ Include dependency graph for cw_mac_bytes.h:</div>
 <area shape="poly" title=" " alt="" coords="99,104,99,138,93,138,93,104"/>
 </map>
 </div>
-</div><div class="textblock"><div class="dynheader">
-This graph shows which files directly or indirectly include this file:</div>
-<div class="dyncontent">
-<div class="center"><img src="cw__mac__bytes_8h__dep__incl.png" border="0" usemap="#ainclude_2cw__mac__bytes_8hdep" alt=""/></div>
-<map name="ainclude_2cw__mac__bytes_8hdep" id="ainclude_2cw__mac__bytes_8hdep">
-<area shape="rect" title=" " alt="" coords="5,5,187,31"/>
-<area shape="rect" href="cw__mac__bytes_8c.html" title=" " alt="" coords="20,79,172,104"/>
-<area shape="poly" title=" " alt="" coords="99,44,99,79,93,79,93,44"/>
-</map>
-</div>
 </div>
 <p><a href="cw__mac__bytes_8h_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a6ed1e457ffd225018db21179c6c395a6" id="r_a6ed1e457ffd225018db21179c6c395a6"><td class="memItemLeft" align="right" valign="top"><a id="a6ed1e457ffd225018db21179c6c395a6" name="a6ed1e457ffd225018db21179c6c395a6"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>gen_cw_mac</b> (uint8_t *t0, uint8_t *t1, const uint8_t *sbufs0, const uint8_t *sbufs1, int sbuf_num, int sbuf_step, const uint8_t *keys)</td></tr>
+<tr class="memitem:a6ed1e457ffd225018db21179c6c395a6" id="r_a6ed1e457ffd225018db21179c6c395a6"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac</a> (uint8_t *t0, uint8_t *t1, const uint8_t *sbufs0, const uint8_t *sbufs1, int sbuf_num, int sbuf_step, const uint8_t *keys)</td></tr>
+<tr class="memdesc:a6ed1e457ffd225018db21179c6c395a6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gen Carter-Wegman MAC and share it into 2 shares.  <br /></td></tr>
 <tr class="separator:a6ed1e457ffd225018db21179c6c395a6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a9f99d74d9f612bdb6d8d047400d4e5aa" id="r_a9f99d74d9f612bdb6d8d047400d4e5aa"><td class="memItemLeft" align="right" valign="top"><a id="a9f99d74d9f612bdb6d8d047400d4e5aa" name="a9f99d74d9f612bdb6d8d047400d4e5aa"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>commit_cw_mac</b> (uint8_t *beta, uint8_t b, const uint8_t *t, const uint8_t *sbufs, int sbuf_num, int sbuf_step, const uint8_t *pubkeys)</td></tr>
+<tr class="memitem:a9f99d74d9f612bdb6d8d047400d4e5aa" id="r_a9f99d74d9f612bdb6d8d047400d4e5aa"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#a9f99d74d9f612bdb6d8d047400d4e5aa">commit_cw_mac</a> (uint8_t *beta, uint8_t b, const uint8_t *t, const uint8_t *sbufs, int sbuf_num, int sbuf_step, const uint8_t *pubkeys)</td></tr>
+<tr class="memdesc:a9f99d74d9f612bdb6d8d047400d4e5aa"><td class="mdescLeft">&#160;</td><td class="mdescRight">Commit Carter-Wegman MAC share into a commitment to be exchanged.  <br /></td></tr>
 <tr class="separator:a9f99d74d9f612bdb6d8d047400d4e5aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a1e9dd2884a91af82423ec16cd39486e3" id="r_a1e9dd2884a91af82423ec16cd39486e3"><td class="memItemLeft" align="right" valign="top"><a id="a1e9dd2884a91af82423ec16cd39486e3" name="a1e9dd2884a91af82423ec16cd39486e3"></a>
-int&#160;</td><td class="memItemRight" valign="bottom"><b>verify_cw_mac</b> (uint8_t *beta0, const uint8_t *beta1)</td></tr>
+<tr class="memitem:a1e9dd2884a91af82423ec16cd39486e3" id="r_a1e9dd2884a91af82423ec16cd39486e3"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#a1e9dd2884a91af82423ec16cd39486e3">verify_cw_mac</a> (uint8_t *beta0, const uint8_t *beta1)</td></tr>
+<tr class="memdesc:a1e9dd2884a91af82423ec16cd39486e3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Verify Carter-Wegman MAC commitment.  <br /></td></tr>
 <tr class="separator:a1e9dd2884a91af82423ec16cd39486e3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
+<h2 class="groupheader">Function Documentation</h2>
+<a id="a9f99d74d9f612bdb6d8d047400d4e5aa" name="a9f99d74d9f612bdb6d8d047400d4e5aa"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9f99d74d9f612bdb6d8d047400d4e5aa">&#9670;&#160;</a></span>commit_cw_mac()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void commit_cw_mac </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>beta</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint8_t&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>t</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>sbufs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>sbuf_num</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>sbuf_step</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>pubkeys</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Commit Carter-Wegman MAC share into a commitment to be exchanged. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">beta</td><td>Output commitment </td></tr>
+    <tr><td class="paramname">b</td><td>Party bit, 0/1 </td></tr>
+    <tr><td class="paramname">t</td><td>Gen by <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">sbufs</td><td>Same as <code>sbufs0</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">sbuf_num</td><td>Same as <code>sbuf_num</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">sbuf_step</td><td>Same as <code>sbuf_step</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">pubkeys</td><td>Field elements <code>g^key</code> as public keys corresponding to each input point. Gen each pubkey with <code>crypto_scalarmult_ristretto255_base()</code> for <code>key</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a>. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a6ed1e457ffd225018db21179c6c395a6" name="a6ed1e457ffd225018db21179c6c395a6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6ed1e457ffd225018db21179c6c395a6">&#9670;&#160;</a></span>gen_cw_mac()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void gen_cw_mac </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>t0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>t1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>sbufs0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>sbufs1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>sbuf_num</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>sbuf_step</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>keys</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Gen Carter-Wegman MAC and share it into 2 shares. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">t0</td><td>Output share 0 </td></tr>
+    <tr><td class="paramname">t1</td><td>Output share 1 </td></tr>
+    <tr><td class="paramname">sbufs0</td><td>Eval output points of party 0. Len of each output point is <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. Full domain eval output <code>sbuf</code> can be directly used. </td></tr>
+    <tr><td class="paramname">sbufs1</td><td>Like <code>sbufs0</code> of party 1 </td></tr>
+    <tr><td class="paramname">sbuf_num</td><td>Num of output points </td></tr>
+    <tr><td class="paramname">sbuf_step</td><td>Step between output points. <code>sbuf_step</code> &gt; <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> allows gaps between output points. </td></tr>
+    <tr><td class="paramname">keys</td><td>Field scalar elements as keys corresponding to each input point. Holding keys of a set of input points allows their output points to be non-zeros. Gen each key with <code>crypto_core_ristretto255_scalar_random()</code>. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a1e9dd2884a91af82423ec16cd39486e3" name="a1e9dd2884a91af82423ec16cd39486e3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1e9dd2884a91af82423ec16cd39486e3">&#9670;&#160;</a></span>verify_cw_mac()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">int verify_cw_mac </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>beta0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>beta1</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Verify Carter-Wegman MAC commitment. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">beta0</td><td>Commitment of party 0. Commitments as field elements, the method stores beta0 + beta1 in <code>beta0</code> in addition to returning. </td></tr>
+    <tr><td class="paramname">beta1</td><td>Commitment of party 1 </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>1 if valid, otherwise 0 </dd></dl>
+
+</div>
+</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

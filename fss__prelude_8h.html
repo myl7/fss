@@ -103,12 +103,10 @@ This graph shows which files directly or indirectly include this file:</div>
 <area shape="poly" title=" " alt="" coords="283,44,283,79,277,79,277,44"/>
 <area shape="rect" href="utils_8h_source.html" title=" " alt="" coords="373,79,459,104"/>
 <area shape="poly" title=" " alt="" coords="315,34,395,76,393,81,312,39"/>
-<area shape="rect" href="cw__mac__bytes_8c.html" title=" " alt="" coords="20,152,172,177"/>
-<area shape="poly" title=" " alt="" coords="99,118,99,152,93,152,93,118"/>
-<area shape="rect" href="dcf_8h.html" title=" " alt="" coords="212,152,316,177"/>
-<area shape="poly" title=" " alt="" coords="277,118,269,152,264,151,272,117"/>
-<area shape="rect" href="dpf_8h.html" title=" " alt="" coords="341,152,446,177"/>
-<area shape="poly" title=" " alt="" coords="312,109,376,150,373,154,309,114"/>
+<area shape="rect" href="dcf_8h.html" title=" " alt="" coords="163,152,267,177"/>
+<area shape="poly" title=" " alt="" coords="262,116,227,154,223,150,258,113"/>
+<area shape="rect" href="dpf_8h.html" title=" " alt="" coords="291,152,397,177"/>
+<area shape="poly" title=" " alt="" coords="302,113,336,150,332,154,298,116"/>
 </map>
 </div>
 </div>
@@ -125,8 +123,8 @@ Macros</h2></td></tr>
 <tr class="memitem:a8ea7c7457cb8cdd078d25438e0d22956" id="r_a8ea7c7457cb8cdd078d25438e0d22956"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>&#160;&#160;&#160;16</td></tr>
 <tr class="memdesc:a8ea7c7457cb8cdd078d25438e0d22956"><td class="mdescLeft">&#160;</td><td class="mdescRight">For security param lambda in papers, it is lambda / 8.  <br /></td></tr>
 <tr class="separator:a8ea7c7457cb8cdd078d25438e0d22956"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a87bcd8fd3ce0decf5816507b314ec7e6" id="r_a87bcd8fd3ce0decf5816507b314ec7e6"><td class="memItemLeft" align="right" valign="top"><a id="a87bcd8fd3ce0decf5816507b314ec7e6" name="a87bcd8fd3ce0decf5816507b314ec7e6"></a>
-#define&#160;</td><td class="memItemRight" valign="bottom"><b>kParallelDepth</b>&#160;&#160;&#160;1</td></tr>
+<tr class="memitem:a87bcd8fd3ce0decf5816507b314ec7e6" id="r_a87bcd8fd3ce0decf5816507b314ec7e6"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__prelude_8h.html#a87bcd8fd3ce0decf5816507b314ec7e6">kParallelDepth</a>&#160;&#160;&#160;1</td></tr>
+<tr class="memdesc:a87bcd8fd3ce0decf5816507b314ec7e6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Parallel degree of full domain eval.  <br /></td></tr>
 <tr class="separator:a87bcd8fd3ce0decf5816507b314ec7e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9e64b37aa76347c9bf88985c9dec78c9" id="r_a9e64b37aa76347c9bf88985c9dec78c9"><td class="memItemLeft" align="right" valign="top"><a id="a9e64b37aa76347c9bf88985c9dec78c9" name="a9e64b37aa76347c9bf88985c9dec78c9"></a>
 #define&#160;</td><td class="memItemRight" valign="bottom"><b>HOST_DEVICE</b></td></tr>
@@ -150,6 +148,26 @@ Macros</h2></td></tr>
 
 <p>For security param lambda in papers, it is lambda / 8. </p>
 <p>It is the byte len of output, but see <a class="el" href="fss__decl_8h.html">fss_decl.h</a> for details. </p>
+
+</div>
+</div>
+<a id="a87bcd8fd3ce0decf5816507b314ec7e6" name="a87bcd8fd3ce0decf5816507b314ec7e6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a87bcd8fd3ce0decf5816507b314ec7e6">&#9670;&#160;</a></span>kParallelDepth</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define kParallelDepth&#160;&#160;&#160;1</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Parallel degree of full domain eval. </p>
+<p>&lt;= 0 disables parallelization. </p><blockquote class="doxtable">
+<p>&zwj;0 gives 2 ** <code>kParallelDepth</code> concurrent tasks running on a fixed num of threads set by OpenMP. </p>
+</blockquote>
+<p>Higher is not better, particularly when &gt; physical core num with hyper-threading, and users need trials. For <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> = 16, 1 already results in top performance. </p>
 
 </div>
 </div>
