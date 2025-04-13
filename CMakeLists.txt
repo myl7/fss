@@ -39,6 +39,11 @@ add_executable(
 target_link_libraries(sample_dpf_full_domain_u128_le_aes_mmo_ni PRIVATE dpf)
 target_compile_options(sample_dpf_full_domain_u128_le_aes_mmo_ni PRIVATE -msse2 -maes)
 
+option(WITH_SODIUM "Build with Libsodium" ON)
+if(WITH_SODIUM)
+  include(cmake/sodium.cmake)
+endif()
+
 option(WITH_TEST "Build with tests" ON)
 if(WITH_TEST)
   include(cmake/test.cmake)
