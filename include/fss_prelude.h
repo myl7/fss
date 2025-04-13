@@ -18,6 +18,13 @@
 #endif
 
 #ifndef kParallelDepth
+/**
+ * Parallel degree of full domain eval.
+ * <= 0 disables parallelization.
+ * > 0 gives 2 ** `kParallelDepth` concurrent tasks running on a fixed num of threads set by OpenMP.
+ * Higher is not better, particularly when > physical core num with hyper-threading, and users need trials.
+ * For @ref kLambda = 16, 1 already results in top performance.
+ */
 #define kParallelDepth 1
 #endif
 
