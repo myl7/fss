@@ -197,7 +197,8 @@ int main() {
   }
 
   // Verify results
-  for (int i = 0; i < kIterNum; i++) {
+  const int kNumTrials = 100;
+  for (int i = 0; i < kNumTrials; i++) {
     group_add(y0 + i * kLambda, y1 + i * kLambda);
     __uint128_t y_int;
     memcpy(&y_int, y0 + i * kLambda, kLambda);

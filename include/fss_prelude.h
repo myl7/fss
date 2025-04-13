@@ -17,6 +17,10 @@
 #define kLambda 16
 #endif
 
+#ifndef kParallelDepth
+#define kParallelDepth 1
+#endif
+
 #if __CUDACC__
 #define HOST_DEVICE __host__ __device__
 #define DEVICE_CONST __constant__

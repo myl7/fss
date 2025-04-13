@@ -191,12 +191,19 @@ void dpf_eval_full_domain_subtree(int depth, uint8_t *sbuf, size_t l, size_t r, 
   size_t mid = (l + r) / 2;
   dpf_eval_full_domain_node(depth, sbuf + l, sbuf + mid, b, k);
 
-#pragma omp parallel sections
-  {
-#pragma omp section
-    { dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen); }
-#pragma omp section
-    { dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen); }
+  if (depth < kParallelDepth) {
+#pragma omp parallel
+#pragma omp single
+    {
+#pragma omp task
+      { dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen); }
+#pragma omp task
+      { dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen); }
+#pragma omp taskwait
+    }
+  } else {
+    dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen);
+    dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen);
   }
 }
 
