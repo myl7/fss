@@ -1,0 +1,5 @@
+<map id="CmpFunc" name="CmpFunc">
+<area shape="rect" id="Node000001" title="Comparison function." alt="" coords="5,93,88,119"/>
+<area shape="rect" id="Node000002" href="$structBits.html" title="Support bitlen that is not a multiple of 8." alt="" coords="23,5,70,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="49,45,49,93,44,93,44,45"/>
+</map>

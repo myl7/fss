@@ -1,0 +1,5 @@
+<map id="PointFunc" name="PointFunc">
+<area shape="rect" id="Node000001" title="Point function." alt="" coords="5,93,91,119"/>
+<area shape="rect" id="Node000002" href="$structBits.html" title="Support bitlen that is not a multiple of 8." alt="" coords="25,5,71,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="51,45,51,93,45,93,45,45"/>
+</map>
