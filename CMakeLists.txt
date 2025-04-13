@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18) # For CUDA
 project(
   fss
-  VERSION 0.7.0
+  VERSION 0.7.1
   DESCRIPTION "Function secret sharing (FSS) primitives including distributed point functions (DPF) and distributed comparison functions (DCF)"
   HOMEPAGE_URL "https://github.com/myl7/fss"
   LANGUAGES C
