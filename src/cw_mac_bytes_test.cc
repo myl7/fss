@@ -32,24 +32,23 @@ class CwMacBytesTest : public ::testing::Test {
     std::generate(kS0s, kS0s + kLambda * 2, std::ref(rbe));
 
     // Initialize keys with sodium random scalar
-    kKeys = (uint8_t *)malloc(crypto_core_ristretto255_SCALARBYTES * (1ULL << kAlphaBitlen));
-    assert(kKeys != NULL);
+    kWkeys = (uint8_t *)malloc(kCwMacWkeyLen * (1ULL << kAlphaBitlen));
+    assert(kWkeys != NULL);
     for (size_t i = 0; i < (1ULL << kAlphaBitlen); i++) {
-      crypto_core_ristretto255_scalar_random(kKeys + i * crypto_core_ristretto255_SCALARBYTES);
+      gen_wkey(kWkeys + i * kCwMacWkeyLen);
     }
 
     // Generate public keys (g^key)
-    kPubkeys = (uint8_t *)malloc(crypto_core_ristretto255_BYTES * (1ULL << kAlphaBitlen));
-    assert(kPubkeys != NULL);
+    kPubWkeys = (uint8_t *)malloc(kCwMacPubWkeyLen * (1ULL << kAlphaBitlen));
+    assert(kPubWkeys != NULL);
     for (size_t i = 0; i < (1ULL << kAlphaBitlen); i++) {
-      crypto_scalarmult_ristretto255_base(
-        kPubkeys + i * crypto_core_ristretto255_BYTES, kKeys + i * crypto_core_ristretto255_SCALARBYTES);
+      gen_pub_wkey(kPubWkeys + i * kCwMacPubWkeyLen, kWkeys + i * kCwMacWkeyLen);
     }
   }
 
   void TearDown() override {
-    free(kKeys);
-    free(kPubkeys);
+    free(kWkeys);
+    free(kPubWkeys);
     free(kS0s);
   }
 
@@ -59,8 +58,8 @@ class CwMacBytesTest : public ::testing::Test {
   static constexpr uint8_t kAlphaL = kAlpha - 10;
   static constexpr uint8_t kAlphaR = kAlpha + 10;
 
-  uint8_t *kKeys;
-  uint8_t *kPubkeys;
+  uint8_t *kWkeys;
+  uint8_t *kPubWkeys;
   uint8_t *kS0s;
 };
 
@@ -103,17 +102,17 @@ TEST_F(CwMacBytesTest, VerifyDpf) {
   uint8_t *y0_alpha = ys0_full + (int)kAlpha * kLambda;
   uint8_t *y1_alpha = ys1_full + (int)kAlpha * kLambda;
   // TODO: Rename keys
-  uint8_t *privkey = kKeys + (int)kAlpha * crypto_core_ristretto255_SCALARBYTES;
+  uint8_t *wkey = kWkeys + (int)kAlpha * kCwMacWkeyLen;
 
   // Generate and verify MAC
-  uint8_t t0[crypto_core_ristretto255_BYTES];
-  uint8_t t1[crypto_core_ristretto255_BYTES];
-  gen_cw_mac(t0, t1, y0_alpha, y1_alpha, 1, kLambda, privkey);
+  uint8_t t0[kCwMacLen];
+  uint8_t t1[kCwMacLen];
+  gen_cw_mac(t0, t1, y0_alpha, y1_alpha, 1, kLambda, wkey);
 
-  uint8_t beta0[crypto_core_ristretto255_BYTES];
-  uint8_t beta1[crypto_core_ristretto255_BYTES];
-  commit_cw_mac(beta0, 0, t0, ys0_full, 1ULL << kAlphaBitlen, kLambda, kPubkeys);
-  commit_cw_mac(beta1, 1, t1, ys1_full, 1ULL << kAlphaBitlen, kLambda, kPubkeys);
+  uint8_t beta0[kCwMacCommitLen];
+  uint8_t beta1[kCwMacCommitLen];
+  commit_cw_mac(beta0, 0, t0, ys0_full, 1ULL << kAlphaBitlen, kLambda, kPubWkeys);
+  commit_cw_mac(beta1, 1, t1, ys1_full, 1ULL << kAlphaBitlen, kLambda, kPubWkeys);
   int res = verify_cw_mac(beta0, beta1);
   __uint128_t beta0_int = *(__uint128_t *)beta0;
   EXPECT_EQ(beta0_int, 0);
@@ -204,17 +203,17 @@ TEST_F(CwMacBytesTest, VerifyDif) {
   // Get evaluation results at alpha_l and alpha_r
   uint8_t *y0_alpha_l = ys0_full + (int)kAlphaL * kLambda;
   uint8_t *y1_alpha_l = ys1_full + (int)kAlphaL * kLambda;
-  uint8_t *privkey = kKeys + (int)kAlphaL * crypto_core_ristretto255_SCALARBYTES;
+  uint8_t *wkey = kWkeys + (int)kAlphaL * kCwMacWkeyLen;
 
   // Generate and verify MAC
-  uint8_t t0[crypto_core_ristretto255_BYTES];
-  uint8_t t1[crypto_core_ristretto255_BYTES];
-  gen_cw_mac(t0, t1, y0_alpha_l, y1_alpha_l, kAlphaR - kAlphaL, kLambda, privkey);
+  uint8_t t0[kCwMacLen];
+  uint8_t t1[kCwMacLen];
+  gen_cw_mac(t0, t1, y0_alpha_l, y1_alpha_l, kAlphaR - kAlphaL, kLambda, wkey);
 
-  uint8_t beta0[crypto_core_ristretto255_BYTES];
-  uint8_t beta1[crypto_core_ristretto255_BYTES];
-  commit_cw_mac(beta0, 0, t0, ys0_full, 1ULL << kAlphaBitlen, kLambda, kPubkeys);
-  commit_cw_mac(beta1, 1, t1, ys1_full, 1ULL << kAlphaBitlen, kLambda, kPubkeys);
+  uint8_t beta0[kCwMacCommitLen];
+  uint8_t beta1[kCwMacCommitLen];
+  commit_cw_mac(beta0, 0, t0, ys0_full, 1ULL << kAlphaBitlen, kLambda, kPubWkeys);
+  commit_cw_mac(beta1, 1, t1, ys1_full, 1ULL << kAlphaBitlen, kLambda, kPubWkeys);
   int res = verify_cw_mac(beta0, beta1);
   __uint128_t beta0_int = *(__uint128_t *)beta0;
   EXPECT_EQ(beta0_int, 0);

@@ -4,7 +4,6 @@
 #include <cw_mac_bytes.h>
 #include <string.h>
 #include <assert.h>
-#include <sodium.h>
 
 void hash_sbuf(uint8_t *scalar, const uint8_t *sbuf) {
   assert(crypto_hash_sha512_BYTES * 8 >= 317);
@@ -13,22 +12,30 @@ void hash_sbuf(uint8_t *scalar, const uint8_t *sbuf) {
   crypto_core_ristretto255_scalar_reduce(scalar, hash);
 }
 
+void gen_wkey(uint8_t *wkey) {
+  crypto_core_ristretto255_scalar_random(wkey);
+}
+
+void gen_pub_wkey(uint8_t *pub_wkey, const uint8_t *wkey) {
+  crypto_scalarmult_ristretto255_base(pub_wkey, wkey);
+}
+
 void gen_cw_mac(uint8_t *t0, uint8_t *t1, const uint8_t *sbufs0, const uint8_t *sbufs1, int sbuf_num, int sbuf_step,
-  const uint8_t *keys) {
-  uint8_t t[crypto_core_ristretto255_SCALARBYTES];
-  memset(t, 0, crypto_core_ristretto255_SCALARBYTES);
+  const uint8_t *wkeys) {
+  uint8_t t[kCwMacLen];
+  memset(t, 0, kCwMacLen);
   uint8_t scalar0[crypto_core_ristretto255_SCALARBYTES];
   uint8_t scalar1[crypto_core_ristretto255_SCALARBYTES];
 
   for (int i = 0; i < sbuf_num; i++) {
     const uint8_t *sbuf0 = sbufs0 + i * sbuf_step;
     const uint8_t *sbuf1 = sbufs1 + i * sbuf_step;
-    const uint8_t *key = keys + i * crypto_core_ristretto255_SCALARBYTES;
+    const uint8_t *wkey = wkeys + i * kCwMacWkeyLen;
     hash_sbuf(scalar0, sbuf0);
     hash_sbuf(scalar1, sbuf1);
     crypto_core_ristretto255_scalar_negate(scalar1, scalar1);
     crypto_core_ristretto255_scalar_add(scalar0, scalar0, scalar1);
-    crypto_core_ristretto255_scalar_mul(scalar0, key, scalar0);
+    crypto_core_ristretto255_scalar_mul(scalar0, wkey, scalar0);
     crypto_core_ristretto255_scalar_add(t, t, scalar0);
   }
   crypto_core_ristretto255_scalar_random(scalar1);
@@ -38,18 +45,18 @@ void gen_cw_mac(uint8_t *t0, uint8_t *t1, const uint8_t *sbufs0, const uint8_t *
 }
 
 void commit_cw_mac(uint8_t *beta, uint8_t b, const uint8_t *t, const uint8_t *sbufs, int sbuf_num, int sbuf_step,
-  const uint8_t *pubkeys) {
-  uint8_t t_delta[crypto_core_ristretto255_BYTES];
-  memset(t_delta, 0, crypto_core_ristretto255_BYTES);
+  const uint8_t *pub_wkeys) {
+  uint8_t t_delta[kCwMacCommitLen];
+  memset(t_delta, 0, kCwMacCommitLen);
   uint8_t scalar[crypto_core_ristretto255_SCALARBYTES];
-  uint8_t t_delta_i[crypto_core_ristretto255_BYTES];
+  uint8_t t_delta_i[kCwMacCommitLen];
 
   for (int i = 0; i < sbuf_num; i++) {
     const uint8_t *sbuf = sbufs + i * sbuf_step;
-    const uint8_t *pubkey = pubkeys + i * crypto_core_ristretto255_BYTES;
+    const uint8_t *pub_wkey = pub_wkeys + i * kCwMacPubWkeyLen;
     hash_sbuf(scalar, sbuf);
     if (b) crypto_core_ristretto255_scalar_negate(scalar, scalar);
-    (void)crypto_scalarmult_ristretto255(t_delta_i, scalar, pubkey);
+    (void)crypto_scalarmult_ristretto255(t_delta_i, scalar, pub_wkey);
     crypto_core_ristretto255_add(t_delta, t_delta, t_delta_i);
   }
   crypto_core_ristretto255_sub(beta, t_delta, t);
