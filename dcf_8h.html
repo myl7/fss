@@ -130,6 +130,9 @@ Functions</h2></td></tr>
 <tr class="memitem:aee5883477f69042dc482113629545758" id="r_aee5883477f69042dc482113629545758"><td class="memItemLeft" align="right" valign="top">HOST_DEVICE void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="dcf_8h.html#aee5883477f69042dc482113629545758">dcf_eval</a> (uint8_t *sbuf, uint8_t b, <a class="el" href="structDcfKey.html">DcfKey</a> k, <a class="el" href="structBits.html">Bits</a> x)</td></tr>
 <tr class="memdesc:aee5883477f69042dc482113629545758"><td class="mdescLeft">&#160;</td><td class="mdescRight">DCF eval at 1 input point.  <br /></td></tr>
 <tr class="separator:aee5883477f69042dc482113629545758"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8b9401d04144e6448cf124d318d82c7f" id="r_a8b9401d04144e6448cf124d318d82c7f"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="dcf_8h.html#a8b9401d04144e6448cf124d318d82c7f">dcf_eval_full_domain</a> (uint8_t *sbuf, uint8_t b, <a class="el" href="structDcfKey.html">DcfKey</a> k, int x_bitlen)</td></tr>
+<tr class="memdesc:a8b9401d04144e6448cf124d318d82c7f"><td class="mdescLeft">&#160;</td><td class="mdescRight">DCF full domain eval i.e.  <br /></td></tr>
+<tr class="separator:a8b9401d04144e6448cf124d318d82c7f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Enumeration Type Documentation</h2>
 <a id="a9c227051829479618e4f52c0b3642243" name="a9c227051829479618e4f52c0b3642243"></a>
@@ -198,6 +201,57 @@ Functions</h2></td></tr>
     <tr><td class="paramname">b</td><td>Party bit, 0/1 </td></tr>
     <tr><td class="paramname">k</td><td>Gen by <a class="el" href="dcf_8h.html#a1123059d84e8118c7e1f7d7994469537">dcf_gen()</a> </td></tr>
     <tr><td class="paramname">x</td><td>Evaluated input point. Like <code>alpha</code> of <a class="el" href="structCmpFunc.html">CmpFunc</a>. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a8b9401d04144e6448cf124d318d82c7f" name="a8b9401d04144e6448cf124d318d82c7f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8b9401d04144e6448cf124d318d82c7f">&#9670;&#160;</a></span>dcf_eval_full_domain()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void dcf_eval_full_domain </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>sbuf</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint8_t&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="structDcfKey.html">DcfKey</a>&#160;</td>
+          <td class="paramname"><em>k</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>x_bitlen</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>DCF full domain eval i.e. </p>
+<p>eval at all input points. </p><dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">sbuf</td><td>Buffer whose len &gt;= 2 ^ <code>x_bitlen</code> * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. <code>s0s[b]</code> as input is stored at first <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> bytes. Output is contiguously stored at each <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> bytes of <code>sbuf</code>. Output is little-endian and viewed as a group element. Output's MSB is always 0. See <a class="el" href="fss__decl_8h.html">fss_decl.h</a> for details. No need to init other bytes. </td></tr>
+    <tr><td class="paramname">b</td><td>Party bit, 0/1 </td></tr>
+    <tr><td class="paramname">k</td><td>Gen by <a class="el" href="dcf_8h.html#a1123059d84e8118c7e1f7d7994469537">dcf_gen()</a> </td></tr>
+    <tr><td class="paramname">x_bitlen</td><td>Bitlen of input points, resulting in 2 ^ <code>x_bitlen</code> input points in total </td></tr>
   </table>
   </dd>
 </dl>
