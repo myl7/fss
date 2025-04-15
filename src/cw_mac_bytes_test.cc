@@ -6,8 +6,9 @@
 #include <cassert>
 #include <gtest/gtest.h>
 #include <cw_mac_bytes.h>
-#include <dpf.h>
 #include <sodium.h>
+#include <dpf.h>
+#include <dcf.h>
 
 extern "C" void prg_init(const uint8_t *state, int state_len);
 
@@ -52,9 +53,11 @@ class CwMacBytesTest : public ::testing::Test {
     free(kS0s);
   }
 
-  static constexpr uint16_t kAlpha = 107;
-  static constexpr uint16_t kAlphaBitlen = 8;
+  static constexpr uint8_t kAlpha = 107;
+  static constexpr int kAlphaBitlen = 8;
   static constexpr __uint128_t kBeta = 604;
+  static constexpr uint8_t kAlphaL = kAlpha - 10;
+  static constexpr uint8_t kAlphaR = kAlpha + 10;
 
   uint8_t *kKeys;
   uint8_t *kPubkeys;
@@ -72,7 +75,7 @@ TEST_F(CwMacBytesTest, VerifyDpf) {
   assert(key.cws != NULL);
 
   // Prepare point function
-  uint16_t alpha_int = kAlpha;
+  uint8_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
   __uint128_t beta_int = kBeta;
@@ -84,8 +87,8 @@ TEST_F(CwMacBytesTest, VerifyDpf) {
   dpf_gen(key, pf, sbuf);
 
   // Allocate buffers for full evaluation
-  uint8_t *ys0_full = (uint8_t *)malloc(kLambda * (1 << kAlphaBitlen));
-  uint8_t *ys1_full = (uint8_t *)malloc(kLambda * (1 << kAlphaBitlen));
+  uint8_t *ys0_full = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
+  uint8_t *ys1_full = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
   assert(ys0_full != NULL && ys1_full != NULL);
 
   // Party 0 full eval
@@ -120,5 +123,137 @@ TEST_F(CwMacBytesTest, VerifyDpf) {
   free(ys1_full);
   free(key.cw_np1);
   free(key.cws);
+  free(sbuf);
+}
+
+TEST_F(CwMacBytesTest, VerifyDif) {
+  uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
+  assert(sbuf != NULL);
+
+  // Generate two DCF keys
+  DcfKey key_l, key_r;
+  key_l.cw_np1 = (uint8_t *)malloc(kLambda);
+  key_l.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
+  key_r.cw_np1 = (uint8_t *)malloc(kLambda);
+  key_r.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
+  assert(key_l.cw_np1 != NULL && key_l.cws != NULL);
+  assert(key_r.cw_np1 != NULL && key_r.cws != NULL);
+
+  // Prepare comparison functions
+  uint8_t alpha_l_int = kAlphaL;
+  uint8_t alpha_r_int = kAlphaR;
+  uint8_t *alpha_l = (uint8_t *)&alpha_l_int;
+  uint8_t *alpha_r = (uint8_t *)&alpha_r_int;
+  Bits alpha_bits_l = {alpha_l, kAlphaBitlen};
+  Bits alpha_bits_r = {alpha_r, kAlphaBitlen};
+  __uint128_t beta_int = kBeta;
+  uint8_t *beta = (uint8_t *)&beta_int;
+
+  CmpFunc cf_l = {alpha_bits_l, beta, kGtAlpha};
+  CmpFunc cf_r = {alpha_bits_r, beta, kGtAlpha};
+
+  // Generate DCF keys
+  memcpy(sbuf, kS0s, kLambda * 2);
+  dcf_gen(key_l, cf_l, sbuf);
+  memcpy(sbuf, kS0s, kLambda * 2);
+  dcf_gen(key_r, cf_r, sbuf);
+
+  // Allocate buffers for full evaluation
+  uint8_t *ys0_full_l = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
+  uint8_t *ys1_full_l = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
+  uint8_t *ys0_full_r = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
+  uint8_t *ys1_full_r = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
+  uint8_t *ys0_full = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
+  uint8_t *ys1_full = (uint8_t *)malloc(kLambda * (1ULL << kAlphaBitlen));
+  assert(ys0_full_l != NULL && ys1_full_l != NULL);
+  assert(ys0_full_r != NULL && ys1_full_r != NULL);
+  assert(ys0_full != NULL && ys1_full != NULL);
+
+  // Party 0 full eval for both DCFs
+  memcpy(ys0_full_l, kS0s, kLambda);
+  dcf_eval_full_domain(ys0_full_l, 0, key_l, kAlphaBitlen);
+  memcpy(ys0_full_r, kS0s, kLambda);
+  dcf_eval_full_domain(ys0_full_r, 0, key_r, kAlphaBitlen);
+
+  // Party 1 full eval for both DCFs
+  memcpy(ys1_full_l, kS0s + kLambda, kLambda);
+  dcf_eval_full_domain(ys1_full_l, 1, key_l, kAlphaBitlen);
+  memcpy(ys1_full_r, kS0s + kLambda, kLambda);
+  dcf_eval_full_domain(ys1_full_r, 1, key_r, kAlphaBitlen);
+
+  // Compute ys0_full = y0_l + -y0_r for each lambda bytes
+  for (size_t i = 0; i < (1ULL << kAlphaBitlen); i++) {
+    uint8_t *y0_l = ys0_full_l + i * kLambda;
+    uint8_t *y0_r = ys0_full_r + i * kLambda;
+    uint8_t *y0 = ys0_full + i * kLambda;
+    memcpy(y0, y0_l, kLambda);
+    uint8_t tmp[kLambda];
+    memcpy(tmp, y0_r, kLambda);
+    group_neg(tmp);
+    group_add(y0, tmp);
+  }
+
+  // Compute ys1_full = y1_l + -y1_r for each lambda bytes
+  for (size_t i = 0; i < (1ULL << kAlphaBitlen); i++) {
+    uint8_t *y1_l = ys1_full_l + i * kLambda;
+    uint8_t *y1_r = ys1_full_r + i * kLambda;
+    uint8_t *y1 = ys1_full + i * kLambda;
+    memcpy(y1, y1_l, kLambda);
+    uint8_t tmp[kLambda];
+    memcpy(tmp, y1_r, kLambda);
+    group_neg(tmp);
+    group_add(y1, tmp);
+  }
+
+  // DEBUG
+  for (size_t x = 0; x < (1ULL << kAlphaBitlen); x++) {
+    uint8_t *y0 = ys0_full + x * kLambda;
+    uint8_t *y1 = ys1_full + x * kLambda;
+    uint8_t sum[kLambda];
+    memcpy(sum, y0, kLambda);
+    group_add(sum, y1);
+
+    if (x >= kAlphaL && x < kAlphaR) {
+      // Should equal beta
+      uint8_t beta_bytes[kLambda];
+      memcpy(beta_bytes, &kBeta, sizeof(kBeta));
+      EXPECT_EQ(memcmp(sum, beta_bytes, kLambda), 0) << "x = " << x;
+    } else {
+      // Should equal 0
+      uint8_t zero[kLambda] = {0};
+      EXPECT_EQ(memcmp(sum, zero, kLambda), 0) << "x = " << x;
+    }
+  }
+
+  // Get evaluation results at alpha_l and alpha_r
+  uint8_t *y0_alpha_l = ys0_full + (int)kAlphaL * kLambda;
+  uint8_t *y1_alpha_l = ys1_full + (int)kAlphaL * kLambda;
+  uint8_t *privkey = kKeys + (int)kAlphaL * crypto_core_ristretto255_SCALARBYTES;
+
+  // Generate and verify MAC
+  uint8_t t0[crypto_core_ristretto255_BYTES];
+  uint8_t t1[crypto_core_ristretto255_BYTES];
+  gen_cw_mac(t0, t1, y0_alpha_l, y1_alpha_l, kAlphaR - kAlphaL, kLambda, privkey);
+
+  uint8_t beta0[crypto_core_ristretto255_BYTES];
+  uint8_t beta1[crypto_core_ristretto255_BYTES];
+  commit_cw_mac(beta0, 0, t0, ys0_full, 1ULL << kAlphaBitlen, kLambda, kPubkeys);
+  commit_cw_mac(beta1, 1, t1, ys1_full, 1ULL << kAlphaBitlen, kLambda, kPubkeys);
+  int res = verify_cw_mac(beta0, beta1);
+  __uint128_t beta0_int = *(__uint128_t *)beta0;
+  EXPECT_EQ(beta0_int, 0);
+  EXPECT_EQ(res, 1);
+
+  // Cleanup
+  free(ys0_full);
+  free(ys1_full);
+  free(ys0_full_l);
+  free(ys1_full_l);
+  free(ys0_full_r);
+  free(ys1_full_r);
+  free(key_l.cw_np1);
+  free(key_l.cws);
+  free(key_r.cw_np1);
+  free(key_r.cws);
   free(sbuf);
 }

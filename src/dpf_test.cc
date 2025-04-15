@@ -30,7 +30,7 @@ class DpfTest : public ::testing::Test {
   }
 
   static constexpr uint16_t kAlpha = 107;
-  static constexpr uint16_t kAlphaBitlen = 16;
+  static constexpr int kAlphaBitlen = 16;
   static constexpr __uint128_t kBeta = 604;
 
   uint8_t *kS0s;

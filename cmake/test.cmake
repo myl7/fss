@@ -43,5 +43,5 @@ add_executable(
   src/group/bytes.c
   src/prg/aes_mmo.c src/prg/torchcsprng/aes.c
 )
-target_link_libraries(cw_mac_bytes_test GTest::gtest_main cw_mac_bytes dpf)
+target_link_libraries(cw_mac_bytes_test GTest::gtest_main cw_mac_bytes dpf dcf)
 gtest_discover_tests(cw_mac_bytes_test)
