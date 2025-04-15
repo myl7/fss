@@ -109,9 +109,9 @@ This graph shows which files directly or indirectly include this file:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ac980c3cf73185373d404e9caa563c7d3" id="r_ac980c3cf73185373d404e9caa563c7d3"><td class="memItemLeft" align="right" valign="top">HOST_DEVICE void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__decl_8h.html#ac980c3cf73185373d404e9caa563c7d3">prg</a> (uint8_t *out, const uint8_t *seed)</td></tr>
-<tr class="memdesc:ac980c3cf73185373d404e9caa563c7d3"><td class="mdescLeft">&#160;</td><td class="mdescRight">PRG.  <br /></td></tr>
-<tr class="separator:ac980c3cf73185373d404e9caa563c7d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5390eded8ef9930481261d5637f9f532" id="r_a5390eded8ef9930481261d5637f9f532"><td class="memItemLeft" align="right" valign="top">HOST_DEVICE void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__decl_8h.html#a5390eded8ef9930481261d5637f9f532">prg</a> (uint8_t *out, int out_len, const uint8_t *seed)</td></tr>
+<tr class="memdesc:a5390eded8ef9930481261d5637f9f532"><td class="mdescLeft">&#160;</td><td class="mdescRight">PRG.  <br /></td></tr>
+<tr class="separator:a5390eded8ef9930481261d5637f9f532"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a922e949a74f04410ba76cc0552cf98d3" id="r_a922e949a74f04410ba76cc0552cf98d3"><td class="memItemLeft" align="right" valign="top">HOST_DEVICE void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__decl_8h.html#a922e949a74f04410ba76cc0552cf98d3">group_add</a> (uint8_t *val, const uint8_t *rhs)</td></tr>
 <tr class="memdesc:a922e949a74f04410ba76cc0552cf98d3"><td class="mdescLeft">&#160;</td><td class="mdescRight"><code>val</code> = <code>val</code> + <code>rhs</code>, and <code>rhs</code> is unchanged.  <br /></td></tr>
 <tr class="separator:a922e949a74f04410ba76cc0552cf98d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -200,8 +200,8 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="ac980c3cf73185373d404e9caa563c7d3" name="ac980c3cf73185373d404e9caa563c7d3"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac980c3cf73185373d404e9caa563c7d3">&#9670;&#160;</a></span>prg()</h2>
+<a id="a5390eded8ef9930481261d5637f9f532" name="a5390eded8ef9930481261d5637f9f532"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5390eded8ef9930481261d5637f9f532">&#9670;&#160;</a></span>prg()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -211,6 +211,12 @@ Functions</h2></td></tr>
           <td>(</td>
           <td class="paramtype">uint8_t *&#160;</td>
           <td class="paramname"><em>out</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>out_len</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -229,7 +235,8 @@ Functions</h2></td></tr>
 <p>PRG. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">out</td><td>Output whose len depends on usage. For DPF, its len = 2 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. For DCF, its len = 4 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. </td></tr>
+    <tr><td class="paramname">out</td><td>Output </td></tr>
+    <tr><td class="paramname">out_len</td><td>Output len. For DPF, its len = 2 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. For DCF, its len = 4 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. </td></tr>
     <tr><td class="paramname">seed</td><td>Input whose len = <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> </td></tr>
   </table>
   </dd>
