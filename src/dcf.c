@@ -63,8 +63,8 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf) {
   uint8_t t0l, t0r, t1l, t1r;
 
   for (int i = 0; i < cf.alpha.bitlen; i++) {
-    prg(sv0s, s0);
-    prg(sv1s, s1);
+    prg(sv0s, 4 * kLambda, s0);
+    prg(sv1s, 4 * kLambda, s1);
     load_svst(sv0s, &t0l, &t0r);
     load_svst(sv1s, &t1l, &t1r);
 
@@ -164,7 +164,7 @@ HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x) {
     uint8_t tl_cw, tr_cw;
     get_cwt(cw, &tl_cw, &tr_cw);
 
-    prg(svs, s);
+    prg(svs, 4 * kLambda, s);
     load_svst(svs, &tl, &tr);
     if (t) {
       xor_bytes(sl, s_cw, kLambda);
@@ -215,7 +215,7 @@ void dcf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_
   uint8_t tl_cw, tr_cw;
   get_cwt(cw, &tl_cw, &tr_cw);
 
-  prg(svs, s);
+  prg(svs, 4 * kLambda, s);
   load_svst(svs, &tl, &tr);
   if (t) {
     xor_bytes(sl, s_cw, kLambda);

@@ -22,12 +22,13 @@ extern "C" {
 
 /**
  * PRG.
- * @param out Output whose len depends on usage.
+ * @param out Output
+ * @param out_len Output len.
  * For DPF, its len = 2 * @ref kLambda.
  * For DCF, its len = 4 * @ref kLambda.
  * @param seed Input whose len = @ref kLambda
  */
-HOST_DEVICE void prg(uint8_t *out, const uint8_t *seed);
+HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed);
 
 /**
  * `val` = `val` + `rhs`, and `rhs` is unchanged.

@@ -69,7 +69,9 @@ void prg_init(const uint8_t *state, int state_len) {
 #endif
 }
 
-HOST_DEVICE void prg(uint8_t *out, const uint8_t *seed) {
+HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed) {
+  assert(out_len % 32 == 0);
+  assert(out_len / 32 <= BLOCK_NUM);
   uint32_t in[16];
   const uint32_t *seed_int = (const uint32_t *)seed;
   in[1] = seed_int[0];
@@ -78,7 +80,7 @@ HOST_DEVICE void prg(uint8_t *out, const uint8_t *seed) {
   in[4] = seed_int[3];
   salsa20_expand_key(in);
 
-  for (int i = 0; i < BLOCK_NUM; i++) {
+  for (int i = 0; i < out_len / 32; i++) {
     uint32_t x[16];
     salsa20_block(x, in, 0, gNonces[i]);
     memcpy(out + i * 32, x, 32);

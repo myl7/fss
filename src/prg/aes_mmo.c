@@ -23,8 +23,10 @@ void prg_init(const uint8_t *state, int state_len) {
   }
 }
 
-void prg(uint8_t *out, const uint8_t *seed) {
-  for (int i = 0; i < BLOCK_NUM; i++) {
+void prg(uint8_t *out, int out_len, const uint8_t *seed) {
+  assert(out_len % 16 == 0);
+  assert(out_len / 16 <= BLOCK_NUM);
+  for (int i = 0; i < out_len / 16; i++) {
     memcpy(out + i * 16, seed, 16);
     encrypt(out + i * 16, gRoundKeys[i]);
     xor_bytes(out + i * 16, seed, 16);

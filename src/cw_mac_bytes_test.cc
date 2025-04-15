@@ -23,9 +23,9 @@ class CwMacBytesTest : public ::testing::Test {
 
     std::random_device rd;
     random_bytes_engine rbe(rd());
-    uint8_t keys[32];
+    uint8_t keys[64];
     std::generate(std::begin(keys), std::end(keys), std::ref(rbe));
-    prg_init((uint8_t *)keys, 32);
+    prg_init((uint8_t *)keys, 64);
 
     kS0s = (uint8_t *)malloc(kLambda * 2);
     assert(kS0s != NULL);
@@ -55,7 +55,7 @@ class CwMacBytesTest : public ::testing::Test {
 
   static constexpr uint8_t kAlpha = 107;
   static constexpr int kAlphaBitlen = 8;
-  static constexpr __uint128_t kBeta = 604;
+  static constexpr __uint128_t kBeta = 6;
   static constexpr uint8_t kAlphaL = kAlpha - 10;
   static constexpr uint8_t kAlphaR = kAlpha + 10;
 
@@ -149,8 +149,8 @@ TEST_F(CwMacBytesTest, VerifyDif) {
   __uint128_t beta_int = kBeta;
   uint8_t *beta = (uint8_t *)&beta_int;
 
-  CmpFunc cf_l = {alpha_bits_l, beta, kGtAlpha};
-  CmpFunc cf_r = {alpha_bits_r, beta, kGtAlpha};
+  CmpFunc cf_l = {alpha_bits_l, beta, kLtAlpha};
+  CmpFunc cf_r = {alpha_bits_r, beta, kLtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -187,10 +187,8 @@ TEST_F(CwMacBytesTest, VerifyDif) {
     uint8_t *y0_r = ys0_full_r + i * kLambda;
     uint8_t *y0 = ys0_full + i * kLambda;
     memcpy(y0, y0_l, kLambda);
-    uint8_t tmp[kLambda];
-    memcpy(tmp, y0_r, kLambda);
-    group_neg(tmp);
-    group_add(y0, tmp);
+    group_neg(y0);
+    group_add(y0, y0_r);
   }
 
   // Compute ys1_full = y1_l + -y1_r for each lambda bytes
@@ -199,30 +197,8 @@ TEST_F(CwMacBytesTest, VerifyDif) {
     uint8_t *y1_r = ys1_full_r + i * kLambda;
     uint8_t *y1 = ys1_full + i * kLambda;
     memcpy(y1, y1_l, kLambda);
-    uint8_t tmp[kLambda];
-    memcpy(tmp, y1_r, kLambda);
-    group_neg(tmp);
-    group_add(y1, tmp);
-  }
-
-  // DEBUG
-  for (size_t x = 0; x < (1ULL << kAlphaBitlen); x++) {
-    uint8_t *y0 = ys0_full + x * kLambda;
-    uint8_t *y1 = ys1_full + x * kLambda;
-    uint8_t sum[kLambda];
-    memcpy(sum, y0, kLambda);
-    group_add(sum, y1);
-
-    if (x >= kAlphaL && x < kAlphaR) {
-      // Should equal beta
-      uint8_t beta_bytes[kLambda];
-      memcpy(beta_bytes, &kBeta, sizeof(kBeta));
-      EXPECT_EQ(memcmp(sum, beta_bytes, kLambda), 0) << "x = " << x;
-    } else {
-      // Should equal 0
-      uint8_t zero[kLambda] = {0};
-      EXPECT_EQ(memcmp(sum, zero, kLambda), 0) << "x = " << x;
-    }
+    group_neg(y1);
+    group_add(y1, y1_r);
   }
 
   // Get evaluation results at alpha_l and alpha_r

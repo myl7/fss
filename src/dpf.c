@@ -50,8 +50,8 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   uint8_t t0l, t0r, t1l, t1r;
 
   for (int i = 0; i < pf.alpha.bitlen; i++) {
-    prg(s0s, s0);
-    prg(s1s, s1);
+    prg(s0s, 2 * kLambda, s0);
+    prg(s1s, 2 * kLambda, s1);
     load_sst(s0s, &t0l, &t0r);
     load_sst(s1s, &t1l, &t1r);
 
@@ -115,7 +115,7 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
     uint8_t tl_cw, tr_cw;
     get_cwt(cw, &tl_cw, &tr_cw);
 
-    prg(ss, s);
+    prg(ss, 2 * kLambda, s);
     load_sst(ss, &tl, &tr);
     if (t) {
       xor_bytes(sl, s_cw, kLambda);
@@ -155,7 +155,7 @@ void dpf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_
   uint8_t tl_cw, tr_cw;
   get_cwt(cw, &tl_cw, &tr_cw);
 
-  prg(ss, s);
+  prg(ss, 2 * kLambda, s);
   load_sst(ss, &tl, &tr);
   if (t) {
     xor_bytes(sl, s_cw, kLambda);
