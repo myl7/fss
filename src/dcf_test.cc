@@ -209,3 +209,187 @@ TEST_F(DcfTest, EvalAtRandGtPointsForGtAlpha) {
   free(key.cws);
   free(sbuf);
 }
+
+TEST_F(DcfTest, EvalFullDomainEqEvalPoints) {
+  uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
+  assert(sbuf != NULL);
+
+  DcfKey key;
+  key.cw_np1 = (uint8_t *)malloc(kLambda);
+  assert(key.cw_np1 != NULL);
+  key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
+  assert(key.cws != NULL);
+
+  // Prepare comparison function
+  uint16_t alpha_int = kAlpha;
+  uint8_t *alpha = (uint8_t *)&alpha_int;
+  Bits alpha_bits = {alpha, kAlphaBitlen};
+  __uint128_t beta_int = kBeta;
+  uint8_t *beta = (uint8_t *)&beta_int;
+  CmpFunc cf = {alpha_bits, beta, kLtAlpha};
+
+  // Generate DCF keys
+  memcpy(sbuf, kS0s, kLambda * 2);
+  dcf_gen(key, cf, sbuf);
+
+  // Allocate buffers for full evaluation
+  uint8_t *ys0_full = (uint8_t *)malloc(kLambda * (1 << kAlphaBitlen));
+  uint8_t *ys1_full = (uint8_t *)malloc(kLambda * (1 << kAlphaBitlen));
+  assert(ys0_full != NULL && ys1_full != NULL);
+
+  // Party 0 full eval
+  memcpy(ys0_full, kS0s, kLambda);
+  dcf_eval_full_domain(ys0_full, 0, key, kAlphaBitlen);
+
+  // Party 1 full eval
+  memcpy(ys1_full, kS0s + kLambda, kLambda);
+  dcf_eval_full_domain(ys1_full, 1, key, kAlphaBitlen);
+
+  // Compare with point-by-point evaluation
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<uint16_t> lt_dis(0, kAlpha - 1);
+  std::uniform_int_distribution<uint16_t> gt_dis(kAlpha + 1, UINT16_MAX);
+
+  constexpr int kNumTrials = 100;
+
+  for (int i = 0; i < kNumTrials; i++) {
+    uint16_t x;
+    if (i == 0) {
+      // Test x = alpha
+      x = kAlpha;
+    } else if (i < kNumTrials / 2) {
+      // Test x < alpha
+      x = lt_dis(gen);
+    } else {
+      // Test x > alpha
+      x = gt_dis(gen);
+    }
+    // Point-by-point evaluation
+    Bits x_bits = {(uint8_t *)&x, kAlphaBitlen};
+
+    // Party 0 eval
+    memcpy(sbuf, kS0s, kLambda);
+    dcf_eval(sbuf, 0, key, x_bits);
+    uint8_t y0[kLambda];
+    memcpy(y0, sbuf, kLambda);
+
+    // Party 1 eval
+    memcpy(sbuf, kS0s + kLambda, kLambda);
+    dcf_eval(sbuf, 1, key, x_bits);
+    uint8_t y1[kLambda];
+    memcpy(y1, sbuf, kLambda);
+
+    // Get full domain evaluation results
+    uint8_t *y0_full = ys0_full + (int)x * kLambda;
+    uint8_t *y1_full = ys1_full + (int)x * kLambda;
+
+    // Compare party 0 shares
+    __uint128_t y0_int = *(__uint128_t *)y0;
+    __uint128_t y0_full_int = *(__uint128_t *)y0_full;
+    EXPECT_EQ(y0_int, y0_full_int) << "Party 0 shares differ at x = " << x;
+
+    // Compare party 1 shares
+    __uint128_t y1_int = *(__uint128_t *)y1;
+    __uint128_t y1_full_int = *(__uint128_t *)y1_full;
+    EXPECT_EQ(y1_int, y1_full_int) << "Party 1 shares differ at x = " << x;
+  }
+
+  free(ys0_full);
+  free(ys1_full);
+  free(key.cw_np1);
+  free(key.cws);
+  free(sbuf);
+}
+
+TEST_F(DcfTest, EvalFullDomainEqEvalPointsForGtAlpha) {
+  uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
+  assert(sbuf != NULL);
+
+  DcfKey key;
+  key.cw_np1 = (uint8_t *)malloc(kLambda);
+  assert(key.cw_np1 != NULL);
+  key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
+  assert(key.cws != NULL);
+
+  // Prepare comparison function
+  uint16_t alpha_int = kAlpha;
+  uint8_t *alpha = (uint8_t *)&alpha_int;
+  Bits alpha_bits = {alpha, kAlphaBitlen};
+  __uint128_t beta_int = kBeta;
+  uint8_t *beta = (uint8_t *)&beta_int;
+  CmpFunc cf = {alpha_bits, beta, kGtAlpha};
+
+  // Generate DCF keys
+  memcpy(sbuf, kS0s, kLambda * 2);
+  dcf_gen(key, cf, sbuf);
+
+  // Allocate buffers for full evaluation
+  uint8_t *ys0_full = (uint8_t *)malloc(kLambda * (1 << kAlphaBitlen));
+  uint8_t *ys1_full = (uint8_t *)malloc(kLambda * (1 << kAlphaBitlen));
+  assert(ys0_full != NULL && ys1_full != NULL);
+
+  // Party 0 full eval
+  memcpy(ys0_full, kS0s, kLambda);
+  dcf_eval_full_domain(ys0_full, 0, key, kAlphaBitlen);
+
+  // Party 1 full eval
+  memcpy(ys1_full, kS0s + kLambda, kLambda);
+  dcf_eval_full_domain(ys1_full, 1, key, kAlphaBitlen);
+
+  // Compare with point-by-point evaluation
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<uint16_t> lt_dis(0, kAlpha - 1);
+  std::uniform_int_distribution<uint16_t> gt_dis(kAlpha + 1, UINT16_MAX);
+
+  constexpr int kNumTrials = 100;
+
+  for (int i = 0; i < kNumTrials; i++) {
+    uint16_t x;
+    if (i == 0) {
+      // Test x = alpha
+      x = kAlpha;
+    } else if (i < kNumTrials / 2) {
+      // Test x < alpha
+      x = lt_dis(gen);
+    } else {
+      // Test x > alpha
+      x = gt_dis(gen);
+    }
+    // Point-by-point evaluation
+    Bits x_bits = {(uint8_t *)&x, kAlphaBitlen};
+
+    // Party 0 eval
+    memcpy(sbuf, kS0s, kLambda);
+    dcf_eval(sbuf, 0, key, x_bits);
+    uint8_t y0[kLambda];
+    memcpy(y0, sbuf, kLambda);
+
+    // Party 1 eval
+    memcpy(sbuf, kS0s + kLambda, kLambda);
+    dcf_eval(sbuf, 1, key, x_bits);
+    uint8_t y1[kLambda];
+    memcpy(y1, sbuf, kLambda);
+
+    // Get full domain evaluation results
+    uint8_t *y0_full = ys0_full + (int)x * kLambda;
+    uint8_t *y1_full = ys1_full + (int)x * kLambda;
+
+    // Compare party 0 shares
+    __uint128_t y0_int = *(__uint128_t *)y0;
+    __uint128_t y0_full_int = *(__uint128_t *)y0_full;
+    EXPECT_EQ(y0_int, y0_full_int) << "Party 0 shares differ at x = " << x;
+
+    // Compare party 1 shares
+    __uint128_t y1_int = *(__uint128_t *)y1;
+    __uint128_t y1_full_int = *(__uint128_t *)y1_full;
+    EXPECT_EQ(y1_int, y1_full_int) << "Party 1 shares differ at x = " << x;
+  }
+
+  free(ys0_full);
+  free(ys1_full);
+  free(key.cw_np1);
+  free(key.cws);
+  free(sbuf);
+}

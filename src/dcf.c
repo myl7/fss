@@ -11,6 +11,10 @@ HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
   set_bit_lsb(s, kLambda * 8 - 1, 0);
 }
 
+static inline void set_st(uint8_t *s, uint8_t t) {
+  set_bit_lsb(s, kLambda * 8 - 1, t);
+}
+
 HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
   load_st(ss, t0);
   load_st(ss + kLambda, t1);
@@ -185,4 +189,132 @@ HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x) {
   if (b) group_neg(s);
   group_add(v, s);
   memcpy(s, v, kLambda);
+}
+
+#include <assert.h>
+#include <stdlib.h>
+#include <omp.h>
+
+void dcf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_t b, DcfKey k, uint8_t *vs_alloc) {
+  uint8_t *s = sbufl;
+  uint8_t *v = sbufl + kLambda;
+  uint8_t t;
+  load_st(s, &t);
+
+  uint8_t *svs = (uint8_t *)malloc(kLambda * 4);
+  assert(svs != NULL);
+  uint8_t *sl = svs;
+  uint8_t *vl = svs + kLambda;
+  uint8_t *sr = svs + kLambda * 2;
+  uint8_t *vr = svs + kLambda * 3;
+  uint8_t tl, tr;
+
+  const uint8_t *cw = k.cws + depth * kDcfCwLen;
+  const uint8_t *s_cw = cw;
+  const uint8_t *v_cw = cw + kLambda;
+  uint8_t tl_cw, tr_cw;
+  get_cwt(cw, &tl_cw, &tr_cw);
+
+  prg(svs, s);
+  load_svst(svs, &tl, &tr);
+  if (t) {
+    xor_bytes(sl, s_cw, kLambda);
+    xor_bytes(sr, s_cw, kLambda);
+    tl ^= tl_cw;
+    tr ^= tr_cw;
+  }
+
+  uint8_t *vl_out = v;
+  uint8_t *vr_out = sbufr + kLambda;
+  if (vs_alloc) {
+    vl_out = vs_alloc;
+    memcpy(vl_out, v, kLambda);
+    vr_out = vs_alloc + kLambda;
+    memcpy(vr_out, v, kLambda);
+  } else {
+    memcpy(vr_out, v, kLambda);
+  }
+
+  if (t) {
+    group_add(vl, v_cw);
+    group_add(vr, v_cw);
+  }
+  if (b) {
+    group_neg(vl);
+    group_neg(vr);
+  }
+  group_add(vl_out, vl);
+  group_add(vr_out, vr);
+
+  // sr uses the space of v, so set sr after using v
+  memcpy(sbufl, sl, kLambda);
+  set_st(sbufl, tl);
+  memcpy(sbufr, sr, kLambda);
+  set_st(sbufr, tr);
+  free(svs);
+}
+
+void dcf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DcfKey k, uint8_t *v) {
+  uint8_t *s = sbuf;
+  uint8_t t;
+  load_st(s, &t);
+
+  if (t) group_add(s, k.cw_np1);
+  if (b) group_neg(s);
+  group_add(v, s);
+  memcpy(s, v, kLambda);
+}
+
+void dcf_eval_full_domain_subtree(
+  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DcfKey k, int x_bitlen, uint8_t *v_alloc) {
+  assert(kLambda * (1ULL << (x_bitlen - depth)) == r - l);
+
+  if (depth == x_bitlen) {
+    dcf_eval_full_domain_leaf(sbuf + l, b, k, v_alloc);
+    return;
+  } else {
+    assert(v_alloc == NULL);
+  }
+
+  size_t mid = (l + r) / 2;
+
+  if (depth == x_bitlen - 1) {
+    v_alloc = (uint8_t *)malloc(2 * kLambda);
+    assert(v_alloc != NULL);
+    dcf_eval_full_domain_node(depth, sbuf + l, sbuf + mid, b, k, v_alloc);
+  } else {
+    dcf_eval_full_domain_node(depth, sbuf + l, sbuf + mid, b, k, v_alloc);
+  }
+
+  uint8_t *vl_alloc = v_alloc ? v_alloc : NULL;
+  uint8_t *vr_alloc = v_alloc ? v_alloc + kLambda : NULL;
+  if (depth < kParallelDepth) {
+#pragma omp parallel
+#pragma omp single
+    {
+#pragma omp task
+      { dcf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, vl_alloc); }
+#pragma omp task
+      { dcf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, vr_alloc); }
+#pragma omp taskwait
+    }
+  } else {
+    dcf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, vl_alloc);
+    dcf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, vr_alloc);
+  }
+
+  if (depth == x_bitlen - 1) {
+    free(v_alloc);
+  }
+}
+
+void dcf_eval_full_domain(uint8_t *sbuf, uint8_t b, DcfKey k, int x_bitlen) {
+  uint8_t *s = sbuf;
+  uint8_t *v = sbuf + kLambda;
+  group_zero(v);
+  uint8_t t = b;
+  set_st(s, t);
+
+  size_t sbuf_len = kLambda * (1ULL << x_bitlen);
+  dcf_eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen, NULL);
 }

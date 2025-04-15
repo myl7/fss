@@ -80,6 +80,20 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf);
  */
 HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x);
 
+/**
+ * DCF full domain eval i.e. eval at all input points.
+ * @param sbuf Buffer whose len >= 2 ^ `x_bitlen` * @ref kLambda.
+ * `s0s[b]` as input is stored at first @ref kLambda bytes.
+ * Output is contiguously stored at each @ref kLambda bytes of `sbuf`.
+ * Output is little-endian and viewed as a group element.
+ * Output's MSB is always 0. See @ref fss_decl.h for details.
+ * No need to init other bytes.
+ * @param b Party bit, 0/1
+ * @param k Gen by @ref dcf_gen()
+ * @param x_bitlen Bitlen of input points, resulting in 2 ^ `x_bitlen` input points in total
+ */
+void dcf_eval_full_domain(uint8_t *sbuf, uint8_t b, DcfKey k, int x_bitlen);
+
 #ifdef __cplusplus
 }
 #endif

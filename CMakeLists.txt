@@ -17,6 +17,7 @@ target_link_libraries(dpf PUBLIC OpenMP::OpenMP_C)
 
 add_library(dcf STATIC src/dcf.c)
 target_include_directories(dcf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(dcf PUBLIC OpenMP::OpenMP_C)
 
 add_library(cw_mac_bytes STATIC src/cw_mac_bytes.c)
 target_include_directories(cw_mac_bytes PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
