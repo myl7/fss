@@ -75,41 +75,72 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
+<a href="#define-members">Macros</a> &#124;
 <a href="#func-members">Functions</a>  </div>
   <div class="headertitle"><div class="title">cw_mac_bytes.h File Reference</div></div>
 </div><!--header-->
 <div class="contents">
 <div class="textblock"><code>#include &lt;<a class="el" href="fss__prelude_8h_source.html">fss_prelude.h</a>&gt;</code><br />
+<code>#include &lt;sodium.h&gt;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for cw_mac_bytes.h:</div>
 <div class="dyncontent">
 <div class="center"><img src="cw__mac__bytes_8h__incl.png" border="0" usemap="#ainclude_2cw__mac__bytes_8h" alt=""/></div>
 <map name="ainclude_2cw__mac__bytes_8h" id="ainclude_2cw__mac__bytes_8h">
-<area shape="rect" title=" " alt="" coords="5,5,187,31"/>
-<area shape="rect" href="fss__prelude_8h.html" title=" " alt="" coords="41,79,151,104"/>
-<area shape="poly" title=" " alt="" coords="99,31,99,65,93,65,93,31"/>
-<area shape="rect" title=" " alt="" coords="61,152,131,177"/>
-<area shape="poly" title=" " alt="" coords="99,104,99,138,93,138,93,104"/>
+<area shape="rect" title=" " alt="" coords="66,5,247,31"/>
+<area shape="rect" href="fss__prelude_8h.html" title=" " alt="" coords="42,79,151,104"/>
+<area shape="poly" title=" " alt="" coords="149,33,117,70,113,66,145,29"/>
+<area shape="rect" title=" " alt="" coords="175,79,258,104"/>
+<area shape="poly" title=" " alt="" coords="169,29,200,66,196,70,165,33"/>
+<area shape="rect" title=" " alt="" coords="5,152,76,177"/>
+<area shape="poly" title=" " alt="" coords="90,106,60,143,56,140,85,103"/>
+<area shape="rect" title=" " alt="" coords="101,152,205,177"/>
+<area shape="poly" title=" " alt="" coords="108,103,137,140,133,143,104,106"/>
 </map>
 </div>
 </div>
 <p><a href="cw__mac__bytes_8h_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="define-members" name="define-members"></a>
+Macros</h2></td></tr>
+<tr class="memitem:af1378c5eadaf14c76553f11901b49bcb" id="r_af1378c5eadaf14c76553f11901b49bcb"><td class="memItemLeft" align="right" valign="top"><a id="af1378c5eadaf14c76553f11901b49bcb" name="af1378c5eadaf14c76553f11901b49bcb"></a>
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>kCwMacWkeyLen</b>&#160;&#160;&#160;crypto_core_ristretto255_SCALARBYTES</td></tr>
+<tr class="memdesc:af1378c5eadaf14c76553f11901b49bcb"><td class="mdescLeft">&#160;</td><td class="mdescRight">Len of each write key of <code>wkeys</code> of <a class="el" href="cw__mac__bytes_8h.html#a86aa14613b5c7746e6e2ab48bd229260">gen_cw_mac()</a> <br /></td></tr>
+<tr class="separator:af1378c5eadaf14c76553f11901b49bcb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af7c914a40e5fae3766d7957d5e05439b" id="r_af7c914a40e5fae3766d7957d5e05439b"><td class="memItemLeft" align="right" valign="top"><a id="af7c914a40e5fae3766d7957d5e05439b" name="af7c914a40e5fae3766d7957d5e05439b"></a>
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>kCwMacPubWkeyLen</b>&#160;&#160;&#160;crypto_core_ristretto255_BYTES</td></tr>
+<tr class="memdesc:af7c914a40e5fae3766d7957d5e05439b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Len of each public write key of <code>pub_wkeys</code> of <a class="el" href="cw__mac__bytes_8h.html#ae6a81d7fb2f46414ea2d9c73c0754d5d">commit_cw_mac()</a> <br /></td></tr>
+<tr class="separator:af7c914a40e5fae3766d7957d5e05439b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a922c233f9f1d19e2d6c8700f0cc63c10" id="r_a922c233f9f1d19e2d6c8700f0cc63c10"><td class="memItemLeft" align="right" valign="top"><a id="a922c233f9f1d19e2d6c8700f0cc63c10" name="a922c233f9f1d19e2d6c8700f0cc63c10"></a>
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>kCwMacLen</b>&#160;&#160;&#160;crypto_core_ristretto255_BYTES</td></tr>
+<tr class="memdesc:a922c233f9f1d19e2d6c8700f0cc63c10"><td class="mdescLeft">&#160;</td><td class="mdescRight">Len of MAC of <a class="el" href="cw__mac__bytes_8h.html#a86aa14613b5c7746e6e2ab48bd229260">gen_cw_mac()</a> <br /></td></tr>
+<tr class="separator:a922c233f9f1d19e2d6c8700f0cc63c10"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a93566f104d0414d97592acea2492a7c4" id="r_a93566f104d0414d97592acea2492a7c4"><td class="memItemLeft" align="right" valign="top"><a id="a93566f104d0414d97592acea2492a7c4" name="a93566f104d0414d97592acea2492a7c4"></a>
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>kCwMacCommitLen</b>&#160;&#160;&#160;crypto_core_ristretto255_BYTES</td></tr>
+<tr class="memdesc:a93566f104d0414d97592acea2492a7c4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Len of commitment of <a class="el" href="cw__mac__bytes_8h.html#ae6a81d7fb2f46414ea2d9c73c0754d5d">commit_cw_mac()</a> <br /></td></tr>
+<tr class="separator:a93566f104d0414d97592acea2492a7c4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a6ed1e457ffd225018db21179c6c395a6" id="r_a6ed1e457ffd225018db21179c6c395a6"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac</a> (uint8_t *t0, uint8_t *t1, const uint8_t *sbufs0, const uint8_t *sbufs1, int sbuf_num, int sbuf_step, const uint8_t *keys)</td></tr>
-<tr class="memdesc:a6ed1e457ffd225018db21179c6c395a6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gen Carter-Wegman MAC and share it into 2 shares.  <br /></td></tr>
-<tr class="separator:a6ed1e457ffd225018db21179c6c395a6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a9f99d74d9f612bdb6d8d047400d4e5aa" id="r_a9f99d74d9f612bdb6d8d047400d4e5aa"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#a9f99d74d9f612bdb6d8d047400d4e5aa">commit_cw_mac</a> (uint8_t *beta, uint8_t b, const uint8_t *t, const uint8_t *sbufs, int sbuf_num, int sbuf_step, const uint8_t *pubkeys)</td></tr>
-<tr class="memdesc:a9f99d74d9f612bdb6d8d047400d4e5aa"><td class="mdescLeft">&#160;</td><td class="mdescRight">Commit Carter-Wegman MAC share into a commitment to be exchanged.  <br /></td></tr>
-<tr class="separator:a9f99d74d9f612bdb6d8d047400d4e5aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab3155414cfd95fa93da68ea88b5af026" id="r_ab3155414cfd95fa93da68ea88b5af026"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#ab3155414cfd95fa93da68ea88b5af026">gen_wkey</a> (uint8_t *wkey)</td></tr>
+<tr class="memdesc:ab3155414cfd95fa93da68ea88b5af026"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gen write key.  <br /></td></tr>
+<tr class="separator:ab3155414cfd95fa93da68ea88b5af026"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aaa48435cba79292433ad21d030ca9411" id="r_aaa48435cba79292433ad21d030ca9411"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#aaa48435cba79292433ad21d030ca9411">gen_pub_wkey</a> (uint8_t *pub_wkey, const uint8_t *wkey)</td></tr>
+<tr class="memdesc:aaa48435cba79292433ad21d030ca9411"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gen public write key.  <br /></td></tr>
+<tr class="separator:aaa48435cba79292433ad21d030ca9411"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a86aa14613b5c7746e6e2ab48bd229260" id="r_a86aa14613b5c7746e6e2ab48bd229260"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#a86aa14613b5c7746e6e2ab48bd229260">gen_cw_mac</a> (uint8_t *t0, uint8_t *t1, const uint8_t *sbufs0, const uint8_t *sbufs1, int sbuf_num, int sbuf_step, const uint8_t *wkeys)</td></tr>
+<tr class="memdesc:a86aa14613b5c7746e6e2ab48bd229260"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gen Carter-Wegman MAC and share it into 2 shares.  <br /></td></tr>
+<tr class="separator:a86aa14613b5c7746e6e2ab48bd229260"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae6a81d7fb2f46414ea2d9c73c0754d5d" id="r_ae6a81d7fb2f46414ea2d9c73c0754d5d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#ae6a81d7fb2f46414ea2d9c73c0754d5d">commit_cw_mac</a> (uint8_t *beta, uint8_t b, const uint8_t *t, const uint8_t *sbufs, int sbuf_num, int sbuf_step, const uint8_t *pub_wkeys)</td></tr>
+<tr class="memdesc:ae6a81d7fb2f46414ea2d9c73c0754d5d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Commit Carter-Wegman MAC share into a commitment to be exchanged.  <br /></td></tr>
+<tr class="separator:ae6a81d7fb2f46414ea2d9c73c0754d5d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1e9dd2884a91af82423ec16cd39486e3" id="r_a1e9dd2884a91af82423ec16cd39486e3"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cw__mac__bytes_8h.html#a1e9dd2884a91af82423ec16cd39486e3">verify_cw_mac</a> (uint8_t *beta0, const uint8_t *beta1)</td></tr>
 <tr class="memdesc:a1e9dd2884a91af82423ec16cd39486e3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Verify Carter-Wegman MAC commitment.  <br /></td></tr>
 <tr class="separator:a1e9dd2884a91af82423ec16cd39486e3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="a9f99d74d9f612bdb6d8d047400d4e5aa" name="a9f99d74d9f612bdb6d8d047400d4e5aa"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a9f99d74d9f612bdb6d8d047400d4e5aa">&#9670;&#160;</a></span>commit_cw_mac()</h2>
+<a id="ae6a81d7fb2f46414ea2d9c73c0754d5d" name="ae6a81d7fb2f46414ea2d9c73c0754d5d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae6a81d7fb2f46414ea2d9c73c0754d5d">&#9670;&#160;</a></span>commit_cw_mac()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -154,7 +185,7 @@ Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const uint8_t *&#160;</td>
-          <td class="paramname"><em>pubkeys</em>&#160;</td>
+          <td class="paramname"><em>pub_wkeys</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -169,19 +200,19 @@ Functions</h2></td></tr>
   <table class="params">
     <tr><td class="paramname">beta</td><td>Output commitment </td></tr>
     <tr><td class="paramname">b</td><td>Party bit, 0/1 </td></tr>
-    <tr><td class="paramname">t</td><td>Gen by <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
-    <tr><td class="paramname">sbufs</td><td>Same as <code>sbufs0</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
-    <tr><td class="paramname">sbuf_num</td><td>Same as <code>sbuf_num</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
-    <tr><td class="paramname">sbuf_step</td><td>Same as <code>sbuf_step</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a> </td></tr>
-    <tr><td class="paramname">pubkeys</td><td>Field elements <code>g^key</code> as public keys corresponding to each input point. Gen each pubkey with <code>crypto_scalarmult_ristretto255_base()</code> for <code>key</code> of <a class="el" href="cw__mac__bytes_8h.html#a6ed1e457ffd225018db21179c6c395a6">gen_cw_mac()</a>. </td></tr>
+    <tr><td class="paramname">t</td><td>Gen by <a class="el" href="cw__mac__bytes_8h.html#a86aa14613b5c7746e6e2ab48bd229260">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">sbufs</td><td>Same as <code>sbufs0</code> of <a class="el" href="cw__mac__bytes_8h.html#a86aa14613b5c7746e6e2ab48bd229260">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">sbuf_num</td><td>Same as <code>sbuf_num</code> of <a class="el" href="cw__mac__bytes_8h.html#a86aa14613b5c7746e6e2ab48bd229260">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">sbuf_step</td><td>Same as <code>sbuf_step</code> of <a class="el" href="cw__mac__bytes_8h.html#a86aa14613b5c7746e6e2ab48bd229260">gen_cw_mac()</a> </td></tr>
+    <tr><td class="paramname">pub_wkeys</td><td>Field elements <code>g^key</code> as public write keys corresponding to each input point. Gen by <a class="el" href="cw__mac__bytes_8h.html#aaa48435cba79292433ad21d030ca9411">gen_pub_wkey()</a> from write keys. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a id="a6ed1e457ffd225018db21179c6c395a6" name="a6ed1e457ffd225018db21179c6c395a6"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6ed1e457ffd225018db21179c6c395a6">&#9670;&#160;</a></span>gen_cw_mac()</h2>
+<a id="a86aa14613b5c7746e6e2ab48bd229260" name="a86aa14613b5c7746e6e2ab48bd229260"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a86aa14613b5c7746e6e2ab48bd229260">&#9670;&#160;</a></span>gen_cw_mac()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -226,7 +257,7 @@ Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const uint8_t *&#160;</td>
-          <td class="paramname"><em>keys</em>&#160;</td>
+          <td class="paramname"><em>wkeys</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -245,7 +276,70 @@ Functions</h2></td></tr>
     <tr><td class="paramname">sbufs1</td><td>Like <code>sbufs0</code> of party 1 </td></tr>
     <tr><td class="paramname">sbuf_num</td><td>Num of output points </td></tr>
     <tr><td class="paramname">sbuf_step</td><td>Step between output points. <code>sbuf_step</code> &gt; <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> allows gaps between output points. </td></tr>
-    <tr><td class="paramname">keys</td><td>Field scalar elements as keys corresponding to each input point. Holding keys of a set of input points allows their output points to be non-zeros. Gen each key with <code>crypto_core_ristretto255_scalar_random()</code>. </td></tr>
+    <tr><td class="paramname">wkeys</td><td>Field scalar elements as write keys corresponding to each input point. Holding write keys of a set of input points allows their output points to be non-zeros. Gen by <a class="el" href="cw__mac__bytes_8h.html#ab3155414cfd95fa93da68ea88b5af026">gen_wkey()</a>. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="aaa48435cba79292433ad21d030ca9411" name="aaa48435cba79292433ad21d030ca9411"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aaa48435cba79292433ad21d030ca9411">&#9670;&#160;</a></span>gen_pub_wkey()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void gen_pub_wkey </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>pub_wkey</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>wkey</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Gen public write key. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">pub_wkey</td><td>Output public write key </td></tr>
+    <tr><td class="paramname">wkey</td><td>Write key </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="ab3155414cfd95fa93da68ea88b5af026" name="ab3155414cfd95fa93da68ea88b5af026"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab3155414cfd95fa93da68ea88b5af026">&#9670;&#160;</a></span>gen_wkey()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void gen_wkey </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>wkey</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Gen write key. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">wkey</td><td>Output write key </td></tr>
   </table>
   </dd>
 </dl>
