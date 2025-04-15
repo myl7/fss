@@ -1,9 +1,7 @@
 <map id="include/fss_decl.h" name="include/fss_decl.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="27,5,166,31"/>
-<area shape="rect" id="Node000002" href="$fss__prelude_8h.html" title=" " alt="" coords="42,79,151,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="99,31,99,65,94,65,94,31"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,152,76,177"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="90,106,60,143,56,140,85,103"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="101,152,205,177"/>
-<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="108,103,137,140,133,143,104,106"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,144,31"/>
+<area shape="rect" id="Node000002" href="$fss__prelude_8h.html" title=" " alt="" coords="20,79,129,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="77,31,77,65,72,65,72,31"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="39,152,110,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="77,104,77,138,72,138,72,104"/>
 </map>
