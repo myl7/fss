@@ -9,6 +9,20 @@
 
 #include <stdint.h>
 
+// Verify little-endian
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+#include <stdbit.h>
+#if __STDC_ENDIAN_NATIVE__ != __STDC_ENDIAN_LITTLE__
+#error "only support little-endian"
+#endif
+#elif defined(__GNUC__) || defined(__clang__)
+#if __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
+#error "only support little-endian"
+#endif
+#else
+#warning "cannot verify little-endian: only verify for c23/gcc/clang"
+#endif
+
 #ifndef kLambda
 /**
  * For security param lambda in papers, it is lambda / 8.
