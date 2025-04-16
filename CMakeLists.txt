@@ -22,6 +22,10 @@ if(WITH_TEST)
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG e90fe2485641bab0d6af4500192dc503384950d1
   )
+  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  endif()
 endif()
 if(WITH_TEST)
   FetchContent_MakeAvailable(GTest)
