@@ -27,7 +27,6 @@
 // clang-format on
 
 HOST_DEVICE void chacha_block(uint32_t x[16], uint32_t in[16], uint64_t pos, const uint32_t nonce[2]) {
-  // ChaCha initial state
   in[0] = 'e' | ('x' << 8) | ('p' << 16) | ('a' << 24);
   in[1] = 'n' | ('d' << 8) | (' ' << 16) | ('3' << 24);
   in[2] = '2' | ('-' << 8) | ('b' << 16) | ('y' << 24);
@@ -61,17 +60,17 @@ HOST_DEVICE void chacha_block(uint32_t x[16], uint32_t in[16], uint64_t pos, con
 }
 
 HOST_DEVICE void chacha_expand_key(uint32_t x[16]) {
-  x[4] = x[0];
-  x[5] = x[1];
-  x[6] = x[2];
-  x[7] = x[3];
+  x[8] = x[4];
+  x[9] = x[5];
+  x[10] = x[6];
+  x[11] = x[7];
 }
 
-DEVICE_CONST uint32_t gNonces[kBlocks][2];
+DEVICE_CONST uint32_t gNonces[kBlocks][(kLambda + 31) / 32][2];
 
 void prg_init(const uint8_t *state, int state_len) {
-  assert(kLambda == 16);
-  assert(state_len >= kBlocks * 8);
+  assert(kLambda % 16 == 0);
+  assert(state_len >= kBlocks * kLambda / 4);
 #ifdef __CUDACC__
   cudaMemcpyToSymbol(gNonces, state, state_len);
 #else
@@ -80,19 +79,39 @@ void prg_init(const uint8_t *state, int state_len) {
 }
 
 HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed) {
-  assert(out_len % 32 == 0);
-  assert(out_len / 32 <= kBlocks);
+  assert(out_len % (2 * kLambda) == 0);
+  assert(out_len <= kBlocks * kLambda * 2);
+  int blocks = out_len / kLambda / 2;
+  int left_block = kLambda / 16 % 2;
   uint32_t in[16];
-  const uint32_t *seed_int = (const uint32_t *)seed;
-  in[0] = seed_int[0];
-  in[1] = seed_int[1];
-  in[2] = seed_int[2];
-  in[3] = seed_int[3];
-  chacha_expand_key(in);
-
-  for (int i = 0; i < out_len / 32; i++) {
-    uint32_t x[16];
-    chacha_block(x, in, 0, gNonces[i]);
-    memcpy(out + i * 32, x, 32);
+  uint32_t x[16];
+  for (int i = 0; i < blocks; i++) {
+    int j = 0;
+    for (; j < kLambda / 32; j++) {
+      const uint32_t *seed_int = (const uint32_t *)seed + j * 32;
+      in[4] = seed_int[0];
+      in[5] = seed_int[1];
+      in[6] = seed_int[2];
+      in[7] = seed_int[3];
+      in[8] = seed_int[4];
+      in[9] = seed_int[5];
+      in[10] = seed_int[6];
+      in[11] = seed_int[7];
+      chacha_block(x, in, 0, gNonces[i][j]);
+      memcpy(out + i * 2 * kLambda + j * 32, x, 32);
+      memcpy(out + i * 2 * kLambda + kLambda + j * 32, x + 8, 32);
+    }
+    if (left_block) {
+      assert(j * 32 + 16 == kLambda);
+      const uint32_t *seed_int = (const uint32_t *)seed + j * 32;
+      in[4] = seed_int[0];
+      in[5] = seed_int[1];
+      in[6] = seed_int[2];
+      in[7] = seed_int[3];
+      chacha_expand_key(in);
+      chacha_block(x, in, 0, gNonces[i][j]);
+      memcpy(out + i * 2 * kLambda + j * 32, x, 16);
+      memcpy(out + i * 2 * kLambda + kLambda + j * 32, x + 8, 16);
+    }
   }
 }

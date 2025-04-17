@@ -11,21 +11,28 @@
 #include "aes-brute-force/aes_ni.h"
 #include "../utils.h"
 
-__m128i gKeySchedules[kBlocks][kRounds + 1];
+__m128i gKeySchedules[kBlocks][kLambda / 16][kRounds + 1];
 
 void prg_init(const uint8_t *state, int state_len) {
-  assert(kLambda == 16);
-  assert(state_len >= kBlocks * 16);
+  assert(kLambda % 16 == 0);
+  assert(state_len >= kBlocks * kLambda);
   for (int i = 0; i < kBlocks; i++) {
-    aes128_load_key_enc_only(state + i * 16, gKeySchedules[i]);
+    for (int j = 0; j < kLambda / 16; j++) {
+      aes128_load_key_enc_only(state + i * kLambda + j * 16, gKeySchedules[i][j]);
+    }
   }
 }
 
 void prg(uint8_t *out, int out_len, const uint8_t *seed) {
-  assert(out_len % 16 == 0);
-  assert(out_len / 16 <= kBlocks);
-  for (int i = 0; i < out_len / 16; i++) {
-    aes128_enc(gKeySchedules[i], seed, out + i * 16);
-    xor_bytes(out + i * 16, seed, 16);
+  assert(out_len % kLambda == 0);
+  assert(out_len <= kBlocks * kLambda);
+  int blocks = out_len / kLambda;
+  for (int i = 0; i < blocks; i++) {
+    for (int j = 0; j < kLambda / 16; j++) {
+      aes128_enc(gKeySchedules[i][j], seed + j * 16, out + i * kLambda + j * 16);
+    }
+  }
+  for (int i = 0; i < blocks; i++) {
+    xor_bytes(out + i * kLambda, seed, kLambda);
   }
 }
