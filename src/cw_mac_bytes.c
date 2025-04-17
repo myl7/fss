@@ -56,7 +56,10 @@ void commit_cw_mac(uint8_t *beta, uint8_t b, const uint8_t *t, const uint8_t *sb
     const uint8_t *pub_wkey = pub_wkeys + i * kCwMacPubWkeyLen;
     hash_sbuf(scalar, sbuf);
     if (b) crypto_core_ristretto255_scalar_negate(scalar, scalar);
-    (void)crypto_scalarmult_ristretto255(t_delta_i, scalar, pub_wkey);
+    int ret = crypto_scalarmult_ristretto255(t_delta_i, scalar, pub_wkey);
+    // ret = 0 when scalar = 0, t_delta_i = 0, and hash_sbuf outputs all zeros, which is extremely unlikely.
+    // sbuf should be random and given by users as random s0s, so this should never happen.
+    assert(ret == 0);
     crypto_core_ristretto255_add(t_delta, t_delta, t_delta_i);
   }
   crypto_core_ristretto255_sub(beta, t_delta, t);
