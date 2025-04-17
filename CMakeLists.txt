@@ -7,16 +7,22 @@ project(
   LANGUAGES C
 )
 
-option(WITH_TEST "Build with tests" ON)
-option(WITH_CUDA "Build with CUDA" ON)
-option(WITH_SAMPLES "Build with samples" ON)
+# Option `BUILD_TESTING` available
+include(CTest)
+
+option(BUILD_WITH_CUDA "Build with CUDA" ON)
+option(BUILD_SAMPLES "Build with samples" ON)
+
+if(BUILD_TESTING)
+  enable_language(CXX)
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(OpenMP REQUIRED)
 find_package(Sodium REQUIRED)
 
 include(FetchContent)
-if(WITH_TEST)
+if(BUILD_TESTING)
   FetchContent_Declare(
     GTest
     GIT_REPOSITORY https://github.com/google/googletest.git
@@ -27,8 +33,9 @@ if(WITH_TEST)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   endif()
 endif()
-if(WITH_TEST)
+if(BUILD_TESTING)
   FetchContent_MakeAvailable(GTest)
+  include(GoogleTest)
 endif()
 
 add_library(dpf STATIC src/dpf.c)
@@ -43,14 +50,14 @@ add_library(cw_mac_bytes STATIC src/cw_mac_bytes.c)
 target_include_directories(cw_mac_bytes PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(cw_mac_bytes PUBLIC sodium)
 
-if(WITH_TEST)
+if(BUILD_TESTING)
   include(cmake/test.cmake)
 endif()
 
-if(WITH_CUDA)
+if(BUILD_WITH_CUDA)
   include(cmake/cuda.cmake)
 endif()
 
-if(WITH_SAMPLES)
+if(BUILD_SAMPLES)
   include(cmake/samples.cmake)
 endif()

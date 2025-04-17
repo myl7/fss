@@ -21,13 +21,13 @@ add_executable(
 target_link_libraries(sample_dpf_full_domain_u128_le_aes_mmo_ni PRIVATE dpf)
 target_compile_options(sample_dpf_full_domain_u128_le_aes_mmo_ni PRIVATE -msse2 -maes)
 
-if(WITH_CUDA)
+if(BUILD_WITH_CUDA)
   add_executable(
-    sample_dpf_cuda_u128_le_salsa20 samples/dpf_u128_le.cu
+    sample_cudpf_u128_le_salsa20 samples/dpf_u128_le.cu
     src/group/u128_le.c
     src/prg/salsa20.cu
   )
-  set_target_properties(sample_dpf_cuda_u128_le_salsa20 PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-  target_compile_options(sample_dpf_cuda_u128_le_salsa20 PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-x cu>)
-  target_link_libraries(sample_dpf_cuda_u128_le_salsa20 PRIVATE dpf_cuda)
+  set_target_properties(sample_cudpf_u128_le_salsa20 PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+  target_compile_options(sample_cudpf_u128_le_salsa20 PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-x cu>)
+  target_link_libraries(sample_cudpf_u128_le_salsa20 PRIVATE cudpf)
 endif()

@@ -1,9 +1,3 @@
-enable_language(CXX)
-
-include(CTest)
-enable_testing()
-include(GoogleTest)
-
 add_executable(
   dpf_u128_le_test src/dpf_test.cc
   src/group/u128_le.c

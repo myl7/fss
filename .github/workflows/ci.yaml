@@ -19,7 +19,7 @@ jobs:
 
       - name: Configure CMake with GCC
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DBUILD_WITH_CUDA=OFF -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 
       - name: Build
         run: |
@@ -42,7 +42,7 @@ jobs:
 
       - name: Configure CMake with Clang
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DBUILD_WITH_CUDA=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 
       - name: Build
         run: |
