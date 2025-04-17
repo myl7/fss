@@ -35,7 +35,9 @@ HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed);
  * Same state and seed give same output.
  * This is not called by the library. Users can leave it empty if not needed.
  * @param state
- * @param state_len Len of `state`
+ * @param state_len Len of `state`.
+ * For DPF, its len should >= 2 * @ref kLambda.
+ * For DCF, its len should >= 4 * @ref kLambda.
  */
 void prg_init(const uint8_t *state, int state_len);
 

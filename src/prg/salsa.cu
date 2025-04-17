@@ -2,8 +2,12 @@
 // Copyright (C) 2025 Yulong Ming (myl7)
 // Based on https://en.wikipedia.org/wiki/Salsa20
 
-#ifndef BLOCK_NUM
-#define BLOCK_NUM 1
+#ifndef kRounds
+#define kRounds 20
+#endif
+
+#ifndef kBlocks
+#define kBlocks 1
 #endif
 
 #include <fss_decl.h>
@@ -14,10 +18,15 @@
 #endif
 
 #define ROTL(a, b) (((a) << (b)) | ((a) >> (32 - (b))))
-#define QR(a, b, c, d) (b ^= ROTL(a + d, 7), c ^= ROTL(b + a, 9), d ^= ROTL(c + b, 13), a ^= ROTL(d + c, 18))
-#define ROUNDS 12
+// clang-format off
+#define QR(a, b, c, d) ( \
+  b ^= ROTL(a + d, 7), \
+  c ^= ROTL(b + a, 9), \
+  d ^= ROTL(c + b, 13), \
+  a ^= ROTL(d + c, 18))
+// clang-format on
 
-HOST_DEVICE void salsa20_block(uint32_t x[16], uint32_t in[16], uint64_t pos, const uint32_t nonce[2]) {
+HOST_DEVICE void salsa_block(uint32_t x[16], uint32_t in[16], uint64_t pos, const uint32_t nonce[2]) {
   in[0] = 'e' | ('x' << 8) | ('p' << 16) | ('a' << 24);
   in[5] = 'n' | ('d' << 8) | (' ' << 16) | ('1' << 24);
   in[10] = '6' | ('-' << 8) | ('b' << 16) | ('y' << 24);
@@ -32,7 +41,7 @@ HOST_DEVICE void salsa20_block(uint32_t x[16], uint32_t in[16], uint64_t pos, co
     x[i] = in[i];
   }
 
-  for (int i = 0; i < ROUNDS; i += 2) {
+  for (int i = 0; i < kRounds; i += 2) {
     // Odd round
     QR(x[0], x[4], x[8], x[12]);   // column 1
     QR(x[5], x[9], x[13], x[1]);   // column 2
@@ -50,18 +59,18 @@ HOST_DEVICE void salsa20_block(uint32_t x[16], uint32_t in[16], uint64_t pos, co
   }
 }
 
-HOST_DEVICE void salsa20_expand_key(uint32_t x[16]) {
+HOST_DEVICE void salsa_expand_key(uint32_t x[16]) {
   x[11] = x[1];
   x[12] = x[2];
   x[13] = x[3];
   x[14] = x[4];
 }
 
-DEVICE_CONST uint32_t gNonces[BLOCK_NUM][2];
+DEVICE_CONST uint32_t gNonces[kBlocks][2];
 
 void prg_init(const uint8_t *state, int state_len) {
   assert(kLambda == 16);
-  assert(state_len == BLOCK_NUM * 8);
+  assert(state_len >= kBlocks * 8);
 #ifdef __CUDACC__
   cudaMemcpyToSymbol(gNonces, state, state_len);
 #else
@@ -71,18 +80,18 @@ void prg_init(const uint8_t *state, int state_len) {
 
 HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed) {
   assert(out_len % 32 == 0);
-  assert(out_len / 32 <= BLOCK_NUM);
+  assert(out_len / 32 <= kBlocks);
   uint32_t in[16];
   const uint32_t *seed_int = (const uint32_t *)seed;
   in[1] = seed_int[0];
   in[2] = seed_int[1];
   in[3] = seed_int[2];
   in[4] = seed_int[3];
-  salsa20_expand_key(in);
+  salsa_expand_key(in);
 
   for (int i = 0; i < out_len / 32; i++) {
     uint32_t x[16];
-    salsa20_block(x, in, 0, gNonces[i]);
+    salsa_block(x, in, 0, gNonces[i]);
     memcpy(out + i * 32, x, 32);
   }
 }

@@ -10,6 +10,7 @@ project(
 # Option `BUILD_TESTING` available
 include(CTest)
 
+option(BUILD_WITH_AES_NI "Build with Intel AES-NI" ON)
 option(BUILD_WITH_CUDA "Build with CUDA" ON)
 option(BUILD_SAMPLES "Build with samples" ON)
 
@@ -50,12 +51,29 @@ add_library(cw_mac_bytes STATIC src/cw_mac_bytes.c)
 target_include_directories(cw_mac_bytes PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(cw_mac_bytes PUBLIC sodium)
 
-if(BUILD_TESTING)
-  include(cmake/test.cmake)
+if(BUILD_WITH_CUDA)
+  enable_language(CUDA)
+
+  set(_FSS_CUDA_SOURCES
+    src/dpf.c
+    src/dcf.c
+    src/group/u128_le.c
+    src/group/bytes.c
+  )
+  set_source_files_properties(${_FSS_CUDA_SOURCES} PROPERTIES LANGUAGE CUDA)
+  unset(_FSS_CUDA_SOURCES)
+
+  add_library(dpf_cu STATIC src/dpf.c)
+  set_target_properties(dpf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+  target_include_directories(dpf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+  add_library(dcf_cu STATIC src/dcf.c)
+  set_target_properties(dcf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+  target_include_directories(dcf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 endif()
 
-if(BUILD_WITH_CUDA)
-  include(cmake/cuda.cmake)
+if(BUILD_TESTING)
+  include(cmake/test.cmake)
 endif()
 
 if(BUILD_SAMPLES)

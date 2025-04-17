@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // From https://github.com/sebastien-riou/aes-brute-force/blob/29233e59ebae683912f6b7751a60a91611d5f185/include/aes_ni.h
-// No untrivial modifications
+// Modifications:
+// - Support for 9-round AES128 (based on "Too Much Crypto")
 
 #ifndef __AES_NI_H__
 #define __AES_NI_H__
+
+#ifndef kRounds
+#define kRounds 10
+#elif kRounds != 10 && kRounds != 9
+#error "Rounds must be 10 (standard) or 9 (based on \"Too Much Crypto\")"
+#endif
 
 #include <stdint.h>     //for int8_t
 #include <string.h>     //for memcmp
@@ -13,6 +20,7 @@
 // internal stuff
 
 // macros
+#if kRounds == 10
 #define DO_ENC_BLOCK(m, k) \
   do { \
     m = _mm_xor_si128(m, k[0]); \
@@ -27,7 +35,21 @@
     m = _mm_aesenc_si128(m, k[9]); \
     m = _mm_aesenclast_si128(m, k[10]); \
   } while (0)
-
+#elif kRounds == 9
+#define DO_ENC_BLOCK(m, k) \
+  do { \
+    m = _mm_xor_si128(m, k[0]); \
+    m = _mm_aesenc_si128(m, k[1]); \
+    m = _mm_aesenc_si128(m, k[2]); \
+    m = _mm_aesenc_si128(m, k[3]); \
+    m = _mm_aesenc_si128(m, k[4]); \
+    m = _mm_aesenc_si128(m, k[5]); \
+    m = _mm_aesenc_si128(m, k[6]); \
+    m = _mm_aesenc_si128(m, k[7]); \
+    m = _mm_aesenc_si128(m, k[8]); \
+    m = _mm_aesenclast_si128(m, k[9]); \
+  } while (0)
+#endif
 #define DO_DEC_BLOCK(m, k) \
   do { \
     m = _mm_xor_si128(m, k[10 + 0]); \
@@ -65,14 +87,16 @@ static void aes128_load_key_enc_only(const uint8_t *enc_key, __m128i *key_schedu
   key_schedule[7] = AES_128_key_exp(key_schedule[6], 0x40);
   key_schedule[8] = AES_128_key_exp(key_schedule[7], 0x80);
   key_schedule[9] = AES_128_key_exp(key_schedule[8], 0x1B);
+#if kRounds == 10
   key_schedule[10] = AES_128_key_exp(key_schedule[9], 0x36);
+#endif
 }
 
 static void aes128_load_key(const uint8_t *enc_key, __m128i *key_schedule) {
   aes128_load_key_enc_only(enc_key, key_schedule);
 
   // generate decryption keys in reverse order.
-  // k[10] is shared by last encryption and first decryption rounds
+  // k[10] is shared by last encryption and first decryption kRounds
   // k[0] is shared by first encryption round and last decryption round (and is the original user key)
   // For some implementation reasons, decryption key schedule is NOT the encryption key schedule in reverse order
   key_schedule[11] = _mm_aesimc_si128(key_schedule[9]);
