@@ -31,6 +31,15 @@ extern "C" {
 HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed);
 
 /**
+ * Init PRG.
+ * Same state and seed give same output.
+ * This is not called by the library. Users can leave it empty if not needed.
+ * @param state
+ * @param state_len Len of `state`
+ */
+void prg_init(const uint8_t *state, int state_len);
+
+/**
  * `val` = `val` + `rhs`, and `rhs` is unchanged.
  * `val` and `rhs` are group elements and little-endian.
  * Their MSB are always 0 (input/output). See @ref fss_decl.h for details.
