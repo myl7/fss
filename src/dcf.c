@@ -266,7 +266,7 @@ void dcf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DcfKey k, uint8_t *v) {
 }
 
 void dcf_eval_full_domain_subtree(
-  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DcfKey k, int x_bitlen, uint8_t *v_alloc) {
+  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DcfKey k, int x_bitlen, uint8_t *v_alloc, int par_depth) {
   assert(kLambda * (1ULL << (x_bitlen - depth)) == r - l);
 
   if (depth == x_bitlen) {
@@ -288,19 +288,19 @@ void dcf_eval_full_domain_subtree(
 
   uint8_t *vl_alloc = v_alloc ? v_alloc : NULL;
   uint8_t *vr_alloc = v_alloc ? v_alloc + kLambda : NULL;
-  if (depth < kParallelDepth) {
+  if (depth < par_depth) {
 #pragma omp parallel
 #pragma omp single
     {
 #pragma omp task
-      { dcf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, vl_alloc); }
+      { dcf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, vl_alloc, par_depth); }
 #pragma omp task
-      { dcf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, vr_alloc); }
+      { dcf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, vr_alloc, par_depth); }
 #pragma omp taskwait
     }
   } else {
-    dcf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, vl_alloc);
-    dcf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, vr_alloc);
+    dcf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, vl_alloc, par_depth);
+    dcf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, vr_alloc, par_depth);
   }
 
   if (depth == x_bitlen - 1) {
@@ -315,6 +315,13 @@ void dcf_eval_full_domain(uint8_t *sbuf, uint8_t b, DcfKey k, int x_bitlen) {
   uint8_t t = b;
   set_st(s, t);
 
+  int threads = omp_get_max_threads();
+  int par_depth = 0;
+  while ((1 << par_depth) <= threads) {
+    par_depth++;
+  }
+  par_depth--;
+
   size_t sbuf_len = kLambda * (1ULL << x_bitlen);
-  dcf_eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen, NULL);
+  dcf_eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen, NULL, par_depth);
 }

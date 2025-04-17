@@ -180,7 +180,8 @@ void dpf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DpfKey k) {
   if (b) group_neg(s);
 }
 
-void dpf_eval_full_domain_subtree(int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DpfKey k, int x_bitlen) {
+void dpf_eval_full_domain_subtree(
+  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DpfKey k, int x_bitlen, int par_depth) {
   assert(kLambda * (1ULL << (x_bitlen - depth)) == r - l);
 
   if (depth == x_bitlen) {
@@ -191,19 +192,19 @@ void dpf_eval_full_domain_subtree(int depth, uint8_t *sbuf, size_t l, size_t r, 
   size_t mid = (l + r) / 2;
   dpf_eval_full_domain_node(depth, sbuf + l, sbuf + mid, b, k);
 
-  if (depth < kParallelDepth) {
+  if (depth < par_depth) {
 #pragma omp parallel
 #pragma omp single
     {
 #pragma omp task
-      { dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen); }
+      { dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, par_depth); }
 #pragma omp task
-      { dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen); }
+      { dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, par_depth); }
 #pragma omp taskwait
     }
   } else {
-    dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen);
-    dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen);
+    dpf_eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, par_depth);
+    dpf_eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, par_depth);
   }
 }
 
@@ -212,6 +213,13 @@ void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, DpfKey k, int x_bitlen) {
   uint8_t t = b;
   set_st(s, t);
 
+  int threads = omp_get_max_threads();
+  int par_depth = 0;
+  while ((1 << par_depth) <= threads) {
+    par_depth++;
+  }
+  par_depth--;
+
   size_t sbuf_len = kLambda * (1ULL << x_bitlen);
-  dpf_eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen);
+  dpf_eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen, par_depth);
 }
