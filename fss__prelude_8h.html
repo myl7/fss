@@ -123,9 +123,6 @@ Macros</h2></td></tr>
 <tr class="memitem:a8ea7c7457cb8cdd078d25438e0d22956" id="r_a8ea7c7457cb8cdd078d25438e0d22956"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>&#160;&#160;&#160;16</td></tr>
 <tr class="memdesc:a8ea7c7457cb8cdd078d25438e0d22956"><td class="mdescLeft">&#160;</td><td class="mdescRight">For security param lambda in papers, it is lambda / 8.  <br /></td></tr>
 <tr class="separator:a8ea7c7457cb8cdd078d25438e0d22956"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a87bcd8fd3ce0decf5816507b314ec7e6" id="r_a87bcd8fd3ce0decf5816507b314ec7e6"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__prelude_8h.html#a87bcd8fd3ce0decf5816507b314ec7e6">kParallelDepth</a>&#160;&#160;&#160;1</td></tr>
-<tr class="memdesc:a87bcd8fd3ce0decf5816507b314ec7e6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Parallel degree of full domain eval.  <br /></td></tr>
-<tr class="separator:a87bcd8fd3ce0decf5816507b314ec7e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9e64b37aa76347c9bf88985c9dec78c9" id="r_a9e64b37aa76347c9bf88985c9dec78c9"><td class="memItemLeft" align="right" valign="top"><a id="a9e64b37aa76347c9bf88985c9dec78c9" name="a9e64b37aa76347c9bf88985c9dec78c9"></a>
 #define&#160;</td><td class="memItemRight" valign="bottom"><b>HOST_DEVICE</b></td></tr>
 <tr class="separator:a9e64b37aa76347c9bf88985c9dec78c9"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -148,23 +145,6 @@ Macros</h2></td></tr>
 
 <p>For security param lambda in papers, it is lambda / 8. </p>
 <p>Must &gt;= 16 to provide enough security level. It is the byte len of output, but see <a class="el" href="fss__decl_8h.html">fss_decl.h</a> for details. </p>
-
-</div>
-</div>
-<a id="a87bcd8fd3ce0decf5816507b314ec7e6" name="a87bcd8fd3ce0decf5816507b314ec7e6"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a87bcd8fd3ce0decf5816507b314ec7e6">&#9670;&#160;</a></span>kParallelDepth</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define kParallelDepth&#160;&#160;&#160;1</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>Parallel degree of full domain eval. </p>
-<p>&lt;= 0 disables parallelization. &gt; 0 gives 2 ** <code>kParallelDepth</code> concurrent tasks running on a fixed num of threads set by OpenMP. Higher is not better, particularly when &gt; physical core num with hyper-threading, and users need trials. For <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> = 16, 1 already results in top performance. </p>
 
 </div>
 </div>
