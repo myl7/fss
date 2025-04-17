@@ -112,6 +112,9 @@ Functions</h2></td></tr>
 <tr class="memitem:a5390eded8ef9930481261d5637f9f532" id="r_a5390eded8ef9930481261d5637f9f532"><td class="memItemLeft" align="right" valign="top">HOST_DEVICE void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__decl_8h.html#a5390eded8ef9930481261d5637f9f532">prg</a> (uint8_t *out, int out_len, const uint8_t *seed)</td></tr>
 <tr class="memdesc:a5390eded8ef9930481261d5637f9f532"><td class="mdescLeft">&#160;</td><td class="mdescRight">PRG.  <br /></td></tr>
 <tr class="separator:a5390eded8ef9930481261d5637f9f532"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a63b46678357dc5d21c0163292806dbab" id="r_a63b46678357dc5d21c0163292806dbab"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__decl_8h.html#a63b46678357dc5d21c0163292806dbab">prg_init</a> (const uint8_t *state, int state_len)</td></tr>
+<tr class="memdesc:a63b46678357dc5d21c0163292806dbab"><td class="mdescLeft">&#160;</td><td class="mdescRight">Init PRG.  <br /></td></tr>
+<tr class="separator:a63b46678357dc5d21c0163292806dbab"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a922e949a74f04410ba76cc0552cf98d3" id="r_a922e949a74f04410ba76cc0552cf98d3"><td class="memItemLeft" align="right" valign="top">HOST_DEVICE void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="fss__decl_8h.html#a922e949a74f04410ba76cc0552cf98d3">group_add</a> (uint8_t *val, const uint8_t *rhs)</td></tr>
 <tr class="memdesc:a922e949a74f04410ba76cc0552cf98d3"><td class="mdescLeft">&#160;</td><td class="mdescRight"><code>val</code> = <code>val</code> + <code>rhs</code>, and <code>rhs</code> is unchanged.  <br /></td></tr>
 <tr class="separator:a922e949a74f04410ba76cc0552cf98d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -238,6 +241,43 @@ Functions</h2></td></tr>
     <tr><td class="paramname">out</td><td>Output </td></tr>
     <tr><td class="paramname">out_len</td><td>Output len. For DPF, its len = 2 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. For DCF, its len = 4 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. </td></tr>
     <tr><td class="paramname">seed</td><td>Input whose len = <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a63b46678357dc5d21c0163292806dbab" name="a63b46678357dc5d21c0163292806dbab"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a63b46678357dc5d21c0163292806dbab">&#9670;&#160;</a></span>prg_init()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void prg_init </td>
+          <td>(</td>
+          <td class="paramtype">const uint8_t *&#160;</td>
+          <td class="paramname"><em>state</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>state_len</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Init PRG. </p>
+<p>Same state and seed give same output. This is not called by the library. Users can leave it empty if not needed. </p><dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">state</td><td></td></tr>
+    <tr><td class="paramname">state_len</td><td>Len of <code>state</code>. For DPF, its len should &gt;= 2 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. For DCF, its len should &gt;= 4 * <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. </td></tr>
   </table>
   </dd>
 </dl>
