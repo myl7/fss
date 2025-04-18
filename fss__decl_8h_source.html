@@ -97,20 +97,23 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#a63b46678357dc5d21c0163292806dbab">prg_init</a>(<span class="keyword">const</span> uint8_t *state, <span class="keywordtype">int</span> state_len);</div>
 <div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span> </div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#a922e949a74f04410ba76cc0552cf98d3">group_add</a>(uint8_t *val, <span class="keyword">const</span> uint8_t *rhs);</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#a185e0c09dd535ccdbf3f99b2db45099f">group_neg</a>(uint8_t *val);</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span> </div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#ad23b348b8737825dfa631b06772ba16c">group_zero</a>(uint8_t *val);</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span> </div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>}</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span><span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#ad38d7b22b76eb27795b935ebc4b13628">prg_free</a>();</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#a922e949a74f04410ba76cc0552cf98d3">group_add</a>(uint8_t *val, <span class="keyword">const</span> uint8_t *rhs);</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#a185e0c09dd535ccdbf3f99b2db45099f">group_neg</a>(uint8_t *val);</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span> </div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="fss__decl_8h.html#ad23b348b8737825dfa631b06772ba16c">group_zero</a>(uint8_t *val);</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>}</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span><span class="preprocessor">#endif</span></div>
 <div class="ttc" id="afss__decl_8h_html_a185e0c09dd535ccdbf3f99b2db45099f"><div class="ttname"><a href="fss__decl_8h.html#a185e0c09dd535ccdbf3f99b2db45099f">group_neg</a></div><div class="ttdeci">HOST_DEVICE void group_neg(uint8_t *val)</div><div class="ttdoc">val = -val.</div><div class="ttdef"><b>Definition</b> bytes.c:12</div></div>
-<div class="ttc" id="afss__decl_8h_html_a5390eded8ef9930481261d5637f9f532"><div class="ttname"><a href="fss__decl_8h.html#a5390eded8ef9930481261d5637f9f532">prg</a></div><div class="ttdeci">HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed)</div><div class="ttdoc">PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.c:28</div></div>
-<div class="ttc" id="afss__decl_8h_html_a63b46678357dc5d21c0163292806dbab"><div class="ttname"><a href="fss__decl_8h.html#a63b46678357dc5d21c0163292806dbab">prg_init</a></div><div class="ttdeci">void prg_init(const uint8_t *state, int state_len)</div><div class="ttdoc">Init PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.c:18</div></div>
+<div class="ttc" id="afss__decl_8h_html_a5390eded8ef9930481261d5637f9f532"><div class="ttname"><a href="fss__decl_8h.html#a5390eded8ef9930481261d5637f9f532">prg</a></div><div class="ttdeci">HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed)</div><div class="ttdoc">PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.c:41</div></div>
+<div class="ttc" id="afss__decl_8h_html_a63b46678357dc5d21c0163292806dbab"><div class="ttname"><a href="fss__decl_8h.html#a63b46678357dc5d21c0163292806dbab">prg_init</a></div><div class="ttdeci">void prg_init(const uint8_t *state, int state_len)</div><div class="ttdoc">Init PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.c:16</div></div>
 <div class="ttc" id="afss__decl_8h_html_a922e949a74f04410ba76cc0552cf98d3"><div class="ttname"><a href="fss__decl_8h.html#a922e949a74f04410ba76cc0552cf98d3">group_add</a></div><div class="ttdeci">HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs)</div><div class="ttdoc">val = val + rhs, and rhs is unchanged.</div><div class="ttdef"><b>Definition</b> bytes.c:8</div></div>
 <div class="ttc" id="afss__decl_8h_html_ad23b348b8737825dfa631b06772ba16c"><div class="ttname"><a href="fss__decl_8h.html#ad23b348b8737825dfa631b06772ba16c">group_zero</a></div><div class="ttdeci">HOST_DEVICE void group_zero(uint8_t *val)</div><div class="ttdoc">val = 0.</div><div class="ttdef"><b>Definition</b> bytes.c:14</div></div>
+<div class="ttc" id="afss__decl_8h_html_ad38d7b22b76eb27795b935ebc4b13628"><div class="ttname"><a href="fss__decl_8h.html#ad38d7b22b76eb27795b935ebc4b13628">prg_free</a></div><div class="ttdeci">void prg_free()</div><div class="ttdoc">Free PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.c:33</div></div>
 <div class="ttc" id="afss__prelude_8h_html"><div class="ttname"><a href="fss__prelude_8h.html">fss_prelude.h</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
