@@ -5,6 +5,10 @@
 #include <string.h>
 #include "../utils.h"
 
+#if kLambda != 16
+#error "kLambda must be 16 for u128_le group"
+#endif
+
 HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs) {
   __uint128_t *val127 = (__uint128_t *)val;
   __uint128_t *rhs127 = (__uint128_t *)rhs;

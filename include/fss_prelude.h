@@ -31,6 +31,9 @@
  */
 #define kLambda 16
 #endif
+#if kLambda < 16
+#error "kLambda must be >= 16"
+#endif
 
 #if __CUDACC__
 #define HOST_DEVICE __host__ __device__
