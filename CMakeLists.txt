@@ -11,6 +11,7 @@ project(
 include(CTest)
 
 option(BUILD_WITH_AES_NI "Build with Intel AES-NI" ON)
+option(BUILD_WITH_OPENSSL "Build with OpenSSL" ON)
 option(BUILD_WITH_CUDA "Build with CUDA" ON)
 option(BUILD_SAMPLES "Build with samples" ON)
 
@@ -21,6 +22,9 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(OpenMP REQUIRED)
 find_package(Sodium REQUIRED)
+if(BUILD_WITH_OPENSSL)
+  find_package(OpenSSL REQUIRED)
+endif()
 
 include(FetchContent)
 if(BUILD_TESTING)

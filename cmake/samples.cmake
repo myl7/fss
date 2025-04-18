@@ -32,6 +32,15 @@ if(BUILD_WITH_AES_NI)
   target_compile_options(sample_dpf_full_domain_u128_le_aes128_r9_mmo_ni PRIVATE -msse2 -maes)
 endif()
 
+if(BUILD_WITH_OPENSSL)
+  add_executable(
+    sample_dpf_full_domain_u128_le_aes128_mmo_openssl samples/dpf_full_domain_u128_le.c
+    src/group/u128_le.c
+    src/prg/aes128_mmo_openssl.c
+  )
+  target_link_libraries(sample_dpf_full_domain_u128_le_aes128_mmo_openssl PRIVATE dpf OpenSSL::Crypto)
+endif()
+
 if(BUILD_WITH_CUDA)
   add_executable(
     sample_dpf_cu_u128_le_salsa12 samples/dpf_u128_le.cu

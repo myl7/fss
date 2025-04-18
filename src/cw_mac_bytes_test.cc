@@ -47,6 +47,7 @@ class CwMacBytesTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    prg_free();
     free(kWkeys);
     free(kPubWkeys);
     free(kS0s);

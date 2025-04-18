@@ -42,6 +42,11 @@ HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed);
 void prg_init(const uint8_t *state, int state_len);
 
 /**
+ * Free PRG
+ */
+void prg_free();
+
+/**
  * `val` = `val` + `rhs`, and `rhs` is unchanged.
  * `val` and `rhs` are group elements and little-endian.
  * Their MSB are always 0 (input/output). See @ref fss_decl.h for details.

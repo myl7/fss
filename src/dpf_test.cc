@@ -26,6 +26,7 @@ class DpfTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    prg_free();
     free(kS0s);
   }
 

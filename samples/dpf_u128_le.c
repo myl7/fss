@@ -115,6 +115,7 @@ int main() {
   }
 
   // Cleanup
+  prg_free();
   free(s0s);
   free(sbuf);
   free(k.cw_np1);

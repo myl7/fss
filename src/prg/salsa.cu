@@ -78,6 +78,8 @@ void prg_init(const uint8_t *state, int state_len) {
 #endif
 }
 
+void prg_free() {}
+
 HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed) {
   assert(out_len % (2 * kLambda) == 0);
   assert(out_len <= kBlocks * kLambda * 2);

@@ -210,6 +210,7 @@ int main() {
   }
 
   // Cleanup
+  prg_free();
   err = cudaFree(cw_np1_dev);
   cudaAssert(err);
   err = cudaFree(cws_dev);
