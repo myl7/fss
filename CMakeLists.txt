@@ -10,8 +10,7 @@ project(
 # Option `BUILD_TESTING` available
 include(CTest)
 
-option(BUILD_WITH_AES_NI "Build with Intel AES-NI" ON)
-option(BUILD_WITH_OPENSSL "Build with OpenSSL" ON)
+set(FSS_kLambda 16 CACHE STRING "Custom kLambda")
 option(BUILD_WITH_CUDA "Build with CUDA" ON)
 option(BUILD_SAMPLES "Build with samples" ON)
 
@@ -22,9 +21,8 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(OpenMP REQUIRED)
 find_package(Sodium REQUIRED)
-if(BUILD_WITH_OPENSSL)
-  find_package(OpenSSL REQUIRED)
-endif()
+# OpenSSL 3 for bundled AES MMO PRG
+find_package(OpenSSL)
 
 include(FetchContent)
 if(BUILD_TESTING)
@@ -46,14 +44,17 @@ endif()
 add_library(dpf STATIC src/dpf.c)
 target_include_directories(dpf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(dpf PUBLIC OpenMP::OpenMP_C)
+target_compile_definitions(dpf PUBLIC kLambda=${FSS_kLambda})
 
 add_library(dcf STATIC src/dcf.c)
 target_include_directories(dcf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(dcf PUBLIC OpenMP::OpenMP_C)
+target_compile_definitions(dcf PUBLIC kLambda=${FSS_kLambda})
 
 add_library(cw_mac_bytes STATIC src/cw_mac_bytes.c)
 target_include_directories(cw_mac_bytes PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(cw_mac_bytes PUBLIC sodium)
+target_compile_definitions(cw_mac_bytes PUBLIC kLambda=${FSS_kLambda})
 
 if(BUILD_WITH_CUDA)
   enable_language(CUDA)
@@ -70,10 +71,12 @@ if(BUILD_WITH_CUDA)
   add_library(dpf_cu STATIC src/dpf.c)
   set_target_properties(dpf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
   target_include_directories(dpf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_compile_definitions(dpf_cu PUBLIC kLambda=${FSS_kLambda})
 
   add_library(dcf_cu STATIC src/dcf.c)
   set_target_properties(dcf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
   target_include_directories(dcf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_compile_definitions(dcf_cu PUBLIC kLambda=${FSS_kLambda})
 endif()
 
 if(BUILD_TESTING)
