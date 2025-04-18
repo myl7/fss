@@ -16,9 +16,9 @@ class DcfTest : public ::testing::Test {
   void SetUp() override {
     std::random_device rd;
     random_bytes_engine rbe(rd());
-    uint8_t keys[64];
+    uint8_t keys[4 * kLambda];
     std::generate(std::begin(keys), std::end(keys), std::ref(rbe));
-    prg_init((uint8_t *)keys, 64);
+    prg_init((uint8_t *)keys, 4 * kLambda);
 
     kS0s = (uint8_t *)malloc(kLambda * 2);
     assert(kS0s != NULL);
@@ -51,8 +51,10 @@ TEST_F(DcfTest, EvalAtRandLtPoints) {
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   CmpFunc cf = {alpha_bits, beta, kLtAlpha};
 
   // Generate DCF keys
@@ -83,13 +85,12 @@ TEST_F(DcfTest, EvalAtRandLtPoints) {
     memcpy(y1, sbuf, kLambda);
 
     group_add(y0, y1);
-    __uint128_t y_int;
-    memcpy(&y_int, y0, kLambda);
 
     // Check result
-    EXPECT_EQ(y_int, kBeta);
+    EXPECT_EQ(memcmp(y0, beta, kLambda), 0) << "Result differ at x = " << x;
   }
 
+  free(beta);
   free(key.cw_np1);
   free(key.cws);
   free(sbuf);
@@ -109,8 +110,10 @@ TEST_F(DcfTest, EvalAtRandGePoints) {
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   CmpFunc cf = {alpha_bits, beta, kLtAlpha};
 
   // Generate DCF keys
@@ -141,13 +144,14 @@ TEST_F(DcfTest, EvalAtRandGePoints) {
     memcpy(y1, sbuf, kLambda);
 
     group_add(y0, y1);
-    __uint128_t y_int;
-    memcpy(&y_int, y0, kLambda);
 
     // Check result
-    EXPECT_EQ(y_int, 0);
+    uint8_t zero[kLambda];
+    memset(zero, 0, kLambda);
+    EXPECT_EQ(memcmp(y0, zero, kLambda), 0) << "Result differ at x = " << x;
   }
 
+  free(beta);
   free(key.cw_np1);
   free(key.cws);
   free(sbuf);
@@ -167,8 +171,10 @@ TEST_F(DcfTest, EvalAtRandGtPointsForGtAlpha) {
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   CmpFunc cf = {alpha_bits, beta, kGtAlpha};
 
   // Generate DCF keys
@@ -199,13 +205,12 @@ TEST_F(DcfTest, EvalAtRandGtPointsForGtAlpha) {
     memcpy(y1, sbuf, kLambda);
 
     group_add(y0, y1);
-    __uint128_t y_int;
-    memcpy(&y_int, y0, kLambda);
 
     // Check result
-    EXPECT_EQ(y_int, kBeta);
+    EXPECT_EQ(memcmp(y0, beta, kLambda), 0) << "Result differ at x = " << x;
   }
 
+  free(beta);
   free(key.cw_np1);
   free(key.cws);
   free(sbuf);
@@ -225,8 +230,10 @@ TEST_F(DcfTest, EvalAtRandLePointsForGtAlpha) {
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   CmpFunc cf = {alpha_bits, beta, kGtAlpha};
 
   // Generate DCF keys
@@ -257,13 +264,14 @@ TEST_F(DcfTest, EvalAtRandLePointsForGtAlpha) {
     memcpy(y1, sbuf, kLambda);
 
     group_add(y0, y1);
-    __uint128_t y_int;
-    memcpy(&y_int, y0, kLambda);
 
     // Check result
-    EXPECT_EQ(y_int, 0);
+    uint8_t zero[kLambda];
+    memset(zero, 0, kLambda);
+    EXPECT_EQ(memcmp(y0, zero, kLambda), 0) << "Result differ at x = " << x;
   }
 
+  free(beta);
   free(key.cw_np1);
   free(key.cws);
   free(sbuf);
@@ -283,8 +291,10 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPoints) {
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   CmpFunc cf = {alpha_bits, beta, kLtAlpha};
 
   // Generate DCF keys
@@ -344,16 +354,13 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPoints) {
     uint8_t *y1_full = ys1_full + (int)x * kLambda;
 
     // Compare party 0 shares
-    __uint128_t y0_int = *(__uint128_t *)y0;
-    __uint128_t y0_full_int = *(__uint128_t *)y0_full;
-    EXPECT_EQ(y0_int, y0_full_int) << "Party 0 shares differ at x = " << x;
+    EXPECT_EQ(memcmp(y0, y0_full, kLambda), 0) << "Party 0 shares differ at x = " << x;
 
     // Compare party 1 shares
-    __uint128_t y1_int = *(__uint128_t *)y1;
-    __uint128_t y1_full_int = *(__uint128_t *)y1_full;
-    EXPECT_EQ(y1_int, y1_full_int) << "Party 1 shares differ at x = " << x;
+    EXPECT_EQ(memcmp(y1, y1_full, kLambda), 0) << "Party 1 shares differ at x = " << x;
   }
 
+  free(beta);
   free(ys0_full);
   free(ys1_full);
   free(key.cw_np1);
@@ -375,8 +382,10 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPointsForGtAlpha) {
   uint16_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   CmpFunc cf = {alpha_bits, beta, kGtAlpha};
 
   // Generate DCF keys
@@ -436,16 +445,13 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPointsForGtAlpha) {
     uint8_t *y1_full = ys1_full + (int)x * kLambda;
 
     // Compare party 0 shares
-    __uint128_t y0_int = *(__uint128_t *)y0;
-    __uint128_t y0_full_int = *(__uint128_t *)y0_full;
-    EXPECT_EQ(y0_int, y0_full_int) << "Party 0 shares differ at x = " << x;
+    EXPECT_EQ(memcmp(y0, y0_full, kLambda), 0) << "Party 0 shares differ at x = " << x;
 
     // Compare party 1 shares
-    __uint128_t y1_int = *(__uint128_t *)y1;
-    __uint128_t y1_full_int = *(__uint128_t *)y1_full;
-    EXPECT_EQ(y1_int, y1_full_int) << "Party 1 shares differ at x = " << x;
+    EXPECT_EQ(memcmp(y1, y1_full, kLambda), 0) << "Party 1 shares differ at x = " << x;
   }
 
+  free(beta);
   free(ys0_full);
   free(ys1_full);
   free(key.cw_np1);

@@ -23,9 +23,9 @@ class CwMacBytesTest : public ::testing::Test {
 
     std::random_device rd;
     random_bytes_engine rbe(rd());
-    uint8_t keys[64];
+    uint8_t keys[4 * kLambda];
     std::generate(std::begin(keys), std::end(keys), std::ref(rbe));
-    prg_init((uint8_t *)keys, 64);
+    prg_init((uint8_t *)keys, 4 * kLambda);
 
     kS0s = (uint8_t *)malloc(kLambda * 2);
     assert(kS0s != NULL);
@@ -78,8 +78,10 @@ TEST_F(CwMacBytesTest, VerifyDpf) {
   uint8_t alpha_int = kAlpha;
   uint8_t *alpha = (uint8_t *)&alpha_int;
   Bits alpha_bits = {alpha, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   PointFunc pf = {alpha_bits, beta};
 
   // Generate DPF
@@ -146,9 +148,10 @@ TEST_F(CwMacBytesTest, VerifyDif) {
   uint8_t *alpha_r = (uint8_t *)&alpha_r_int;
   Bits alpha_bits_l = {alpha_l, kAlphaBitlen};
   Bits alpha_bits_r = {alpha_r, kAlphaBitlen};
-  __uint128_t beta_int = kBeta;
-  uint8_t *beta = (uint8_t *)&beta_int;
-
+  uint8_t *beta = (uint8_t *)malloc(kLambda);
+  assert(beta != NULL);
+  memset(beta, 0, kLambda);
+  memcpy(beta, &kBeta, 16);
   CmpFunc cf_l = {alpha_bits_l, beta, kLtAlpha};
   CmpFunc cf_r = {alpha_bits_r, beta, kLtAlpha};
 
