@@ -12,7 +12,6 @@ include(CTest)
 
 set(FSS_kLambda 16 CACHE STRING "Custom kLambda")
 option(BUILD_WITH_CUDA "Build with CUDA" ON)
-option(BUILD_SAMPLES "Build samples" ON)
 
 if(BUILD_TESTING)
   enable_language(CXX)
@@ -82,8 +81,4 @@ endif()
 
 if(BUILD_TESTING)
   include(cmake/test.cmake)
-endif()
-
-if(BUILD_SAMPLES)
-  include(cmake/samples.cmake)
 endif()

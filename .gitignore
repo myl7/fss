@@ -4,6 +4,7 @@
 
 # Build output
 /build
+/samples/build
 
 # Doc output
 /doc/html
