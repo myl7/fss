@@ -12,7 +12,7 @@ include(CTest)
 
 set(FSS_kLambda 16 CACHE STRING "Custom kLambda")
 option(BUILD_WITH_CUDA "Build with CUDA" ON)
-option(BUILD_SAMPLES "Build with samples" ON)
+option(BUILD_SAMPLES "Build samples" ON)
 
 if(BUILD_TESTING)
   enable_language(CXX)
@@ -31,30 +31,31 @@ if(BUILD_TESTING)
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG e90fe2485641bab0d6af4500192dc503384950d1
   )
+endif()
+
+if(BUILD_TESTING)
   if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     # For Windows: Prevent overriding the parent project's compiler/linker settings
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   endif()
-endif()
-if(BUILD_TESTING)
   FetchContent_MakeAvailable(GTest)
   include(GoogleTest)
 endif()
 
 add_library(dpf STATIC src/dpf.c)
+target_compile_definitions(dpf PUBLIC kLambda=${FSS_kLambda})
 target_include_directories(dpf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(dpf PUBLIC OpenMP::OpenMP_C)
-target_compile_definitions(dpf PUBLIC kLambda=${FSS_kLambda})
 
 add_library(dcf STATIC src/dcf.c)
+target_compile_definitions(dcf PUBLIC kLambda=${FSS_kLambda})
 target_include_directories(dcf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(dcf PUBLIC OpenMP::OpenMP_C)
-target_compile_definitions(dcf PUBLIC kLambda=${FSS_kLambda})
 
 add_library(cw_mac_bytes STATIC src/cw_mac_bytes.c)
+target_compile_definitions(cw_mac_bytes PUBLIC kLambda=${FSS_kLambda})
 target_include_directories(cw_mac_bytes PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(cw_mac_bytes PUBLIC sodium)
-target_compile_definitions(cw_mac_bytes PUBLIC kLambda=${FSS_kLambda})
 
 if(BUILD_WITH_CUDA)
   enable_language(CUDA)
@@ -69,14 +70,14 @@ if(BUILD_WITH_CUDA)
   unset(_FSS_CUDA_SOURCES)
 
   add_library(dpf_cu STATIC src/dpf.c)
-  set_target_properties(dpf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-  target_include_directories(dpf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
   target_compile_definitions(dpf_cu PUBLIC kLambda=${FSS_kLambda})
+  target_include_directories(dpf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  set_target_properties(dpf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
   add_library(dcf_cu STATIC src/dcf.c)
-  set_target_properties(dcf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-  target_include_directories(dcf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
   target_compile_definitions(dcf_cu PUBLIC kLambda=${FSS_kLambda})
+  target_include_directories(dcf_cu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  set_target_properties(dcf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 if(BUILD_TESTING)
