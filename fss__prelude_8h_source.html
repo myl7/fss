@@ -106,24 +106,27 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="preprocessor">#ifndef kLambda</span></div>
 <div class="line"><a id="l00032" name="l00032"></a><span class="lineno"><a class="line" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">   32</a></span><span class="preprocessor">#define kLambda 16</span></div>
 <div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="preprocessor">#if __CUDACC__</span></div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="preprocessor">#define HOST_DEVICE __host__ __device__</span></div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="preprocessor">#define DEVICE_CONST __constant__</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="preprocessor">#else</span></div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="preprocessor">#define HOST_DEVICE</span></div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="preprocessor">#define DEVICE_CONST</span></div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
-<div class="foldopen" id="foldopen00046" data-start="{" data-end="};">
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno"><a class="line" href="structBits.html">   46</a></span><span class="keyword">typedef</span> <span class="keyword">struct </span>{</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno"><a class="line" href="structBits.html#aa6cb721fc060be16dbef5d9d26fcedd3">   50</a></span>  uint8_t *<a class="code hl_variable" href="structBits.html#aa6cb721fc060be16dbef5d9d26fcedd3">bytes</a>;</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno"><a class="line" href="structBits.html#acaa2f135e0289be84b0bb3d28f9072ae">   54</a></span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="structBits.html#acaa2f135e0289be84b0bb3d28f9072ae">bitlen</a>;</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>} <a class="code hl_struct" href="structBits.html">Bits</a>;</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span><span class="preprocessor">#if kLambda &lt; 16</span></div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="preprocessor">#error &quot;kLambda must be &gt;= 16&quot;</span></div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span> </div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="preprocessor">#if __CUDACC__</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="preprocessor">#define HOST_DEVICE __host__ __device__</span></div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="preprocessor">#define DEVICE_CONST __constant__</span></div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="preprocessor">#else</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="preprocessor">#define HOST_DEVICE</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="preprocessor">#define DEVICE_CONST</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
+<div class="foldopen" id="foldopen00049" data-start="{" data-end="};">
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno"><a class="line" href="structBits.html">   49</a></span><span class="keyword">typedef</span> <span class="keyword">struct </span>{</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno"><a class="line" href="structBits.html#aa6cb721fc060be16dbef5d9d26fcedd3">   53</a></span>  uint8_t *<a class="code hl_variable" href="structBits.html#aa6cb721fc060be16dbef5d9d26fcedd3">bytes</a>;</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno"><a class="line" href="structBits.html#acaa2f135e0289be84b0bb3d28f9072ae">   57</a></span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="structBits.html#acaa2f135e0289be84b0bb3d28f9072ae">bitlen</a>;</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>} <a class="code hl_struct" href="structBits.html">Bits</a>;</div>
 </div>
-<div class="ttc" id="astructBits_html"><div class="ttname"><a href="structBits.html">Bits</a></div><div class="ttdoc">Support bitlen that is not a multiple of 8.</div><div class="ttdef"><b>Definition</b> fss_prelude.h:46</div></div>
-<div class="ttc" id="astructBits_html_aa6cb721fc060be16dbef5d9d26fcedd3"><div class="ttname"><a href="structBits.html#aa6cb721fc060be16dbef5d9d26fcedd3">Bits::bytes</a></div><div class="ttdeci">uint8_t * bytes</div><div class="ttdoc">Little-endian bytes.</div><div class="ttdef"><b>Definition</b> fss_prelude.h:50</div></div>
-<div class="ttc" id="astructBits_html_acaa2f135e0289be84b0bb3d28f9072ae"><div class="ttname"><a href="structBits.html#acaa2f135e0289be84b0bb3d28f9072ae">Bits::bitlen</a></div><div class="ttdeci">int bitlen</div><div class="ttdoc">Bit len.</div><div class="ttdef"><b>Definition</b> fss_prelude.h:54</div></div>
+<div class="ttc" id="astructBits_html"><div class="ttname"><a href="structBits.html">Bits</a></div><div class="ttdoc">Support bitlen that is not a multiple of 8.</div><div class="ttdef"><b>Definition</b> fss_prelude.h:49</div></div>
+<div class="ttc" id="astructBits_html_aa6cb721fc060be16dbef5d9d26fcedd3"><div class="ttname"><a href="structBits.html#aa6cb721fc060be16dbef5d9d26fcedd3">Bits::bytes</a></div><div class="ttdeci">uint8_t * bytes</div><div class="ttdoc">Little-endian bytes.</div><div class="ttdef"><b>Definition</b> fss_prelude.h:53</div></div>
+<div class="ttc" id="astructBits_html_acaa2f135e0289be84b0bb3d28f9072ae"><div class="ttname"><a href="structBits.html#acaa2f135e0289be84b0bb3d28f9072ae">Bits::bitlen</a></div><div class="ttdeci">int bitlen</div><div class="ttdoc">Bit len.</div><div class="ttdef"><b>Definition</b> fss_prelude.h:57</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
