@@ -3,10 +3,11 @@ ColumnLimit: 120
 # Do not follow the existing alignment and align right instead
 DerivePointerAlignment: false
 PointerAlignment: Right
-# Allow short blocks with readibility on a single line for conciser diff
+# Allow empty blocks on a single line for conciser diff
 AllowShortBlocksOnASingleLine: Empty
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortFunctionsOnASingleLine: Empty
+# Particularly allow short if blocks on a single line
 AllowShortIfStatementsOnASingleLine: AllIfsAndElse
 # Do not align wrapped lines to leave more space for left code
 AlignAfterOpenBracket: DontAlign
@@ -17,3 +18,7 @@ ContinuationIndentWidth: 2
 # Do not sort include and using statements. Manually manage their order.
 SortIncludes: Never
 SortUsingDeclarations: Never
+# Indent preprocessor directives
+IndentPPDirectives: BeforeHash
+# Do not wrap comments. IndentOnly is better but hasn't been supported.
+ReflowComments: false
