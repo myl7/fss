@@ -1,3 +1,5 @@
+find_package(OpenSSL REQUIRED)
+
 add_executable(
   dpf_bytes_test src/dpf_test.cc
   src/group/bytes.c
