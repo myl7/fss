@@ -10,7 +10,7 @@
 #define kBlocks 1
 #endif
 
-#include <fss_decl.h>
+#include <fss/prg.h>
 #include <assert.h>
 #include <string.h>
 #ifdef __CUDACC__

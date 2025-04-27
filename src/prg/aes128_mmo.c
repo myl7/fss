@@ -5,7 +5,7 @@
 #define kBlocks 2
 #endif
 
-#include <fss_decl.h>
+#include <fss/prg.h>
 #include <string.h>
 #include <assert.h>
 #include <openssl/evp.h>

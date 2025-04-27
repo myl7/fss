@@ -7,7 +7,8 @@
 
 #pragma once
 
-#include <fss_decl.h>
+#include <fss/group.h>
+#include <fss/prg.h>
 
 #define kDcfCwLen (kLambda * 2 + 1)
 
@@ -29,8 +30,8 @@ enum Bound {
 typedef struct {
   Bits alpha;
   /**
-   * Little-endian @ref kLambda bytes viewed as a group element.
-   * Its MSB is ignored and assumed to be 0. See @ref fss_decl.h for details.
+   * Little-endian lambda bytes viewed as a group element.
+   * Its MSB is ignored and assumed to be 0. See @ref group.h for details.
    */
   uint8_t *beta;
   enum Bound bound;
@@ -43,11 +44,11 @@ typedef struct {
  */
 typedef struct {
   /**
-   * Correction words whose len = @ref kDcfCwLen * @ref kLambda
+   * Correction words whose len = @ref kDcfCwLen * lambda
    */
   uint8_t *cws;
   /**
-   * Last correction word whose len = @ref kLambda
+   * Last correction word whose len = lambda
    */
   uint8_t *cw_np1;
 } DcfKey;
@@ -60,19 +61,19 @@ extern "C" {
  * DCF keygen.
  * @param k Output allocated already. See @ref DcfKey for allocation and no need to init.
  * @param cf
- * @param sbuf Buffer whose len >= 10 * @ref kLambda.
- * `s0s` as input is stored at first 2 * @ref kLambda bytes.
+ * @param sbuf Buffer whose len >= 10 * lambda.
+ * `s0s` as input is stored at first 2 * lambda bytes.
  * No need to init other bytes.
  */
 HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf);
 
 /**
  * DCF eval at 1 input point.
- * @param sbuf Buffer whose len >= 6 * @ref kLambda.
- * `s0s[b]` as input is stored at first @ref kLambda bytes.
- * Output is stored at first @ref kLambda bytes.
+ * @param sbuf Buffer whose len >= 6 * lambda.
+ * `s0s[b]` as input is stored at first lambda bytes.
+ * Output is stored at first lambda bytes.
  * Output is little-endian and viewed as a group element.
- * Output's MSB is always 0. See @ref fss_decl.h for details.
+ * Output's MSB is always 0. See @ref group.h for details.
  * No need to init other bytes.
  * @param b Party bit, 0/1
  * @param k Gen by @ref dcf_gen()
@@ -82,11 +83,11 @@ HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x);
 
 /**
  * DCF full domain eval i.e. eval at all input points.
- * @param sbuf Buffer whose len >= 2 ^ `x_bitlen` * @ref kLambda.
- * `s0s[b]` as input is stored at first @ref kLambda bytes.
- * Output is contiguously stored at each @ref kLambda bytes of `sbuf`.
+ * @param sbuf Buffer whose len >= 2 ^ `x_bitlen` * lambda.
+ * `s0s[b]` as input is stored at first lambda bytes.
+ * Output is contiguously stored at each lambda bytes of `sbuf`.
  * Output is little-endian and viewed as a group element.
- * Output's MSB is always 0. See @ref fss_decl.h for details.
+ * Output's MSB is always 0. See @ref group.h for details.
  * No need to init other bytes.
  * @param b Party bit, 0/1
  * @param k Gen by @ref dcf_gen()

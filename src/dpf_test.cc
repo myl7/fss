@@ -5,7 +5,7 @@
 #include <climits>
 #include <cassert>
 #include <gtest/gtest.h>
-#include <dpf.h>
+#include <fss/dpf.h>
 
 extern "C" void prg_init(const uint8_t *state, int state_len);
 

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <fss_prelude.h>
+#include <fss/prelude.h>
 #include <sodium.h>
 
 /**
@@ -52,12 +52,12 @@ void gen_pub_wkey(uint8_t *pub_wkey, const uint8_t *wkey);
  * @param t0 Output share 0
  * @param t1 Output share 1
  * @param sbufs0 Eval output points of party 0.
- * Len of each output point is @ref kLambda.
+ * Len of each output point is lambda.
  * Full domain eval output `sbuf` can be directly used.
  * @param sbufs1 Like `sbufs0` of party 1
  * @param sbuf_num Num of output points
  * @param sbuf_step Step between output points.
- * `sbuf_step` > @ref kLambda allows gaps between output points.
+ * `sbuf_step` > lambda allows gaps between output points.
  * @param wkeys Field scalar elements as write keys corresponding to each input point.
  * Holding write keys of a set of input points allows their output points to be non-zeros.
  * Gen by @ref gen_wkey().

@@ -6,7 +6,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <dpf.h>
+#include <fss/dpf.h>
 #include <omp.h>
 
 #define kSeed 114514

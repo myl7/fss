@@ -5,10 +5,10 @@
 #include <climits>
 #include <cassert>
 #include <gtest/gtest.h>
-#include <cw_mac_bytes.h>
+#include <fss/cw_mac_bytes.h>
 #include <sodium.h>
-#include <dpf.h>
-#include <dcf.h>
+#include <fss/dpf.h>
+#include <fss/dcf.h>
 
 extern "C" void prg_init(const uint8_t *state, int state_len);
 

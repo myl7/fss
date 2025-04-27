@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <fss_prelude.h>
+#include <fss/prelude.h>
 
 // Get least significant bit first from little-endian bytes
 HOST_DEVICE static inline uint8_t get_bit_lsb(const uint8_t *bytes_le, int i) {

@@ -7,7 +7,8 @@
 
 #pragma once
 
-#include <fss_decl.h>
+#include <fss/group.h>
+#include <fss/prg.h>
 
 #define kDpfCwLen (kLambda + 1)
 
@@ -18,8 +19,8 @@
 typedef struct {
   Bits alpha;
   /**
-   * Little-endian @ref kLambda bytes viewed as a group element.
-   * Its MSB is ignored and assumed to be 0. See @ref fss_decl.h for details.
+   * Little-endian lambda bytes viewed as a group element.
+   * Its MSB is ignored and assumed to be 0. See @ref group.h for details.
    */
   uint8_t *beta;
 } PointFunc;
@@ -31,11 +32,11 @@ typedef struct {
  */
 typedef struct {
   /**
-   * Correction words whose len = @ref kDpfCwLen * @ref kLambda
+   * Correction words whose len = @ref kDpfCwLen * lambda
    */
   uint8_t *cws;
   /**
-   * Last correction word whose len = @ref kLambda
+   * Last correction word whose len = lambda
    */
   uint8_t *cw_np1;
 } DpfKey;
@@ -48,19 +49,19 @@ extern "C" {
  * DPF keygen.
  * @param k Output allocated already. See @ref DpfKey for allocation and no need to init.
  * @param pf
- * @param sbuf Buffer whose len >= 6 * @ref kLambda.
- * `s0s` as input is stored at first 2 * @ref kLambda bytes.
+ * @param sbuf Buffer whose len >= 6 * lambda.
+ * `s0s` as input is stored at first 2 * lambda bytes.
  * No need to init other bytes.
  */
 HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf);
 
 /**
  * DPF eval at 1 input point.
- * @param sbuf Buffer whose len >= 3 * @ref kLambda.
- * `s0s[b]` as input is stored at first @ref kLambda bytes.
- * Output is stored at first @ref kLambda bytes.
+ * @param sbuf Buffer whose len >= 3 * lambda.
+ * `s0s[b]` as input is stored at first lambda bytes.
+ * Output is stored at first lambda bytes.
  * Output is little-endian and viewed as a group element.
- * Output's MSB is always 0. See @ref fss_decl.h for details.
+ * Output's MSB is always 0. See @ref group.h for details.
  * No need to init other bytes.
  * @param b Party bit, 0/1
  * @param k Gen by @ref dpf_gen()
@@ -74,11 +75,11 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x);
 
 /**
  * DPF full domain eval i.e. eval at all input points.
- * @param sbuf Buffer whose len >= 2 ^ `x_bitlen` * @ref kLambda.
- * `s0s[b]` as input is stored at first @ref kLambda bytes.
- * Output is contiguously stored at each @ref kLambda bytes of `sbuf`.
+ * @param sbuf Buffer whose len >= 2 ^ `x_bitlen` * lambda.
+ * `s0s[b]` as input is stored at first lambda bytes.
+ * Output is contiguously stored at each lambda bytes of `sbuf`.
  * Output is little-endian and viewed as a group element.
- * Output's MSB is always 0. See @ref fss_decl.h for details.
+ * Output's MSB is always 0. See @ref group.h for details.
  * No need to init other bytes.
  * @param b Party bit, 0/1
  * @param k Gen by @ref dpf_gen()

@@ -2,7 +2,7 @@
 // Copyright (C) 2025 Yulong Ming (myl7)
 
 /**
- * @file fss_prelude.h
+ * @file prelude.h
  */
 
 #pragma once
@@ -27,7 +27,7 @@
   /**
  * For security param lambda in papers, it is lambda / 8.
  * Must >= 16 to provide enough security level.
- * It is the byte len of output, but see @ref fss_decl.h for details.
+ * It is the byte len of output, but see @ref group.h for details.
  */
   #define kLambda 16
 #endif

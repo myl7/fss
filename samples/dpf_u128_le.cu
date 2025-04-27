@@ -4,7 +4,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <dpf.h>
+#include <fss/dpf.h>
 
 #define kThreadsPerBlock 256
 #define kIterNum 1000000
