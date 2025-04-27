@@ -32,7 +32,7 @@ HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *
 
 // | s0 | s1 | s0l | s0r | s1l | s1r |
 // | ss      | s0s      | s1s        |
-HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
+HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf) {
   uint8_t *ss = sbuf;
   uint8_t *s0 = ss;
   uint8_t *s1 = ss + kLambda;
@@ -40,6 +40,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   load_sst(ss, &t0, &t1);
   t0 = 0;
   t1 = 1;
+  Point p = pf.point;
 
   uint8_t *s0s = sbuf + kLambda * 2;
   uint8_t *s0l = s0s;
@@ -49,14 +50,14 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
   uint8_t *s1r = s1s + kLambda;
   uint8_t t0l, t0r, t1l, t1r;
 
-  for (int i = 0; i < pf.alpha.bitlen; i++) {
+  for (int i = 0; i < p.alpha.bitlen; i++) {
     prg(s0s, 2 * kLambda, s0);
     prg(s1s, 2 * kLambda, s1);
     load_sst(s0s, &t0l, &t0r);
     load_sst(s1s, &t1l, &t1r);
 
     // Actually get MSB first
-    uint8_t alpha_i = get_bit_lsb(pf.alpha.bytes, pf.alpha.bitlen - i - 1);
+    uint8_t alpha_i = get_bit_lsb(p.alpha.bytes, p.alpha.bitlen - i - 1);
     uint8_t *cw = k.cws + i * kDpfCwLen;
 
     uint8_t *s0_lose = alpha_i ? s0l : s0r;
@@ -88,7 +89,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
     else t1 = t1_keep;
   }
 
-  memcpy(k.cw_np1, pf.beta, kLambda);
+  memcpy(k.cw_np1, p.beta, kLambda);
   set_bit_lsb(k.cw_np1, kLambda * 8 - 1, 0);
   group_neg(s0);
   group_add(k.cw_np1, s0);
@@ -98,7 +99,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf) {
 
 // | s | sl | sr |
 // |   | ss      |
-HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
+HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t t;
   load_st(s, &t);
@@ -139,7 +140,7 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x) {
 #include <stdlib.h>
 #include <omp.h>
 
-void dpf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_t b, DpfKey k) {
+void dpf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_t b, Key k) {
   uint8_t *s = sbufl;
   uint8_t t;
   load_st(s, &t);
@@ -171,7 +172,7 @@ void dpf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_
   free(ss);
 }
 
-void dpf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DpfKey k) {
+void dpf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, Key k) {
   uint8_t *s = sbuf;
   uint8_t t;
   load_st(s, &t);
@@ -181,7 +182,7 @@ void dpf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DpfKey k) {
 }
 
 void dpf_eval_full_domain_subtree(
-  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DpfKey k, int x_bitlen, int par_depth) {
+  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, Key k, int x_bitlen, int par_depth) {
   assert(kLambda * (1ULL << (x_bitlen - depth)) == r - l);
 
   if (depth == x_bitlen) {
@@ -208,7 +209,7 @@ void dpf_eval_full_domain_subtree(
   }
 }
 
-void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, DpfKey k, int x_bitlen) {
+void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, Key k, int x_bitlen) {
   uint8_t *s = sbuf;
   uint8_t t = b;
   set_st(s, t);

@@ -73,7 +73,7 @@ int main() {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey k;
+  Key k;
   k.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(k.cw_np1 != NULL);
   k.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);

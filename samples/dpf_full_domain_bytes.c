@@ -72,7 +72,7 @@ int main() {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 6);
   assert(sbuf != NULL);
 
-  DpfKey k;
+  Key k;
   k.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(k.cw_np1 != NULL);
   k.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);

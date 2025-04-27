@@ -12,48 +12,19 @@
 
 #define kDpfCwLen (kLambda + 1)
 
-/**
- * Point function.
- * Output = `beta` when input = `alpha`, otherwise output = 0.
- */
-typedef struct {
-  Bits alpha;
-  /**
-   * Little-endian lambda bytes viewed as a group element.
-   * Its MSB is ignored and assumed to be 0. See @ref group.h for details.
-   */
-  uint8_t *beta;
-} PointFunc;
-
-/**
- * DPF key.
- * DPF key + `s0s[0]` and DPF key + `s0s[1]` are 2 shares given to 2 parties.
- * Designed for easy serialization.
- */
-typedef struct {
-  /**
-   * Correction words whose len = @ref kDpfCwLen * lambda
-   */
-  uint8_t *cws;
-  /**
-   * Last correction word whose len = lambda
-   */
-  uint8_t *cw_np1;
-} DpfKey;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
  * DPF keygen.
- * @param k Output allocated already. See @ref DpfKey for allocation and no need to init.
+ * @param k Output allocated already. See @ref Key for allocation and no need to init.
  * @param pf
  * @param sbuf Buffer whose len >= 6 * lambda.
  * `s0s` as input is stored at first 2 * lambda bytes.
  * No need to init other bytes.
  */
-HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf);
+HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf);
 
 /**
  * DPF eval at 1 input point.
@@ -67,7 +38,7 @@ HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf);
  * @param k Gen by @ref dpf_gen()
  * @param x Evaluated input point. Like `alpha` of @ref PointFunc.
  */
-HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x);
+HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x);
 
 // TODO: Move all alloc info to fss_prelude.h.
 // eval_full_domain: Each node allocs 2 * lambda.
@@ -85,7 +56,7 @@ HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x);
  * @param k Gen by @ref dpf_gen()
  * @param x_bitlen Bitlen of input points, resulting in 2 ^ `x_bitlen` input points in total
  */
-void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, DpfKey k, int x_bitlen);
+void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, Key k, int x_bitlen);
 
 #ifdef __cplusplus
 }

@@ -41,7 +41,7 @@ TEST_F(DpfTest, EvalAtAlpha) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 6);
   assert(sbuf != NULL);
 
-  DpfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);
@@ -55,7 +55,8 @@ TEST_F(DpfTest, EvalAtAlpha) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  PointFunc pf = {alpha_bits, beta};
+  Point p = {alpha_bits, beta};
+  PointFunc pf = {p};
 
   // Generate DPF
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -91,7 +92,7 @@ TEST_F(DpfTest, EvalAtRandPoints) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 6);
   assert(sbuf != NULL);
 
-  DpfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);
@@ -105,7 +106,8 @@ TEST_F(DpfTest, EvalAtRandPoints) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  PointFunc pf = {alpha_bits, beta};
+  Point p = {alpha_bits, beta};
+  PointFunc pf = {p};
 
   // Generate DPF
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -156,7 +158,7 @@ TEST_F(DpfTest, EvalFullDomainEqEvalPoints) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 6);
   assert(sbuf != NULL);
 
-  DpfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);
@@ -170,7 +172,8 @@ TEST_F(DpfTest, EvalFullDomainEqEvalPoints) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  PointFunc pf = {alpha_bits, beta};
+  Point p = {alpha_bits, beta};
+  PointFunc pf = {p};
 
   // Generate DPF
   memcpy(sbuf, kS0s, kLambda * 2);

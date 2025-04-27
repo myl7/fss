@@ -39,7 +39,7 @@ HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *
 
 // | s0 | s1 | s0l | v0l | s0r | v0r | s1l | v1l | s1r | v1r |
 // | ss      | sv0s                  | sv1s                  |
-HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf) {
+HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf) {
   uint8_t *ss = sbuf;
   uint8_t *s0 = ss;
   uint8_t *s1 = ss + kLambda;
@@ -49,6 +49,7 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf) {
   load_sst(ss, &t0, &t1);
   t0 = 0;
   t1 = 1;
+  Point p = cf.point;
 
   uint8_t *sv0s = sbuf + kLambda * 2;
   uint8_t *s0l = sv0s;
@@ -62,14 +63,14 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf) {
   uint8_t *v1r = sv1s + kLambda * 3;
   uint8_t t0l, t0r, t1l, t1r;
 
-  for (int i = 0; i < cf.alpha.bitlen; i++) {
+  for (int i = 0; i < p.alpha.bitlen; i++) {
     prg(sv0s, 4 * kLambda, s0);
     prg(sv1s, 4 * kLambda, s1);
     load_svst(sv0s, &t0l, &t0r);
     load_svst(sv1s, &t1l, &t1r);
 
     // Actually get MSB first
-    uint8_t alpha_i = get_bit_lsb(cf.alpha.bytes, cf.alpha.bitlen - i - 1);
+    uint8_t alpha_i = get_bit_lsb(p.alpha.bytes, p.alpha.bitlen - i - 1);
     uint8_t *cw = k.cws + i * kDcfCwLen;
 
     uint8_t *s0_lose = alpha_i ? s0l : s0r;
@@ -92,7 +93,7 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf) {
     group_neg(v0_lose);
     group_add(v_cw, v0_lose);
     if (t1) group_neg(v_cw);
-    memcpy(v0_lose, cf.beta, kLambda);
+    memcpy(v0_lose, p.beta, kLambda);
     set_bit_lsb(v0_lose, kLambda * 8 - 1, 0);
     if (t1) group_neg(v0_lose);
     switch (cf.bound) {
@@ -142,7 +143,7 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf) {
 
 // | s | v | sl | vl | sr | vr |
 // |       | svs               |
-HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x) {
+HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t *v = sbuf + kLambda;
   group_zero(v);
@@ -195,7 +196,7 @@ HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x) {
 #include <stdlib.h>
 #include <omp.h>
 
-void dcf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_t b, DcfKey k, uint8_t *vs_alloc) {
+void dcf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_t b, Key k, uint8_t *vs_alloc) {
   uint8_t *s = sbufl;
   uint8_t *v = sbufl + kLambda;
   uint8_t t;
@@ -254,7 +255,7 @@ void dcf_eval_full_domain_node(int depth, uint8_t *sbufl, uint8_t *sbufr, uint8_
   free(svs);
 }
 
-void dcf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DcfKey k, uint8_t *v) {
+void dcf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, Key k, uint8_t *v) {
   uint8_t *s = sbuf;
   uint8_t t;
   load_st(s, &t);
@@ -266,7 +267,7 @@ void dcf_eval_full_domain_leaf(uint8_t *sbuf, uint8_t b, DcfKey k, uint8_t *v) {
 }
 
 void dcf_eval_full_domain_subtree(
-  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, DcfKey k, int x_bitlen, uint8_t *v_alloc, int par_depth) {
+  int depth, uint8_t *sbuf, size_t l, size_t r, uint8_t b, Key k, int x_bitlen, uint8_t *v_alloc, int par_depth) {
   assert(kLambda * (1ULL << (x_bitlen - depth)) == r - l);
 
   if (depth == x_bitlen) {
@@ -308,7 +309,7 @@ void dcf_eval_full_domain_subtree(
   }
 }
 
-void dcf_eval_full_domain(uint8_t *sbuf, uint8_t b, DcfKey k, int x_bitlen) {
+void dcf_eval_full_domain(uint8_t *sbuf, uint8_t b, Key k, int x_bitlen) {
   uint8_t *s = sbuf;
   uint8_t *v = sbuf + kLambda;
   group_zero(v);

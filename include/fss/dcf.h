@@ -7,51 +7,11 @@
 
 #pragma once
 
+#include <fss/prelude.h>
 #include <fss/group.h>
 #include <fss/prg.h>
 
 #define kDcfCwLen (kLambda * 2 + 1)
-
-enum Bound {
-  /**
-   * Output = `beta` when input < `alpha`, otherwise output = 0
-   */
-  kLtAlpha,
-  /**
-   * Output = `beta` when input > `alpha`, otherwise output = 0
-   */
-  kGtAlpha,
-};
-
-/**
- * Comparison function.
- * See @ref Bound for its def based on `bound`.
- */
-typedef struct {
-  Bits alpha;
-  /**
-   * Little-endian lambda bytes viewed as a group element.
-   * Its MSB is ignored and assumed to be 0. See @ref group.h for details.
-   */
-  uint8_t *beta;
-  enum Bound bound;
-} CmpFunc;
-
-/**
- * DCF key.
- * DCF key + `s0s[0]` and DCF key + `s0s[1]` are 2 shares given to 2 parties.
- * Designed for easy serialization.
- */
-typedef struct {
-  /**
-   * Correction words whose len = @ref kDcfCwLen * lambda
-   */
-  uint8_t *cws;
-  /**
-   * Last correction word whose len = lambda
-   */
-  uint8_t *cw_np1;
-} DcfKey;
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,13 +19,13 @@ extern "C" {
 
 /**
  * DCF keygen.
- * @param k Output allocated already. See @ref DcfKey for allocation and no need to init.
+ * @param k Output allocated already. See @ref Key for allocation and no need to init.
  * @param cf
  * @param sbuf Buffer whose len >= 10 * lambda.
  * `s0s` as input is stored at first 2 * lambda bytes.
  * No need to init other bytes.
  */
-HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf);
+HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf);
 
 /**
  * DCF eval at 1 input point.
@@ -79,7 +39,7 @@ HOST_DEVICE void dcf_gen(DcfKey k, CmpFunc cf, uint8_t *sbuf);
  * @param k Gen by @ref dcf_gen()
  * @param x Evaluated input point. Like `alpha` of @ref CmpFunc.
  */
-HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x);
+HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x);
 
 /**
  * DCF full domain eval i.e. eval at all input points.
@@ -93,7 +53,7 @@ HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, DcfKey k, Bits x);
  * @param k Gen by @ref dcf_gen()
  * @param x_bitlen Bitlen of input points, resulting in 2 ^ `x_bitlen` input points in total
  */
-void dcf_eval_full_domain(uint8_t *sbuf, uint8_t b, DcfKey k, int x_bitlen);
+void dcf_eval_full_domain(uint8_t *sbuf, uint8_t b, Key k, int x_bitlen);
 
 #ifdef __cplusplus
 }

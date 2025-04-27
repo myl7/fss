@@ -67,13 +67,14 @@ int main() {
   assert(beta != NULL);
   gen_rand_bytes(beta, kLambda);
 
-  CmpFunc cf = {alpha_bits, beta, kLtAlpha};
+  Point p = {alpha_bits, beta};
+  CmpFunc cf = {p, kLtAlpha};
 
   // Alloc sbuf and k
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey k;
+  Key k;
   k.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(k.cw_np1 != NULL);
   k.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
@@ -105,7 +106,7 @@ int main() {
   iter_num = 10;
   t = get_time();
   for (int i = 0; i < iter_num; i++) {
-    #pragma omp parallel for
+#pragma omp parallel for
     for (uint32_t x = 0; x < domain_size; x++) {
       int tid = omp_get_thread_num();
       uint8_t *sbuf = sbufs + tid * kLambda * 6;

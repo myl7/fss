@@ -68,7 +68,7 @@ TEST_F(CwMacBytesTest, VerifyDpf) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 6);
   assert(sbuf != NULL);
 
-  DpfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDpfCwLen * kAlphaBitlen);
@@ -82,7 +82,8 @@ TEST_F(CwMacBytesTest, VerifyDpf) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  PointFunc pf = {alpha_bits, beta};
+  Point p = {alpha_bits, beta};
+  PointFunc pf = {p};
 
   // Generate DPF
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -133,7 +134,7 @@ TEST_F(CwMacBytesTest, VerifyDif) {
   assert(sbuf != NULL);
 
   // Generate two DCF keys
-  DcfKey key_l, key_r;
+  Key key_l, key_r;
   key_l.cw_np1 = (uint8_t *)malloc(kLambda);
   key_l.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
   key_r.cw_np1 = (uint8_t *)malloc(kLambda);
@@ -152,8 +153,10 @@ TEST_F(CwMacBytesTest, VerifyDif) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  CmpFunc cf_l = {alpha_bits_l, beta, kLtAlpha};
-  CmpFunc cf_r = {alpha_bits_r, beta, kLtAlpha};
+  Point p_l = {alpha_bits_l, beta};
+  Point p_r = {alpha_bits_r, beta};
+  CmpFunc cf_l = {p_l, kLtAlpha};
+  CmpFunc cf_r = {p_r, kLtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);

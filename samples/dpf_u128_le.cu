@@ -32,7 +32,7 @@ __global__ void gen_kernel(
   uint8_t *cw_np1 = cw_np1_dev + tid * kLambda;
   uint8_t *cws = cws_dev + tid * kDpfCwLen * kAlphaBitlen;
 
-  DpfKey k = {cws, cw_np1};
+  Key k = {cws, cw_np1};
   PointFunc pf = {{alpha_dev, kAlphaBitlen}, beta_dev};
   dpf_gen(k, pf, sbuf);
 }
@@ -47,7 +47,7 @@ __global__ void eval_kernel(
   uint8_t *cw_np1 = cw_np1_dev + tid * kLambda;
   uint8_t *cws = cws_dev + tid * kDpfCwLen * kAlphaBitlen;
 
-  DpfKey k = {cws, cw_np1};
+  Key k = {cws, cw_np1};
   Bits x_bits = {x, kAlphaBitlen};
   dpf_eval(sbuf, b, k, x_bits);
 }

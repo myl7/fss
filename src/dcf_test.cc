@@ -41,7 +41,7 @@ TEST_F(DcfTest, EvalAtRandLtPoints) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
@@ -55,7 +55,8 @@ TEST_F(DcfTest, EvalAtRandLtPoints) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  CmpFunc cf = {alpha_bits, beta, kLtAlpha};
+  Point p = {alpha_bits, beta};
+  CmpFunc cf = {p, kLtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -100,7 +101,7 @@ TEST_F(DcfTest, EvalAtRandGePoints) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
@@ -114,7 +115,8 @@ TEST_F(DcfTest, EvalAtRandGePoints) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  CmpFunc cf = {alpha_bits, beta, kLtAlpha};
+  Point p = {alpha_bits, beta};
+  CmpFunc cf = {p, kLtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -161,7 +163,7 @@ TEST_F(DcfTest, EvalAtRandGtPointsForGtAlpha) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
@@ -175,7 +177,8 @@ TEST_F(DcfTest, EvalAtRandGtPointsForGtAlpha) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  CmpFunc cf = {alpha_bits, beta, kGtAlpha};
+  Point p = {alpha_bits, beta};
+  CmpFunc cf = {p, kGtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -220,7 +223,7 @@ TEST_F(DcfTest, EvalAtRandLePointsForGtAlpha) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
@@ -234,7 +237,8 @@ TEST_F(DcfTest, EvalAtRandLePointsForGtAlpha) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  CmpFunc cf = {alpha_bits, beta, kGtAlpha};
+  Point p = {alpha_bits, beta};
+  CmpFunc cf = {p, kGtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -281,7 +285,7 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPoints) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
@@ -295,7 +299,8 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPoints) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  CmpFunc cf = {alpha_bits, beta, kLtAlpha};
+  Point p = {alpha_bits, beta};
+  CmpFunc cf = {p, kLtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);
@@ -372,7 +377,7 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPointsForGtAlpha) {
   uint8_t *sbuf = (uint8_t *)malloc(kLambda * 10);
   assert(sbuf != NULL);
 
-  DcfKey key;
+  Key key;
   key.cw_np1 = (uint8_t *)malloc(kLambda);
   assert(key.cw_np1 != NULL);
   key.cws = (uint8_t *)malloc(kDcfCwLen * kAlphaBitlen);
@@ -386,7 +391,8 @@ TEST_F(DcfTest, EvalFullDomainEqEvalPointsForGtAlpha) {
   assert(beta != NULL);
   memset(beta, 0, kLambda);
   memcpy(beta, &kBeta, 16);
-  CmpFunc cf = {alpha_bits, beta, kGtAlpha};
+  Point p = {alpha_bits, beta};
+  CmpFunc cf = {p, kGtAlpha};
 
   // Generate DCF keys
   memcpy(sbuf, kS0s, kLambda * 2);

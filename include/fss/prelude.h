@@ -56,3 +56,59 @@ typedef struct {
    */
   int bitlen;
 } Bits;
+
+/**
+ * Key used by DPF and DCF.
+ * key + `s0s[0]` and key + `s0s[1]` are 2 shares given to 2 parties.
+ * Designed for easy serialization.
+ */
+typedef struct {
+  /**
+   * Correction words whose len = @ref kDpfCwLen * lambda
+   */
+  uint8_t *cws;
+  /**
+   * Last correction word whose len = lambda
+   */
+  uint8_t *cw_np1;
+} Key;
+
+/**
+ * Point (`alpha`, `beta`)
+ */
+typedef struct {
+  Bits alpha;
+  /**
+   * Little-endian lambda bytes viewed as a group element.
+   * Its MSB is ignored and assumed to be 0. See @ref group.h for details.
+   */
+  uint8_t *beta;
+} Point;
+
+/**
+ * Point function.
+ * Output = `beta` when input = `alpha`, otherwise output = 0.
+ */
+typedef struct {
+  Point point;
+} PointFunc;
+
+enum Bound {
+  /**
+   * Output = `beta` when input < `alpha`, otherwise output = 0
+   */
+  kLtAlpha,
+  /**
+   * Output = `beta` when input > `alpha`, otherwise output = 0
+   */
+  kGtAlpha,
+};
+
+/**
+ * Comparison function.
+ * See @ref Bound for its def based on `bound`.
+ */
+typedef struct {
+  Point point;
+  enum Bound bound;
+} CmpFunc;
