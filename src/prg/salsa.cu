@@ -3,18 +3,18 @@
 // Based on https://en.wikipedia.org/wiki/Salsa20
 
 #ifndef kRounds
-#define kRounds 20
+  #define kRounds 20
 #endif
 
 #ifndef kBlocks
-#define kBlocks 1
+  #define kBlocks 1
 #endif
 
 #include <fss/prg.h>
 #include <assert.h>
 #include <string.h>
 #ifdef __CUDACC__
-#include <cuda_runtime.h>
+  #include <cuda_runtime.h>
 #endif
 
 #define ROTL(a, b) (((a) << (b)) | ((a) >> (32 - (b))))
