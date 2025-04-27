@@ -25,7 +25,7 @@ extern "C" {
  * `s0s` as input is stored at first 2 * lambda bytes.
  * No need to init other bytes.
  */
-HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf);
+FSS_CUDA_HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf);
 
 /**
  * DCF eval at 1 input point.
@@ -39,7 +39,7 @@ HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf);
  * @param k Gen by @ref dcf_gen()
  * @param x Evaluated input point. Like `alpha` of @ref CmpFunc.
  */
-HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x);
+FSS_CUDA_HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x);
 
 /**
  * DCF full domain eval i.e. eval at all input points.

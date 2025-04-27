@@ -25,21 +25,21 @@ extern "C" {
  * `val` and `rhs` are group elements and little-endian.
  * Their MSB are always 0 (input/output). See @ref group.h for details.
  */
-HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs);
+FSS_CUDA_HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs);
 
 /**
  * `val` = -`val`.
  * `val` is a group element and little-endian.
  * Its MSB is always 0 (input/output). See @ref group.h for details.
  */
-HOST_DEVICE void group_neg(uint8_t *val);
+FSS_CUDA_HOST_DEVICE void group_neg(uint8_t *val);
 
 /**
  * `val` = 0.
  * `val` is a group element and little-endian.
  * Its MSB is always 0 (input/output). See @ref group.h for details.
  */
-HOST_DEVICE void group_zero(uint8_t *val);
+FSS_CUDA_HOST_DEVICE void group_zero(uint8_t *val);
 
 #ifdef __cplusplus
 }

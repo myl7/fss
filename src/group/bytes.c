@@ -5,12 +5,12 @@
 #include <string.h>
 #include "../utils.h"
 
-HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs) {
+FSS_CUDA_HOST_DEVICE void group_add(uint8_t *val, const uint8_t *rhs) {
   xor_bytes(val, rhs, kLambda);
 }
 
-HOST_DEVICE void group_neg(uint8_t *val) {}
+FSS_CUDA_HOST_DEVICE void group_neg(uint8_t *val) {}
 
-HOST_DEVICE void group_zero(uint8_t *val) {
+FSS_CUDA_HOST_DEVICE void group_zero(uint8_t *val) {
   memset(val, 0, kLambda);
 }

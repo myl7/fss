@@ -6,7 +6,7 @@
 #include "utils.h"
 
 // Load the 1bit t from MSB, so we can truncate during adding
-HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
+FSS_CUDA_HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
   *t = get_bit_lsb(s, kLambda * 8 - 1);
   set_bit_lsb(s, kLambda * 8 - 1, 0);
 }
@@ -15,12 +15,12 @@ static inline void set_st(uint8_t *s, uint8_t t) {
   set_bit_lsb(s, kLambda * 8 - 1, t);
 }
 
-HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
+FSS_CUDA_HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
   load_st(ss, t0);
   load_st(ss + kLambda, t1);
 }
 
-HOST_DEVICE static inline void load_svst(uint8_t *svs, uint8_t *t0, uint8_t *t1) {
+FSS_CUDA_HOST_DEVICE static inline void load_svst(uint8_t *svs, uint8_t *t0, uint8_t *t1) {
   load_st(svs, t0);
   set_bit_lsb(svs + kLambda, kLambda * 8 - 1, 0);
   load_st(svs + kLambda * 2, t1);
@@ -28,18 +28,18 @@ HOST_DEVICE static inline void load_svst(uint8_t *svs, uint8_t *t0, uint8_t *t1)
 }
 
 // Save the 2bit tl tr in an extra byte
-HOST_DEVICE static inline void set_cwt(uint8_t *cw, uint8_t tl, uint8_t tr) {
+FSS_CUDA_HOST_DEVICE static inline void set_cwt(uint8_t *cw, uint8_t tl, uint8_t tr) {
   cw[kLambda * 2] = tl << 1 | tr;
 }
 
-HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *tr) {
+FSS_CUDA_HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *tr) {
   *tl = cw[kLambda * 2] >> 1;
   *tr = cw[kLambda * 2] & 1;
 }
 
 // | s0 | s1 | s0l | v0l | s0r | v0r | s1l | v1l | s1r | v1r |
 // | ss      | sv0s                  | sv1s                  |
-HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf) {
+FSS_CUDA_HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf) {
   uint8_t *ss = sbuf;
   uint8_t *s0 = ss;
   uint8_t *s1 = ss + kLambda;
@@ -143,7 +143,7 @@ HOST_DEVICE void dcf_gen(Key k, CmpFunc cf, uint8_t *sbuf) {
 
 // | s | v | sl | vl | sr | vr |
 // |       | svs               |
-HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x) {
+FSS_CUDA_HOST_DEVICE void dcf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t *v = sbuf + kLambda;
   group_zero(v);

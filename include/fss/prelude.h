@@ -36,11 +36,11 @@
 #endif
 
 #if __CUDACC__
-  #define HOST_DEVICE __host__ __device__
-  #define DEVICE_CONST __constant__
+  #define FSS_CUDA_HOST_DEVICE __host__ __device__
+  #define FSS_CUDA_CONSTANT __constant__
 #else
-  #define HOST_DEVICE
-  #define DEVICE_CONST
+  #define FSS_CUDA_HOST_DEVICE
+  #define FSS_CUDA_CONSTANT
 #endif
 
 /**

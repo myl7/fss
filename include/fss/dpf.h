@@ -24,7 +24,7 @@ extern "C" {
  * `s0s` as input is stored at first 2 * lambda bytes.
  * No need to init other bytes.
  */
-HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf);
+FSS_CUDA_HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf);
 
 /**
  * DPF eval at 1 input point.
@@ -38,7 +38,7 @@ HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf);
  * @param k Gen by @ref dpf_gen()
  * @param x Evaluated input point. Like `alpha` of @ref PointFunc.
  */
-HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x);
+FSS_CUDA_HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x);
 
 // TODO: Move all alloc info to fss_prelude.h.
 // eval_full_domain: Each node allocs 2 * lambda.

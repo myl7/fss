@@ -6,7 +6,7 @@
 #include "utils.h"
 
 // Load the 1bit t from MSB, so we can truncate during adding
-HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
+FSS_CUDA_HOST_DEVICE static inline void load_st(uint8_t *s, uint8_t *t) {
   *t = get_bit_lsb(s, kLambda * 8 - 1);
   set_bit_lsb(s, kLambda * 8 - 1, 0);
 }
@@ -15,24 +15,24 @@ static inline void set_st(uint8_t *s, uint8_t t) {
   set_bit_lsb(s, kLambda * 8 - 1, t);
 }
 
-HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
+FSS_CUDA_HOST_DEVICE static inline void load_sst(uint8_t *ss, uint8_t *t0, uint8_t *t1) {
   load_st(ss, t0);
   load_st(ss + kLambda, t1);
 }
 
 // Save the 2bit tl tr in an extra byte
-HOST_DEVICE static inline void set_cwt(uint8_t *cw, uint8_t tl, uint8_t tr) {
+FSS_CUDA_HOST_DEVICE static inline void set_cwt(uint8_t *cw, uint8_t tl, uint8_t tr) {
   cw[kLambda] = tl << 1 | tr;
 }
 
-HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *tr) {
+FSS_CUDA_HOST_DEVICE static inline void get_cwt(const uint8_t *cw, uint8_t *tl, uint8_t *tr) {
   *tl = cw[kLambda] >> 1;
   *tr = cw[kLambda] & 1;
 }
 
 // | s0 | s1 | s0l | s0r | s1l | s1r |
 // | ss      | s0s      | s1s        |
-HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf) {
+FSS_CUDA_HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf) {
   uint8_t *ss = sbuf;
   uint8_t *s0 = ss;
   uint8_t *s1 = ss + kLambda;
@@ -99,7 +99,7 @@ HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf) {
 
 // | s | sl | sr |
 // |   | ss      |
-HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x) {
+FSS_CUDA_HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x) {
   uint8_t *s = sbuf;
   uint8_t t;
   load_st(s, &t);

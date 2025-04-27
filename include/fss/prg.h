@@ -21,7 +21,7 @@ extern "C" {
  * For DCF, its len = 4 * lambda.
  * @param seed Input whose len = lambda
  */
-HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed);
+FSS_CUDA_HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed);
 
 /**
  * Init PRG.

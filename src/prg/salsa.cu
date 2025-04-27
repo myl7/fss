@@ -26,7 +26,7 @@
   a ^= ROTL(d + c, 18))
 // clang-format on
 
-HOST_DEVICE void salsa_block(uint32_t x[16], uint32_t in[16], uint64_t pos, const uint32_t nonce[2]) {
+FSS_CUDA_HOST_DEVICE void salsa_block(uint32_t x[16], uint32_t in[16], uint64_t pos, const uint32_t nonce[2]) {
   in[0] = 'e' | ('x' << 8) | ('p' << 16) | ('a' << 24);
   in[5] = 'n' | ('d' << 8) | (' ' << 16) | ('1' << 24);
   in[10] = '6' | ('-' << 8) | ('b' << 16) | ('y' << 24);
@@ -59,14 +59,14 @@ HOST_DEVICE void salsa_block(uint32_t x[16], uint32_t in[16], uint64_t pos, cons
   }
 }
 
-HOST_DEVICE void salsa_expand_key(uint32_t x[16]) {
+FSS_CUDA_HOST_DEVICE void salsa_expand_key(uint32_t x[16]) {
   x[11] = x[1];
   x[12] = x[2];
   x[13] = x[3];
   x[14] = x[4];
 }
 
-DEVICE_CONST uint32_t gNonces[kBlocks][(kLambda + 31) / 32][2];
+FSS_CUDA_CONSTANT uint32_t gNonces[kBlocks][(kLambda + 31) / 32][2];
 
 void prg_init(const uint8_t *state, int state_len) {
   assert(kLambda % 16 == 0);
@@ -80,7 +80,7 @@ void prg_init(const uint8_t *state, int state_len) {
 
 void prg_free() {}
 
-HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed) {
+FSS_CUDA_HOST_DEVICE void prg(uint8_t *out, int out_len, const uint8_t *seed) {
   assert(out_len % (2 * kLambda) == 0);
   assert(out_len <= kBlocks * kLambda * 2);
   int blocks = out_len / kLambda / 2;
