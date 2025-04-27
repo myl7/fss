@@ -1,0 +1,48 @@
+Content-Type: multipart/mixed; boundary="//"
+MIME-Version: 1.0
+
+--//
+Content-Type: text/cloud-config; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="cloud-config.txt"
+
+#cloud-config
+
+--//
+Content-Type: text/x-shellscript; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="userdata.txt"
+
+#!/bin/bash
+set -euo pipefail
+
+apt-get -y update
+apt-get -y install \
+  git \
+  build-essential \
+  cmake \
+  libsodium-dev \
+  libssl-dev
+
+git clone https://github.com/myl7/fss.git
+cd fss/samples
+
+cmake -B build -S . \
+  -DFSS_kLambda=16 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=gcc
+cmake --build build --config Release
+
+echo '[sample_dpf_bytes]' >> fss_bench.log
+./build/sample_dpf_bytes >> fss_bench.log
+echo '[sample_dpf_full_domain_bytes]' >> fss_bench.log
+./build/sample_dpf_full_domain_bytes >> fss_bench.log
+echo '[sample_dcf_bytes]' >> fss_bench.log
+./build/sample_dcf_bytes >> fss_bench.log
+echo '[sample_dcf_full_domain_bytes]' >> fss_bench.log
+./build/sample_dcf_full_domain_bytes >> fss_bench.log
+
+cp fss_bench.log /tmp/fss_bench.log
+--//--
