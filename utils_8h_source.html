@@ -87,15 +87,15 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span> </div>
 <div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="preprocessor">#pragma once</span></div>
 <div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span> </div>
-<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;<a class="code" href="fss__prelude_8h.html">fss_prelude.h</a>&gt;</span></div>
+<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;<a class="code" href="prelude_8h.html">fss/prelude.h</a>&gt;</span></div>
 <div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span> </div>
 <div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="comment">// Get least significant bit first from little-endian bytes</span></div>
-<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span>HOST_DEVICE <span class="keyword">static</span> <span class="keyword">inline</span> uint8_t get_bit_lsb(<span class="keyword">const</span> uint8_t *bytes_le, <span class="keywordtype">int</span> i) {</div>
+<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span>FSS_CUDA_HOST_DEVICE <span class="keyword">static</span> <span class="keyword">inline</span> uint8_t get_bit_lsb(<span class="keyword">const</span> uint8_t *bytes_le, <span class="keywordtype">int</span> i) {</div>
 <div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span>  <span class="keywordflow">return</span> (bytes_le[i / 8] &gt;&gt; (i % 8)) &amp; 1;</div>
 <div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span>}</div>
 <div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
 <div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="comment">// Set least significant bit first to little-endian bytes</span></div>
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span>HOST_DEVICE <span class="keyword">static</span> <span class="keyword">inline</span> <span class="keywordtype">void</span> set_bit_lsb(uint8_t *bytes_le, <span class="keywordtype">int</span> i, uint8_t bit) {</div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span>FSS_CUDA_HOST_DEVICE <span class="keyword">static</span> <span class="keyword">inline</span> <span class="keywordtype">void</span> set_bit_lsb(uint8_t *bytes_le, <span class="keywordtype">int</span> i, uint8_t bit) {</div>
 <div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span>  <span class="keywordflow">if</span> (bit) {</div>
 <div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span>    bytes_le[i / 8] |= 1 &lt;&lt; (i % 8);</div>
 <div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span>  } <span class="keywordflow">else</span> {</div>
@@ -103,12 +103,12 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>  }</div>
 <div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>}</div>
 <div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span> </div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>HOST_DEVICE <span class="keyword">static</span> <span class="keyword">inline</span> <span class="keywordtype">void</span> xor_bytes(uint8_t *val, <span class="keyword">const</span> uint8_t *rhs, <span class="keywordtype">int</span> len) {</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>FSS_CUDA_HOST_DEVICE <span class="keyword">static</span> <span class="keyword">inline</span> <span class="keywordtype">void</span> xor_bytes(uint8_t *val, <span class="keyword">const</span> uint8_t *rhs, <span class="keywordtype">int</span> len) {</div>
 <div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; len; i++) {</div>
 <div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>    val[i] ^= rhs[i];</div>
 <div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>  }</div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>}</div>
-<div class="ttc" id="afss__prelude_8h_html"><div class="ttname"><a href="fss__prelude_8h.html">fss_prelude.h</a></div></div>
+<div class="ttc" id="aprelude_8h_html"><div class="ttname"><a href="prelude_8h.html">prelude.h</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

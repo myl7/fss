@@ -1,9 +1,13 @@
-<map id="include/dcf.h" name="include/dcf.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="8,5,112,31"/>
-<area shape="rect" id="Node000002" href="$fss__decl_8h.html" title=" " alt="" coords="17,79,103,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="63,31,63,65,57,65,57,31"/>
-<area shape="rect" id="Node000003" href="$fss__prelude_8h.html" title=" " alt="" coords="5,152,115,177"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="63,104,63,138,57,138,57,104"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="25,225,95,251"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="63,178,63,212,57,212,57,178"/>
+<map id="include/fss/dcf.h" name="include/fss/dcf.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,132,31"/>
+<area shape="rect" id="Node000002" href="$prelude_8h.html" title=" " alt="" coords="15,152,122,177"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="52,33,29,53,11,80,9,97,15,113,27,128,41,142,38,146,23,132,11,115,4,97,6,78,25,49,49,29"/>
+<area shape="rect" id="Node000004" href="$group_8h.html" title=" " alt="" coords="21,79,116,104"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="71,31,71,65,66,65,66,31"/>
+<area shape="rect" id="Node000005" href="$prg_8h.html" title=" " alt="" coords="140,79,219,104"/>
+<area shape="poly" id="edge5_Node000001_Node000005" title=" " alt="" coords="88,28,151,69,148,73,85,33"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="33,225,104,251"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="71,178,71,212,66,212,66,178"/>
+<area shape="poly" id="edge4_Node000004_Node000002" title=" " alt="" coords="71,104,71,138,66,138,66,104"/>
+<area shape="poly" id="edge6_Node000005_Node000002" title=" " alt="" coords="163,106,100,147,97,142,160,102"/>
 </map>

@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>fss: include/dpf.h Source File</title>
+<title>fss: include/fss/dpf.h Source File</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -75,7 +75,7 @@ $(document).ready(function() { init_codefold(0); });
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="dir_d44c64559bbebec7f509842c48db8b23.html">include</a></li>  </ul>
+<li class="navelem"><a class="el" href="dir_d44c64559bbebec7f509842c48db8b23.html">include</a></li><li class="navelem"><a class="el" href="dir_1ce451d8baf5c0b810a12cb720228ae9.html">fss</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
@@ -87,51 +87,36 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span> </div>
 <div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="preprocessor">#pragma once</span></div>
 <div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span> </div>
-<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;<a class="code" href="fss__decl_8h.html">fss_decl.h</a>&gt;</span></div>
-<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span> </div>
-<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#define kDpfCwLen (kLambda + 1)</span></div>
-<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span> </div>
-<div class="foldopen" id="foldopen00018" data-start="{" data-end="};">
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno"><a class="line" href="structPointFunc.html">   18</a></span><span class="keyword">typedef</span> <span class="keyword">struct </span>{</div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>  <a class="code hl_struct" href="structBits.html">Bits</a> alpha;</div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno"><a class="line" href="structPointFunc.html#a166d09c4dfc7b9cf41c96708354d7717">   24</a></span>  uint8_t *<a class="code hl_variable" href="structPointFunc.html#a166d09c4dfc7b9cf41c96708354d7717">beta</a>;</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>} <a class="code hl_struct" href="structPointFunc.html">PointFunc</a>;</div>
-</div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
-<div class="foldopen" id="foldopen00032" data-start="{" data-end="};">
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno"><a class="line" href="structDpfKey.html">   32</a></span><span class="keyword">typedef</span> <span class="keyword">struct </span>{</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno"><a class="line" href="structDpfKey.html#a606b0526d57ce795c7de0133203ecb56">   36</a></span>  uint8_t *<a class="code hl_variable" href="structDpfKey.html#a606b0526d57ce795c7de0133203ecb56">cws</a>;</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno"><a class="line" href="structDpfKey.html#a75235711c67fe084d6551491580e1528">   40</a></span>  uint8_t *<a class="code hl_variable" href="structDpfKey.html#a75235711c67fe084d6551491580e1528">cw_np1</a>;</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>} <a class="code hl_struct" href="structDpfKey.html">DpfKey</a>;</div>
-</div>
+<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;<a class="code" href="group_8h.html">fss/group.h</a>&gt;</span></div>
+<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &lt;<a class="code" href="prg_8h.html">fss/prg.h</a>&gt;</span></div>
+<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
+<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="preprocessor">#define kDpfCwLen (kLambda + 1)</span></div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span> </div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="keyword">extern</span> <span class="stringliteral">&quot;C&quot;</span> {</div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span> </div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>FSS_CUDA_HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="dpf_8h.html#ad68402e7aee03a6d4c3b2d010c3c78fd">dpf_gen</a>(<a class="code hl_struct" href="structKey.html">Key</a> k, <a class="code hl_struct" href="structPointFunc.html">PointFunc</a> pf, uint8_t *sbuf);</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span> </div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>FSS_CUDA_HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="dpf_8h.html#aca61909af1ee9486fc2eb305cda99f4c">dpf_eval</a>(uint8_t *sbuf, uint8_t b, <a class="code hl_struct" href="structKey.html">Key</a> k, <a class="code hl_struct" href="structBits.html">Bits</a> x);</div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span><span class="keyword">extern</span> <span class="stringliteral">&quot;C&quot;</span> {</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="comment">// TODO: Move all alloc info to fss_prelude.h.</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span><span class="comment">// eval_full_domain: Each node allocs 2 * lambda.</span></div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="comment">// gen/eval: No allocation happens in it.</span></div>
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="dpf_8h.html#a0df906061a7ec171ceaf602fcf0648b7">dpf_gen</a>(<a class="code hl_struct" href="structDpfKey.html">DpfKey</a> k, <a class="code hl_struct" href="structPointFunc.html">PointFunc</a> pf, uint8_t *sbuf);</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>HOST_DEVICE <span class="keywordtype">void</span> <a class="code hl_function" href="dpf_8h.html#a65e9e04b9b6d043013fa09adc8a58597">dpf_eval</a>(uint8_t *sbuf, uint8_t b, <a class="code hl_struct" href="structDpfKey.html">DpfKey</a> k, <a class="code hl_struct" href="structBits.html">Bits</a> x);</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span><span class="comment">// TODO: Move all alloc info to fss_prelude.h.</span></div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span><span class="comment">// eval_full_domain: Each node allocs 2 * lambda.</span></div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span><span class="comment">// gen/eval: No allocation happens in it.</span></div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span><span class="keywordtype">void</span> <a class="code hl_function" href="dpf_8h.html#a59da95158a226307c56066bdeb0c5996">dpf_eval_full_domain</a>(uint8_t *sbuf, uint8_t b, <a class="code hl_struct" href="structDpfKey.html">DpfKey</a> k, <span class="keywordtype">int</span> x_bitlen);</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span> </div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>}</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span><span class="preprocessor">#endif</span></div>
-<div class="ttc" id="adpf_8h_html_a0df906061a7ec171ceaf602fcf0648b7"><div class="ttname"><a href="dpf_8h.html#a0df906061a7ec171ceaf602fcf0648b7">dpf_gen</a></div><div class="ttdeci">HOST_DEVICE void dpf_gen(DpfKey k, PointFunc pf, uint8_t *sbuf)</div><div class="ttdoc">DPF keygen.</div><div class="ttdef"><b>Definition</b> dpf.c:35</div></div>
-<div class="ttc" id="adpf_8h_html_a59da95158a226307c56066bdeb0c5996"><div class="ttname"><a href="dpf_8h.html#a59da95158a226307c56066bdeb0c5996">dpf_eval_full_domain</a></div><div class="ttdeci">void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, DpfKey k, int x_bitlen)</div><div class="ttdoc">DPF full domain eval i.e.</div><div class="ttdef"><b>Definition</b> dpf.c:211</div></div>
-<div class="ttc" id="adpf_8h_html_a65e9e04b9b6d043013fa09adc8a58597"><div class="ttname"><a href="dpf_8h.html#a65e9e04b9b6d043013fa09adc8a58597">dpf_eval</a></div><div class="ttdeci">HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, DpfKey k, Bits x)</div><div class="ttdoc">DPF eval at 1 input point.</div><div class="ttdef"><b>Definition</b> dpf.c:101</div></div>
-<div class="ttc" id="afss__decl_8h_html"><div class="ttname"><a href="fss__decl_8h.html">fss_decl.h</a></div></div>
-<div class="ttc" id="astructBits_html"><div class="ttname"><a href="structBits.html">Bits</a></div><div class="ttdoc">Support bitlen that is not a multiple of 8.</div><div class="ttdef"><b>Definition</b> fss_prelude.h:49</div></div>
-<div class="ttc" id="astructDpfKey_html"><div class="ttname"><a href="structDpfKey.html">DpfKey</a></div><div class="ttdoc">DPF key.</div><div class="ttdef"><b>Definition</b> dpf.h:32</div></div>
-<div class="ttc" id="astructDpfKey_html_a606b0526d57ce795c7de0133203ecb56"><div class="ttname"><a href="structDpfKey.html#a606b0526d57ce795c7de0133203ecb56">DpfKey::cws</a></div><div class="ttdeci">uint8_t * cws</div><div class="ttdoc">Correction words whose len = kDpfCwLen * kLambda.</div><div class="ttdef"><b>Definition</b> dpf.h:36</div></div>
-<div class="ttc" id="astructDpfKey_html_a75235711c67fe084d6551491580e1528"><div class="ttname"><a href="structDpfKey.html#a75235711c67fe084d6551491580e1528">DpfKey::cw_np1</a></div><div class="ttdeci">uint8_t * cw_np1</div><div class="ttdoc">Last correction word whose len = kLambda.</div><div class="ttdef"><b>Definition</b> dpf.h:40</div></div>
-<div class="ttc" id="astructPointFunc_html"><div class="ttname"><a href="structPointFunc.html">PointFunc</a></div><div class="ttdoc">Point function.</div><div class="ttdef"><b>Definition</b> dpf.h:18</div></div>
-<div class="ttc" id="astructPointFunc_html_a166d09c4dfc7b9cf41c96708354d7717"><div class="ttname"><a href="structPointFunc.html#a166d09c4dfc7b9cf41c96708354d7717">PointFunc::beta</a></div><div class="ttdeci">uint8_t * beta</div><div class="ttdoc">Little-endian kLambda bytes viewed as a group element.</div><div class="ttdef"><b>Definition</b> dpf.h:24</div></div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span><span class="keywordtype">void</span> <a class="code hl_function" href="dpf_8h.html#a851a7dffa2facea21ee734e7bb88356a">dpf_eval_full_domain</a>(uint8_t *sbuf, uint8_t b, <a class="code hl_struct" href="structKey.html">Key</a> k, <span class="keywordtype">int</span> x_bitlen);</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span> </div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>}</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span><span class="preprocessor">#endif</span></div>
+<div class="ttc" id="adpf_8h_html_a851a7dffa2facea21ee734e7bb88356a"><div class="ttname"><a href="dpf_8h.html#a851a7dffa2facea21ee734e7bb88356a">dpf_eval_full_domain</a></div><div class="ttdeci">void dpf_eval_full_domain(uint8_t *sbuf, uint8_t b, Key k, int x_bitlen)</div><div class="ttdoc">DPF full domain eval i.e.</div><div class="ttdef"><b>Definition</b> dpf.c:212</div></div>
+<div class="ttc" id="adpf_8h_html_aca61909af1ee9486fc2eb305cda99f4c"><div class="ttname"><a href="dpf_8h.html#aca61909af1ee9486fc2eb305cda99f4c">dpf_eval</a></div><div class="ttdeci">FSS_CUDA_HOST_DEVICE void dpf_eval(uint8_t *sbuf, uint8_t b, Key k, Bits x)</div><div class="ttdoc">DPF eval at 1 input point.</div><div class="ttdef"><b>Definition</b> dpf.c:102</div></div>
+<div class="ttc" id="adpf_8h_html_ad68402e7aee03a6d4c3b2d010c3c78fd"><div class="ttname"><a href="dpf_8h.html#ad68402e7aee03a6d4c3b2d010c3c78fd">dpf_gen</a></div><div class="ttdeci">FSS_CUDA_HOST_DEVICE void dpf_gen(Key k, PointFunc pf, uint8_t *sbuf)</div><div class="ttdoc">DPF keygen.</div><div class="ttdef"><b>Definition</b> dpf.c:35</div></div>
+<div class="ttc" id="agroup_8h_html"><div class="ttname"><a href="group_8h.html">group.h</a></div></div>
+<div class="ttc" id="aprg_8h_html"><div class="ttname"><a href="prg_8h.html">prg.h</a></div></div>
+<div class="ttc" id="astructBits_html"><div class="ttname"><a href="structBits.html">Bits</a></div><div class="ttdoc">Support bitlen that is not a multiple of 8.</div><div class="ttdef"><b>Definition</b> prelude.h:49</div></div>
+<div class="ttc" id="astructKey_html"><div class="ttname"><a href="structKey.html">Key</a></div><div class="ttdoc">Key used by DPF and DCF.</div><div class="ttdef"><b>Definition</b> prelude.h:65</div></div>
+<div class="ttc" id="astructPointFunc_html"><div class="ttname"><a href="structPointFunc.html">PointFunc</a></div><div class="ttdoc">Point function.</div><div class="ttdef"><b>Definition</b> prelude.h:92</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

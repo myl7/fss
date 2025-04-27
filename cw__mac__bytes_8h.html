@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>fss: include/cw_mac_bytes.h File Reference</title>
+<title>fss: include/fss/cw_mac_bytes.h File Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -70,7 +70,7 @@ $(function() {
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="dir_d44c64559bbebec7f509842c48db8b23.html">include</a></li>  </ul>
+<li class="navelem"><a class="el" href="dir_d44c64559bbebec7f509842c48db8b23.html">include</a></li><li class="navelem"><a class="el" href="dir_1ce451d8baf5c0b810a12cb720228ae9.html">fss</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
@@ -80,20 +80,20 @@ $(function() {
   <div class="headertitle"><div class="title">cw_mac_bytes.h File Reference</div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><code>#include &lt;<a class="el" href="fss__prelude_8h_source.html">fss_prelude.h</a>&gt;</code><br />
+<div class="textblock"><code>#include &lt;<a class="el" href="prelude_8h_source.html">fss/prelude.h</a>&gt;</code><br />
 <code>#include &lt;sodium.h&gt;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for cw_mac_bytes.h:</div>
 <div class="dyncontent">
-<div class="center"><img src="cw__mac__bytes_8h__incl.png" border="0" usemap="#ainclude_2cw__mac__bytes_8h" alt=""/></div>
-<map name="ainclude_2cw__mac__bytes_8h" id="ainclude_2cw__mac__bytes_8h">
-<area shape="rect" title=" " alt="" coords="29,5,211,31"/>
-<area shape="rect" href="fss__prelude_8h.html" title=" " alt="" coords="5,79,115,104"/>
-<area shape="poly" title=" " alt="" coords="112,33,81,70,76,66,108,29"/>
-<area shape="rect" title=" " alt="" coords="139,79,221,104"/>
-<area shape="poly" title=" " alt="" coords="132,29,164,66,159,70,128,33"/>
-<area shape="rect" title=" " alt="" coords="25,152,95,177"/>
-<area shape="poly" title=" " alt="" coords="63,104,63,138,57,138,57,104"/>
+<div class="center"><img src="cw__mac__bytes_8h__incl.png" border="0" usemap="#ainclude_2fss_2cw__mac__bytes_8h" alt=""/></div>
+<map name="ainclude_2fss_2cw__mac__bytes_8h" id="ainclude_2fss_2cw__mac__bytes_8h">
+<area shape="rect" title=" " alt="" coords="43,5,192,45"/>
+<area shape="rect" href="prelude_8h.html" title=" " alt="" coords="5,93,112,119"/>
+<area shape="poly" title=" " alt="" coords="105,47,78,84,74,80,101,44"/>
+<area shape="rect" title=" " alt="" coords="136,93,219,119"/>
+<area shape="poly" title=" " alt="" coords="134,44,162,81,158,84,130,47"/>
+<area shape="rect" title=" " alt="" coords="23,167,94,192"/>
+<area shape="poly" title=" " alt="" coords="61,119,61,153,56,153,56,119"/>
 </map>
 </div>
 </div>
@@ -270,10 +270,10 @@ Functions</h2></td></tr>
   <table class="params">
     <tr><td class="paramname">t0</td><td>Output share 0 </td></tr>
     <tr><td class="paramname">t1</td><td>Output share 1 </td></tr>
-    <tr><td class="paramname">sbufs0</td><td>Eval output points of party 0. Len of each output point is <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a>. Full domain eval output <code>sbuf</code> can be directly used. </td></tr>
+    <tr><td class="paramname">sbufs0</td><td>Eval output points of party 0. Len of each output point is lambda. Full domain eval output <code>sbuf</code> can be directly used. </td></tr>
     <tr><td class="paramname">sbufs1</td><td>Like <code>sbufs0</code> of party 1 </td></tr>
     <tr><td class="paramname">sbuf_num</td><td>Num of output points </td></tr>
-    <tr><td class="paramname">sbuf_step</td><td>Step between output points. <code>sbuf_step</code> &gt; <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> allows gaps between output points. </td></tr>
+    <tr><td class="paramname">sbuf_step</td><td>Step between output points. <code>sbuf_step</code> &gt; lambda allows gaps between output points. </td></tr>
     <tr><td class="paramname">wkeys</td><td>Field scalar elements as write keys corresponding to each input point. Holding write keys of a set of input points allows their output points to be non-zeros. Gen by <a class="el" href="cw__mac__bytes_8h.html#ab3155414cfd95fa93da68ea88b5af026">gen_wkey()</a>. </td></tr>
   </table>
   </dd>

@@ -80,13 +80,15 @@ $(function() {
 <p>Comparison function.  
  <a href="structCmpFunc.html#details">More...</a></p>
 
-<p><code>#include &lt;<a class="el" href="dcf_8h_source.html">dcf.h</a>&gt;</code></p>
+<p><code>#include &lt;<a class="el" href="prelude_8h_source.html">prelude.h</a>&gt;</code></p>
 <div class="dynheader">
 Collaboration diagram for CmpFunc:</div>
 <div class="dyncontent">
 <div class="center"><img src="structCmpFunc__coll__graph.png" border="0" usemap="#aCmpFunc_coll__map" alt="Collaboration graph"/></div>
 <map name="aCmpFunc_coll__map" id="aCmpFunc_coll__map">
-<area shape="rect" title="Comparison function." alt="" coords="5,93,88,119"/>
+<area shape="rect" title="Comparison function." alt="" coords="5,181,88,207"/>
+<area shape="rect" href="structPoint.html" title="Point (alpha, beta)" alt="" coords="19,93,74,119"/>
+<area shape="poly" title=" " alt="" coords="49,133,49,181,44,181,44,133"/>
 <area shape="rect" href="structBits.html" title="Support bitlen that is not a multiple of 8." alt="" coords="23,5,70,31"/>
 <area shape="poly" title=" " alt="" coords="49,45,49,93,44,93,44,45"/>
 </map>
@@ -94,39 +96,18 @@ Collaboration diagram for CmpFunc:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
-<tr class="memitem:ab49216747e61c5e70f66a6318d2aae1d" id="r_ab49216747e61c5e70f66a6318d2aae1d"><td class="memItemLeft" align="right" valign="top"><a id="ab49216747e61c5e70f66a6318d2aae1d" name="ab49216747e61c5e70f66a6318d2aae1d"></a>
-<a class="el" href="structBits.html">Bits</a>&#160;</td><td class="memItemRight" valign="bottom"><b>alpha</b></td></tr>
-<tr class="separator:ab49216747e61c5e70f66a6318d2aae1d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aad0c3f6c0d98c54ec66d6debec290f3b" id="r_aad0c3f6c0d98c54ec66d6debec290f3b"><td class="memItemLeft" align="right" valign="top">uint8_t *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structCmpFunc.html#aad0c3f6c0d98c54ec66d6debec290f3b">beta</a></td></tr>
-<tr class="memdesc:aad0c3f6c0d98c54ec66d6debec290f3b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Little-endian <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> bytes viewed as a group element.  <br /></td></tr>
-<tr class="separator:aad0c3f6c0d98c54ec66d6debec290f3b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a886a8fa8e798ffc41a734db841b1bba9" id="r_a886a8fa8e798ffc41a734db841b1bba9"><td class="memItemLeft" align="right" valign="top"><a id="a886a8fa8e798ffc41a734db841b1bba9" name="a886a8fa8e798ffc41a734db841b1bba9"></a>
+<a class="el" href="structPoint.html">Point</a>&#160;</td><td class="memItemRight" valign="bottom"><b>point</b></td></tr>
+<tr class="separator:a886a8fa8e798ffc41a734db841b1bba9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae311b9fdbd4385b22959dfc86d94b800" id="r_ae311b9fdbd4385b22959dfc86d94b800"><td class="memItemLeft" align="right" valign="top"><a id="ae311b9fdbd4385b22959dfc86d94b800" name="ae311b9fdbd4385b22959dfc86d94b800"></a>
-enum <a class="el" href="dcf_8h.html#a9c227051829479618e4f52c0b3642243">Bound</a>&#160;</td><td class="memItemRight" valign="bottom"><b>bound</b></td></tr>
+enum <a class="el" href="prelude_8h.html#a9c227051829479618e4f52c0b3642243">Bound</a>&#160;</td><td class="memItemRight" valign="bottom"><b>bound</b></td></tr>
 <tr class="separator:ae311b9fdbd4385b22959dfc86d94b800"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Comparison function. </p>
-<p>See <a class="el" href="dcf_8h.html#a9c227051829479618e4f52c0b3642243">Bound</a> for its def based on <code>bound</code>. </p>
-</div><h2 class="groupheader">Member Data Documentation</h2>
-<a id="aad0c3f6c0d98c54ec66d6debec290f3b" name="aad0c3f6c0d98c54ec66d6debec290f3b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aad0c3f6c0d98c54ec66d6debec290f3b">&#9670;&#160;</a></span>beta</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">uint8_t* CmpFunc::beta</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>Little-endian <a class="el" href="fss__prelude_8h.html#a8ea7c7457cb8cdd078d25438e0d22956">kLambda</a> bytes viewed as a group element. </p>
-<p>Its MSB is ignored and assumed to be 0. See <a class="el" href="fss__decl_8h.html">fss_decl.h</a> for details. </p>
-
-</div>
-</div>
-<hr/>The documentation for this struct was generated from the following file:<ul>
-<li>include/<a class="el" href="dcf_8h_source.html">dcf.h</a></li>
+<p>See <a class="el" href="prelude_8h.html#a9c227051829479618e4f52c0b3642243">Bound</a> for its def based on <code>bound</code>. </p>
+</div><hr/>The documentation for this struct was generated from the following file:<ul>
+<li>include/fss/<a class="el" href="prelude_8h_source.html">prelude.h</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->
