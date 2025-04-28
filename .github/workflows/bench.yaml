@@ -1,0 +1,44 @@
+name: Bench
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq ssh rsync
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ap-south-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AWS_SSH_KEY }}" > ~/.ssh/fss_bench
+          chmod 600 ~/.ssh/fss_bench
+
+      - name: Run bench
+        run: |
+          ./deploy/deploy_bench.sh
+
+      - name: Display bench results
+        run: cat fss_bench.log
+
+      - name: Upload bench results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench_log
+          path: fss_bench.log
+          if-no-files-found: error
