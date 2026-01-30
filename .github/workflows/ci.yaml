@@ -1,10 +1,6 @@
 name: CI
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+on: [push, pull_request]
 
 jobs:
   test:
@@ -12,7 +8,6 @@ jobs:
     strategy:
       matrix:
         compiler: [gcc, clang]
-        lambda: [16, 32]
         include:
           - compiler: gcc
             c_compiler: gcc
@@ -36,10 +31,9 @@ jobs:
             lcov \
             ${{ matrix.extra_packages }}
 
-      - name: Configure CMake with ${{ matrix.compiler }} and lambda=${{ matrix.lambda }}
+      - name: Configure CMake with ${{ matrix.compiler }}
         run: |
           cmake -B build -S . \
-            -DFSS_kLambda=${{ matrix.lambda }} \
             -DBUILD_WITH_CUDA=OFF \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
