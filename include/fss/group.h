@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (C) 2025 Yulong Ming (myl7)
-
 /**
  * @file group.h
+ * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
+ * @author Yulong Ming <i@myl.moe>
  *
  * # 1bit Truncation for Output Group
  *

@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (C) 2025 Yulong Ming (myl7)
+/**
+ * @file dpf.c
+ * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
+ * @author Yulong Ming <i@myl.moe>
+ */
 
 #include <fss/dpf.h>
 #include <string.h>
