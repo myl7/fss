@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18) # For CUDA
 project(
   fss
   VERSION 0.7.1
-  DESCRIPTION "Function secret sharing (FSS) primitives including distributed point functions (DPF) and distributed comparison functions (DCF)"
+  DESCRIPTION "Function secret sharing (FSS) primitives including distributed point functions (DPFs) and distributed comparison functions (DCFs)"
   HOMEPAGE_URL "https://github.com/myl7/fss"
   LANGUAGES C
 )
@@ -28,7 +28,7 @@ if(BUILD_TESTING)
   FetchContent_Declare(
     GTest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG e90fe2485641bab0d6af4500192dc503384950d1
+    GIT_TAG 56efe3983185e3f37e43415d1afa97e3860f187f
   )
 endif()
 
