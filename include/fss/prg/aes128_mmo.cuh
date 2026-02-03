@@ -24,12 +24,13 @@ private:
     EVP_CIPHER_CTX *ctxs_[mul];
 
 public:
-    Aes128Mmo(EVP_CIPHER_CTX *ctxs[mul]) {
+    __host__ Aes128Mmo(EVP_CIPHER_CTX *ctxs[mul]) {
         for (int i = 0; i < mul; i++) {
             ctxs_[i] = ctxs[i];
         }
     }
-    static cuda::std::array<EVP_CIPHER_CTX *, mul> InitCtxs(const unsigned char *keys[mul]) {
+    __host__ static cuda::std::array<EVP_CIPHER_CTX *, mul> InitCtxs(
+        const unsigned char *keys[mul]) {
         int ret;
         cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs;
 
@@ -48,15 +49,19 @@ public:
         return ctxs;
     }
 
-    static void FreeCtxs(EVP_CIPHER_CTX *ctxs[mul]) {
+    __host__ static void FreeCtxs(EVP_CIPHER_CTX *ctxs[mul]) {
         for (int i = 0; i < mul; ++i) {
             EVP_CIPHER_CTX_free(ctxs[i]);
         }
     }
 
-    cuda::std::array<int4, mul> Gen(int4 seed) {
-        cuda::std::array<int4, mul> out;
+    __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
+        cuda::std::array<int4, mul> out{};
 
+#ifdef __CUDA_ARCH__
+        assert(false && "Aes128Mmo is not supported on device side.");
+        __trap();
+#else
         for (int i = 0; i < mul; ++i) {
             int ret;
 
@@ -70,6 +75,8 @@ public:
 
             out[i] = fss::util::Xor(out[i], seed);
         }
+#endif
+
         return out;
     }
 };
