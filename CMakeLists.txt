@@ -3,15 +3,14 @@ project(fss
     VERSION 0.8.0
     DESCRIPTION "Function secret sharing (FSS) primitives including distributed point functions (DPFs) and distributed comparison functions (DCFs)"
     HOMEPAGE_URL "https://github.com/myl7/fss"
-    LANGUAGES C CXX)
+    LANGUAGES CUDA CXX)
 
 include(CTest)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-find_package(OpenMP)
-if(NOT OpenMP_FOUND)
-    message(WARNING "OpenMP not found. No multi-threading.")
-endif()
+# find_package(OpenMP)
+# if(NOT OpenMP_FOUND)
+#     message(WARNING "OpenMP not found. No multi-threading.")
+# endif()
 
 include(FetchContent)
 if(BUILD_TESTING)
@@ -29,38 +28,34 @@ if(BUILD_TESTING)
     include(GoogleTest)
 endif()
 
-add_library(dpf STATIC src/dpf.c)
-target_include_directories(dpf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-if(OpenMP_FOUND)
-    target_link_libraries(dpf PUBLIC OpenMP::OpenMP_C)
-endif()
-
-add_library(dcf STATIC src/dcf.c)
-target_include_directories(dcf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-if(OpenMP_FOUND)
-    target_link_libraries(dcf PUBLIC OpenMP::OpenMP_C)
-endif()
-
-# set_target_properties(dpf_cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+add_library(fss INTERFACE)
+target_include_directories(fss INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_features(fss INTERFACE cxx_std_20 cuda_std_20)
+set_target_properties(fss PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+# target_link_libraries(fss INTERFACE OpenSSL::Crypto)
+# if(OpenMP_FOUND)
+#     target_link_libraries(fss INTERFACE OpenMP::OpenMP_CXX)
+# endif()
 
 if(BUILD_TESTING)
     find_package(OpenSSL REQUIRED)
 
-    add_executable(dpf_bytes_test src/dpf_test.cc src/group/bytes.c src/prg/aes128_mmo.c)
-    target_link_libraries(dpf_bytes_test GTest::gtest_main dpf OpenSSL::Crypto)
+    add_executable(dpf_bytes_test src/dpf_test.cu)
+    target_link_libraries(dpf_bytes_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(dpf_bytes_test)
 
-    add_executable(dcf_bytes_test src/dcf_test.cc src/group/bytes.c src/prg/aes128_mmo.c)
+    add_executable(dcf_bytes_test src/dcf_test.cu)
     target_compile_definitions(dcf_bytes_test PRIVATE -DkBlocks=4)
-    target_link_libraries(dcf_bytes_test GTest::gtest_main dcf OpenSSL::Crypto)
+    target_link_libraries(dcf_bytes_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(dcf_bytes_test)
 
-    add_executable(dpf_u128_le_test src/dpf_test.cc src/group/u128_le.c src/prg/aes128_mmo.c)
-    target_link_libraries(dpf_u128_le_test GTest::gtest_main dpf OpenSSL::Crypto)
+    add_executable(dpf_u128_le_test src/dpf_test.cu)
+    target_compile_definitions(dpf_u128_le_test PRIVATE TEST_GROUP_U128)
+    target_link_libraries(dpf_u128_le_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(dpf_u128_le_test)
 
-    add_executable(dcf_u128_le_test src/dcf_test.cc src/group/u128_le.c src/prg/aes128_mmo.c)
-    target_compile_definitions(dcf_u128_le_test PRIVATE -DkBlocks=4)
-    target_link_libraries(dcf_u128_le_test GTest::gtest_main dcf OpenSSL::Crypto)
+    add_executable(dcf_u128_le_test src/dcf_test.cu)
+    target_compile_definitions(dcf_u128_le_test PRIVATE -DkBlocks=4 TEST_GROUP_U128)
+    target_link_libraries(dcf_u128_le_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(dcf_u128_le_test)
 endif()

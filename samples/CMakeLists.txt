@@ -1,38 +1,14 @@
-cmake_minimum_required(VERSION 3.18) # For CUDA
-project(fss_samples LANGUAGES C)
+cmake_minimum_required(VERSION 3.22)
+project(fss_samples LANGUAGES CUDA CXX)
 
-find_package(OpenSSL REQUIRED)
+# Header-only library for CUDA C++ API
+add_library(fss INTERFACE)
+target_include_directories(fss INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+target_compile_features(fss INTERFACE cxx_std_20 cuda_std_20)
 
-set(BUILD_TESTING OFF CACHE BOOL "")
-set(BUILD_WITH_CUDA OFF CACHE BOOL "")
-add_subdirectory(.. "${CMAKE_CURRENT_BINARY_DIR}/fss")
+# CUDA C++ API benchmarks (2^20 parallel gen/eval)
+add_executable(dpf_bench dpf_bench.cu)
+target_link_libraries(dpf_bench PRIVATE fss)
 
-add_executable(
-  sample_dpf_full_domain_bytes dpf_full_domain_bytes.c
-  ../src/group/bytes.c
-  ../src/prg/aes128_mmo.c
-)
-target_link_libraries(sample_dpf_full_domain_bytes PRIVATE dpf OpenSSL::Crypto)
-
-add_executable(
-  sample_dpf_bytes dpf_bytes.c
-  ../src/group/bytes.c
-  ../src/prg/aes128_mmo.c
-)
-target_link_libraries(sample_dpf_bytes PRIVATE dpf OpenSSL::Crypto)
-
-add_executable(
-  sample_dcf_full_domain_bytes dcf_full_domain_bytes.c
-  ../src/group/bytes.c
-  ../src/prg/aes128_mmo.c
-)
-target_compile_definitions(sample_dcf_full_domain_bytes PRIVATE -DkBlocks=4)
-target_link_libraries(sample_dcf_full_domain_bytes PRIVATE dcf OpenSSL::Crypto)
-
-add_executable(
-  sample_dcf_bytes dcf_bytes.c
-  ../src/group/bytes.c
-  ../src/prg/aes128_mmo.c
-)
-target_compile_definitions(sample_dcf_bytes PRIVATE -DkBlocks=4)
-target_link_libraries(sample_dcf_bytes PRIVATE dcf OpenSSL::Crypto)
+add_executable(dcf_bench dcf_bench.cu)
+target_link_libraries(dcf_bench PRIVATE fss)
