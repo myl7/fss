@@ -1,6 +1,9 @@
-# myl7/fss: FSS primitives including DPFs and DCFs
+# myl7/fss: FSS primitives including DPF and DCF
 
-Function secret sharing (FSS) primitives including distributed point functions (DPFs) and distributed comparison functions (DCFs)
+Function Secret Sharing (FSS) primitives including:
+
+- Distributed Point Function (DPF)
+- Distributed Comparison Function (DCF)
 
 ## License
 
