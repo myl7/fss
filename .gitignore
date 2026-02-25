@@ -5,7 +5,6 @@
 # Build outputs
 /build
 /cmake-build-*
-/samples/build
 
 # Doc outputs
 /doc/html

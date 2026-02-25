@@ -3,8 +3,6 @@
  * @file prg/chacha.cuh
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
- *
- * @brief ChaCha as a PRG.
  */
 
 #pragma once
@@ -15,6 +13,14 @@
 
 namespace fss::prg {
 
+/**
+ * %ChaCha as a PRG.
+ *
+ * @tparam mul See Prgable mul.
+ * For this class, can only be 2 or 4.
+ * @tparam rounds Security parameter.
+ * The default value is secure enough and widely used, thus preferred.
+ */
 template <int mul, int rounds = 20>
     requires(rounds % 2 == 0 && (mul == 2 || mul == 4))
 class ChaCha {
@@ -76,6 +82,13 @@ private:
     };
 
 public:
+    /**
+     * Constructor.
+     *
+     * @param nonce Can be randomly sampled by users.
+     * Read-only and can be shared by multiple instances.
+     * Users are responsible for managing their lifetime.
+     */
     __host__ __device__ ChaCha(const int *nonce) : nonce_(nonce) {}
 
     __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {

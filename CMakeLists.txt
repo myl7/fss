@@ -6,6 +6,7 @@ project(fss
     LANGUAGES CUDA CXX)
 
 include(CTest)
+include(GNUInstallDirs)
 
 # find_package(OpenMP)
 # if(NOT OpenMP_FOUND)
@@ -29,16 +30,21 @@ if(BUILD_TESTING)
 endif()
 
 add_library(fss INTERFACE)
-target_include_directories(fss INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(fss INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_compile_features(fss INTERFACE cxx_std_20 cuda_std_20)
 set_target_properties(fss PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-# target_link_libraries(fss INTERFACE OpenSSL::Crypto)
 # if(OpenMP_FOUND)
 #     target_link_libraries(fss INTERFACE OpenMP::OpenMP_CXX)
 # endif()
 
 if(BUILD_TESTING)
     find_package(OpenSSL REQUIRED)
+
+    add_executable(group_test src/group_test.cu)
+    target_link_libraries(group_test GTest::gtest_main fss)
+    gtest_discover_tests(group_test)
 
     add_executable(dpf_bytes_test src/dpf_test.cu)
     target_link_libraries(dpf_bytes_test GTest::gtest_main fss OpenSSL::Crypto)
@@ -59,3 +65,17 @@ if(BUILD_TESTING)
     target_link_libraries(dcf_u128_le_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(dcf_u128_le_test)
 endif()
+
+install(TARGETS fss EXPORT fssTargets)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT fssTargets
+    FILE fssConfig.cmake
+    NAMESPACE fss::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fss)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/fssConfigVersion.cmake"
+    COMPATIBILITY SameMajorVersion)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/fssConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fss)

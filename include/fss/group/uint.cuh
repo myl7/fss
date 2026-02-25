@@ -3,28 +3,33 @@
  * @file group/uint.cuh
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
- *
- * @brief Unsigned integers with arithmetic addition and optional modulo as a group
  */
 
 #pragma once
 #include <fss/group.cuh>
 #include <cuda_runtime.h>
-#include <cuda/std/utility>
 #include <type_traits>
 #include <cassert>
 
-// TODO: Better explain clamped bit
-// TODO: warning: integer constant is so large that it is unsigned
-// TODO: Prime field
-
 namespace fss::group {
 
+/**
+ * Unsigned integers with arithmetic addition and optional modulo as a group.
+ *
+ * @tparam T Type to store the value. From uint8_t to __uint128_t.
+ * @tparam mod Modulus, making the group addition defined as $a + b \mod mod$.
+ * If 0, use $a + b$ as the group addition, i.e., same as $mod = 2^{sizeof(T) * 8}$.
+ *
+ * When `T = __uint128_t`, because elements are clamped, any element has < 2^127 and 0 < `mod` <= 2^127.
+ *
+ * When `T = __uint128_t` and `mod` >= 2^64, the compiler would output warnings like "warning: integer constant is so large that it is unsigned".
+ * These warnings cannot be easily suppressed (I tried any in-code method I can find out), but they are harmless and can be ignored.
+ *
+ * Note that if you will use these groups as fields, i.e., perform multiplication, you must set `mod` to a prime number so that for random $a, b$, $a \cdot b$ is uniformly distributed in the field.
+ */
 template <typename T, T mod = 0>
     requires((std::is_unsigned_v<T> || std::is_same_v<T, __uint128_t>) && sizeof(T) <= 16 &&
-        (sizeof(T) < 16 ||
-            // For uint128, its LSB is always 0, so the uint128 < 2^127
-            (mod > 0 && mod >> 127 <= 1)))
+        (sizeof(T) < 16 || (mod > 0 && mod <= static_cast<T>(1) << 127)))
 struct Uint {
     T val;
 
@@ -58,9 +63,12 @@ struct Uint {
             val = static_cast<T>(static_cast<unsigned int>(buf.x)) |
                 static_cast<T>(static_cast<unsigned int>(buf.y)) << 32 |
                 static_cast<T>(static_cast<unsigned int>(buf.z)) << 64 |
-                // For uint128, LSB of buf.w is reserved for control bit
+                // For uint128, LSB of buf.w is the clamped bit
                 static_cast<T>(static_cast<unsigned int>(buf.w) >> 1) << 96;
-        else cuda::std::unreachable();
+        else __builtin_unreachable();
+
+        if constexpr (mod > 0) val %= mod;
+
         return {val};
     }
 
@@ -74,9 +82,9 @@ struct Uint {
             buf.x = static_cast<int>(val & 0xffffffff);
             buf.y = static_cast<int>((val >> 32) & 0xffffffff);
             buf.z = static_cast<int>((val >> 64) & 0xffffffff);
-            // For uint128, its LSB is always 0
+            // For uint128, its LSB is the clamped bit
             buf.w = static_cast<int>((val >> 96) << 1);
-        } else cuda::std::unreachable();
+        } else __builtin_unreachable();
         return buf;
     }
 

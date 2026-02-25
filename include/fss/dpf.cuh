@@ -4,9 +4,9 @@
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
  *
- * @brief 2-party distributed point function (DPF)
+ * @brief 2-party distributed point function (DPF).
  *
- * The scheme is from the paper, [_Function Secret Sharing: Improvements and Extensions_](https://eprint.iacr.org/2018/707) (@ref dpf "1").
+ * The scheme is from the paper, [_Function Secret Sharing: Improvements and Extensions_](https://eprint.iacr.org/2018/707) (@ref dpf "1: the published version").
  *
  * ## Definitions
  *
@@ -15,13 +15,21 @@
  * **DPF**: for the input domain $\sG_{in} = \{0, 1\}^n$, the output domain $(\sG_{out}, +)$ that is a group, $a \in \sG_{in}$, $b \in \sG_{out}$, and a security parameter $\lambda$, 2-party DPF is a scheme consisting of the methods:
  *
  * - Key generation: $Gen(1^\lambda, f_{a, b}) \rightarrow (k_0, k_1)$.
- * - Evaluation: $Eval(k_i, j) \rightarrow y_{i,j}$ for any $i \in \{0, 1\}$ and any $j \in \sG_{in}$.
+ * - Evaluation: $Eval(k_i, x) \rightarrow y_{i,x}$ for any $i \in \{0, 1\}$ and any $x \in \sG_{in}$.
  *
  * That satisfies:
  *
- * - Correctness: $y_{0, j} + y_{1, j} = b$ only when $j = a$, otherwise $y_{0, j} + y_{1, j} = 0$.
+ * - Correctness: $y_{0, x} + y_{1, x} = b$ only when $x = a$, otherwise $y_{0, x} + y_{1, x} = 0$.
  * - Privacy: Neither $k_0$ nor $k_1$ reveals any information about $a$ or $b$.
  *   Formally speaking, there exists a probabilistic polynomial time (PPT) simulator $Sim$ that can generate output computationally indistinguishable from any strict subset of the keys output by $Gen$.
+ *
+ * ## Implementation Details
+ *
+ * We fix the output domain size at 16B and always set the last word's LSB to 0, corresponding to $\lambda = 127$.
+ * See Groupable for more details.
+ *
+ * We limit the max input domain bit size to 128.
+ * This is enough for most applications and allows us to represent the input as an integer.
  *
  * ## References
  *
@@ -31,6 +39,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <type_traits>
+#include <cassert>
 #include <fss/group.cuh>
 #include <fss/prg.cuh>
 #include <fss/util.cuh>
@@ -39,9 +48,12 @@
 namespace fss {
 
 /**
- * DPF scheme.
+ * 2-party DPF scheme.
  *
- * TODO: lambda = 128
+ * @tparam in_bits Input domain bit size.
+ * @tparam Group Type for the output domain. See Groupable.
+ * @tparam Prg See Prgable.
+ * @tparam In Type for the input domain. From uint8_t to __uint128_t.
  */
 template <int in_bits, typename Group, typename Prg, typename In = uint>
     requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) &&
@@ -53,15 +65,27 @@ public:
     /**
      * Correction word.
      *
-     * TODO: s, tl, tr
+     * ## Layout
+     *
+     * According to the paper, there are s, tl, tr to be stored.
+     * tl is stored at the clamped bit of s.
      */
     struct __align__(32) Cw {
         int4 s;
         bool tr;
     };
+    // For only 1 and aligned memory access on GPU
+    static_assert(sizeof(Cw) == 32);
 
     /**
      * Key generation method.
+     *
+     * @param cws Pre-allocated array of Cw as returns. The array size must be `in_bits + 1`.
+     * @param s0s 2 initial seeds. Users can randomly sample them.
+     * @param a $a$.
+     * @param b_buf $b$. Will be clamped and converted to the group element.
+     *
+     * The key for party i consists of cws + s0s[i].
      */
     __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
         int4 s0 = s0s[0];
@@ -128,6 +152,12 @@ public:
 
     /**
      * Evaluation method.
+     *
+     * @param b Party index. False for 0 and true for 1. $i$.
+     * @param s0 Initial seed of the party.
+     * @param cws Returned by Gen().
+     * @param x Evaluated input. $x$.
+     * @return Output share. $y_{i,x}$.
      */
     __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x) {
         int4 s = s0;

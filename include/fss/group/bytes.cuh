@@ -3,8 +3,6 @@
  * @file group/bytes.cuh
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
- *
- * @brief Bytes with XOR as a group
  */
 
 #pragma once
@@ -15,6 +13,9 @@
 
 namespace fss::group {
 
+/**
+ * Bytes with XOR as a group.
+ */
 struct Bytes {
     int4 val;
 

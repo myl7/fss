@@ -1,1 +1,1 @@
-Read and follow /AGNETS.md
+AGENTS.md
