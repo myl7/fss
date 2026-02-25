@@ -4,7 +4,7 @@
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
  *
- * ChaCha as a PRG.
+ * @brief ChaCha as a PRG.
  */
 
 #pragma once

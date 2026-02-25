@@ -4,11 +4,28 @@
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
  *
- * 2-party Distributed Comparison Function (DCF) from the paper, [Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation](https://eprint.iacr.org/2020/1392).
+ * @brief 2-party distributed comparison function (DCF)
+ *
+ * The scheme is from the paper, [_Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation_](https://eprint.iacr.org/2020/1392) (@ref dcf "1").
+ *
+ * ## Definitions
+ *
+ * **Comparison function**: for the input domain $\sG_{in} = \{0, 1\}^n$, the output domain $(\sG_{out}, +)$ that is a group, $a \in \sG_{in}$, and $b \in \sG_{out}$, a comparison function $f^<_{a, b}$ is a function that for any input $x$, the output $y$ has $y = b$ only when $x < a$, otherwise $y = 0$.
+ *
+ * **DCF**: for the input domain $\sG_{in} = \{0, 1\}^n$, the output domain $(\sG_{out}, +)$ that is a group, $a \in \sG_{in}$, $b \in \sG_{out}$, and a security parameter $\lambda$, 2-party DCF is a scheme consisting of the methods:
+ *
+ * - Key generation: $Gen(1^\lambda, f^<_{a, b}) \rightarrow (k_0, k_1)$.
+ * - Evaluation: $Eval(k_i, j) \rightarrow y_{i,j}$ for any $i \in \{0, 1\}$ and any $j \in \sG_{in}$.
+ *
+ * That satisfies:
+ *
+ * - Correctness: $y_{0, j} + y_{1, j} = b$ only when $j < a$, otherwise $y_{0, j} + y_{1, j} = 0$.
+ * - Privacy: Neither $k_0$ nor $k_1$ reveals any information about $a$ or $b$.
+ *   Formally speaking, there exists a probabilistic polynomial time (PPT) simulator $Sim$ that can generate output computationally indistinguishable from any strict subset of the keys output by $Gen$.
  *
  * ## References
  *
- * - Boyle, E. et al. (2021). Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation. In: Canteaut, A., Standaert, FX. (eds) Advances in Cryptology – EUROCRYPT 2021. EUROCRYPT 2021. Lecture Notes in Computer Science(), vol 12697. Springer, Cham. <https://doi.org/10.1007/978-3-030-77886-6_30>.
+ * 1. Boyle, E. et al. (2021). Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation. In: Canteaut, A., Standaert, FX. (eds) Advances in Cryptology – EUROCRYPT 2021. EUROCRYPT 2021. Lecture Notes in Computer Science(), vol 12697. Springer, Cham. <https://doi.org/10.1007/978-3-030-77886-6_30>. @anchor dcf
  */
 
 #pragma once
@@ -28,8 +45,8 @@ namespace fss {
  * TODO: Definition for comparison of the input domain
  */
 enum class DcfPred {
-    kLt, /**< \f$y = b\f$ when \f$x < a\f$ */
-    kGt, /**< \f$y = b\f$ when \f$x > a\f$ */
+    kLt, /**< $y = b$ when $x < a$ */
+    kGt, /**< $y = b$ when $x > a$ */
 };
 
 /**

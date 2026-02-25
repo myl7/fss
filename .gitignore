@@ -9,3 +9,6 @@
 
 # Doc outputs
 /doc/html
+
+## AI agents
+.claude/**/*.local.*

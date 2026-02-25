@@ -2,6 +2,6 @@ tabWidth = 4
 printWidth = 100
 
 [[overrides]]
-files = ["*.yaml", "*.yml"]
+files = ["*.yaml", "*.yml", "*.json"]
 [overrides.options]
 tabWidth = 2

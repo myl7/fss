@@ -1,10 +1,3 @@
-// SPDX-License-Identifier: MIT
-/**
- * @file dcf_test.cu
- * @copyright MIT License. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
- * @author Yulong Ming <i@myl.moe>
- */
-
 #include <gtest/gtest.h>
 #include <cuda_runtime.h>
 #include <random>
@@ -137,7 +130,7 @@ protected:
 
     int4 s0s[2];
     DcfType::Cw cws[kAlphaBits + 1];
-    EVP_CIPHER_CTX *ctxs[4];
+    cuda::std::array<EVP_CIPHER_CTX *, 4> ctxs;
 
     void SetUp() override {
         unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
@@ -145,8 +138,7 @@ protected:
         unsigned char key2[16] = {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8};
         unsigned char key3[16] = {8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1};
         const unsigned char *keys[4] = {key0, key1, key2, key3};
-        auto ctx_arr = Prg::InitCtxs(keys);
-        for (int i = 0; i < 4; i++) ctxs[i] = ctx_arr[i];
+        ctxs = Prg::CreateCtxs(keys);
 
         std::random_device rd;
         std::mt19937 gen(rd());

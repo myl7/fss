@@ -1,9 +1,23 @@
-# myl7/fss: FSS primitives including DPF and DCF
+# myl7/fss
 
-Function Secret Sharing (FSS) primitives including:
+Function secret sharing (FSS) primitives including:
 
-- Distributed Point Function (DPF)
-- Distributed Comparison Function (DCF)
+- 2-party distributed point function (DPF)
+- 2-party distributed comparison function (DCF)
+
+## Introduction
+
+**Multi-party computation (MPC)** is a subfield of cryptography that aims to enable a group of parties (e.g., servers) to jointly compute a function over their inputs while keeping the inputs private.
+
+**Secret sharing** is a method that distributes a secret among a group of parties, such that no individual party holds any information about the secret.
+For example, a number $x$ can be secret-shared into $x_0, x_1$ via $x = x_0 + x_1$.
+
+**Function secret sharing (FSS)** is a scheme to secret-share a function into function shares.
+Each function share can be individually executed on a party.
+The outputs of the function shares are the shares of the output of the original function.
+FSS consists of 2 methods: `Gen` for generating function shares as "keys", and `Eval` for evaluating a key on a party to get a output share, shown as the following figure.
+
+[![](https://mermaid.ink/img/pako:eNpVkc1OwzAQhF_F2gNKhBPZJc2PBZVKoFzohd6QL6ax20iJXRkHGqq-O05KK2r54PF-M3PYA6xNJYGBasz3eiusQ69vXCN_5gEHRTBSFD2gxWoVv0gdqJBDeJo_Eg_05G_4_CWaYMD3_wg6EPSKoFdE6YGFsaj3jAr2Ib7_sDOfeYtGW38B5yiKZr4S3fjUc_8oUBRHqOQaMGxsXQFztpMYWmlbMUg4DDgHt5Wt5MD8s5JKdI3jwPXR23ZCvxvTnp3WdJstMCWaT6-6XSWcfKrFxor28mulrqQtTacdMJrRyZgC7AB7YGkWp3cZoSRJUn-LBEMPrMhiOkmKIiFFTvOcTo8YfsZaEufZFIOsamfs8rSOcSvHXweacxw?type=png)](https://mermaid.live/edit#pako:eNpVkc1OwzAQhF_F2gNKhBPZJc2PBZVKoFzohd6QL6ax20iJXRkHGqq-O05KK2r54PF-M3PYA6xNJYGBasz3eiusQ69vXCN_5gEHRTBSFD2gxWoVv0gdqJBDeJo_Eg_05G_4_CWaYMD3_wg6EPSKoFdE6YGFsaj3jAr2Ib7_sDOfeYtGW38B5yiKZr4S3fjUc_8oUBRHqOQaMGxsXQFztpMYWmlbMUg4DDgHt5Wt5MD8s5JKdI3jwPXR23ZCvxvTnp3WdJstMCWaT6-6XSWcfKrFxor28mulrqQtTacdMJrRyZgC7AB7YGkWp3cZoSRJUn-LBEMPrMhiOkmKIiFFTvOcTo8YfsZaEufZFIOsamfs8rSOcSvHXweacxw)
 
 ## License
 

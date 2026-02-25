@@ -4,9 +4,7 @@
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
  *
- * Unsigned integers with arithmetic addition and optional modulo as a group.
- *
- * TODO: Prime field
+ * @brief Unsigned integers with arithmetic addition and optional modulo as a group
  */
 
 #pragma once
@@ -17,6 +15,8 @@
 #include <cassert>
 
 // TODO: Better explain clamped bit
+// TODO: warning: integer constant is so large that it is unsigned
+// TODO: Prime field
 
 namespace fss::group {
 
@@ -24,7 +24,7 @@ template <typename T, T mod = 0>
     requires((std::is_unsigned_v<T> || std::is_same_v<T, __uint128_t>) && sizeof(T) <= 16 &&
         (sizeof(T) < 16 ||
             // For uint128, its LSB is always 0, so the uint128 < 2^127
-            (mod > 0 && mod <= static_cast<T>(1) << 127)))
+            (mod > 0 && mod >> 127 <= 1)))
 struct Uint {
     T val;
 
@@ -38,7 +38,7 @@ struct Uint {
     __host__ __device__ Uint operator-() const {
         if constexpr (mod == 0) return {-val};
 
-        if (val == 0) return {static_cast<T>(0)};
+        if (val == 0) return {0};
         else return {mod - val};
     }
 
@@ -48,7 +48,7 @@ struct Uint {
         assert((buf.w & 1) == 0);
 
         T val = 0;
-        if constexpr (sizeof(T) < 4) val = buf.x & ((static_cast<T>(1) << 8 * sizeof(T)) - 1);
+        if constexpr (sizeof(T) < 4) val = buf.x & ((1 << 8 * sizeof(T)) - 1);
         // Cast to unsigned int first to prevent sign extension when promoting to larger types
         else if constexpr (sizeof(T) == 4) val = static_cast<unsigned int>(buf.x);
         else if constexpr (sizeof(T) == 8)

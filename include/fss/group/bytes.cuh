@@ -4,7 +4,7 @@
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
  * @author Yulong Ming <i@myl.moe>
  *
- * Bytes with XOR as a group.
+ * @brief Bytes with XOR as a group
  */
 
 #pragma once

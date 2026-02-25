@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22) # For Ubuntu 22.04
 project(fss
     VERSION 0.8.0
-    DESCRIPTION "Function Secret Sharing (FSS) primitives including Distributed Point Function (DPF) and Distributed Comparison Function (DCF)"
+    DESCRIPTION "Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)"
     HOMEPAGE_URL "https://github.com/myl7/fss"
     LANGUAGES CUDA CXX)
 
