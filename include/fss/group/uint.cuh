@@ -34,17 +34,17 @@ struct Uint {
     T val;
 
     __host__ __device__ Uint operator+(Uint rhs) const {
-        if constexpr (mod == 0) return {val + rhs.val};
+        if constexpr (mod == 0) return {static_cast<T>(val + rhs.val)};
 
-        if (val >= mod - rhs.val) return {val + rhs.val - mod};
-        else return {val + rhs.val};
+        if (val >= mod - rhs.val) return {static_cast<T>(val + rhs.val - mod)};
+        else return {static_cast<T>(val + rhs.val)};
     }
 
     __host__ __device__ Uint operator-() const {
-        if constexpr (mod == 0) return {-val};
+        if constexpr (mod == 0) return {static_cast<T>(-val)};
 
         if (val == 0) return {0};
-        else return {mod - val};
+        else return {static_cast<T>(mod - val)};
     }
 
     __host__ __device__ Uint() : val(0) {}
