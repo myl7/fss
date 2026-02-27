@@ -113,6 +113,7 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 <ul>
 <li>First-class support for GPU (based on CUDA)</li>
 <li>Well-commented and documented</li>
+<li>Header-only library, easy for integration</li>
 </ul>
 <h1><a class="anchor" id="autotoc_md1"></a>
 Introduction</h1>
@@ -122,6 +123,171 @@ Introduction</h1>
 <p><a href="https://mermaid.live/edit#pako:eNpVkc1OwzAQhF_F2gNKhBPZJc2PBZVKoFzohd6QL6ax20iJXRkHGqq-O05KK2r54PF-M3PYA6xNJYGBasz3eiusQ69vXCN_5gEHRTBSFD2gxWoVv0gdqJBDeJo_Eg_05G_4_CWaYMD3_wg6EPSKoFdE6YGFsaj3jAr2Ib7_sDOfeYtGW38B5yiKZr4S3fjUc_8oUBRHqOQaMGxsXQFztpMYWmlbMUg4DDgHt5Wt5MD8s5JKdI3jwPXR23ZCvxvTnp3WdJstMCWaT6-6XSWcfKrFxor28mulrqQtTacdMJrRyZgC7AB7YGkWp3cZoSRJUn-LBEMPrMhiOkmKIiFFTvOcTo8YfsZaEufZFIOsamfs8rSOcSvHXweacxw"><img src="https://mermaid.ink/img/pako:eNpVkc1OwzAQhF_F2gNKhBPZJc2PBZVKoFzohd6QL6ax20iJXRkHGqq-O05KK2r54PF-M3PYA6xNJYGBasz3eiusQ69vXCN_5gEHRTBSFD2gxWoVv0gdqJBDeJo_Eg_05G_4_CWaYMD3_wg6EPSKoFdE6YGFsaj3jAr2Ib7_sDOfeYtGW38B5yiKZr4S3fjUc_8oUBRHqOQaMGxsXQFztpMYWmlbMUg4DDgHt5Wt5MD8s5JKdI3jwPXR23ZCvxvTnp3WdJstMCWaT6-6XSWcfKrFxor28mulrqQtTacdMJrRyZgC7AB7YGkWp3cZoSRJUn-LBEMPrMhiOkmKIiFFTvOcTo8YfsZaEufZFIOsamfs8rSOcSvHXweacxw?type=png" alt="" class="inline"/></a></p>
 <p><b>DPF/DCF</b> are FSS for point/comparison functions. They are called out because 2-party DPF/DCF can have \(O(\log N)\) key size, where \(N\) is the input domain size. Meanwhile, 3-or-more-party DPF/DCF and general FSS have \(O(\sqrt{N})\) key size. More details, including the definitions and the implementation details that users must care about, can be found in the documentation of <a class="el" href="dpf_8cuh.html" title="2-party distributed point function (DPF).">dpf.cuh</a> and <a class="el" href="dcf_8cuh.html" title="2-party distributed comparison function (DCF).">dcf.cuh</a> files.</p>
 <h1><a class="anchor" id="autotoc_md2"></a>
+Get Started</h1>
+<h2><a class="anchor" id="autotoc_md3"></a>
+Prerequisites</h2>
+<ul>
+<li>CMake &gt;= 3.22</li>
+<li>CUDA toolkit &gt;= 12.0 (for C++20 support). Tested on the latest CUDA toolkit.</li>
+<li>OpenSSL (only required for CPU)</li>
+</ul>
+<h2><a class="anchor" id="autotoc_md4"></a>
+Build</h2>
+<p>Clone the repository:</p>
+<div class="fragment"><div class="line">git clone https://github.com/myl7/fss.git</div>
+<div class="line">cd fss</div>
+</div><!-- fragment --><p><b>Option A: Install via CMake and use <code>find_package</code></b></p>
+<div class="fragment"><div class="line">cmake -B build -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/path/to/install</div>
+<div class="line">cmake --build build</div>
+<div class="line">cmake --install build</div>
+</div><!-- fragment --><p>Then in your project's <code>CMakeLists.txt</code>:</p>
+<div class="fragment"><div class="line">find_package(fss REQUIRED)</div>
+<div class="line">target_link_libraries(your_target fss::fss)</div>
+</div><!-- fragment --><p>When configuring your project, point CMake to the install prefix:</p>
+<div class="fragment"><div class="line">cmake -B build -DCMAKE_PREFIX_PATH=/path/to/install</div>
+</div><!-- fragment --><p><b>Option B: Use as a subdirectory (header-only)</b></p>
+<p>Without installing, you can define the target directly in your <code>CMakeLists.txt</code>, like the samples do:</p>
+<div class="fragment"><div class="line">add_library(fss INTERFACE)</div>
+<div class="line">target_include_directories(fss INTERFACE &quot;/path/to/fss/include&quot;)</div>
+<div class="line">target_compile_features(fss INTERFACE cxx_std_20 cuda_std_20)</div>
+</div><!-- fragment --><p>Then link it in your project:</p>
+<div class="fragment"><div class="line">target_link_libraries(your_target fss)</div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md5"></a>
+CPU</h2>
+<p>This walks through using DPF and DCF on the CPU with AES-128 MMO PRG. This PRG requires OpenSSL.</p>
+<ol type="1">
+<li><p class="startli">Include the headers and set up type aliases:</p>
+<div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="dpf_8cuh.html">fss/dpf.cuh</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="dcf_8cuh.html">fss/dcf.cuh</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="bytes_8cuh.html">fss/group/bytes.cuh</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="aes128__mmo_8cuh.html">fss/prg/aes128_mmo.cuh</a>&gt;</span></div>
+<div class="line"> </div>
+<div class="line"><span class="keyword">constexpr</span> <span class="keywordtype">int</span> kInBits = 8;  <span class="comment">// Input domain: 2^8 = 256 values</span></div>
+<div class="line"><span class="keyword">using </span>In = uint8_t;</div>
+<div class="line"><span class="keyword">using </span>Group = <a class="code hl_struct" href="structfss_1_1group_1_1Bytes.html">fss::group::Bytes</a>;</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// DPF uses mul=2, DCF uses mul=4</span></div>
+<div class="line"><span class="keyword">using </span>DpfPrg = <a class="code hl_class" href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo&lt;2&gt;</a>;</div>
+<div class="line"><span class="keyword">using </span>DcfPrg = <a class="code hl_class" href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo&lt;4&gt;</a>;</div>
+<div class="line"><span class="keyword">using </span>Dpf = <a class="code hl_class" href="classfss_1_1Dpf.html">fss::Dpf&lt;kInBits, Group, DpfPrg, In&gt;</a>;</div>
+<div class="line"><span class="keyword">using </span>Dcf = <a class="code hl_class" href="classfss_1_1Dcf.html">fss::Dcf&lt;kInBits, Group, DcfPrg, In&gt;</a>;</div>
+<div class="ttc" id="aaes128__mmo_8cuh_html"><div class="ttname"><a href="aes128__mmo_8cuh.html">aes128_mmo.cuh</a></div></div>
+<div class="ttc" id="abytes_8cuh_html"><div class="ttname"><a href="bytes_8cuh.html">bytes.cuh</a></div></div>
+<div class="ttc" id="aclassfss_1_1Dcf_html"><div class="ttname"><a href="classfss_1_1Dcf.html">fss::Dcf</a></div><div class="ttdoc">2-party DCF scheme.</div><div class="ttdef"><b>Definition</b> dcf.cuh:75</div></div>
+<div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:61</div></div>
+<div class="ttc" id="aclassfss_1_1prg_1_1Aes128Mmo_html"><div class="ttname"><a href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a></div><div class="ttdoc">AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.cuh:27</div></div>
+<div class="ttc" id="adcf_8cuh_html"><div class="ttname"><a href="dcf_8cuh.html">dcf.cuh</a></div><div class="ttdoc">2-party distributed comparison function (DCF).</div></div>
+<div class="ttc" id="adpf_8cuh_html"><div class="ttname"><a href="dpf_8cuh.html">dpf.cuh</a></div><div class="ttdoc">2-party distributed point function (DPF).</div></div>
+<div class="ttc" id="astructfss_1_1group_1_1Bytes_html"><div class="ttname"><a href="structfss_1_1group_1_1Bytes.html">fss::group::Bytes</a></div><div class="ttdoc">Bytes with XOR as a group.</div><div class="ttdef"><b>Definition</b> bytes.cuh:19</div></div>
+</div><!-- fragment --></li>
+<li><p class="startli">Create the PRG with AES keys and instantiate DPF/DCF:</p>
+<div class="fragment"><div class="line"><span class="comment">// DPF PRG needs 2 AES keys</span></div>
+<div class="line"><span class="keywordtype">unsigned</span> <span class="keywordtype">char</span> key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};</div>
+<div class="line"><span class="keywordtype">unsigned</span> <span class="keywordtype">char</span> key1[16] = {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};</div>
+<div class="line"><span class="keyword">const</span> <span class="keywordtype">unsigned</span> <span class="keywordtype">char</span> *keys[2] = {key0, key1};</div>
+<div class="line"><span class="keyword">auto</span> ctxs = DpfPrg::CreateCtxs(keys);</div>
+<div class="line"> </div>
+<div class="line">DpfPrg prg(ctxs);</div>
+<div class="line">Dpf dpf{prg};</div>
+</div><!-- fragment --></li>
+<li><p class="startli">Run <code>Gen</code> to generate correction words (keys) from secret inputs:</p>
+<div class="fragment"><div class="line">In alpha = 42;                  <span class="comment">// Secret point / threshold</span></div>
+<div class="line">int4 beta = {7, 0, 0, 0};      <span class="comment">// Secret payload (LSB of .w must be 0)</span></div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Random seeds for the two parties (LSB of .w must be 0)</span></div>
+<div class="line">int4 seeds[2] = {</div>
+<div class="line">    {0x11111111, 0x22222222, 0x33333333, 0x44444440},</div>
+<div class="line">    {0x55555555, 0x66666666, 0x77777777, <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(0x88888880u)},</div>
+<div class="line">};</div>
+<div class="line"> </div>
+<div class="line">Dpf::Cw cws[kInBits + 1];</div>
+<div class="line">dpf.Gen(cws, seeds, alpha, beta);</div>
+</div><!-- fragment --></li>
+<li><p class="startli">Run <code>Eval</code> on each party and reconstruct using the group:</p>
+<div class="fragment"><div class="line"><span class="comment">// Each party evaluates independently</span></div>
+<div class="line">int4 y0 = dpf.Eval(<span class="keyword">false</span>, seeds[0], cws, alpha);</div>
+<div class="line">int4 y1 = dpf.Eval(<span class="keyword">true</span>, seeds[1], cws, alpha);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Reconstruct via the group: convert to group elements, add, convert back</span></div>
+<div class="line"><span class="comment">// For Bytes group this is XOR; for Uint group this is arithmetic addition</span></div>
+<div class="line">int4 sum = (Group::From(y0) + Group::From(y1)).Into();</div>
+<div class="line"><span class="comment">// sum == beta at x == alpha, 0 otherwise</span></div>
+</div><!-- fragment --></li>
+<li><p class="startli">Free the AES contexts when done:</p>
+<div class="fragment"><div class="line">DpfPrg::FreeCtxs(ctxs);</div>
+</div><!-- fragment --></li>
+</ol>
+<p>DCF follows the same pattern — use <code>DcfPrg</code> (mul=4, needs 4 AES keys), <code>Dcf</code>, and <code>Dcf::Cw</code>. The reconstructed output equals <code>beta</code> when <code>x &lt; alpha</code> and <code>0</code> otherwise.</p>
+<p>Link with OpenSSL in your <code>CMakeLists.txt</code>:</p>
+<div class="fragment"><div class="line">find_package(OpenSSL REQUIRED)</div>
+<div class="line">target_link_libraries(your_target fss OpenSSL::Crypto)</div>
+</div><!-- fragment --><p>See <code>samples/dpf_dcf_cpu.cu</code> for the complete working example.</p>
+<h2><a class="anchor" id="autotoc_md6"></a>
+GPU</h2>
+<p>This walks through using DPF and DCF on the GPU with ChaCha PRG.</p>
+<ol type="1">
+<li><p class="startli">Include the headers and set up type aliases:</p>
+<div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="dpf_8cuh.html">fss/dpf.cuh</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="dcf_8cuh.html">fss/dcf.cuh</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="bytes_8cuh.html">fss/group/bytes.cuh</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="chacha_8cuh.html">fss/prg/chacha.cuh</a>&gt;</span></div>
+<div class="line"> </div>
+<div class="line"><span class="keyword">constexpr</span> <span class="keywordtype">int</span> kInBits = 8;</div>
+<div class="line"><span class="keyword">using </span>In = uint8_t;</div>
+<div class="line"><span class="keyword">using </span>Group = <a class="code hl_struct" href="structfss_1_1group_1_1Bytes.html">fss::group::Bytes</a>;</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// DPF uses mul=2, DCF uses mul=4</span></div>
+<div class="line"><span class="keyword">using </span>DpfPrg = <a class="code hl_class" href="classfss_1_1prg_1_1ChaCha.html">fss::prg::ChaCha&lt;2&gt;</a>;</div>
+<div class="line"><span class="keyword">using </span>DcfPrg = <a class="code hl_class" href="classfss_1_1prg_1_1ChaCha.html">fss::prg::ChaCha&lt;4&gt;</a>;</div>
+<div class="line"><span class="keyword">using </span>Dpf = <a class="code hl_class" href="classfss_1_1Dpf.html">fss::Dpf&lt;kInBits, Group, DpfPrg, In&gt;</a>;</div>
+<div class="line"><span class="keyword">using </span>Dcf = <a class="code hl_class" href="classfss_1_1Dcf.html">fss::Dcf&lt;kInBits, Group, DcfPrg, In&gt;</a>;</div>
+<div class="ttc" id="achacha_8cuh_html"><div class="ttname"><a href="chacha_8cuh.html">chacha.cuh</a></div></div>
+<div class="ttc" id="aclassfss_1_1prg_1_1ChaCha_html"><div class="ttname"><a href="classfss_1_1prg_1_1ChaCha.html">fss::prg::ChaCha</a></div><div class="ttdoc">ChaCha as a PRG.</div><div class="ttdef"><b>Definition</b> chacha.cuh:26</div></div>
+</div><!-- fragment --></li>
+<li><p class="startli">Set up a nonce in constant memory and create the PRG in a kernel:</p>
+<div class="fragment"><div class="line">__constant__ <span class="keywordtype">int</span> kNonce[2] = {0x12345678, 0x9abcdef0};</div>
+<div class="line"> </div>
+<div class="line">__global__ <span class="keywordtype">void</span> GenKernel(Dpf::Cw *cws, <span class="keyword">const</span> int4 *seeds, <span class="keyword">const</span> In *alphas, <span class="keyword">const</span> int4 *betas) {</div>
+<div class="line">    <span class="keywordtype">int</span> tid = blockIdx.x * blockDim.x + threadIdx.x;</div>
+<div class="line"> </div>
+<div class="line">    DpfPrg prg(kNonce);</div>
+<div class="line">    Dpf dpf{prg};</div>
+<div class="line"> </div>
+<div class="line">    int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};</div>
+<div class="line">    dpf.Gen(cws + tid * (kInBits + 1), s, alphas[tid], betas[tid]);</div>
+<div class="line">}</div>
+</div><!-- fragment --></li>
+<li><p class="startli">Prepare host data, copy to device, and launch the <code>Gen</code> kernel:</p>
+<div class="fragment"><div class="line">int4 *d_seeds = <span class="comment">/* cudaMalloc + cudaMemcpy seeds to device */</span>;</div>
+<div class="line">In *d_alphas = <span class="comment">/* cudaMalloc + cudaMemcpy alphas to device */</span>;</div>
+<div class="line">int4 *d_betas = <span class="comment">/* cudaMalloc + cudaMemcpy betas to device */</span>;</div>
+<div class="line"> </div>
+<div class="line">Dpf::Cw *d_cws;</div>
+<div class="line">cudaMalloc(&amp;d_cws, <span class="keyword">sizeof</span>(Dpf::Cw) * (kInBits + 1) * N);</div>
+<div class="line"> </div>
+<div class="line">GenKernel&lt;&lt;&lt;blocks, threads&gt;&gt;&gt;(d_cws, d_seeds, d_alphas, d_betas);</div>
+</div><!-- fragment --></li>
+<li><p class="startli">Write and launch an <code>Eval</code> kernel for each party, then copy results back:</p>
+<div class="fragment"><div class="line">__global__ <span class="keywordtype">void</span> EvalKernel(int4 *ys, <span class="keywordtype">bool</span> party, <span class="keyword">const</span> int4 *seeds, <span class="keyword">const</span> Dpf::Cw *cws, <span class="keyword">const</span> In *xs) {</div>
+<div class="line">    <span class="keywordtype">int</span> tid = blockIdx.x * blockDim.x + threadIdx.x;</div>
+<div class="line"> </div>
+<div class="line">    DpfPrg prg(kNonce);</div>
+<div class="line">    Dpf dpf{prg};</div>
+<div class="line"> </div>
+<div class="line">    ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);</div>
+<div class="line">}</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Launch for party 0 and party 1, then copy d_ys back to host</span></div>
+<div class="line">EvalKernel&lt;&lt;&lt;blocks, threads&gt;&gt;&gt;(d_ys, <span class="keyword">false</span>, d_seeds0, d_cws, d_xs);</div>
+<div class="line">EvalKernel&lt;&lt;&lt;blocks, threads&gt;&gt;&gt;(d_ys, <span class="keyword">true</span>, d_seeds1, d_cws, d_xs);</div>
+</div><!-- fragment --></li>
+<li><p class="startli">Reconstruct on the host using the group, same as the CPU case:</p>
+<div class="fragment"><div class="line">int4 sum = (Group::From(h_y0s[i]) + Group::From(h_y1s[i])).Into();</div>
+</div><!-- fragment --></li>
+</ol>
+<p>DCF follows the same pattern — use <code>DcfPrg</code> (mul=4), <code>Dcf</code>, and <code>Dcf::Cw</code>.</p>
+<p>See <code>samples/dpf_dcf_gpu.cu</code> for the complete working example.</p>
+<h1><a class="anchor" id="autotoc_md7"></a>
 License</h1>
 <p>Apache License, Version 2.0</p>
 <p>Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a> </p>

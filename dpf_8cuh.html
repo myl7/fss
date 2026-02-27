@@ -129,7 +129,7 @@ Classes</h2></td></tr>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a></dd></dl>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2018/707"><em>Function Secret Sharing: Improvements and Extensions</em></a> (<a class="el" href="dpf_8cuh.html#dpf">1: the published version</a>).</p>
-<h2><a class="anchor" id="autotoc_md7"></a>
+<h2><a class="anchor" id="autotoc_md12"></a>
 Definitions</h2>
 <p><b>Point function</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, \(a \in \sG_{in}\), and \(b \in \sG_{out}\), a point function \(f_{a, b}\) is a function that for any input \(x\), the output \(y\) has \(y = b\) only when \(x = a\), otherwise \(y = 0\).</p>
 <p><b>DPF</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, \(a \in \sG_{in}\), \(b \in \sG_{out}\), and a security parameter \(\lambda\), 2-party DPF is a scheme consisting of the methods:</p>
@@ -142,11 +142,11 @@ Definitions</h2>
 <li>Correctness: \(y_{0, x} + y_{1, x} = b\) only when \(x = a\), otherwise \(y_{0, x} + y_{1, x} = 0\).</li>
 <li>Privacy: Neither \(k_0\) nor \(k_1\) reveals any information about \(a\) or \(b\). Formally speaking, there exists a probabilistic polynomial time (PPT) simulator \(Sim\) that can generate output computationally indistinguishable from any strict subset of the keys output by \(Gen\).</li>
 </ul>
-<h2><a class="anchor" id="autotoc_md8"></a>
+<h2><a class="anchor" id="autotoc_md13"></a>
 Implementation Details</h2>
 <p>We fix the output domain size at 16B and always set the last word's LSB to 0, corresponding to \(\lambda = 127\). See Groupable for more details.</p>
 <p>We limit the max input domain bit size to 128. This is enough for most applications and allows us to represent the input as an integer.</p>
-<h2><a class="anchor" id="autotoc_md9"></a>
+<h2><a class="anchor" id="autotoc_md14"></a>
 References</h2>
 <ol type="1">
 <li>Elette Boyle, Niv Gilboa, and Yuval Ishai. 2016. Function Secret Sharing: Improvements and Extensions. In Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security (CCS '16). Association for Computing Machinery, New York, NY, USA, 1292–1303. <a href="https://doi.org/10.1145/2976749.2978429">https://doi.org/10.1145/2976749.2978429</a>.<a class="anchor" id="dpf"></a></li>

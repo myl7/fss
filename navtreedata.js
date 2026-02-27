@@ -26,7 +26,13 @@ var NAVTREE =
 [
   [ "myl7/fss", "index.html", [
     [ "Introduction", "index.html#autotoc_md1", null ],
-    [ "License", "index.html#autotoc_md2", null ],
+    [ "Get Started", "index.html#autotoc_md2", [
+      [ "Prerequisites", "index.html#autotoc_md3", null ],
+      [ "Build", "index.html#autotoc_md4", null ],
+      [ "CPU", "index.html#autotoc_md5", null ],
+      [ "GPU", "index.html#autotoc_md6", null ]
+    ] ],
+    [ "License", "index.html#autotoc_md7", null ],
     [ "Concepts", "concepts.html", "concepts" ],
     [ "Classes", "annotated.html", [
       [ "Class List", "annotated.html", "annotated_dup" ],

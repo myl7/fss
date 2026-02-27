@@ -138,7 +138,7 @@ Enumerations</h2></td></tr>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a></dd></dl>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2020/1392"><em>Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation</em></a> (<a class="el" href="dcf_8cuh.html#dcf">1: the published version</a>).</p>
-<h2><a class="anchor" id="autotoc_md3"></a>
+<h2><a class="anchor" id="autotoc_md8"></a>
 Definitions</h2>
 <p><b>Comparison function</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, \(a \in \sG_{in}\), and \(b \in \sG_{out}\), a comparison function \(f^&lt;_{a, b}\) is a function that for any input \(x\), the output \(y\) has \(y = b\) only when \(x &lt; a\), otherwise \(y = 0\).</p>
 <p><b>DCF</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, \(a \in \sG_{in}\), \(b \in \sG_{out}\), and a security parameter \(\lambda\), 2-party DCF is a scheme consisting of the methods:</p>
@@ -152,11 +152,11 @@ Definitions</h2>
 <li>Privacy: Neither \(k_0\) nor \(k_1\) reveals any information about \(a\) or \(b\). Formally speaking, there exists a probabilistic polynomial time (PPT) simulator \(Sim\) that can generate output computationally indistinguishable from any strict subset of the keys output by \(Gen\).</li>
 </ul>
 <p>Similarly, we have \(f^&gt;_{a, b}\) and DCF for it.</p>
-<h2><a class="anchor" id="autotoc_md4"></a>
+<h2><a class="anchor" id="autotoc_md9"></a>
 Implementation Details</h2>
 <p>We fix the output domain size at 16B and always set the last word's LSB to 0, corresponding to \(\lambda = 127\). See Groupable for more details.</p>
 <p>We limit the max input domain bit size to 128. This is enough for most applications and allows us to represent the input as an integer.</p>
-<h2><a class="anchor" id="autotoc_md5"></a>
+<h2><a class="anchor" id="autotoc_md10"></a>
 References</h2>
 <ol type="1">
 <li>Boyle, E. et al. (2021). Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation. In: Canteaut, A., Standaert, FX. (eds) Advances in Cryptology – EUROCRYPT 2021. EUROCRYPT 2021. Lecture Notes in Computer Science(), vol 12697. Springer, Cham. <a href="https://doi.org/10.1007/978-3-030-77886-6_30">https://doi.org/10.1007/978-3-030-77886-6_30</a>.<a class="anchor" id="dcf"></a></li>

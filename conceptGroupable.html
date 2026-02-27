@@ -127,10 +127,10 @@ $(document).ready(function(){initNavTree('conceptGroupable.html',''); initResiza
 </li>
 </ul>
 <p><code>Into()</code>: Convert the group element to a clamped 16B.</p>
-<h2><a class="anchor" id="autotoc_md11"></a>
+<h2><a class="anchor" id="autotoc_md16"></a>
 Implementation Details</h2>
 <p>We fix the output domain size at 16B and always set the last word's least significant bit (LSB) to 0, corresponding to \(\lambda = 127\). We call setting the last word's LSB to 0 as <b>clamping</b>, which is adapted from libsodium's documentation. We call this LSB as the clamped bit. This output domain is large enough for most applications. Larger output domain of DPF can be implemented with Spectrum's large message transformation (<a class="el" href="conceptGroupable.html#spectrum">1</a>) by applying a PRG to outputs. For general cases, you may repeat the scheme or modify the source code. When modifying the source code, you need to care about the stack usage on CPU and the register usage on GPU, which is the primary reason why we fix the output domain size.</p>
-<h2><a class="anchor" id="autotoc_md12"></a>
+<h2><a class="anchor" id="autotoc_md17"></a>
 References</h2>
 <ol type="1">
 <li>Newman, Z., Servan-Schreiber, S., &amp; Devadas, S. (2022). Spectrum: High-bandwidth anonymous broadcast. In 19th USENIX Symposium on Networked Systems Design and Implementation (NSDI 22) (pp. 229-248). <a href="https://www.usenix.org/conference/nsdi22/presentation/newman">https://www.usenix.org/conference/nsdi22/presentation/newman</a>.<a class="anchor" id="spectrum"></a></li>
