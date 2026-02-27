@@ -9,6 +9,7 @@
 #include <fss/prg.cuh>
 #include <cuda_runtime.h>
 #include <cuda/std/array>
+#include <cuda/std/span>
 #include <cassert>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
@@ -36,7 +37,9 @@ public:
      * Read-only and can be shared by multiple instances.
      * Users are responsible for managing their lifetime.
      */
-    __host__ Aes128Mmo(cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs) : ctxs_{ctxs} {}
+    __host__ Aes128Mmo(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs) {
+        for (int i = 0; i < mul; ++i) ctxs_[i] = ctxs[i];
+    }
 
     /**
      * Create cipher contexts.
@@ -61,7 +64,7 @@ public:
         return ctxs;
     }
 
-    __host__ static void FreeCtxs(cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs) {
+    __host__ static void FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs) {
         for (auto ctx : ctxs) {
             EVP_CIPHER_CTX_free(ctx);
         }
