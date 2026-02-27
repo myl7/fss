@@ -27,6 +27,11 @@ static bool Equal(int4 a, int4 b) {
     return memcmp(&a, &b, sizeof(int4)) == 0;
 }
 
+// Reconstruct: convert Eval outputs to group elements, add, convert back
+static int4 Reconstruct(int4 y0, int4 y1) {
+    return (Group::From(y0) + Group::From(y1)).Into();
+}
+
 static void DpfSample() {
     printf("=== DPF Sample ===\n");
 
@@ -57,7 +62,7 @@ static void DpfSample() {
     // At x == alpha: y0 + y1 == beta
     int4 y0 = dpf.Eval(false, seeds[0], cws, alpha);
     int4 y1 = dpf.Eval(true, seeds[1], cws, alpha);
-    int4 sum = {y0.x ^ y1.x, y0.y ^ y1.y, y0.z ^ y1.z, y0.w ^ y1.w};
+    int4 sum = Reconstruct(y0, y1);
     printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
 
     // At x != alpha: y0 + y1 == 0
@@ -65,7 +70,7 @@ static void DpfSample() {
     In x = 100;
     y0 = dpf.Eval(false, seeds[0], cws, x);
     y1 = dpf.Eval(true, seeds[1], cws, x);
-    sum = {y0.x ^ y1.x, y0.y ^ y1.y, y0.z ^ y1.z, y0.w ^ y1.w};
+    sum = Reconstruct(y0, y1);
     printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, Equal(sum, zero) ? "yes" : "NO");
 
     DpfPrg::FreeCtxs(ctxs);
@@ -106,20 +111,20 @@ static void DcfSample() {
     In x_lt = 10;
     int4 y0 = dcf.Eval(false, seeds[0], cws, x_lt);
     int4 y1 = dcf.Eval(true, seeds[1], cws, x_lt);
-    int4 sum = {y0.x ^ y1.x, y0.y ^ y1.y, y0.z ^ y1.z, y0.w ^ y1.w};
+    int4 sum = Reconstruct(y0, y1);
     printf("  Eval(x=%d  < alpha): y0+y1 == beta? %s\n", x_lt, Equal(sum, beta) ? "yes" : "NO");
 
     // x == alpha: y0 + y1 == 0
     y0 = dcf.Eval(false, seeds[0], cws, alpha);
     y1 = dcf.Eval(true, seeds[1], cws, alpha);
-    sum = {y0.x ^ y1.x, y0.y ^ y1.y, y0.z ^ y1.z, y0.w ^ y1.w};
+    sum = Reconstruct(y0, y1);
     printf("  Eval(x=%d == alpha): y0+y1 == 0?    %s\n", alpha, Equal(sum, zero) ? "yes" : "NO");
 
     // x > alpha: y0 + y1 == 0
     In x_gt = 200;
     y0 = dcf.Eval(false, seeds[0], cws, x_gt);
     y1 = dcf.Eval(true, seeds[1], cws, x_gt);
-    sum = {y0.x ^ y1.x, y0.y ^ y1.y, y0.z ^ y1.z, y0.w ^ y1.w};
+    sum = Reconstruct(y0, y1);
     printf("  Eval(x=%d > alpha): y0+y1 == 0?    %s\n", x_gt, Equal(sum, zero) ? "yes" : "NO");
 
     DcfPrg::FreeCtxs(ctxs);

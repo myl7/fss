@@ -158,8 +158,7 @@ static void DpfSample() {
     // Verify
     int correct = 0;
     for (int i = 0; i < kN; i++) {
-        int4 sum = {h_y0s[i].x ^ h_y1s[i].x, h_y0s[i].y ^ h_y1s[i].y, h_y0s[i].z ^ h_y1s[i].z,
-            h_y0s[i].w ^ h_y1s[i].w};
+        int4 sum = (Group::From(h_y0s[i]) + Group::From(h_y1s[i])).Into();
         int4 expected = (h_xs[i] == h_alphas[i]) ? h_betas[i] : int4{0, 0, 0, 0};
         if (memcmp(&sum, &expected, sizeof(int4)) == 0) correct++;
     }
@@ -231,8 +230,7 @@ static void DcfSample() {
     // Verify: y0 + y1 == beta when x < alpha, 0 otherwise
     int correct = 0;
     for (int i = 0; i < kN; i++) {
-        int4 sum = {h_y0s[i].x ^ h_y1s[i].x, h_y0s[i].y ^ h_y1s[i].y, h_y0s[i].z ^ h_y1s[i].z,
-            h_y0s[i].w ^ h_y1s[i].w};
+        int4 sum = (Group::From(h_y0s[i]) + Group::From(h_y1s[i])).Into();
         int4 expected = (h_xs[i] < h_alphas[i]) ? h_betas[i] : int4{0, 0, 0, 0};
         if (memcmp(&sum, &expected, sizeof(int4)) == 0) correct++;
     }
