@@ -1,9 +1,7 @@
 var searchData=
 [
-  ['cmpfunc_0',['CmpFunc',['../structCmpFunc.html',1,'']]],
-  ['commit_5fcw_5fmac_1',['commit_cw_mac',['../cw__mac__bytes_8h.html#ae6a81d7fb2f46414ea2d9c73c0754d5d',1,'cw_mac_bytes.c']]],
-  ['cw_5fmac_5fbytes_2eh_2',['cw_mac_bytes.h',['../cw__mac__bytes_8h.html',1,'']]],
-  ['cw_5fnp1_3',['cw_np1',['../structKey.html#a3c924926d35995d647abe6f7118c6057',1,'Key']]],
-  ['cwmacbytestest_4',['CwMacBytesTest',['../classCwMacBytesTest.html',1,'']]],
-  ['cws_5',['cws',['../structKey.html#aef0134cbfe6e9bb0a56ff1f06fd3f76f',1,'Key']]]
+  ['chacha_0',['chacha',['../classfss_1_1prg_1_1ChaCha.html',1,'fss::prg::ChaCha&lt; mul, rounds &gt;'],['../classfss_1_1prg_1_1ChaCha.html#a3cc5a97358c386d0c9545488f5f082f1',1,'fss::prg::ChaCha::ChaCha()']]],
+  ['chacha_2ecuh_1',['chacha.cuh',['../chacha_8cuh.html',1,'']]],
+  ['createctxs_2',['CreateCtxs',['../classfss_1_1prg_1_1Aes128Mmo.html#a59e602ac038fdd21c6ff7f64d6a1478c',1,'fss::prg::Aes128Mmo']]],
+  ['cw_3',['cw',['../structfss_1_1Dcf_1_1Cw.html',1,'fss::Dcf&lt; in_bits, Group, Prg, In, pred &gt;::Cw'],['../structfss_1_1Dpf_1_1Cw.html',1,'fss::Dpf&lt; in_bits, Group, Prg, In &gt;::Cw']]]
 ];

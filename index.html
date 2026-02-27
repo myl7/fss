@@ -5,13 +5,27 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>fss: Main Page</title>
+<title>myl7/fss: myl7/fss</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
+<link href="navtree.css" rel="stylesheet" type="text/css"/>
+<script type="text/javascript" src="resize.js"></script>
+<script type="text/javascript" src="navtreedata.js"></script>
+<script type="text/javascript" src="navtree.js"></script>
 <link href="search/search.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="search/searchdata.js"></script>
 <script type="text/javascript" src="search/search.js"></script>
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  extensions: ["tex2jax.js"],
+  jax: ["input/TeX","output/HTML-CSS"],
+   TeX: { Macros: {
+    sG: "{\\mathbb{G}}",
+  } }
+});
+</script>
+<script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
 </head>
 <body>
@@ -21,9 +35,9 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">fss<span id="projectnumber">&#160;0.7.1</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;0.8.0</span>
    </div>
-   <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point functions (DPF) and distributed comparison functions (DCF)</div>
+   <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
  </tr>
  </tbody>
@@ -48,6 +62,22 @@ $(function() {
 </script>
 <div id="main-nav"></div>
 </div><!-- top -->
+<div id="side-nav" class="ui-resizable side-nav-resizable">
+  <div id="nav-tree">
+    <div id="nav-tree-contents">
+      <div id="nav-sync" class="sync"></div>
+    </div>
+  </div>
+  <div id="splitbar" style="-moz-user-select:none;" 
+       class="ui-resizable-handle">
+  </div>
+</div>
+<script type="text/javascript">
+/* @license magnet:?xt=urn:btih:d3d9a9a6595521f9666a5e94cc830dab83b65699&amp;dn=expat.txt MIT */
+$(document).ready(function(){initNavTree('index.html',''); initResizable(); });
+/* @license-end */
+</script>
+<div id="doc-content">
 <!-- window showing the filter options -->
 <div id="MSearchSelectWindow"
      onmouseover="return searchBox.OnSearchSelectShow()"
@@ -69,14 +99,40 @@ $(function() {
 </div>
 </div>
 
-<div class="header">
-  <div class="headertitle"><div class="title">fss Documentation</div></div>
+<div><div class="header">
+  <div class="headertitle"><div class="title">myl7/fss </div></div>
 </div><!--header-->
 <div class="contents">
+<div class="textblock"><p><a class="anchor" id="md_README"></a> Function secret sharing (FSS) primitives including:</p>
+<ul>
+<li>2-party distributed point function (DPF)</li>
+<li>2-party distributed comparison function (DCF)</li>
+</ul>
+<p><a href="https://myl7.github.io/fss/">Documentation</a></p>
+<p>Features:</p>
+<ul>
+<li>First-class support for GPU (based on CUDA)</li>
+<li>Well-commented and documented</li>
+</ul>
+<h1><a class="anchor" id="autotoc_md1"></a>
+Introduction</h1>
+<p><b>Multi-party computation (MPC)</b> is a subfield of cryptography that aims to enable a group of parties (e.g., servers) to jointly compute a function over their inputs while keeping the inputs private.</p>
+<p><b>Secret sharing</b> is a method that distributes a secret among a group of parties, such that no individual party holds any information about the secret. For example, a number \(x\) can be secret-shared into \(x_0, x_1\) via \(x = x_0 + x_1\).</p>
+<p><b>FSS</b> is a scheme to secret-share a function into a group of function shares. Each function share, called as a <b>key</b>, can be individually evaluated on a party. The outputs of the keys are the shares of the original function output. FSS consists of 2 methods: <code>Gen</code> for generating function shares as keys and <code>Eval</code> for evaluating a key to get an output share. FSS's workflow is shown below:</p>
+<p><a href="https://mermaid.live/edit#pako:eNpVkc1OwzAQhF_F2gNKhBPZJc2PBZVKoFzohd6QL6ax20iJXRkHGqq-O05KK2r54PF-M3PYA6xNJYGBasz3eiusQ69vXCN_5gEHRTBSFD2gxWoVv0gdqJBDeJo_Eg_05G_4_CWaYMD3_wg6EPSKoFdE6YGFsaj3jAr2Ib7_sDOfeYtGW38B5yiKZr4S3fjUc_8oUBRHqOQaMGxsXQFztpMYWmlbMUg4DDgHt5Wt5MD8s5JKdI3jwPXR23ZCvxvTnp3WdJstMCWaT6-6XSWcfKrFxor28mulrqQtTacdMJrRyZgC7AB7YGkWp3cZoSRJUn-LBEMPrMhiOkmKIiFFTvOcTo8YfsZaEufZFIOsamfs8rSOcSvHXweacxw"><img src="https://mermaid.ink/img/pako:eNpVkc1OwzAQhF_F2gNKhBPZJc2PBZVKoFzohd6QL6ax20iJXRkHGqq-O05KK2r54PF-M3PYA6xNJYGBasz3eiusQ69vXCN_5gEHRTBSFD2gxWoVv0gdqJBDeJo_Eg_05G_4_CWaYMD3_wg6EPSKoFdE6YGFsaj3jAr2Ib7_sDOfeYtGW38B5yiKZr4S3fjUc_8oUBRHqOQaMGxsXQFztpMYWmlbMUg4DDgHt5Wt5MD8s5JKdI3jwPXR23ZCvxvTnp3WdJstMCWaT6-6XSWcfKrFxor28mulrqQtTacdMJrRyZgC7AB7YGkWp3cZoSRJUn-LBEMPrMhiOkmKIiFFTvOcTo8YfsZaEufZFIOsamfs8rSOcSvHXweacxw?type=png" alt="" class="inline"/></a></p>
+<p><b>DPF/DCF</b> are FSS for point/comparison functions. They are called out because 2-party DPF/DCF can have \(O(\log N)\) key size, where \(N\) is the input domain size. Meanwhile, 3-or-more-party DPF/DCF and general FSS have \(O(\sqrt{N})\) key size. More details, including the definitions and the implementation details that users must care about, can be found in the documentation of <a class="el" href="dpf_8cuh.html" title="2-party distributed point function (DPF).">dpf.cuh</a> and <a class="el" href="dcf_8cuh.html" title="2-party distributed comparison function (DCF).">dcf.cuh</a> files.</p>
+<h1><a class="anchor" id="autotoc_md2"></a>
+License</h1>
+<p>Apache License, Version 2.0</p>
+<p>Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a> </p>
+</div></div><!-- PageDoc -->
 </div><!-- contents -->
+</div><!-- doc-content -->
 <!-- start footer part -->
-<hr class="footer"/><address class="footer"><small>
-Generated by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
-</small></address>
+<div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->
+  <ul>
+    <li class="footer">Generated by <a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8 </li>
+  </ul>
+</div>
 </body>
 </html>

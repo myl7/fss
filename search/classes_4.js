@@ -1,5 +1,4 @@
 var searchData=
 [
-  ['point_0',['Point',['../structPoint.html',1,'']]],
-  ['pointfunc_1',['PointFunc',['../structPointFunc.html',1,'']]]
+  ['uint_0',['Uint',['../structfss_1_1group_1_1Uint.html',1,'fss::group']]]
 ];

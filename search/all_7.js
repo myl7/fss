@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['output_20group_0',['1bit Truncation for Output Group',['../group_8h.html#autotoc_md0',1,'']]]
+  ['implementation_20details_0',['implementation details',['../dcf_8cuh.html#autotoc_md4',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md8',1,'Implementation Details'],['../conceptGroupable.html#autotoc_md11',1,'Implementation Details']]],
+  ['introduction_1',['Introduction',['../index.html#autotoc_md1',1,'']]]
 ];
