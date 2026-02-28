@@ -34,7 +34,7 @@
  *
  * ## References
  *
- * 1. Newman, Z., Servan-Schreiber, S., & Devadas, S. (2022). Spectrum: High-bandwidth anonymous broadcast. In 19th USENIX Symposium on Networked Systems Design and Implementation (NSDI 22) (pp. 229-248). <https://www.usenix.org/conference/nsdi22/presentation/newman>. @anchor spectrum
+ * 1. 	Zachary Newman, Sacha Servan-Schreiber, Srinivas Devadas: Spectrum: High-bandwidth Anonymous Broadcast. NSDI 2022: 229-248. <https://www.usenix.org/conference/nsdi22/presentation/newman>. @anchor spectrum
  */
 template <typename Group>
 concept Groupable =

@@ -35,7 +35,7 @@
  *
  * ## References
  *
- * 1. Boyle, E. et al. (2021). Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation. In: Canteaut, A., Standaert, FX. (eds) Advances in Cryptology – EUROCRYPT 2021. EUROCRYPT 2021. Lecture Notes in Computer Science(), vol 12697. Springer, Cham. <https://doi.org/10.1007/978-3-030-77886-6_30>. @anchor dcf
+ * 1. Elette Boyle, Nishanth Chandran, Niv Gilboa, Divya Gupta, Yuval Ishai, Nishant Kumar, Mayank Rathee: Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation. EUROCRYPT (2) 2021: 871-900. <https://doi.org/10.1007/978-3-030-77886-6_30>. @anchor dcf
  */
 
 #pragma once
