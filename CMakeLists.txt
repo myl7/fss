@@ -37,6 +37,8 @@ target_compile_features(fss INTERFACE cxx_std_20 cuda_std_20)
 set_target_properties(fss PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 if(OpenMP_FOUND)
     target_link_libraries(fss INTERFACE OpenMP::OpenMP_CXX)
+    # Nvcc doesn't recognize OpenMP flags, so fix to manually pass them.
+    target_compile_options(fss INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${OpenMP_CXX_FLAGS}>)
 endif()
 
 if(BUILD_TESTING)

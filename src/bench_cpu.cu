@@ -106,6 +106,41 @@ static void BM_DpfEval(benchmark::State &state) {
     }
 }
 
+template <int in_bits, typename Group, typename Prg>
+static void BM_DpfEvalAll(benchmark::State &state) {
+    using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
+
+    int4 seeds[2] = {
+        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+    };
+    uint alpha = 42;
+    int4 beta = {7, 0, 0, 0};
+    typename DpfType::Cw cws[in_bits + 1];
+
+    constexpr size_t n = size_t{1} << in_bits;
+    std::vector<int4> ys(n);
+
+    if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+        AesCtx<2> ctx;
+        DpfType dpf{ctx.prg};
+        dpf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            dpf.EvalAll(false, seeds[0], cws, ys.data());
+            benchmark::DoNotOptimize(ys.data());
+        }
+    } else {
+        Prg prg(gNonce);
+        DpfType dpf{prg};
+        dpf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            dpf.EvalAll(false, seeds[0], cws, ys.data());
+            benchmark::DoNotOptimize(ys.data());
+        }
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+
 // --- DCF benchmarks ---
 
 template <int in_bits, typename Group, typename Prg>
@@ -169,6 +204,41 @@ static void BM_DcfEval(benchmark::State &state) {
     }
 }
 
+template <int in_bits, typename Group, typename Prg>
+static void BM_DcfEvalAll(benchmark::State &state) {
+    using DcfType = fss::Dcf<in_bits, Group, Prg, uint>;
+
+    int4 seeds[2] = {
+        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+    };
+    uint alpha = 42;
+    int4 beta = {7, 0, 0, 0};
+    typename DcfType::Cw cws[in_bits + 1];
+
+    constexpr size_t n = size_t{1} << in_bits;
+    std::vector<int4> ys(n);
+
+    if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<4>>) {
+        AesCtx<4> ctx;
+        DcfType dcf{ctx.prg};
+        dcf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            dcf.EvalAll(false, seeds[0], cws, ys.data());
+            benchmark::DoNotOptimize(ys.data());
+        }
+    } else {
+        Prg prg(gNonce);
+        DcfType dcf{prg};
+        dcf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            dcf.EvalAll(false, seeds[0], cws, ys.data());
+            benchmark::DoNotOptimize(ys.data());
+        }
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+
 // --- Registration ---
 // Combinations: 14/Uint/Aes, 17/Uint/Aes, 20/Uint/Aes, 20/Bytes/Aes, 20/Uint/ChaCha
 
@@ -190,6 +260,8 @@ BENCHMARK(BM_DpfEval<20, UintGroup, DpfAes>)->Name("BM_DpfEval_Uint_Aes/20");
 BENCHMARK(BM_DpfEval<20, BytesGroup, DpfAes>)->Name("BM_DpfEval_Bytes_Aes/20");
 BENCHMARK(BM_DpfEval<20, UintGroup, DpfChaCha>)->Name("BM_DpfEval_Uint_ChaCha/20");
 
+BENCHMARK(BM_DpfEvalAll<20, UintGroup, DpfAes>)->Name("BM_DpfEvalAll_Uint_Aes/20");
+
 // DCF
 BENCHMARK(BM_DcfGen<14, UintGroup, DcfAes>)->Name("BM_DcfGen_Uint_Aes/14");
 BENCHMARK(BM_DcfGen<17, UintGroup, DcfAes>)->Name("BM_DcfGen_Uint_Aes/17");
@@ -202,3 +274,5 @@ BENCHMARK(BM_DcfEval<17, UintGroup, DcfAes>)->Name("BM_DcfEval_Uint_Aes/17");
 BENCHMARK(BM_DcfEval<20, UintGroup, DcfAes>)->Name("BM_DcfEval_Uint_Aes/20");
 BENCHMARK(BM_DcfEval<20, BytesGroup, DcfAes>)->Name("BM_DcfEval_Bytes_Aes/20");
 BENCHMARK(BM_DcfEval<20, UintGroup, DcfChaCha>)->Name("BM_DcfEval_Uint_ChaCha/20");
+
+BENCHMARK(BM_DcfEvalAll<20, UintGroup, DcfAes>)->Name("BM_DcfEvalAll_Uint_Aes/20");
