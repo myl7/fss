@@ -55,8 +55,10 @@ namespace fss {
  * @tparam Group Type for the output domain. See Groupable.
  * @tparam Prg See Prgable.
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
+ * @tparam par_depth -1 is to use ceil(log(num of threads)), which should be good enough.
+ * Only EvalAll() uses it. See EvalAll() for details.
  */
-template <int in_bits, typename Group, typename Prg, typename In = uint>
+template <int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1>
     requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) &&
         in_bits <= sizeof(In) * 8 && Groupable<Group> && Prgable<Prg, 2>)
 class Dpf {
@@ -208,6 +210,18 @@ public:
 
     /**
      * Full domain evaluation method.
+     *
+     * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
+     * Store the outputs sequentially.
+     *
+     * b, s0, cws are the same as the ones in Eval().
+     *
+     * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
+     *
+     * Support parallel using OpenMP.
+     * The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads.
+     * par_depth = -1: use ceil(log(num of threads)).
+     * par_depth = 0: no parallelism, i.e., sequential execution.
      */
     void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
         int4 st = s0;
@@ -219,20 +233,22 @@ public:
         size_t r = 1ULL << in_bits;
         int i = 0;
 
-        int par_depth = 0;
-        int threads = omp_get_max_threads();
-        while ((1 << par_depth) < threads) {
-            par_depth++;
-        }
+        int par_depth_ = 0;
+        if (par_depth == -1) {
+            int threads = omp_get_max_threads();
+            while ((1 << par_depth_) < threads) {
+                par_depth_++;
+            }
+        } else par_depth_ = par_depth;
 
 #pragma omp parallel
 #pragma omp single
-        EvalTree(b, st, cws, ys, l, r, i, par_depth);
+        EvalTree(b, st, cws, ys, l, r, i, par_depth_);
     }
 
 private:
     void EvalTree(
-        bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth) {
+        bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_) {
         bool t = util::GetLsb(st);
         int4 s = st;
         s = util::SetLsb(s, false);
@@ -275,15 +291,15 @@ private:
 
         size_t mid = (l + r) / 2;
 
-        if (i < par_depth) {
+        if (i < par_depth_) {
 #pragma omp task
-            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth);
+            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
 #pragma omp task
-            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth);
+            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
 #pragma omp taskwait
         } else {
-            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth);
-            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth);
+            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
+            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
         }
     }
 };
