@@ -3,6 +3,7 @@
 #include <random>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 #include <fss/dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
@@ -76,6 +77,41 @@ protected:
         int4 expected_buf = expected.Into();
 
         EXPECT_EQ(memcmp(&result_buf, &expected_buf, GroupCompareSize<Group>()), 0);
+    }
+
+    void TestEvalAll() {
+        DpfType dpf{prg};
+
+        int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF),
+            static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
+            static_cast<int>((kBeta >> 64) & 0xFFFFFFFF),
+            static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
+        dpf.Gen(cws, s0s, kAlpha, b_buf);
+
+        constexpr size_t n = 1ULL << kAlphaBits;
+        std::vector<int4> ys0(n), ys1(n);
+
+        dpf.EvalAll(false, s0s[0], cws, ys0.data());
+        dpf.EvalAll(true, s0s[1], cws, ys1.data());
+
+        auto expected = Group::From(b_buf);
+        int4 expected_buf = expected.Into();
+        int4 zero = {0, 0, 0, 0};
+
+        for (size_t x = 0; x < n; ++x) {
+            auto g0 = Group::From(ys0[x]);
+            auto g1 = Group::From(ys1[x]);
+            auto result = g0 + g1;
+            int4 result_buf = result.Into();
+
+            if (x == kAlpha) {
+                EXPECT_EQ(memcmp(&result_buf, &expected_buf, GroupCompareSize<Group>()), 0)
+                    << "Failed at alpha=" << x;
+            } else {
+                EXPECT_EQ(memcmp(&result_buf, &zero, GroupCompareSize<Group>()), 0)
+                    << "Failed at x=" << x;
+            }
+        }
     }
 
     void TestEvalAtNonAlpha() {
@@ -176,6 +212,15 @@ TEST_F(DpfUint64ChaChaTest, EvalAtAlpha) {
 }
 TEST_F(DpfUint64ChaChaTest, EvalAtNonAlpha) {
     TestEvalAtNonAlpha();
+}
+TEST_F(DpfBytesChaChaTest, EvalAll) {
+    TestEvalAll();
+}
+TEST_F(DpfUint128ChaChaTest, EvalAll) {
+    TestEvalAll();
+}
+TEST_F(DpfUint64ChaChaTest, EvalAll) {
+    TestEvalAll();
 }
 
 // Tests for AES

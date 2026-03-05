@@ -3,6 +3,7 @@
 #include <random>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 #include <fss/dcf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
@@ -52,6 +53,41 @@ protected:
 
         s0s[0] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
         s0s[1] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
+    }
+
+    void TestEvalAll() {
+        DcfType dcf{prg};
+
+        int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF),
+            static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
+            static_cast<int>((kBeta >> 64) & 0xFFFFFFFF),
+            static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
+        dcf.Gen(cws, s0s, kAlpha, b_buf);
+
+        constexpr size_t n = 1ULL << kAlphaBits;
+        std::vector<int4> ys0(n), ys1(n);
+
+        dcf.EvalAll(false, s0s[0], cws, ys0.data());
+        dcf.EvalAll(true, s0s[1], cws, ys1.data());
+
+        auto expected = Group::From(b_buf);
+        int4 expected_buf = expected.Into();
+        int4 zero = {0, 0, 0, 0};
+
+        for (size_t x = 0; x < n; ++x) {
+            auto g0 = Group::From(ys0[x]);
+            auto g1 = Group::From(ys1[x]);
+            auto result = g0 + g1;
+            int4 result_buf = result.Into();
+
+            if (x < kAlpha) {
+                EXPECT_EQ(memcmp(&result_buf, &expected_buf, GroupCompareSize<Group>()), 0)
+                    << "Failed at x=" << x << " (expected beta)";
+            } else {
+                EXPECT_EQ(memcmp(&result_buf, &zero, GroupCompareSize<Group>()), 0)
+                    << "Failed at x=" << x << " (expected zero)";
+            }
+        }
     }
 
     void TestEvalLt() {
@@ -162,6 +198,15 @@ TEST_F(DcfUint128ChaChaTest, EvalLt) {
 }
 TEST_F(DcfUint64ChaChaTest, EvalLt) {
     TestEvalLt();
+}
+TEST_F(DcfBytesChaChaTest, EvalAll) {
+    TestEvalAll();
+}
+TEST_F(DcfUint128ChaChaTest, EvalAll) {
+    TestEvalAll();
+}
+TEST_F(DcfUint64ChaChaTest, EvalAll) {
+    TestEvalAll();
 }
 
 // Tests for AES

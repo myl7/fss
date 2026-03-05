@@ -39,11 +39,12 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <type_traits>
+#include <cstddef>
 #include <cassert>
+#include <omp.h>
 #include <fss/group.cuh>
 #include <fss/prg.cuh>
 #include <fss/util.cuh>
-// #include <omp.h>
 
 namespace fss {
 
@@ -205,97 +206,86 @@ public:
         return y.Into();
     }
 
-    // private:
-    //     // Recursive helper passing s and t by value/register
-    //     static void eval_full_domain_subtree(int depth, int4 *sbuf, size_t l, size_t r, uint8_t b,
-    //         Key k, int x_bitlen, int par_depth, int4 s, uint8_t t) {
-    //         if (depth == x_bitlen) {
-    //             // Leaf
-    //             Group g_s = *reinterpret_cast<Group *>(&s);
-    //             Group cw_np1 = *reinterpret_cast<Group *>(k.cw_np1);
+    /**
+     * Full domain evaluation method.
+     */
+    __host__ void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
+        int4 st = s0;
+        bool t = b;
+        st = util::SetLsb(st, t);
 
-    //             if (t) g_s = g_s + cw_np1;
-    //             if (b) g_s = -g_s;
+        assert(in_bits < sizeof(size_t) * 8);
+        size_t l = 0;
+        size_t r = 1ULL << in_bits;
+        int i = 0;
 
-    //             // Assume sbuf is array of Group (cast to int4 for API)
-    //             *reinterpret_cast<Group *>(&sbuf[l]) = g_s;
-    //             return;
-    //         }
+        int par_depth = 0;
+        int threads = omp_get_max_threads();
+        while ((1 << par_depth) < threads) {
+            par_depth++;
+        }
 
-    //         const uint8_t *cw = k.cws + depth * (kLambda + 1);
-    //         int4 s_cw = *reinterpret_cast<const int4 *>(cw);
-    //         // get_cwt
-    //         uint8_t tl_cw = cw[kLambda] >> 1;
-    //         uint8_t tr_cw = cw[kLambda] & 1;
+#pragma omp parallel
+#pragma omp single
+        EvalTree(b, st, cws, ys, l, r, i, par_depth);
+    }
 
-    //         int4 ss[2];  // sl, sr
-    //         uint8_t tl, tr;
+private:
+    __host__ void EvalTree(
+        bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth) {
+        bool t = util::GetLsb(st);
+        int4 s = st;
+        s = util::SetLsb(s, false);
 
-    //         Prg::gen(
-    //             reinterpret_cast<uint8_t *>(ss), 2 * kLambda, reinterpret_cast<const uint8_t *>(&s));
+        if (i == in_bits) {
+            auto y = Group::From(s);
+            int4 v_cw_np1 = cws[in_bits].s;
+            assert((v_cw_np1.w & 1) == 0);
+            if (t) y = y + Group::From(v_cw_np1);
+            if (b) y = -y;
+            assert(l + 1 == r);
+            ys[l] = y.Into();
+            return;
+        }
 
-    //         // load_sst: extract t from MSB and clear control bits
-    //         uint8_t *ss0_bytes = reinterpret_cast<uint8_t *>(&ss[0]);
-    //         uint8_t *ss1_bytes = reinterpret_cast<uint8_t *>(&ss[1]);
-    //         tl = ss0_bytes[15] >> 7;
-    //         ss0_bytes[15] &= 0x7F;
-    //         ss0_bytes[8] &= 0xFE;
-    //         tr = ss1_bytes[15] >> 7;
-    //         ss1_bytes[15] &= 0x7F;
-    //         ss1_bytes[8] &= 0xFE;
+        Cw cw = cws[i];
+        int4 s_cw = cw.s;
+        bool tl_cw = util::GetLsb(s_cw);
+        s_cw = util::SetLsb(s_cw, false);
+        bool tr_cw = cw.tr;
 
-    //         if (t) {
-    //             ss[0] = fss::util::Xor(ss[0], s_cw);
-    //             ss[1] = fss::util::Xor(ss[1], s_cw);
-    //             tl ^= tl_cw;
-    //             tr ^= tr_cw;
-    //         }
+        auto [sl, sr] = prg.Gen(s);
 
-    //         size_t mid = (l + r) / 2;
+        bool tl = util::GetLsb(sl);
+        sl = util::SetLsb(sl, false);
+        bool tr = util::GetLsb(sr);
+        sr = util::SetLsb(sr, false);
 
-    //         if (depth < par_depth) {
-    // #pragma omp parallel
-    // #pragma omp single
-    //             {
-    // #pragma omp task
-    //                 {
-    //                     eval_full_domain_subtree(
-    //                         depth + 1, sbuf, l, mid, b, k, x_bitlen, par_depth, ss[0], tl);
-    //                 }
-    // #pragma omp task
-    //                 {
-    //                     eval_full_domain_subtree(
-    //                         depth + 1, sbuf, mid, r, b, k, x_bitlen, par_depth, ss[1], tr);
-    //                 }
-    // #pragma omp taskwait
-    //             }
-    //         } else {
-    //             eval_full_domain_subtree(depth + 1, sbuf, l, mid, b, k, x_bitlen, par_depth, ss[0], tl);
-    //             eval_full_domain_subtree(depth + 1, sbuf, mid, r, b, k, x_bitlen, par_depth, ss[1], tr);
-    //         }
-    //     }
+        if (t) {
+            sl = util::Xor(sl, s_cw);
+            sr = util::Xor(sr, s_cw);
+            tl = tl ^ tl_cw;
+            tr = tr ^ tr_cw;
+        }
 
-    // public:
-    //     static void eval_full_domain(int4 *sbuf, uint8_t b, Key k, int x_bitlen) {
-    //         int4 s = sbuf[0];
-    //         uint8_t *s_bytes = reinterpret_cast<uint8_t *>(&s);
+        int4 stl = sl;
+        stl = util::SetLsb(stl, tl);
+        int4 str = sr;
+        str = util::SetLsb(str, tr);
 
-    //         // load_st: extract t from MSB and clear control bits
-    //         uint8_t t = s_bytes[15] >> 7;
-    //         s_bytes[15] &= 0x7F;
-    //         s_bytes[8] &= 0xFE;
-    //         t = b;
+        size_t mid = (l + r) / 2;
 
-    //         int threads = omp_get_max_threads();
-    //         int par_depth = 0;
-    //         while ((1 << par_depth) <= threads) {
-    //             par_depth++;
-    //         }
-    //         par_depth--;
-
-    //         size_t sbuf_len = 1ULL << x_bitlen;
-    //         eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen, par_depth, s, t);
-    //     }
+        if (i < par_depth) {
+#pragma omp task
+            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth);
+#pragma omp task
+            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth);
+#pragma omp taskwait
+        } else {
+            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth);
+            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth);
+        }
+    }
 };
 
 }  // namespace fss

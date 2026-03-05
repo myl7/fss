@@ -8,10 +8,10 @@ project(fss
 include(CTest)
 include(GNUInstallDirs)
 
-# find_package(OpenMP)
-# if(NOT OpenMP_FOUND)
-#     message(WARNING "OpenMP not found. No multi-threading.")
-# endif()
+find_package(OpenMP)
+if(NOT OpenMP_FOUND)
+    message(WARNING "OpenMP not found. No multi-threading.")
+endif()
 
 include(FetchContent)
 if(BUILD_TESTING)
@@ -35,9 +35,9 @@ target_include_directories(fss INTERFACE
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_compile_features(fss INTERFACE cxx_std_20 cuda_std_20)
 set_target_properties(fss PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-# if(OpenMP_FOUND)
-#     target_link_libraries(fss INTERFACE OpenMP::OpenMP_CXX)
-# endif()
+if(OpenMP_FOUND)
+    target_link_libraries(fss INTERFACE OpenMP::OpenMP_CXX)
+endif()
 
 if(BUILD_TESTING)
     find_package(OpenSSL REQUIRED)

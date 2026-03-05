@@ -41,11 +41,12 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <type_traits>
+#include <cstddef>
 #include <cassert>
+#include <omp.h>
 #include <fss/group.cuh>
 #include <fss/prg.cuh>
 #include <fss/util.cuh>
-// #include <omp.h>
 
 namespace fss {
 
@@ -273,129 +274,106 @@ public:
         return v.Into();
     }
 
-    // private:
-    //     // Recursive helper
-    //     static void eval_full_domain_subtree(int depth, int4 *sbuf, size_t l, size_t r, uint8_t b,
-    //         Key k, int x_bitlen, int par_depth, int4 s, uint8_t t, Group v) {
-    //         if (depth == x_bitlen) {
-    //             Group g_s = *reinterpret_cast<Group *>(&s);
-    //             Group term = g_s;
-    //             if (t) term = term + *reinterpret_cast<Group *>(k.v_cw_np1);
-    //             if (b) term = -term;
-    //             v = v + term;
-    //             *reinterpret_cast<Group *>(&sbuf[l]) = v;
-    //             return;
-    //         }
+    /**
+     * Full domain evaluation method.
+     */
+    __host__ void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
+        int4 st = s0;
+        bool t = b;
+        st = util::SetLsb(st, t);
 
-    //         const uint8_t *cw = k.cws + depth * (kLambda * 2 + 1);
-    //         int4 s_cw = *reinterpret_cast<const int4 *>(cw);
-    //         Group v_cw = *reinterpret_cast<const Group *>(cw + kLambda);
-    //         uint8_t tl_cw, tr_cw;
-    //         // get_cwt
-    //         tl_cw = cw[kLambda * 2] >> 1;
-    //         tr_cw = cw[kLambda * 2] & 1;
+        assert(in_bits < sizeof(size_t) * 8);
+        size_t l = 0;
+        size_t r = 1ULL << in_bits;
+        int i = 0;
 
-    //         Block svs[2];
+        int par_depth = 0;
+        int threads = omp_get_max_threads();
+        while ((1 << par_depth) < threads) {
+            par_depth++;
+        }
 
-    //         Prg::gen(
-    //             reinterpret_cast<uint8_t *>(svs), 4 * kLambda, reinterpret_cast<const uint8_t *>(&s));
+        Group v;
 
-    //         uint8_t tl, tr;
-    //         // load_svst(svs, &tl, &tr);
-    //         {
-    //             // svs[0]
-    //             uint8_t *s_bytes = reinterpret_cast<uint8_t *>(&svs[0].s);
-    //             tl = s_bytes[15] >> 7;
-    //             s_bytes[15] &= 0x7F;
-    //             s_bytes[8] &= 0xFE;
+#pragma omp parallel
+#pragma omp single
+        EvalTree(b, st, cws, ys, l, r, i, par_depth, v);
+    }
 
-    //             uint8_t *v_bytes = reinterpret_cast<uint8_t *>(&svs[0].v);
-    //             v_bytes[15] &= 0x7F;
-    //             v_bytes[8] &= 0xFE;
+private:
+    __host__ void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i,
+        int par_depth, Group v) {
+        bool t = util::GetLsb(st);
+        int4 s = st;
+        s = util::SetLsb(s, false);
 
-    //             // svs[1]
-    //             s_bytes = reinterpret_cast<uint8_t *>(&svs[1].s);
-    //             tr = s_bytes[15] >> 7;
-    //             s_bytes[15] &= 0x7F;
-    //             s_bytes[8] &= 0xFE;
+        if (i == in_bits) {
+            int4 v_cw_np1_buf = cws[in_bits].v;
+            assert((v_cw_np1_buf.w & 1) == 0);
+            auto term = Group::From(s);
+            if (t) term = term + Group::From(v_cw_np1_buf);
+            if (b) term = -term;
+            v = v + term;
+            assert(l + 1 == r);
+            ys[l] = v.Into();
+            return;
+        }
 
-    //             v_bytes = reinterpret_cast<uint8_t *>(&svs[1].v);
-    //             v_bytes[15] &= 0x7F;
-    //             v_bytes[8] &= 0xFE;
-    //         }
+        Cw cw = cws[i];
+        int4 s_cw = cw.s;
+        bool tl_cw = util::GetLsb(s_cw);
+        s_cw = util::SetLsb(s_cw, false);
+        int4 v_cw_buf = cw.v;
+        bool tr_cw = util::GetLsb(v_cw_buf);
+        v_cw_buf = util::SetLsb(v_cw_buf, false);
+        auto v_cw = Group::From(v_cw_buf);
 
-    //         if (t) {
-    //             svs[0].s = util::Xor(svs[0].s, s_cw);
-    //             svs[1].s = util::Xor(svs[1].s, s_cw);
-    //             tl ^= tl_cw;
-    //             tr ^= tr_cw;
-    //         }
+        auto [sl, vl_buf, sr, vr_buf] = prg.Gen(s);
 
-    //         Group vl = svs[0].v;
-    //         Group vr = svs[1].v;
+        bool tl = util::GetLsb(sl);
+        sl = util::SetLsb(sl, false);
+        vl_buf = util::SetLsb(vl_buf, false);
+        auto vl = Group::From(vl_buf);
 
-    //         if (t) {
-    //             vl = vl + v_cw;
-    //             vr = vr + v_cw;
-    //         }
-    //         if (b) {
-    //             vl = -vl;
-    //             vr = -vr;
-    //         }
+        bool tr = util::GetLsb(sr);
+        sr = util::SetLsb(sr, false);
+        vr_buf = util::SetLsb(vr_buf, false);
+        auto vr = Group::From(vr_buf);
 
-    //         vl = vl + v;
-    //         vr = vr + v;
+        if (t) {
+            sl = util::Xor(sl, s_cw);
+            sr = util::Xor(sr, s_cw);
+            tl = tl ^ tl_cw;
+            tr = tr ^ tr_cw;
+            vl = vl + v_cw;
+            vr = vr + v_cw;
+        }
+        if (b) {
+            vl = -vl;
+            vr = -vr;
+        }
 
-    //         size_t mid = (l + r) / 2;
+        vl = vl + v;
+        vr = vr + v;
 
-    //         if (depth < par_depth) {
-    // #pragma omp parallel
-    // #pragma omp single
-    //             {
-    // #pragma omp task
-    //                 {
-    //                     eval_full_domain_subtree(
-    //                         depth + 1, sbuf, l, mid, b, k, x_bitlen, par_depth, svs[0].s, tl, vl);
-    //                 }
-    // #pragma omp task
-    //                 {
-    //                     eval_full_domain_subtree(
-    //                         depth + 1, sbuf, mid, r, b, k, x_bitlen, par_depth, svs[1].s, tr, vr);
-    //                 }
-    // #pragma omp taskwait
-    //             }
-    //         } else {
-    //             eval_full_domain_subtree(
-    //                 depth + 1, sbuf, l, mid, b, k, x_bitlen, par_depth, svs[0].s, tl, vl);
-    //             eval_full_domain_subtree(
-    //                 depth + 1, sbuf, mid, r, b, k, x_bitlen, par_depth, svs[1].s, tr, vr);
-    //         }
-    //     }
+        int4 stl = sl;
+        stl = util::SetLsb(stl, tl);
+        int4 str = sr;
+        str = util::SetLsb(str, tr);
 
-    // public:
-    //     static void eval_full_domain(int4 *sbuf, uint8_t b, Key k, int x_bitlen) {
-    //         int4 s = sbuf[0];
-    //         uint8_t t = b;
-    //         Group v = Group();
-    //         // load_st(&s, &t); t=b;
-    //         {
-    //             uint8_t *s_bytes = reinterpret_cast<uint8_t *>(&s);
-    //             t = s_bytes[15] >> 7;
-    //             s_bytes[15] &= 0x7F;
-    //             s_bytes[8] &= 0xFE;
-    //         }
-    //         t = b;
+        size_t mid = (l + r) / 2;
 
-    //         int threads = omp_get_max_threads();
-    //         int par_depth = 0;
-    //         while ((1 << par_depth) <= threads) {
-    //             par_depth++;
-    //         }
-    //         par_depth--;
-
-    //         size_t sbuf_len = 1ULL << x_bitlen;
-    //         eval_full_domain_subtree(0, sbuf, 0, sbuf_len, b, k, x_bitlen, par_depth, s, t, v);
-    //     }
+        if (i < par_depth) {
+#pragma omp task
+            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth, vl);
+#pragma omp task
+            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth, vr);
+#pragma omp taskwait
+        } else {
+            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth, vl);
+            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth, vr);
+        }
+    }
 };
 
 }  // namespace fss
