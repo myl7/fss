@@ -341,6 +341,20 @@ BM_DcfEval_Bytes/20/manual_time    2741223 ns      2749239 ns          252 items
 BM_DcfEval_Uint/20/manual_time     2833979 ns      2842343 ns          248 items_per_second=370.001M/s
 ```
 
+GPU kernel register usage (compiled for sm_75, `--ptxas-options=-v`):
+
+| Kernel  | Group      | Registers |
+| ------- | ---------- | --------- |
+| DpfEval | Uint/Bytes | 40        |
+| DpfGen  | Uint       | 50        |
+| DpfGen  | Bytes      | 54        |
+| DcfEval | Uint       | 50        |
+| DcfEval | Bytes      | 48        |
+| DcfGen  | Uint       | 59        |
+| DcfGen  | Bytes      | 63        |
+
+All kernels have zero register spills and achieve full occupancy on the A6000.
+
 ### Flamegraph
 
 Generate a CPU flamegraph with `perf` and [FlameGraph](https://github.com/brendangregg/FlameGraph):

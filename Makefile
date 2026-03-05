@@ -4,7 +4,7 @@ CPU_SG := /sys/devices/system/cpu/cpu$(CPU_ID)/cpufreq/scaling_governor
 FLAMEGRAPH_DIR ?= ../FlameGraph
 FLAMEGRAPH_BENCH ?= BM_DpfEval_Uint_Aes/20
 
-.PHONY: format format_check bench_cpu bench_gpu bench_build flamegraph
+.PHONY: format format_check bench_cpu bench_gpu bench_build flamegraph ptx_info
 
 format:
 	clang-format -i $(SOURCES)
@@ -28,3 +28,7 @@ flamegraph:
 	cmake --build build -j
 	perf record -g -o build/perf.data ./build/bench_cpu --benchmark_filter=$(FLAMEGRAPH_BENCH)
 	perf script -i build/perf.data | "$(FLAMEGRAPH_DIR)/stackcollapse-perf.pl" | "$(FLAMEGRAPH_DIR)/flamegraph.pl" > build/flamegraph.svg
+
+ptx_info:
+	cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCH=ON -DCMAKE_CUDA_FLAGS="--ptxas-options=-v"
+	cmake --build build -j --clean-first | grep "ptxas info" || true
