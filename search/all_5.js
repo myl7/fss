@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['fss_0',['myl7/fss',['../index.html',1,'']]]
+  ['flamegraph_0',['Flamegraph',['../index.html#autotoc_md10',1,'']]],
+  ['fss_1',['myl7/fss',['../index.html',1,'']]]
 ];

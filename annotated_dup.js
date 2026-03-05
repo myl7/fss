@@ -11,5 +11,7 @@ var annotated_dup =
       ] ],
       [ "Dcf", "classfss_1_1Dcf.html", "classfss_1_1Dcf" ],
       [ "Dpf", "classfss_1_1Dpf.html", "classfss_1_1Dpf" ]
-    ] ]
+    ] ],
+    [ "AesCtx", "structAesCtx.html", null ],
+    [ "GpuData", "structGpuData.html", null ]
 ];

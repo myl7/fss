@@ -175,7 +175,7 @@ CPU</h2>
 <div class="ttc" id="abytes_8cuh_html"><div class="ttname"><a href="bytes_8cuh.html">bytes.cuh</a></div></div>
 <div class="ttc" id="aclassfss_1_1Dcf_html"><div class="ttname"><a href="classfss_1_1Dcf.html">fss::Dcf</a></div><div class="ttdoc">2-party DCF scheme.</div><div class="ttdef"><b>Definition</b> dcf.cuh:75</div></div>
 <div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:61</div></div>
-<div class="ttc" id="aclassfss_1_1prg_1_1Aes128Mmo_html"><div class="ttname"><a href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a></div><div class="ttdoc">AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.cuh:27</div></div>
+<div class="ttc" id="aclassfss_1_1prg_1_1Aes128Mmo_html"><div class="ttname"><a href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a></div><div class="ttdoc">AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.cuh:28</div></div>
 <div class="ttc" id="adcf_8cuh_html"><div class="ttname"><a href="dcf_8cuh.html">dcf.cuh</a></div><div class="ttdoc">2-party distributed comparison function (DCF).</div></div>
 <div class="ttc" id="adpf_8cuh_html"><div class="ttname"><a href="dpf_8cuh.html">dpf.cuh</a></div><div class="ttdoc">2-party distributed point function (DPF).</div></div>
 <div class="ttc" id="astructfss_1_1group_1_1Bytes_html"><div class="ttname"><a href="structfss_1_1group_1_1Bytes.html">fss::group::Bytes</a></div><div class="ttdoc">Bytes with XOR as a group.</div><div class="ttdef"><b>Definition</b> bytes.cuh:19</div></div>
@@ -288,6 +288,80 @@ GPU</h2>
 <p>DCF follows the same pattern — use <code>DcfPrg</code> (mul=4), <code>Dcf</code>, and <code>Dcf::Cw</code>.</p>
 <p>See <code>samples/dpf_dcf_gpu.cu</code> for the complete working example.</p>
 <h1><a class="anchor" id="autotoc_md7"></a>
+Benchmarks</h1>
+<p>Microbenchmarks for DPF/DCF <code>Gen</code>/<code>Eval</code> using <a href="https://github.com/google/benchmark">Google Benchmark</a>, covering both CPU (AES-128 MMO PRG) and GPU (ChaCha PRG) paths.</p>
+<p>Configure with <code>BUILD_BENCH=ON</code> and build the targets:</p>
+<div class="fragment"><div class="line">cmake -B build -DBUILD_BENCH=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo</div>
+<div class="line">cmake --build build --target bench_cpu bench_gpu</div>
+</div><!-- fragment --><p>Run all benchmarks:</p>
+<div class="fragment"><div class="line">./build/bench_cpu</div>
+<div class="line">./build/bench_gpu</div>
+</div><!-- fragment --><p>Run a subset using <code>--benchmark_filter</code> (regex):</p>
+<div class="fragment"><div class="line">./build/bench_cpu --benchmark_filter=BM_DcfGen</div>
+<div class="line">./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20</div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md8"></a>
+CPU Results</h2>
+<p>Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance governor, pinned with <code>taskset -c 0</code>.</p>
+<div class="fragment"><div class="line">--------------------------------------------------------------------</div>
+<div class="line">Benchmark                          Time             CPU   Iterations</div>
+<div class="line">--------------------------------------------------------------------</div>
+<div class="line">BM_DpfGen_Uint_Aes/14           5401 ns         5399 ns       135596</div>
+<div class="line">BM_DpfGen_Uint_Aes/17           6467 ns         6458 ns       111512</div>
+<div class="line">BM_DpfGen_Uint_Aes/20           7754 ns         7745 ns        94862</div>
+<div class="line">BM_DpfGen_Bytes_Aes/20          7767 ns         7755 ns        93902</div>
+<div class="line">BM_DpfGen_Uint_ChaCha/20      134016 ns       133877 ns         5130</div>
+<div class="line">BM_DpfEval_Uint_Aes/14          2883 ns         2880 ns       239868</div>
+<div class="line">BM_DpfEval_Uint_Aes/17          3515 ns         3511 ns       203638</div>
+<div class="line">BM_DpfEval_Uint_Aes/20          3170 ns         3166 ns       179563</div>
+<div class="line">BM_DpfEval_Bytes_Aes/20         2862 ns         2860 ns       337629</div>
+<div class="line">BM_DpfEval_Uint_ChaCha/20      65493 ns        65387 ns        11237</div>
+<div class="line">BM_DcfGen_Uint_Aes/14          12316 ns        12304 ns        58867</div>
+<div class="line">BM_DcfGen_Uint_Aes/17          14896 ns        14881 ns        49506</div>
+<div class="line">BM_DcfGen_Uint_Aes/20          17215 ns        17212 ns        41366</div>
+<div class="line">BM_DcfGen_Bytes_Aes/20         17804 ns        17797 ns        38546</div>
+<div class="line">BM_DcfGen_Uint_ChaCha/20      139071 ns       138851 ns         4857</div>
+<div class="line">BM_DcfEval_Uint_Aes/14          6041 ns         6034 ns       120311</div>
+<div class="line">BM_DcfEval_Uint_Aes/17          7385 ns         7373 ns        98980</div>
+<div class="line">BM_DcfEval_Uint_Aes/20          8753 ns         8750 ns        81551</div>
+<div class="line">BM_DcfEval_Bytes_Aes/20         8991 ns         8988 ns        79812</div>
+<div class="line">BM_DcfEval_Uint_ChaCha/20      69761 ns        69688 ns         9848</div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md9"></a>
+GPU Results</h2>
+<p>Run on NVIDIA RTX A6000 (48GB VRAM), CUDA 12.6, driver 560.35.05. Each iteration runs 1M (2^20) Gen/Eval in parallel. The GPU was warmed up before running the benchmarks.</p>
+<div class="fragment"><div class="line">------------------------------------------------------------------------------------------</div>
+<div class="line">Benchmark                                Time             CPU   Iterations UserCounters...</div>
+<div class="line">------------------------------------------------------------------------------------------</div>
+<div class="line">BM_DpfGen_Bytes/14/manual_time     3742742 ns      3758600 ns          188 items_per_second=280.162M/s</div>
+<div class="line">BM_DpfGen_Uint/14/manual_time      3605138 ns      3620776 ns          195 items_per_second=290.856M/s</div>
+<div class="line">BM_DpfEval_Bytes/14/manual_time    1834773 ns      1846636 ns          385 items_per_second=571.502M/s</div>
+<div class="line">BM_DpfEval_Uint/14/manual_time     1829063 ns      1840391 ns          386 items_per_second=573.286M/s</div>
+<div class="line">BM_DcfGen_Bytes/14/manual_time     3683808 ns      3690193 ns          191 items_per_second=284.645M/s</div>
+<div class="line">BM_DcfGen_Uint/14/manual_time      3660811 ns      3669146 ns          192 items_per_second=286.433M/s</div>
+<div class="line">BM_DcfEval_Bytes/14/manual_time    1896609 ns      1904905 ns          371 items_per_second=552.869M/s</div>
+<div class="line">BM_DcfEval_Uint/14/manual_time     1958738 ns      1967174 ns          362 items_per_second=535.333M/s</div>
+<div class="line">BM_DpfGen_Bytes/17/manual_time     4581579 ns      4597150 ns          154 items_per_second=228.868M/s</div>
+<div class="line">BM_DpfGen_Uint/17/manual_time      4420796 ns      4432505 ns          159 items_per_second=237.192M/s</div>
+<div class="line">BM_DpfEval_Bytes/17/manual_time    2234414 ns      2243475 ns          316 items_per_second=469.285M/s</div>
+<div class="line">BM_DpfEval_Uint/17/manual_time     2232655 ns      2237366 ns          315 items_per_second=469.654M/s</div>
+<div class="line">BM_DcfGen_Bytes/17/manual_time     4508062 ns      4519748 ns          156 items_per_second=232.6M/s</div>
+<div class="line">BM_DcfGen_Uint/17/manual_time      4481349 ns      4493369 ns          156 items_per_second=233.987M/s</div>
+<div class="line">BM_DcfEval_Bytes/17/manual_time    2336961 ns      2352788 ns          300 items_per_second=448.692M/s</div>
+<div class="line">BM_DcfEval_Uint/17/manual_time     2387943 ns      2398429 ns          294 items_per_second=439.113M/s</div>
+<div class="line">BM_DpfGen_Bytes/20/manual_time     5405055 ns      5418053 ns          139 items_per_second=193.999M/s</div>
+<div class="line">BM_DpfGen_Uint/20/manual_time      5234761 ns      5240723 ns          100 items_per_second=200.31M/s</div>
+<div class="line">BM_DpfEval_Bytes/20/manual_time    2661169 ns      2670157 ns          261 items_per_second=394.028M/s</div>
+<div class="line">BM_DpfEval_Uint/20/manual_time     2643466 ns      2655424 ns          262 items_per_second=396.667M/s</div>
+<div class="line">BM_DcfGen_Bytes/20/manual_time     5308714 ns      5318537 ns          100 items_per_second=197.52M/s</div>
+<div class="line">BM_DcfGen_Uint/20/manual_time      5294843 ns      5306015 ns          100 items_per_second=198.037M/s</div>
+<div class="line">BM_DcfEval_Bytes/20/manual_time    2741223 ns      2749239 ns          252 items_per_second=382.521M/s</div>
+<div class="line">BM_DcfEval_Uint/20/manual_time     2833979 ns      2842343 ns          248 items_per_second=370.001M/s</div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md10"></a>
+Flamegraph</h2>
+<p>Generate a CPU flamegraph with <code>perf</code> and <a href="https://github.com/brendangregg/FlameGraph">FlameGraph</a>:</p>
+<div class="fragment"><div class="line">perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20</div>
+<div class="line">perf script | /path/to/FlameGraph/stackcollapse-perf.pl | /path/to/FlameGraph/flamegraph.pl &gt; build/flamegraph.svg</div>
+</div><!-- fragment --><p>Open <code>build/flamegraph.svg</code> in a browser. The graph is interactive: click a frame to zoom in.</p>
+<h1><a class="anchor" id="autotoc_md11"></a>
 License</h1>
 <p>Apache License, Version 2.0</p>
 <p>Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a> </p>

@@ -32,7 +32,12 @@ var NAVTREE =
       [ "CPU", "index.html#autotoc_md5", null ],
       [ "GPU", "index.html#autotoc_md6", null ]
     ] ],
-    [ "License", "index.html#autotoc_md7", null ],
+    [ "Benchmarks", "index.html#autotoc_md7", [
+      [ "CPU Results", "index.html#autotoc_md8", null ],
+      [ "GPU Results", "index.html#autotoc_md9", null ],
+      [ "Flamegraph", "index.html#autotoc_md10", null ]
+    ] ],
+    [ "License", "index.html#autotoc_md11", null ],
     [ "Concepts", "concepts.html", "concepts" ],
     [ "Classes", "annotated.html", [
       [ "Class List", "annotated.html", "annotated_dup" ],
