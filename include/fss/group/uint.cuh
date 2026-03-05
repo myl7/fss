@@ -22,9 +22,6 @@ namespace fss::group {
  *
  * When `T = __uint128_t`, because elements are clamped, any element has < 2^127 and 0 < `mod` <= 2^127.
  *
- * When `T = __uint128_t` and `mod` >= 2^64, the compiler would output warnings like "warning: integer constant is so large that it is unsigned".
- * These warnings cannot be easily suppressed (I tried any in-code method I can find out), but they are harmless and can be ignored.
- *
  * Note that if you will use these groups as fields, i.e., perform multiplication, you must set `mod` to a prime number so that for random $a, b$, $a \cdot b$ is uniformly distributed in the field.
  */
 template <typename T, T mod = 0>

@@ -248,6 +248,10 @@ DCF follows the same pattern — use `DcfPrg` (mul=4), `Dcf`, and `Dcf::Cw`.
 
 See `samples/dpf_dcf_gpu.cu` for the complete working example.
 
+### Compiler Warnings
+
+You may see warnings like "integer constant is so large that it is unsigned" during compilation. These cannot be easily suppressed but are harmless and can be safely ignored.
+
 ## Benchmarks
 
 Microbenchmarks for DPF/DCF `Gen`/`Eval` using [Google Benchmark](https://github.com/google/benchmark), covering both CPU (AES-128 MMO PRG) and GPU (ChaCha PRG) paths.
