@@ -19,7 +19,9 @@ struct AesCtx {
     Prg prg;
 
     AesCtx() : ctxs(MakeCtxs()), prg(ctxs) {}
-    ~AesCtx() { Prg::FreeCtxs(ctxs); }
+    ~AesCtx() {
+        Prg::FreeCtxs(ctxs);
+    }
 
 private:
     static cuda::std::array<EVP_CIPHER_CTX *, mul> MakeCtxs() {

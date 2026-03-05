@@ -17,21 +17,20 @@ using UintGroup = fss::group::Uint<uint64_t>;
 
 __constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
 
-#define CUDA_CHECK(x)                                                                            \
-    do {                                                                                         \
-        cudaError_t err = (x);                                                                   \
-        if (err != cudaSuccess) {                                                                \
-            fprintf(                                                                             \
+#define CUDA_CHECK(x) \
+    do { \
+        cudaError_t err = (x); \
+        if (err != cudaSuccess) { \
+            fprintf( \
                 stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
-            exit(1);                                                                             \
-        }                                                                                        \
+            exit(1); \
+        } \
     } while (0)
 
 // --- DPF Kernels ---
 
 template <int in_bits, typename Group>
-__global__ void DpfGenKernel(
-    typename fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>::Cw *cws,
+__global__ void DpfGenKernel(typename fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>::Cw *cws,
     const int4 *seeds, const uint *alphas, const int4 *betas) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= kN) return;
@@ -44,10 +43,8 @@ __global__ void DpfGenKernel(
 }
 
 template <int in_bits, typename Group>
-__global__ void DpfEvalKernel(
-    int4 *ys, bool party, const int4 *seeds,
-    const typename fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>::Cw *cws,
-    const uint *xs) {
+__global__ void DpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
+    const typename fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>::Cw *cws, const uint *xs) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= kN) return;
 
@@ -60,8 +57,7 @@ __global__ void DpfEvalKernel(
 // --- DCF Kernels ---
 
 template <int in_bits, typename Group>
-__global__ void DcfGenKernel(
-    typename fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>::Cw *cws,
+__global__ void DcfGenKernel(typename fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>::Cw *cws,
     const int4 *seeds, const uint *alphas, const int4 *betas) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= kN) return;
@@ -74,10 +70,8 @@ __global__ void DcfGenKernel(
 }
 
 template <int in_bits, typename Group>
-__global__ void DcfEvalKernel(
-    int4 *ys, bool party, const int4 *seeds,
-    const typename fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>::Cw *cws,
-    const uint *xs) {
+__global__ void DcfEvalKernel(int4 *ys, bool party, const int4 *seeds,
+    const typename fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>::Cw *cws, const uint *xs) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= kN) return;
 
@@ -158,8 +152,8 @@ static void BM_DpfGen(benchmark::State &state) {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
 
-        DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(
-            d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+        DpfGenKernel<in_bits, Group>
+            <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
 
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
@@ -185,8 +179,8 @@ static void BM_DpfEval(benchmark::State &state) {
     CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DpfType::Cw) * (in_bits + 1) * kN));
 
     // Pre-generate keys
-    DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(
-        d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+    DpfGenKernel<in_bits, Group>
+        <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     for (auto _ : state) {
@@ -195,8 +189,8 @@ static void BM_DpfEval(benchmark::State &state) {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
 
-        DpfEvalKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(
-            data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
+        DpfEvalKernel<in_bits, Group>
+            <<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
 
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
@@ -227,8 +221,8 @@ static void BM_DcfGen(benchmark::State &state) {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
 
-        DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(
-            d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+        DcfGenKernel<in_bits, Group>
+            <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
 
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
@@ -254,8 +248,8 @@ static void BM_DcfEval(benchmark::State &state) {
     CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DcfType::Cw) * (in_bits + 1) * kN));
 
     // Pre-generate keys
-    DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(
-        d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+    DcfGenKernel<in_bits, Group>
+        <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     for (auto _ : state) {
@@ -264,8 +258,8 @@ static void BM_DcfEval(benchmark::State &state) {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
 
-        DcfEvalKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(
-            data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
+        DcfEvalKernel<in_bits, Group>
+            <<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
 
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
@@ -281,14 +275,18 @@ static void BM_DcfEval(benchmark::State &state) {
 }
 
 // Register all benchmarks
-#define REGISTER_BENCHES(in_bits)                                                                    \
-    BENCHMARK(BM_DpfGen<in_bits, BytesGroup>)->Name("BM_DpfGen_Bytes/" #in_bits)->UseManualTime();   \
-    BENCHMARK(BM_DpfGen<in_bits, UintGroup>)->Name("BM_DpfGen_Uint/" #in_bits)->UseManualTime();     \
-    BENCHMARK(BM_DpfEval<in_bits, BytesGroup>)->Name("BM_DpfEval_Bytes/" #in_bits)->UseManualTime(); \
-    BENCHMARK(BM_DpfEval<in_bits, UintGroup>)->Name("BM_DpfEval_Uint/" #in_bits)->UseManualTime();   \
-    BENCHMARK(BM_DcfGen<in_bits, BytesGroup>)->Name("BM_DcfGen_Bytes/" #in_bits)->UseManualTime();   \
-    BENCHMARK(BM_DcfGen<in_bits, UintGroup>)->Name("BM_DcfGen_Uint/" #in_bits)->UseManualTime();     \
-    BENCHMARK(BM_DcfEval<in_bits, BytesGroup>)->Name("BM_DcfEval_Bytes/" #in_bits)->UseManualTime(); \
+#define REGISTER_BENCHES(in_bits) \
+    BENCHMARK(BM_DpfGen<in_bits, BytesGroup>)->Name("BM_DpfGen_Bytes/" #in_bits)->UseManualTime(); \
+    BENCHMARK(BM_DpfGen<in_bits, UintGroup>)->Name("BM_DpfGen_Uint/" #in_bits)->UseManualTime(); \
+    BENCHMARK(BM_DpfEval<in_bits, BytesGroup>) \
+        ->Name("BM_DpfEval_Bytes/" #in_bits) \
+        ->UseManualTime(); \
+    BENCHMARK(BM_DpfEval<in_bits, UintGroup>)->Name("BM_DpfEval_Uint/" #in_bits)->UseManualTime(); \
+    BENCHMARK(BM_DcfGen<in_bits, BytesGroup>)->Name("BM_DcfGen_Bytes/" #in_bits)->UseManualTime(); \
+    BENCHMARK(BM_DcfGen<in_bits, UintGroup>)->Name("BM_DcfGen_Uint/" #in_bits)->UseManualTime(); \
+    BENCHMARK(BM_DcfEval<in_bits, BytesGroup>) \
+        ->Name("BM_DcfEval_Bytes/" #in_bits) \
+        ->UseManualTime(); \
     BENCHMARK(BM_DcfEval<in_bits, UintGroup>)->Name("BM_DcfEval_Uint/" #in_bits)->UseManualTime();
 
 REGISTER_BENCHES(14)
