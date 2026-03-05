@@ -1,8 +1,10 @@
 SOURCES := $(shell find src include samples -name '*.cuh' -o -name '*.cu')
 CPU_ID ?= 0
 CPU_SG := /sys/devices/system/cpu/cpu$(CPU_ID)/cpufreq/scaling_governor
+FLAMEGRAPH_DIR ?= ../FlameGraph
+FLAMEGRAPH_BENCH ?= BM_DpfEval_Uint_Aes/20
 
-.PHONY: format format_check bench_cpu bench_gpu bench_build
+.PHONY: format format_check bench_cpu bench_gpu bench_build flamegraph
 
 format:
 	clang-format -i $(SOURCES)
@@ -20,3 +22,9 @@ bench_gpu: bench_build
 bench_build:
 	cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCH=ON
 	cmake --build build -j
+
+flamegraph:
+	cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF -DBUILD_BENCH=ON
+	cmake --build build -j
+	perf record -g -o build/perf.data ./build/bench_cpu --benchmark_filter=$(FLAMEGRAPH_BENCH)
+	perf script -i build/perf.data | "$(FLAMEGRAPH_DIR)/stackcollapse-perf.pl" | "$(FLAMEGRAPH_DIR)/flamegraph.pl" > build/flamegraph.svg

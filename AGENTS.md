@@ -1,5 +1,6 @@
 - Follow Google C++ Style Guide
-- Start error messages with a lowercase letter unless it is a proper noun
+- Start error messages with a lowercase letter unless it is a proper noun or variable name
 - Never reorder `#include`
 - Use global `memcpy` and `memset` instead of `std::` prefixed ones
-- Build to /build
+- Build or save perf data or save flamegraphs to ./build
+- Try searching the FlameGraph lib in ../
