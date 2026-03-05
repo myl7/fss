@@ -30,14 +30,15 @@ var NAVTREE =
       [ "Prerequisites", "index.html#autotoc_md3", null ],
       [ "Build", "index.html#autotoc_md4", null ],
       [ "CPU", "index.html#autotoc_md5", null ],
-      [ "GPU", "index.html#autotoc_md6", null ]
+      [ "GPU", "index.html#autotoc_md6", null ],
+      [ "Compiler Warnings", "index.html#autotoc_md7", null ]
     ] ],
-    [ "Benchmarks", "index.html#autotoc_md7", [
-      [ "CPU Results", "index.html#autotoc_md8", null ],
-      [ "GPU Results", "index.html#autotoc_md9", null ],
-      [ "Flamegraph", "index.html#autotoc_md10", null ]
+    [ "Benchmarks", "index.html#autotoc_md8", [
+      [ "CPU Results", "index.html#autotoc_md9", null ],
+      [ "GPU Results", "index.html#autotoc_md10", null ],
+      [ "Flamegraph", "index.html#autotoc_md11", null ]
     ] ],
-    [ "License", "index.html#autotoc_md11", null ],
+    [ "License", "index.html#autotoc_md12", null ],
     [ "Concepts", "concepts.html", "concepts" ],
     [ "Classes", "annotated.html", [
       [ "Class List", "annotated.html", "annotated_dup" ],

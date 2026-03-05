@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Dpf&lt; in_bits, Group, Prg, In &gt; Class Template Reference</title>
+<title>myl7/fss: fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt; Class Template Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -105,7 +105,7 @@ $(document).ready(function(){initNavTree('classfss_1_1Dpf.html',''); initResizab
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="classfss_1_1Dpf-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Dpf&lt; in_bits, Group, Prg, In &gt; Class Template Reference</div></div>
+  <div class="headertitle"><div class="title">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt; Class Template Reference</div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -120,46 +120,50 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a38d988cd7c50a8150522329226fe5a68" id="r_a38d988cd7c50a8150522329226fe5a68"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dpf.html#a38d988cd7c50a8150522329226fe5a68">Gen</a> (<a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a> cws[], const int4 s0s[2], In a, int4 b_buf)</td></tr>
-<tr class="memdesc:a38d988cd7c50a8150522329226fe5a68"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method.  <br /></td></tr>
-<tr class="separator:a38d988cd7c50a8150522329226fe5a68"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a677bda47db35e0fe4e909b9f3d9956a5" id="r_a677bda47db35e0fe4e909b9f3d9956a5"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dpf.html#a677bda47db35e0fe4e909b9f3d9956a5">Eval</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a> cws[], In x)</td></tr>
-<tr class="memdesc:a677bda47db35e0fe4e909b9f3d9956a5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
-<tr class="separator:a677bda47db35e0fe4e909b9f3d9956a5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abb6b5745a642a4bd176ebafc3d65dc9f" id="r_abb6b5745a642a4bd176ebafc3d65dc9f"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dpf.html#abb6b5745a642a4bd176ebafc3d65dc9f">Gen</a> (<a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a> cws[], const int4 s0s[2], In a, int4 b_buf)</td></tr>
+<tr class="memdesc:abb6b5745a642a4bd176ebafc3d65dc9f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method.  <br /></td></tr>
+<tr class="separator:abb6b5745a642a4bd176ebafc3d65dc9f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1416dbe8fa4f43437ea3951bb49655d3" id="r_a1416dbe8fa4f43437ea3951bb49655d3"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dpf.html#a1416dbe8fa4f43437ea3951bb49655d3">Eval</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a> cws[], In x)</td></tr>
+<tr class="memdesc:a1416dbe8fa4f43437ea3951bb49655d3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
+<tr class="separator:a1416dbe8fa4f43437ea3951bb49655d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a99bbc5176026a65fc2385186af3b6483" id="r_a99bbc5176026a65fc2385186af3b6483"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dpf.html#a99bbc5176026a65fc2385186af3b6483">EvalAll</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a> cws[], int4 ys[])</td></tr>
+<tr class="memdesc:a99bbc5176026a65fc2385186af3b6483"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
+<tr class="separator:a99bbc5176026a65fc2385186af3b6483"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
-<tr class="memitem:ab9e76b9007305ee9cf94ba8a3a963424" id="r_ab9e76b9007305ee9cf94ba8a3a963424"><td class="memItemLeft" align="right" valign="top"><a id="ab9e76b9007305ee9cf94ba8a3a963424" name="ab9e76b9007305ee9cf94ba8a3a963424"></a>
+<tr class="memitem:a2110bcdf1549b4e347506fb5bfaceea0" id="r_a2110bcdf1549b4e347506fb5bfaceea0"><td class="memItemLeft" align="right" valign="top"><a id="a2110bcdf1549b4e347506fb5bfaceea0" name="a2110bcdf1549b4e347506fb5bfaceea0"></a>
 Prg&#160;</td><td class="memItemRight" valign="bottom"><b>prg</b></td></tr>
-<tr class="separator:ab9e76b9007305ee9cf94ba8a3a963424"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="separator:a2110bcdf1549b4e347506fb5bfaceea0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint&gt;<br />
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
 requires ((std::is_unsigned_v&lt;In&gt; || std::is_same_v&lt;In, __uint128_t&gt;) &amp;&amp; in_bits &lt;= sizeof(In) * 8 &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt;)<br />
-class fss::Dpf&lt; in_bits, Group, Prg, In &gt;</div><p>2-party DPF scheme. </p>
+class fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;</div><p>2-party DPF scheme. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">in_bits</td><td>Input domain bit size. </td></tr>
     <tr><td class="paramname">Group</td><td>Type for the output domain. See Groupable. </td></tr>
     <tr><td class="paramname">Prg</td><td>See Prgable. </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1Dpf.html#a99bbc5176026a65fc2385186af3b6483" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1Dpf.html#a99bbc5176026a65fc2385186af3b6483" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
   </table>
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="a677bda47db35e0fe4e909b9f3d9956a5" name="a677bda47db35e0fe4e909b9f3d9956a5"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a677bda47db35e0fe4e909b9f3d9956a5">&#9670;&#160;</a></span>Eval()</h2>
+<a id="a1416dbe8fa4f43437ea3951bb49655d3" name="a1416dbe8fa4f43437ea3951bb49655d3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1416dbe8fa4f43437ea3951bb49655d3">&#9670;&#160;</a></span>Eval()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">int4 <a class="el" href="classfss_1_1Dpf.html">fss::Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Eval </td>
+          <td class="memname">int4 <a class="el" href="classfss_1_1Dpf.html">fss::Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Eval </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -200,7 +204,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint&gt;
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
     <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Returned by <a class="el" href="classfss_1_1Dpf.html#a38d988cd7c50a8150522329226fe5a68" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">cws</td><td>Returned by <a class="el" href="classfss_1_1Dpf.html#abb6b5745a642a4bd176ebafc3d65dc9f" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">x</td><td>Evaluated input. \(x\). </td></tr>
   </table>
   </dd>
@@ -209,19 +213,80 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint&gt;
 
 </div>
 </div>
-<a id="a38d988cd7c50a8150522329226fe5a68" name="a38d988cd7c50a8150522329226fe5a68"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a38d988cd7c50a8150522329226fe5a68">&#9670;&#160;</a></span>Gen()</h2>
+<a id="a99bbc5176026a65fc2385186af3b6483" name="a99bbc5176026a65fc2385186af3b6483"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a99bbc5176026a65fc2385186af3b6483">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Dpf.html">fss::Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Gen </td>
+          <td class="memname">void <a class="el" href="classfss_1_1Dpf.html">fss::Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::EvalAll </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a>&#160;</td>
+          <td class="paramname"><em>cws</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>ys</em>[]&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Full domain evaluation method. </p>
+<p>Evaluate the key on each input, i.e., 0b00...0 - 0b11...1. Store the outputs sequentially.</p>
+<p>b, s0, cws are the same as the ones in <a class="el" href="classfss_1_1Dpf.html#a1416dbe8fa4f43437ea3951bb49655d3" title="Evaluation method.">Eval()</a>.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits.</td></tr>
+  </table>
+  </dd>
+</dl>
+<p>Support parallel using OpenMP. The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads. par_depth = -1: use ceil(log(num of threads)). par_depth = 0: no parallelism, i.e., sequential execution. </p>
+
+</div>
+</div>
+<a id="abb6b5745a642a4bd176ebafc3d65dc9f" name="abb6b5745a642a4bd176ebafc3d65dc9f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abb6b5745a642a4bd176ebafc3d65dc9f">&#9670;&#160;</a></span>Gen()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Dpf.html">fss::Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Gen </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a>&#160;</td>
           <td class="paramname"><em>cws</em>[], </td>
@@ -260,7 +325,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint&gt;
 <p>Key generation method. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">cws</td><td>Pre-allocated array of <a class="el" href="structfss_1_1Dpf_1_1Cw.html" title="Correction word.">Cw</a> as returns. The array size must be <code>in_bits + 1</code>. </td></tr>
+    <tr><td class="paramname">cws</td><td>Pre-allocated array of <a class="el" href="structfss_1_1Dpf_1_1Cw.html" title="Correction word.">Cw</a> as returns. The array size must be in_bits + 1. </td></tr>
     <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
     <tr><td class="paramname">a</td><td>\(a\). </td></tr>
     <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element.</td></tr>

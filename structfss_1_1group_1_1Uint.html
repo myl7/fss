@@ -147,9 +147,8 @@ struct fss::group::Uint&lt; T, mod &gt;</div><p>Unsigned integers with arithmeti
   </table>
   </dd>
 </dl>
-<p>When <code>T = __uint128_t</code>, because elements are clamped, any element has &lt; 2^127 and 0 &lt; <code>mod</code> &lt;= 2^127.</p>
-<p>When <code>T = __uint128_t</code> and <code>mod</code> &gt;= 2^64, the compiler would output warnings like "warning: integer constant is so large that it is unsigned". These warnings cannot be easily suppressed (I tried any in-code method I can find out), but they are harmless and can be ignored.</p>
-<p>Note that if you will use these groups as fields, i.e., perform multiplication, you must set <code>mod</code> to a prime number so that for random \(a, b\), \(a \cdot b\) is uniformly distributed in the field. </p>
+<p>When T = __uint128_t, because elements are clamped, any element has &lt; 2^127 and 0 &lt; mod &lt;= 2^127.</p>
+<p>Note that if you will use these groups as fields, i.e., perform multiplication, you must set mod to a prime number so that for random \(a, b\), \(a \cdot b\) is uniformly distributed in the field. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
 <li>include/fss/group/<a class="el" href="uint_8cuh_source.html">uint.cuh</a></li>
 </ul>

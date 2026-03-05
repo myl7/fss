@@ -173,8 +173,8 @@ CPU</h2>
 <div class="line"><span class="keyword">using </span>Dcf = <a class="code hl_class" href="classfss_1_1Dcf.html">fss::Dcf&lt;kInBits, Group, DcfPrg, In&gt;</a>;</div>
 <div class="ttc" id="aaes128__mmo_8cuh_html"><div class="ttname"><a href="aes128__mmo_8cuh.html">aes128_mmo.cuh</a></div></div>
 <div class="ttc" id="abytes_8cuh_html"><div class="ttname"><a href="bytes_8cuh.html">bytes.cuh</a></div></div>
-<div class="ttc" id="aclassfss_1_1Dcf_html"><div class="ttname"><a href="classfss_1_1Dcf.html">fss::Dcf</a></div><div class="ttdoc">2-party DCF scheme.</div><div class="ttdef"><b>Definition</b> dcf.cuh:75</div></div>
-<div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:61</div></div>
+<div class="ttc" id="aclassfss_1_1Dcf_html"><div class="ttname"><a href="classfss_1_1Dcf.html">fss::Dcf</a></div><div class="ttdoc">2-party DCF scheme.</div><div class="ttdef"><b>Definition</b> dcf.cuh:78</div></div>
+<div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:64</div></div>
 <div class="ttc" id="aclassfss_1_1prg_1_1Aes128Mmo_html"><div class="ttname"><a href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a></div><div class="ttdoc">AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.cuh:28</div></div>
 <div class="ttc" id="adcf_8cuh_html"><div class="ttname"><a href="dcf_8cuh.html">dcf.cuh</a></div><div class="ttdoc">2-party distributed comparison function (DCF).</div></div>
 <div class="ttc" id="adpf_8cuh_html"><div class="ttname"><a href="dpf_8cuh.html">dpf.cuh</a></div><div class="ttdoc">2-party distributed point function (DPF).</div></div>
@@ -287,7 +287,10 @@ GPU</h2>
 </ol>
 <p>DCF follows the same pattern — use <code>DcfPrg</code> (mul=4), <code>Dcf</code>, and <code>Dcf::Cw</code>.</p>
 <p>See <code>samples/dpf_dcf_gpu.cu</code> for the complete working example.</p>
-<h1><a class="anchor" id="autotoc_md7"></a>
+<h2><a class="anchor" id="autotoc_md7"></a>
+Compiler Warnings</h2>
+<p>You may see warnings like "integer constant is so large that it is unsigned" during compilation. These cannot be easily suppressed but are harmless and can be safely ignored.</p>
+<h1><a class="anchor" id="autotoc_md8"></a>
 Benchmarks</h1>
 <p>Microbenchmarks for DPF/DCF <code>Gen</code>/<code>Eval</code> using <a href="https://github.com/google/benchmark">Google Benchmark</a>, covering both CPU (AES-128 MMO PRG) and GPU (ChaCha PRG) paths.</p>
 <p>Configure with <code>BUILD_BENCH=ON</code> and build the targets:</p>
@@ -299,7 +302,7 @@ Benchmarks</h1>
 </div><!-- fragment --><p>Run a subset using <code>--benchmark_filter</code> (regex):</p>
 <div class="fragment"><div class="line">./build/bench_cpu --benchmark_filter=BM_DcfGen</div>
 <div class="line">./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20</div>
-</div><!-- fragment --><h2><a class="anchor" id="autotoc_md8"></a>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md9"></a>
 CPU Results</h2>
 <p>Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance governor, pinned with <code>taskset -c 0</code>.</p>
 <div class="fragment"><div class="line">--------------------------------------------------------------------</div>
@@ -325,7 +328,7 @@ CPU Results</h2>
 <div class="line">BM_DcfEval_Uint_Aes/20          8753 ns         8750 ns        81551</div>
 <div class="line">BM_DcfEval_Bytes_Aes/20         8991 ns         8988 ns        79812</div>
 <div class="line">BM_DcfEval_Uint_ChaCha/20      69761 ns        69688 ns         9848</div>
-</div><!-- fragment --><h2><a class="anchor" id="autotoc_md9"></a>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md10"></a>
 GPU Results</h2>
 <p>Run on NVIDIA RTX A6000 (48GB VRAM), CUDA 12.6, driver 560.35.05. Each iteration runs 1M (2^20) Gen/Eval in parallel. The GPU was warmed up before running the benchmarks.</p>
 <div class="fragment"><div class="line">------------------------------------------------------------------------------------------</div>
@@ -355,13 +358,33 @@ GPU Results</h2>
 <div class="line">BM_DcfGen_Uint/20/manual_time      5294843 ns      5306015 ns          100 items_per_second=198.037M/s</div>
 <div class="line">BM_DcfEval_Bytes/20/manual_time    2741223 ns      2749239 ns          252 items_per_second=382.521M/s</div>
 <div class="line">BM_DcfEval_Uint/20/manual_time     2833979 ns      2842343 ns          248 items_per_second=370.001M/s</div>
-</div><!-- fragment --><h2><a class="anchor" id="autotoc_md10"></a>
+</div><!-- fragment --><p>GPU kernel register usage (compiled for sm_75, <code>--ptxas-options=-v</code>):</p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Kernel   </th><th class="markdownTableHeadNone">Group   </th><th class="markdownTableHeadNone">Registers    </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">DpfEval   </td><td class="markdownTableBodyNone">Uint/Bytes   </td><td class="markdownTableBodyNone">40    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">DpfGen   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone">50    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">DpfGen   </td><td class="markdownTableBodyNone">Bytes   </td><td class="markdownTableBodyNone">54    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">DcfEval   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone">50    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">DcfEval   </td><td class="markdownTableBodyNone">Bytes   </td><td class="markdownTableBodyNone">48    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">DcfGen   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone">59    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">DcfGen   </td><td class="markdownTableBodyNone">Bytes   </td><td class="markdownTableBodyNone">63   </td></tr>
+</table>
+<p>All kernels have zero register spills and achieve full occupancy on the A6000.</p>
+<h2><a class="anchor" id="autotoc_md11"></a>
 Flamegraph</h2>
 <p>Generate a CPU flamegraph with <code>perf</code> and <a href="https://github.com/brendangregg/FlameGraph">FlameGraph</a>:</p>
 <div class="fragment"><div class="line">perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20</div>
 <div class="line">perf script | /path/to/FlameGraph/stackcollapse-perf.pl | /path/to/FlameGraph/flamegraph.pl &gt; build/flamegraph.svg</div>
 </div><!-- fragment --><p>Open <code>build/flamegraph.svg</code> in a browser. The graph is interactive: click a frame to zoom in.</p>
-<h1><a class="anchor" id="autotoc_md11"></a>
+<h1><a class="anchor" id="autotoc_md12"></a>
 License</h1>
 <p>Apache License, Version 2.0</p>
 <p>Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'.mo'+'e'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>.moe</a> </p>
