@@ -93,70 +93,70 @@ This walks through using DPF and DCF on the CPU with AES-128 MMO PRG. This PRG r
 
 1. Include the headers and set up type aliases:
 
-   ```cpp
-   #include <fss/dpf.cuh>
-   #include <fss/dcf.cuh>
-   #include <fss/group/bytes.cuh>
-   #include <fss/prg/aes128_mmo.cuh>
+    ```cpp
+    #include <fss/dpf.cuh>
+    #include <fss/dcf.cuh>
+    #include <fss/group/bytes.cuh>
+    #include <fss/prg/aes128_mmo.cuh>
 
-   constexpr int kInBits = 8;  // Input domain: 2^8 = 256 values
-   using In = uint8_t;
-   using Group = fss::group::Bytes;
+    constexpr int kInBits = 8;  // Input domain: 2^8 = 256 values
+    using In = uint8_t;
+    using Group = fss::group::Bytes;
 
-   // DPF uses mul=2, DCF uses mul=4
-   using DpfPrg = fss::prg::Aes128Mmo<2>;
-   using DcfPrg = fss::prg::Aes128Mmo<4>;
-   using Dpf = fss::Dpf<kInBits, Group, DpfPrg, In>;
-   using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
-   ```
+    // DPF uses mul=2, DCF uses mul=4
+    using DpfPrg = fss::prg::Aes128Mmo<2>;
+    using DcfPrg = fss::prg::Aes128Mmo<4>;
+    using Dpf = fss::Dpf<kInBits, Group, DpfPrg, In>;
+    using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
+    ```
 
 2. Create the PRG with AES keys and instantiate DPF/DCF:
 
-   ```cpp
-   // DPF PRG needs 2 AES keys
-   unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-   unsigned char key1[16] = {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
-   const unsigned char *keys[2] = {key0, key1};
-   auto ctxs = DpfPrg::CreateCtxs(keys);
+    ```cpp
+    // DPF PRG needs 2 AES keys
+    unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    unsigned char key1[16] = {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+    const unsigned char *keys[2] = {key0, key1};
+    auto ctxs = DpfPrg::CreateCtxs(keys);
 
-   DpfPrg prg(ctxs);
-   Dpf dpf{prg};
-   ```
+    DpfPrg prg(ctxs);
+    Dpf dpf{prg};
+    ```
 
 3. Run `Gen` to generate correction words (keys) from secret inputs:
 
-   ```cpp
-   In alpha = 42;                  // Secret point / threshold
-   int4 beta = {7, 0, 0, 0};      // Secret payload (LSB of .w must be 0)
+    ```cpp
+    In alpha = 42;                  // Secret point / threshold
+    int4 beta = {7, 0, 0, 0};      // Secret payload (LSB of .w must be 0)
 
-   // Random seeds for the two parties (LSB of .w must be 0)
-   int4 seeds[2] = {
-       {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-   };
+    // Random seeds for the two parties (LSB of .w must be 0)
+    int4 seeds[2] = {
+        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+    };
 
-   Dpf::Cw cws[kInBits + 1];
-   dpf.Gen(cws, seeds, alpha, beta);
-   ```
+    Dpf::Cw cws[kInBits + 1];
+    dpf.Gen(cws, seeds, alpha, beta);
+    ```
 
 4. Run `Eval` on each party and reconstruct using the group:
 
-   ```cpp
-   // Each party evaluates independently
-   int4 y0 = dpf.Eval(false, seeds[0], cws, alpha);
-   int4 y1 = dpf.Eval(true, seeds[1], cws, alpha);
+    ```cpp
+    // Each party evaluates independently
+    int4 y0 = dpf.Eval(false, seeds[0], cws, alpha);
+    int4 y1 = dpf.Eval(true, seeds[1], cws, alpha);
 
-   // Reconstruct via the group: convert to group elements, add, convert back
-   // For Bytes group this is XOR; for Uint group this is arithmetic addition
-   int4 sum = (Group::From(y0) + Group::From(y1)).Into();
-   // sum == beta at x == alpha, 0 otherwise
-   ```
+    // Reconstruct via the group: convert to group elements, add, convert back
+    // For Bytes group this is XOR; for Uint group this is arithmetic addition
+    int4 sum = (Group::From(y0) + Group::From(y1)).Into();
+    // sum == beta at x == alpha, 0 otherwise
+    ```
 
 5. Free the AES contexts when done:
 
-   ```cpp
-   DpfPrg::FreeCtxs(ctxs);
-   ```
+    ```cpp
+    DpfPrg::FreeCtxs(ctxs);
+    ```
 
 DCF follows the same pattern — use `DcfPrg` (mul=4, needs 4 AES keys), `Dcf`, and `Dcf::Cw`. The reconstructed output equals `beta` when `x < alpha` and `0` otherwise.
 
@@ -175,78 +175,112 @@ This walks through using DPF and DCF on the GPU with ChaCha PRG.
 
 1. Include the headers and set up type aliases:
 
-   ```cpp
-   #include <fss/dpf.cuh>
-   #include <fss/dcf.cuh>
-   #include <fss/group/bytes.cuh>
-   #include <fss/prg/chacha.cuh>
+    ```cpp
+    #include <fss/dpf.cuh>
+    #include <fss/dcf.cuh>
+    #include <fss/group/bytes.cuh>
+    #include <fss/prg/chacha.cuh>
 
-   constexpr int kInBits = 8;
-   using In = uint8_t;
-   using Group = fss::group::Bytes;
+    constexpr int kInBits = 8;
+    using In = uint8_t;
+    using Group = fss::group::Bytes;
 
-   // DPF uses mul=2, DCF uses mul=4
-   using DpfPrg = fss::prg::ChaCha<2>;
-   using DcfPrg = fss::prg::ChaCha<4>;
-   using Dpf = fss::Dpf<kInBits, Group, DpfPrg, In>;
-   using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
-   ```
+    // DPF uses mul=2, DCF uses mul=4
+    using DpfPrg = fss::prg::ChaCha<2>;
+    using DcfPrg = fss::prg::ChaCha<4>;
+    using Dpf = fss::Dpf<kInBits, Group, DpfPrg, In>;
+    using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
+    ```
 
 2. Set up a nonce in constant memory and create the PRG in a kernel:
 
-   ```cpp
-   __constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
+    ```cpp
+    __constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
 
-   __global__ void GenKernel(Dpf::Cw *cws, const int4 *seeds, const In *alphas, const int4 *betas) {
-       int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    __global__ void GenKernel(Dpf::Cw *cws, const int4 *seeds, const In *alphas, const int4 *betas) {
+        int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-       DpfPrg prg(kNonce);
-       Dpf dpf{prg};
+        DpfPrg prg(kNonce);
+        Dpf dpf{prg};
 
-       int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-       dpf.Gen(cws + tid * (kInBits + 1), s, alphas[tid], betas[tid]);
-   }
-   ```
+        int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+        dpf.Gen(cws + tid * (kInBits + 1), s, alphas[tid], betas[tid]);
+    }
+    ```
 
 3. Prepare host data, copy to device, and launch the `Gen` kernel:
 
-   ```cpp
-   int4 *d_seeds = /* cudaMalloc + cudaMemcpy seeds to device */;
-   In *d_alphas = /* cudaMalloc + cudaMemcpy alphas to device */;
-   int4 *d_betas = /* cudaMalloc + cudaMemcpy betas to device */;
+    ```cpp
+    int4 *d_seeds = /* cudaMalloc + cudaMemcpy seeds to device */;
+    In *d_alphas = /* cudaMalloc + cudaMemcpy alphas to device */;
+    int4 *d_betas = /* cudaMalloc + cudaMemcpy betas to device */;
 
-   Dpf::Cw *d_cws;
-   cudaMalloc(&d_cws, sizeof(Dpf::Cw) * (kInBits + 1) * N);
+    Dpf::Cw *d_cws;
+    cudaMalloc(&d_cws, sizeof(Dpf::Cw) * (kInBits + 1) * N);
 
-   GenKernel<<<blocks, threads>>>(d_cws, d_seeds, d_alphas, d_betas);
-   ```
+    GenKernel<<<blocks, threads>>>(d_cws, d_seeds, d_alphas, d_betas);
+    ```
 
 4. Write and launch an `Eval` kernel for each party, then copy results back:
 
-   ```cpp
-   __global__ void EvalKernel(int4 *ys, bool party, const int4 *seeds, const Dpf::Cw *cws, const In *xs) {
-       int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    ```cpp
+    __global__ void EvalKernel(int4 *ys, bool party, const int4 *seeds, const Dpf::Cw *cws, const In *xs) {
+        int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-       DpfPrg prg(kNonce);
-       Dpf dpf{prg};
+        DpfPrg prg(kNonce);
+        Dpf dpf{prg};
 
-       ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);
-   }
+        ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);
+    }
 
-   // Launch for party 0 and party 1, then copy d_ys back to host
-   EvalKernel<<<blocks, threads>>>(d_ys, false, d_seeds0, d_cws, d_xs);
-   EvalKernel<<<blocks, threads>>>(d_ys, true, d_seeds1, d_cws, d_xs);
-   ```
+    // Launch for party 0 and party 1, then copy d_ys back to host
+    EvalKernel<<<blocks, threads>>>(d_ys, false, d_seeds0, d_cws, d_xs);
+    EvalKernel<<<blocks, threads>>>(d_ys, true, d_seeds1, d_cws, d_xs);
+    ```
 
 5. Reconstruct on the host using the group, same as the CPU case:
 
-   ```cpp
-   int4 sum = (Group::From(h_y0s[i]) + Group::From(h_y1s[i])).Into();
-   ```
+    ```cpp
+    int4 sum = (Group::From(h_y0s[i]) + Group::From(h_y1s[i])).Into();
+    ```
 
 DCF follows the same pattern — use `DcfPrg` (mul=4), `Dcf`, and `Dcf::Cw`.
 
 See `samples/dpf_dcf_gpu.cu` for the complete working example.
+
+## Benchmarks
+
+Microbenchmarks for DPF/DCF `Gen`/`Eval` using [Google Benchmark](https://github.com/google/benchmark), covering both CPU (AES-128 MMO PRG) and GPU (ChaCha PRG) paths.
+
+Configure with `BUILD_BENCH=ON` and build the targets:
+
+```bash
+cmake -B build -DBUILD_BENCH=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build --target bench_cpu bench_gpu
+```
+
+Run all benchmarks:
+
+```bash
+./build/bench_cpu
+./build/bench_gpu
+```
+
+Run a subset using `--benchmark_filter` (regex):
+
+```bash
+./build/bench_cpu --benchmark_filter=BM_DcfGen
+./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20
+```
+
+Generate a CPU flamegraph with `perf` and [FlameGraph](https://github.com/brendangregg/FlameGraph):
+
+```bash
+perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20
+perf script | /path/to/FlameGraph/stackcollapse-perf.pl | /path/to/FlameGraph/flamegraph.pl > build/flamegraph.svg
+```
+
+Open `build/flamegraph.svg` in a browser. The graph is interactive: click a frame to zoom in.
 
 ## License
 

@@ -66,6 +66,24 @@ if(BUILD_TESTING)
     gtest_discover_tests(dcf_u128_le_test)
 endif()
 
+option(BUILD_BENCH "Build benchmarks" OFF)
+if(BUILD_BENCH)
+    FetchContent_Declare(benchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        GIT_TAG v1.9.5)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(benchmark)
+
+    find_package(OpenSSL REQUIRED)
+
+    add_executable(bench_cpu src/bench_cpu.cu)
+    target_link_libraries(bench_cpu benchmark::benchmark_main fss OpenSSL::Crypto)
+
+    add_executable(bench_gpu src/bench_gpu.cu)
+    target_link_libraries(bench_gpu benchmark::benchmark_main fss)
+endif()
+
 install(TARGETS fss EXPORT fssTargets)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT fssTargets

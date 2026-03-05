@@ -9,5 +9,10 @@
 # Doc outputs
 /doc/html
 
-## AI agents
+# AI agents
 .claude/**/*.local.*
+/doc/plans
+
+# Benchmarks
+perf.data
+perf.data.old
