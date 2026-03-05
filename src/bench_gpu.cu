@@ -8,7 +8,7 @@
 #include <fss/group/uint.cuh>
 #include <fss/prg/chacha.cuh>
 
-constexpr int kN = 1024;
+constexpr int kN = 1 << 20;
 constexpr int kThreadsPerBlock = 256;
 constexpr int kNumBlocks = (kN + kThreadsPerBlock - 1) / kThreadsPerBlock;
 
@@ -98,11 +98,11 @@ struct GpuData {
     int4 *d_ys;
 
     GpuData() {
-        int4 h_seeds[kN * 2];
-        int4 h_seeds0[kN];
-        uint h_alphas[kN];
-        int4 h_betas[kN];
-        uint h_xs[kN];
+        auto *h_seeds = new int4[kN * 2];
+        auto *h_seeds0 = new int4[kN];
+        auto *h_alphas = new uint[kN];
+        auto *h_betas = new int4[kN];
+        auto *h_xs = new uint[kN];
 
         srand(42);
         for (int i = 0; i < kN; i++) {
@@ -124,6 +124,12 @@ struct GpuData {
         alloc(&d_betas, h_betas, kN);
         alloc(&d_xs, h_xs, kN);
         CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * kN));
+
+        delete[] h_seeds;
+        delete[] h_seeds0;
+        delete[] h_alphas;
+        delete[] h_betas;
+        delete[] h_xs;
     }
 
     ~GpuData() {
@@ -163,6 +169,7 @@ static void BM_DpfGen(benchmark::State &state) {
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
     }
+    state.SetItemsProcessed(state.iterations() * kN);
 
     cudaFree(d_cws);
 }
@@ -199,6 +206,7 @@ static void BM_DpfEval(benchmark::State &state) {
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
     }
+    state.SetItemsProcessed(state.iterations() * kN);
 
     cudaFree(d_cws);
 }
@@ -230,6 +238,7 @@ static void BM_DcfGen(benchmark::State &state) {
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
     }
+    state.SetItemsProcessed(state.iterations() * kN);
 
     cudaFree(d_cws);
 }
@@ -266,6 +275,7 @@ static void BM_DcfEval(benchmark::State &state) {
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
     }
+    state.SetItemsProcessed(state.iterations() * kN);
 
     cudaFree(d_cws);
 }
