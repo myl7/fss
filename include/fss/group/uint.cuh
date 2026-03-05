@@ -20,9 +20,9 @@ namespace fss::group {
  * @tparam mod Modulus, making the group addition defined as $a + b \mod mod$.
  * If 0, use $a + b$ as the group addition, i.e., same as $mod = 2^{sizeof(T) * 8}$.
  *
- * When `T = __uint128_t`, because elements are clamped, any element has < 2^127 and 0 < `mod` <= 2^127.
+ * When T = __uint128_t, because elements are clamped, any element has < 2^127 and 0 < mod <= 2^127.
  *
- * Note that if you will use these groups as fields, i.e., perform multiplication, you must set `mod` to a prime number so that for random $a, b$, $a \cdot b$ is uniformly distributed in the field.
+ * Note that if you will use these groups as fields, i.e., perform multiplication, you must set mod to a prime number so that for random $a, b$, $a \cdot b$ is uniformly distributed in the field.
  */
 template <typename T, T mod = 0>
     requires((std::is_unsigned_v<T> || std::is_same_v<T, __uint128_t>) && sizeof(T) <= 16 &&

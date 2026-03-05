@@ -44,7 +44,7 @@ public:
     /**
      * Create cipher contexts.
      *
-     * @param keys `mul` 16B AES-128 keys.
+     * @param keys mul 16B AES-128 keys.
      */
     static cuda::std::array<EVP_CIPHER_CTX *, mul> CreateCtxs(const unsigned char *keys[mul]) {
         int ret;

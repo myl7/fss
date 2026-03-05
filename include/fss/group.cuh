@@ -15,12 +15,12 @@
  *
  * For the output domain of DPF/DCF.
  *
- * `From()`: Convert a clamped 16B to the group element.
+ * **From()**: Convert a clamped 16B to the group element.
  *
  * - **Parameters**
  *     - **buf**: Clamped 16B. Users implementing it should assert the clamped bit to be 0.
  *
- * `Into()`: Convert the group element to a clamped 16B.
+ * **Into()**: Convert the group element to a clamped 16B.
  *
  * ## Implementation Details
  *

@@ -81,7 +81,7 @@ public:
     /**
      * Key generation method.
      *
-     * @param cws Pre-allocated array of Cw as returns. The array size must be `in_bits + 1`.
+     * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits + 1.
      * @param s0s 2 initial seeds. Users can randomly sample them.
      * @param a $a$.
      * @param b_buf $b$. Will be clamped and converted to the group element.

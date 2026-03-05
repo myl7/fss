@@ -15,7 +15,7 @@
  *
  * Required to be cryptographically secure.
  *
- * @tparam mul Requires the PRG to output `mul` times of the seed size, i.e., `mul * 16` B.
+ * @tparam mul Requires the PRG to output mul times of the seed size, i.e., mul * 16 B.
  */
 template <typename Prg, int mul>
 concept Prgable = requires(Prg prg, int4 seed) {
