@@ -15,14 +15,17 @@ jobs:
 
       - name: Install CUDA
         uses: Jimver/cuda-toolkit@v0.2.30
+        with:
+          method: network
+          sub-packages: '["nvcc"]'
 
       - name: Configure CMake
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_BENCH=ON
 
       - name: Build
         run: |
-          cmake --build build --parallel
+          cmake --build build -j
 
       - name: Test
         run: |
