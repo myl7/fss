@@ -37,7 +37,7 @@ public:
      * Read-only and can be shared by multiple instances.
      * Users are responsible for managing their lifetime.
      */
-    __host__ Aes128Mmo(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs) {
+    Aes128Mmo(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs) {
         for (int i = 0; i < mul; ++i) ctxs_[i] = ctxs[i];
     }
 
@@ -46,8 +46,7 @@ public:
      *
      * @param keys `mul` 16B AES-128 keys.
      */
-    __host__ static cuda::std::array<EVP_CIPHER_CTX *, mul> CreateCtxs(
-        const unsigned char *keys[mul]) {
+    static cuda::std::array<EVP_CIPHER_CTX *, mul> CreateCtxs(const unsigned char *keys[mul]) {
         int ret;
         cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs;
 
@@ -64,7 +63,7 @@ public:
         return ctxs;
     }
 
-    __host__ static void FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs) {
+    static void FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs) {
         for (auto ctx : ctxs) {
             EVP_CIPHER_CTX_free(ctx);
         }

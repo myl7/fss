@@ -277,7 +277,7 @@ public:
     /**
      * Full domain evaluation method.
      */
-    __host__ void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
+    void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
         int4 st = s0;
         bool t = b;
         st = util::SetLsb(st, t);
@@ -301,7 +301,7 @@ public:
     }
 
 private:
-    __host__ void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i,
+    void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i,
         int par_depth, Group v) {
         bool t = util::GetLsb(st);
         int4 s = st;
