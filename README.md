@@ -370,4 +370,4 @@ Open `build/flamegraph.svg` in a browser. The graph is interactive: click a fram
 
 Apache License, Version 2.0
 
-Copyright (C) 2026 Yulong Ming <i@myl.moe>
+Copyright (C) 2026 Yulong Ming <i@myl7.org>

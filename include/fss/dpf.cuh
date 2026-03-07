@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file dpf.cuh
- * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl.moe>.
- * @author Yulong Ming <i@myl.moe>
+ * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl7.org>.
+ * @author Yulong Ming <i@myl7.org>
  *
  * @brief 2-party distributed point function (DPF).
  *
