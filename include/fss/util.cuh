@@ -21,6 +21,11 @@ __host__ __device__ cuda::std::array<int4, 2> Xor(
     return {Xor(lhs[0], rhs[0]), Xor(lhs[1], rhs[1])};
 }
 
+__host__ __device__ cuda::std::array<int4, 4> Xor(
+    cuda::std::span<const int4, 4> lhs, cuda::std::span<const int4, 4> rhs) {
+    return {Xor(lhs[0], rhs[0]), Xor(lhs[1], rhs[1]), Xor(lhs[2], rhs[2]), Xor(lhs[3], rhs[3])};
+}
+
 __host__ __device__ int4 SetLsb(int4 val, bool bit) {
     if (bit) val.w |= 1;
     else val.w &= ~1;

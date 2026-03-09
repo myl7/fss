@@ -66,6 +66,10 @@ if(BUILD_TESTING)
     target_compile_definitions(dcf_u128_le_test PRIVATE -DkBlocks=4 TEST_GROUP_U128)
     target_link_libraries(dcf_u128_le_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(dcf_u128_le_test)
+
+    add_executable(vdpf_test src/vdpf_test.cu)
+    target_link_libraries(vdpf_test GTest::gtest_main fss)
+    gtest_discover_tests(vdpf_test)
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
