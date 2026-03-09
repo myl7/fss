@@ -208,7 +208,11 @@ protected:
     }
 
     void TestEvalAtAlpha() {
-        Prg prg(aes_key);
+        uint32_t te0[256];
+        uint8_t sbox[256];
+        fss::prg::aes_detail::InitTe0(te0);
+        fss::prg::aes_detail::InitSbox(sbox);
+        Prg prg(aes_key, te0, sbox);
         DpfType dpf{prg, hash_key};
 
         int4 b_buf = MakeBBuf();
@@ -226,7 +230,11 @@ protected:
     }
 
     void TestEvalAtNonAlpha() {
-        Prg prg(aes_key);
+        uint32_t te0[256];
+        uint8_t sbox[256];
+        fss::prg::aes_detail::InitTe0(te0);
+        fss::prg::aes_detail::InitSbox(sbox);
+        Prg prg(aes_key, te0, sbox);
         DpfType dpf{prg, hash_key};
 
         int4 b_buf = MakeBBuf();
@@ -252,7 +260,11 @@ protected:
     }
 
     void TestEvalAll() {
-        Prg prg(aes_key);
+        uint32_t te0[256];
+        uint8_t sbox[256];
+        fss::prg::aes_detail::InitTe0(te0);
+        fss::prg::aes_detail::InitSbox(sbox);
+        Prg prg(aes_key, te0, sbox);
         DpfType dpf{prg, hash_key};
 
         int4 b_buf = MakeBBuf();

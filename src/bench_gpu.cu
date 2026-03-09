@@ -77,10 +77,18 @@ template <int in_bits, typename Group>
 __global__ void DpfGenKernelAes(
     typename fss::Dpf<in_bits, Group, fss::prg::Aes128Soft<2>, uint>::Cw *cws, const int4 *seeds,
     const uint *alphas, const int4 *betas) {
+    __shared__ uint32_t s_te0[256];
+    __shared__ uint8_t s_sbox[256];
+    for (int i = threadIdx.x; i < 256; i += blockDim.x) {
+        s_te0[i] = fss::prg::aes_detail::ComputeTe0(static_cast<uint8_t>(i));
+        s_sbox[i] = fss::prg::aes_detail::Sbox(static_cast<uint8_t>(i));
+    }
+    __syncthreads();
+
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= kN) return;
 
-    fss::prg::Aes128Soft<2> prg(kAesSoftKeys);
+    fss::prg::Aes128Soft<2> prg(kAesSoftKeys, s_te0, s_sbox);
     fss::Dpf<in_bits, Group, fss::prg::Aes128Soft<2>, uint> dpf{prg};
 
     int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -91,10 +99,18 @@ template <int in_bits, typename Group>
 __global__ void DpfEvalKernelAes(int4 *ys, bool party, const int4 *seeds,
     const typename fss::Dpf<in_bits, Group, fss::prg::Aes128Soft<2>, uint>::Cw *cws,
     const uint *xs) {
+    __shared__ uint32_t s_te0[256];
+    __shared__ uint8_t s_sbox[256];
+    for (int i = threadIdx.x; i < 256; i += blockDim.x) {
+        s_te0[i] = fss::prg::aes_detail::ComputeTe0(static_cast<uint8_t>(i));
+        s_sbox[i] = fss::prg::aes_detail::Sbox(static_cast<uint8_t>(i));
+    }
+    __syncthreads();
+
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= kN) return;
 
-    fss::prg::Aes128Soft<2> prg(kAesSoftKeys);
+    fss::prg::Aes128Soft<2> prg(kAesSoftKeys, s_te0, s_sbox);
     fss::Dpf<in_bits, Group, fss::prg::Aes128Soft<2>, uint> dpf{prg};
 
     ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (in_bits + 1), xs[tid]);

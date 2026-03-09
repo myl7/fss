@@ -341,19 +341,22 @@ BM_DcfEval_Bytes/20/manual_time    2741223 ns      2749239 ns          252 items
 BM_DcfEval_Uint/20/manual_time     2833979 ns      2842343 ns          248 items_per_second=370.001M/s
 ```
 
-GPU kernel register usage (compiled for sm_75, `--ptxas-options=-v`):
+GPU kernel register usage (compiled for sm_52, `--ptxas-options=-v`):
 
-| Kernel  | Group      | Registers |
-| ------- | ---------- | --------- |
-| DpfEval | Uint/Bytes | 40        |
-| DpfGen  | Uint       | 50        |
-| DpfGen  | Bytes      | 54        |
-| DcfEval | Uint       | 50        |
-| DcfEval | Bytes      | 48        |
-| DcfGen  | Uint       | 59        |
-| DcfGen  | Bytes      | 63        |
+| Kernel          | Group      | Registers | Stack |
+| --------------- | ---------- | --------- | ----- |
+| DpfEval         | Uint/Bytes | 39        |       |
+| DpfGen          | Uint/Bytes | 48        |       |
+| DpfEvalAes      | Uint       | 255       | 608B  |
+| DpfGenAes       | Uint       | 255       | 608B  |
+| HalfTreeDpfEval | Uint       | 41        |       |
+| HalfTreeDpfGen  | Uint       | 47        |       |
+| VdpfEval        | Uint       | 38        |       |
+| VdpfGen         | Uint       | 72        |       |
+| DcfEval         | Uint       | 38        |       |
+| DcfGen          | Uint       | 56        |       |
 
-All kernels have zero register spills and achieve full occupancy on the A6000.
+The AES-based kernels hit the 255-register cap and spill to stack. All other kernels have zero spills.
 
 ### Flamegraph
 

@@ -53,7 +53,35 @@ __host__ __device__ inline uint8_t Rcon(int idx) {
     return table[idx];
 }
 
-__host__ __device__ inline void KeyExpansion(uint8_t *round_key, const uint8_t *key) {
+__host__ __device__ inline uint32_t ComputeTe0(uint8_t idx) {
+    uint8_t s = Sbox(idx);
+    uint8_t x2 = (s << 1) ^ (((s >> 7) & 1) * 0x1b);
+    uint8_t x3 = s ^ x2;
+    return (uint32_t(x2) << 24) | (uint32_t(s) << 16) | (uint32_t(s) << 8) | uint32_t(x3);
+}
+
+__host__ __device__ inline void InitTe0(uint32_t *dst) {
+    for (int i = 0; i < 256; ++i) dst[i] = ComputeTe0(static_cast<uint8_t>(i));
+}
+
+__host__ __device__ inline void InitSbox(uint8_t *dst) {
+    for (int i = 0; i < 256; ++i) dst[i] = Sbox(static_cast<uint8_t>(i));
+}
+
+__host__ __device__ inline uint32_t RotWord8(uint32_t x) {
+    return (x << 24) | (x >> 8);
+}
+
+__host__ __device__ inline uint32_t RotWord16(uint32_t x) {
+    return (x << 16) | (x >> 16);
+}
+
+__host__ __device__ inline uint32_t RotWord24(uint32_t x) {
+    return (x << 8) | (x >> 24);
+}
+
+__host__ __device__ inline void KeyExpansion(
+    uint8_t *round_key, const uint8_t *key, const uint8_t *sbox) {
     for (int i = 0; i < kNk; ++i) {
         round_key[i * 4 + 0] = key[i * 4 + 0];
         round_key[i * 4 + 1] = key[i * 4 + 1];
@@ -69,10 +97,10 @@ __host__ __device__ inline void KeyExpansion(uint8_t *round_key, const uint8_t *
         tempa[3] = round_key[k + 3];
         if (i % kNk == 0) {
             uint8_t u8tmp = tempa[0];
-            tempa[0] = Sbox(tempa[1]);
-            tempa[1] = Sbox(tempa[2]);
-            tempa[2] = Sbox(tempa[3]);
-            tempa[3] = Sbox(u8tmp);
+            tempa[0] = sbox[tempa[1]];
+            tempa[1] = sbox[tempa[2]];
+            tempa[2] = sbox[tempa[3]];
+            tempa[3] = sbox[u8tmp];
             tempa[0] ^= Rcon(i / kNk);
         }
         int j = i * 4;
@@ -84,73 +112,67 @@ __host__ __device__ inline void KeyExpansion(uint8_t *round_key, const uint8_t *
     }
 }
 
-using State = uint8_t[4][4];
-
-__host__ __device__ inline void AddRoundKey(int round, State &state, const uint8_t *round_key) {
-    for (int i = 0; i < 4; ++i)
-        for (int j = 0; j < 4; ++j) state[i][j] ^= round_key[round * kNb * 4 + i * kNb + j];
+__host__ __device__ inline uint32_t LoadBE32(const uint8_t *p) {
+    return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
 }
 
-__host__ __device__ inline void SubBytes(State &state) {
-    for (int i = 0; i < 4; ++i)
-        for (int j = 0; j < 4; ++j) state[j][i] = Sbox(state[j][i]);
+__host__ __device__ inline void StoreBE32(uint8_t *p, uint32_t v) {
+    p[0] = uint8_t(v >> 24);
+    p[1] = uint8_t(v >> 16);
+    p[2] = uint8_t(v >> 8);
+    p[3] = uint8_t(v);
 }
 
-__host__ __device__ inline void ShiftRows(State &state) {
-    uint8_t temp;
-    temp = state[0][1];
-    state[0][1] = state[1][1];
-    state[1][1] = state[2][1];
-    state[2][1] = state[3][1];
-    state[3][1] = temp;
-    temp = state[0][2];
-    state[0][2] = state[2][2];
-    state[2][2] = temp;
-    temp = state[1][2];
-    state[1][2] = state[3][2];
-    state[3][2] = temp;
-    temp = state[0][3];
-    state[0][3] = state[3][3];
-    state[3][3] = state[2][3];
-    state[2][3] = state[1][3];
-    state[1][3] = temp;
-}
+__host__ __device__ inline void Encrypt(
+    uint8_t *buf, const uint8_t *round_key, const uint32_t *te0, const uint8_t *sbox) {
+    uint32_t s0 = LoadBE32(buf) ^ LoadBE32(round_key);
+    uint32_t s1 = LoadBE32(buf + 4) ^ LoadBE32(round_key + 4);
+    uint32_t s2 = LoadBE32(buf + 8) ^ LoadBE32(round_key + 8);
+    uint32_t s3 = LoadBE32(buf + 12) ^ LoadBE32(round_key + 12);
 
-__host__ __device__ inline uint8_t Xtime(uint8_t x) {
-    return (x << 1) ^ (((x >> 7) & 1) * 0x1b);
-}
+#pragma unroll 1
+    for (int r = 1; r <= 9; ++r) {
+        const uint8_t *rk = round_key + r * 16;
+        uint32_t rk0 = LoadBE32(rk);
+        uint32_t rk1 = LoadBE32(rk + 4);
+        uint32_t rk2 = LoadBE32(rk + 8);
+        uint32_t rk3 = LoadBE32(rk + 12);
 
-__host__ __device__ inline void MixColumns(State &state) {
-    for (int i = 0; i < 4; ++i) {
-        uint8_t t = state[i][0];
-        uint8_t all = state[i][0] ^ state[i][1] ^ state[i][2] ^ state[i][3];
-        uint8_t tm;
-        tm = state[i][0] ^ state[i][1];
-        tm = Xtime(tm);
-        state[i][0] ^= tm ^ all;
-        tm = state[i][1] ^ state[i][2];
-        tm = Xtime(tm);
-        state[i][1] ^= tm ^ all;
-        tm = state[i][2] ^ state[i][3];
-        tm = Xtime(tm);
-        state[i][2] ^= tm ^ all;
-        tm = state[i][3] ^ t;
-        tm = Xtime(tm);
-        state[i][3] ^= tm ^ all;
+        uint32_t t0 = te0[s0 >> 24] ^ RotWord8(te0[(s1 >> 16) & 0xff]) ^
+            RotWord16(te0[(s2 >> 8) & 0xff]) ^ RotWord24(te0[s3 & 0xff]) ^ rk0;
+        uint32_t t1 = te0[s1 >> 24] ^ RotWord8(te0[(s2 >> 16) & 0xff]) ^
+            RotWord16(te0[(s3 >> 8) & 0xff]) ^ RotWord24(te0[s0 & 0xff]) ^ rk1;
+        uint32_t t2 = te0[s2 >> 24] ^ RotWord8(te0[(s3 >> 16) & 0xff]) ^
+            RotWord16(te0[(s0 >> 8) & 0xff]) ^ RotWord24(te0[s1 & 0xff]) ^ rk2;
+        uint32_t t3 = te0[s3 >> 24] ^ RotWord8(te0[(s0 >> 16) & 0xff]) ^
+            RotWord16(te0[(s1 >> 8) & 0xff]) ^ RotWord24(te0[s2 & 0xff]) ^ rk3;
+
+        s0 = t0;
+        s1 = t1;
+        s2 = t2;
+        s3 = t3;
     }
-}
 
-__host__ __device__ inline void Encrypt(uint8_t *buf, const uint8_t *round_key) {
-    State &state = reinterpret_cast<State &>(*buf);
-    AddRoundKey(0, state, round_key);
-    for (int round = 1;; ++round) {
-        SubBytes(state);
-        ShiftRows(state);
-        if (round == kNr) break;
-        MixColumns(state);
-        AddRoundKey(round, state, round_key);
-    }
-    AddRoundKey(kNr, state, round_key);
+    // Last round: SubBytes + ShiftRows + AddRoundKey (no MixColumns)
+    const uint8_t *rk = round_key + 160;
+    uint32_t rk0 = LoadBE32(rk);
+    uint32_t rk1 = LoadBE32(rk + 4);
+    uint32_t rk2 = LoadBE32(rk + 8);
+    uint32_t rk3 = LoadBE32(rk + 12);
+
+    uint32_t o0 = (uint32_t(sbox[s0 >> 24]) << 24) | (uint32_t(sbox[(s1 >> 16) & 0xff]) << 16) |
+        (uint32_t(sbox[(s2 >> 8) & 0xff]) << 8) | uint32_t(sbox[s3 & 0xff]);
+    uint32_t o1 = (uint32_t(sbox[s1 >> 24]) << 24) | (uint32_t(sbox[(s2 >> 16) & 0xff]) << 16) |
+        (uint32_t(sbox[(s3 >> 8) & 0xff]) << 8) | uint32_t(sbox[s0 & 0xff]);
+    uint32_t o2 = (uint32_t(sbox[s2 >> 24]) << 24) | (uint32_t(sbox[(s3 >> 16) & 0xff]) << 16) |
+        (uint32_t(sbox[(s0 >> 8) & 0xff]) << 8) | uint32_t(sbox[s1 & 0xff]);
+    uint32_t o3 = (uint32_t(sbox[s3 >> 24]) << 24) | (uint32_t(sbox[(s0 >> 16) & 0xff]) << 16) |
+        (uint32_t(sbox[(s1 >> 8) & 0xff]) << 8) | uint32_t(sbox[s2 & 0xff]);
+
+    StoreBE32(buf, o0 ^ rk0);
+    StoreBE32(buf + 4, o1 ^ rk1);
+    StoreBE32(buf + 8, o2 ^ rk2);
+    StoreBE32(buf + 12, o3 ^ rk3);
 }
 
 }  // namespace aes_detail
@@ -166,22 +188,32 @@ template <int mul>
 class Aes128Soft {
 private:
     uint8_t round_keys_[mul][aes_detail::kRoundKeySize];
+    const uint32_t *te0_;
+    const uint8_t *sbox_;
 
 public:
     /**
      * Constructor.
      *
      * @param keys mul 16-byte AES-128 keys.
+     * @param te0 Pointer to the 256-entry AES T-table (uint32_t[256]).
+     * @param sbox Pointer to the AES S-box (uint8_t[256]).
+     *
+     * On device, both should point to __shared__ memory initialized via
+     * InitTe0() and InitSbox(). On host, call InitTe0()/InitSbox() on
+     * stack arrays and pass them.
      */
-    __host__ __device__ Aes128Soft(const uint8_t keys[][16]) {
-        for (int i = 0; i < mul; ++i) aes_detail::KeyExpansion(round_keys_[i], keys[i]);
+    __host__ __device__ Aes128Soft(
+        const uint8_t keys[][16], const uint32_t *te0, const uint8_t *sbox)
+        : te0_(te0), sbox_(sbox) {
+        for (int i = 0; i < mul; ++i) aes_detail::KeyExpansion(round_keys_[i], keys[i], sbox);
     }
 
     __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
         cuda::std::array<int4, mul> out{};
         for (int i = 0; i < mul; ++i) {
             out[i] = seed;
-            aes_detail::Encrypt(reinterpret_cast<uint8_t *>(&out[i]), round_keys_[i]);
+            aes_detail::Encrypt(reinterpret_cast<uint8_t *>(&out[i]), round_keys_[i], te0_, sbox_);
             out[i] = fss::util::Xor(out[i], seed);
         }
         return out;

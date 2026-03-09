@@ -135,7 +135,11 @@ static void BM_DpfEval(benchmark::State &state) {
             benchmark::DoNotOptimize(y);
         }
     } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128Soft<2>>) {
-        Prg prg(gAesSoftKeys);
+        uint32_t te0[256];
+        uint8_t sbox[256];
+        fss::prg::aes_detail::InitTe0(te0);
+        fss::prg::aes_detail::InitSbox(sbox);
+        Prg prg(gAesSoftKeys, te0, sbox);
         DpfType dpf{prg};
         dpf.Gen(cws, seeds, alpha, beta);
         for (auto _ : state) {
