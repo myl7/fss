@@ -17,12 +17,12 @@ namespace fss::prg {
  * %ChaCha as a PRG.
  *
  * @tparam mul See Prgable mul.
- * For this class, can only be 2 or 4.
+ * For this class, can only be 1, 2, or 4.
  * @tparam rounds Security parameter.
  * The default value is secure enough and widely used, thus preferred.
  */
 template <int mul, int rounds = 20>
-    requires(rounds % 2 == 0 && (mul == 2 || mul == 4))
+    requires(rounds % 2 == 0 && (mul == 1 || mul == 2 || mul == 4))
 class ChaCha {
 private:
     const int *nonce_;
@@ -96,7 +96,7 @@ public:
         int4 buf[4];
 
         // Constant
-        if constexpr (mul == 2) buf[0] = kConstant16;
+        if constexpr (mul <= 2) buf[0] = kConstant16;
         else buf[0] = kConstant32;
 
         // Key from the seed
@@ -113,7 +113,9 @@ public:
         Rounds(buf);
 
         buf[1] = util::Xor(buf[1], seed);
-        if constexpr (mul == 2) {
+        if constexpr (mul == 1) {
+            return {buf[1]};
+        } else if constexpr (mul == 2) {
             buf[0] = util::Xor(buf[0], kConstant16);
             return {buf[0], buf[1]};
         } else {
@@ -124,6 +126,6 @@ public:
         }
     }
 };
-static_assert(Prgable<ChaCha<2>, 2> && Prgable<ChaCha<4>, 4>);
+static_assert(Prgable<ChaCha<1>, 1> && Prgable<ChaCha<2>, 2> && Prgable<ChaCha<4>, 4>);
 
 }  // namespace fss::prg

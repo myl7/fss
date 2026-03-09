@@ -70,6 +70,10 @@ if(BUILD_TESTING)
     add_executable(vdpf_test src/vdpf_test.cu)
     target_link_libraries(vdpf_test GTest::gtest_main fss)
     gtest_discover_tests(vdpf_test)
+
+    add_executable(half_tree_dpf_test src/half_tree_dpf_test.cu)
+    target_link_libraries(half_tree_dpf_test GTest::gtest_main fss)
+    gtest_discover_tests(half_tree_dpf_test)
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
