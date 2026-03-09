@@ -29,7 +29,8 @@ private:
 
     template <int n>
     __host__ __device__ static int RotateLeft(int a) {
-        return (a << n) | (a >> (32 - n));
+        auto u = static_cast<unsigned>(a);
+        return static_cast<int>((u << n) | (u >> (32 - n)));
     }
 
     __host__ __device__ static void QuarterRound(int &a, int &b, int &c, int &d) {
