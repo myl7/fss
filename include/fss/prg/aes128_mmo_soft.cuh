@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * @file prg/aes128_soft.cuh
+ * @file prg/aes128_mmo_soft.cuh
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl7.org>.
  * @author Yulong Ming <i@myl7.org>
  *

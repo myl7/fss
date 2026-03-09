@@ -9,7 +9,7 @@
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/prg/chacha.cuh>
-#include <fss/prg/aes128_soft.cuh>
+#include <fss/prg/aes128_mmo_soft.cuh>
 #include <fss/hash/blake3.cuh>
 
 constexpr int kN = 1 << 20;

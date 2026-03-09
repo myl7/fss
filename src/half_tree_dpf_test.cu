@@ -8,7 +8,7 @@
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/prg/chacha.cuh>
-#include <fss/prg/aes128_soft.cuh>
+#include <fss/prg/aes128_mmo_soft.cuh>
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
