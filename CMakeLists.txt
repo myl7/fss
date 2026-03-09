@@ -74,6 +74,10 @@ if(BUILD_TESTING)
     add_executable(half_tree_dpf_test src/half_tree_dpf_test.cu)
     target_link_libraries(half_tree_dpf_test GTest::gtest_main fss)
     gtest_discover_tests(half_tree_dpf_test)
+
+    add_executable(grotto_dcf_test src/grotto_dcf_test.cu)
+    target_link_libraries(grotto_dcf_test GTest::gtest_main fss)
+    gtest_discover_tests(grotto_dcf_test)
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
