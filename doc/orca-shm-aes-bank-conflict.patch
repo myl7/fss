@@ -1,0 +1,155 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b7d0dac..d392187 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -78,6 +78,10 @@ if(BUILD_TESTING)
+     add_executable(grotto_dcf_test src/grotto_dcf_test.cu)
+     target_link_libraries(grotto_dcf_test GTest::gtest_main fss)
+     gtest_discover_tests(grotto_dcf_test)
++
++    add_executable(aes_shm_soft_test src/aes128_shm_soft_test.cu)
++    target_link_libraries(aes_shm_soft_test GTest::gtest_main fss)
++    gtest_discover_tests(aes_shm_soft_test)
+ endif()
+ 
+ option(BUILD_BENCH "Build benchmarks" OFF)
+diff --git a/src/bench_gpu.cu b/src/bench_gpu.cu
+index afe9690..8c81686 100644
+--- a/src/bench_gpu.cu
++++ b/src/bench_gpu.cu
+@@ -10,6 +10,7 @@
+ #include <fss/group/uint.cuh>
+ #include <fss/prg/chacha.cuh>
+ #include <fss/prg/aes128_mmo_soft.cuh>
++#include <fss/prg/aes128_shm_soft.cuh>
+ #include <fss/hash/blake3.cuh>
+ 
+ constexpr int kN = 1 << 20;
+@@ -116,6 +117,43 @@ __global__ void DpfEvalKernelAes(int4 *ys, bool party, const int4 *seeds,
+     ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (in_bits + 1), xs[tid]);
+ }
+ 
++// --- DPF Kernels (Aes128ShmSoft<2>) ---
++
++template <int in_bits, typename Group>
++__global__ void DpfGenKernelAesShm(
++    typename fss::Dpf<in_bits, Group, fss::prg::Aes128ShmSoft<2>, uint>::Cw *cws, const int4 *seeds,
++    const uint *alphas, const int4 *betas) {
++    __shared__ fss::prg::Aes128ShmSoft<2>::ShmContext aes_shm;
++    fss::prg::Aes128ShmSoft<2>::LoadShm(aes_shm);
++    __syncthreads();
++
++    int tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid >= kN) return;
++
++    fss::prg::Aes128ShmSoft<2> prg(aes_shm, kAesSoftKeys);
++    fss::Dpf<in_bits, Group, fss::prg::Aes128ShmSoft<2>, uint> dpf{prg};
++
++    int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
++    dpf.Gen(cws + tid * (in_bits + 1), s, alphas[tid], betas[tid]);
++}
++
++template <int in_bits, typename Group>
++__global__ void DpfEvalKernelAesShm(int4 *ys, bool party, const int4 *seeds,
++    const typename fss::Dpf<in_bits, Group, fss::prg::Aes128ShmSoft<2>, uint>::Cw *cws,
++    const uint *xs) {
++    __shared__ fss::prg::Aes128ShmSoft<2>::ShmContext aes_shm;
++    fss::prg::Aes128ShmSoft<2>::LoadShm(aes_shm);
++    __syncthreads();
++
++    int tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid >= kN) return;
++
++    fss::prg::Aes128ShmSoft<2> prg(aes_shm, kAesSoftKeys);
++    fss::Dpf<in_bits, Group, fss::prg::Aes128ShmSoft<2>, uint> dpf{prg};
++
++    ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (in_bits + 1), xs[tid]);
++}
++
+ // --- DCF Kernels (ChaCha<4>) ---
+ 
+ template <int in_bits, typename Group>
+@@ -375,6 +413,74 @@ static void BM_DpfEvalAes(benchmark::State &state) {
+     cudaFree(d_cws);
+ }
+ 
++// --- DPF Eval GPU benchmark (Aes128ShmSoft<2>) ---
++
++template <int in_bits, typename Group>
++static void BM_DpfEvalAesShm(benchmark::State &state) {
++    using DpfType = fss::Dpf<in_bits, Group, fss::prg::Aes128ShmSoft<2>, uint>;
++    GpuData data;
++
++    typename DpfType::Cw *d_cws;
++    CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DpfType::Cw) * (in_bits + 1) * kN));
++
++    DpfGenKernelAesShm<in_bits, Group>
++        <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
++    CUDA_CHECK(cudaDeviceSynchronize());
++
++    for (auto _ : state) {
++        cudaEvent_t start, stop;
++        cudaEventCreate(&start);
++        cudaEventCreate(&stop);
++        cudaEventRecord(start);
++
++        DpfEvalKernelAesShm<in_bits, Group>
++            <<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
++
++        cudaEventRecord(stop);
++        cudaEventSynchronize(stop);
++        float ms = 0;
++        cudaEventElapsedTime(&ms, start, stop);
++        state.SetIterationTime(ms / 1000.0);
++        cudaEventDestroy(start);
++        cudaEventDestroy(stop);
++    }
++    state.SetItemsProcessed(state.iterations() * kN);
++
++    cudaFree(d_cws);
++}
++
++// --- DPF Gen GPU benchmark (Aes128ShmSoft<2>) ---
++
++template <int in_bits, typename Group>
++static void BM_DpfGenAesShm(benchmark::State &state) {
++    using DpfType = fss::Dpf<in_bits, Group, fss::prg::Aes128ShmSoft<2>, uint>;
++    GpuData data;
++
++    typename DpfType::Cw *d_cws;
++    CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DpfType::Cw) * (in_bits + 1) * kN));
++
++    for (auto _ : state) {
++        cudaEvent_t start, stop;
++        cudaEventCreate(&start);
++        cudaEventCreate(&stop);
++        cudaEventRecord(start);
++
++        DpfGenKernelAesShm<in_bits, Group>
++            <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
++
++        cudaEventRecord(stop);
++        cudaEventSynchronize(stop);
++        float ms = 0;
++        cudaEventElapsedTime(&ms, start, stop);
++        state.SetIterationTime(ms / 1000.0);
++        cudaEventDestroy(start);
++        cudaEventDestroy(stop);
++    }
++    state.SetItemsProcessed(state.iterations() * kN);
++
++    cudaFree(d_cws);
++}
++
+ // --- DCF Eval GPU benchmark (ChaCha<4>) ---
+ 
+ template <int in_bits, typename Group>
+@@ -608,6 +714,8 @@ BENCHMARK(BM_DpfEval<20, BytesGroup>)->Name("BM_DpfEval_Bytes/20")->UseManualTim
+ 
+ // DPF other PRG
+ BENCHMARK(BM_DpfEvalAes<20, UintGroup>)->Name("BM_DpfEval_Uint_AesSoft/20")->UseManualTime();
++BENCHMARK(BM_DpfEvalAesShm<20, UintGroup>)->Name("BM_DpfEval_Uint_AesShmSoft/20")->UseManualTime();
++BENCHMARK(BM_DpfGenAesShm<20, UintGroup>)->Name("BM_DpfGen_Uint_AesShmSoft/20")->UseManualTime();
+ 
+ // DCF (ChaCha<4>)
+ BENCHMARK(BM_DcfEval<20, UintGroup>)->Name("BM_DcfEval_Uint/20")->UseManualTime();
