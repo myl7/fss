@@ -8,6 +8,10 @@
  *
  * Works on both host and device.
  * The AES core is based on tiny-AES-c by kokke et al. (public domain).
+ *
+ * ## References
+ *
+ * 1. Neha Jawalkar, Kanav Gupta, Arkaprava Basu, Nishanth Chandran, Divya Gupta, Rahul Sharma: Orca: FSS-based Secure Training and Inference with GPUs. SP 2024: 597-616. <https://doi.org/10.1109/SP54263.2024.00063>. @anchor orca
  */
 
 #pragma once

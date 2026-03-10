@@ -6,7 +6,7 @@
  *
  * @brief 2-party verifiable distributed point function (VDPF).
  *
- * The scheme is from the paper, [_Lightweight, Maliciously Secure Verifiable Function Secret Sharing_](https://eprint.iacr.org/2024/677) (@ref vdpf "1").
+ * The scheme is from the paper, [_Lightweight, Maliciously Secure Verifiable Function Secret Sharing_](https://eprint.iacr.org/2024/677) (@ref vdpf "1: the published version").
  *
  * ## Definitions
  *

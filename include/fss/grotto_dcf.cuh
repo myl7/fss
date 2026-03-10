@@ -17,8 +17,7 @@
  *
  * ## References
  *
- * 1. Kyle Storrier, Adithya Vadapalli, Allan Lyons, Ryan Henry: Grotto: Screaming fast (2+1)-PC
- *    for Z_{2^n} via (2,2)-DPFs. CCS 2023. <https://eprint.iacr.org/2023/108>. @anchor grotto_dcf
+ * 1. Kyle Storrier, Adithya Vadapalli, Allan Lyons, Ryan Henry: Grotto: Screaming fast (2+1)-PC for Z_{2^n} via (2, 2)-DPFs. CCS 2023: 2143-2157. <https://doi.org/10.1145/3576915.3623147>. <https://eprint.iacr.org/2023/108>. @anchor grotto_dcf
  */
 
 #pragma once

@@ -6,8 +6,12 @@
  *
  * @brief 2-party distributed point function (DPF) using the Half-Tree scheme.
  *
- * The scheme is from the paper, [_Half-Tree: Halving the Cost of Tree Expansion in COT and DPF_](https://eprint.iacr.org/2023/1044).
+ * The scheme is from the paper, [_Half-Tree: Halving the Cost of Tree Expansion in COT and DPF_](https://eprint.iacr.org/2022/1431) (@ref half_tree_dpf "1: the published version").
  * It reduces the number of hash calls from 2N to 1.5N for full-domain evaluation.
+ *
+ * ## References
+ *
+ * 1. Xiaojie Guo, Kang Yang, Xiao Wang, Wenhao Zhang, Xiang Xie, Jiang Zhang, Zheli Liu: Half-Tree: Halving the Cost of Tree Expansion in COT and DPF. EUROCRYPT (1) 2023: 330-362. <https://doi.org/10.1007/978-3-031-30545-0_12>. <https://eprint.iacr.org/2022/1431>. @anchor half_tree_dpf
  */
 
 #pragma once
