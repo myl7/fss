@@ -2,14 +2,16 @@
 
 Function secret sharing (FSS) primitives including:
 
-- 2-party distributed point function (DPF)
-- 2-party distributed comparison function (DCF)
+- 2-party distributed point function (DPF), based on [Boyle et al. (CCS '16)](https://doi.org/10.1145/2976749.2978429) or [Half-Tree (EUROCRYPT '23)](https://doi.org/10.1007/978-3-031-30545-0_12).
+- 2-party distributed comparison function (DCF), based on [Boyle et al. (EUROCRYPT '21)](https://doi.org/10.1007/978-3-030-77886-6_30) or [Grotto (CCS '23)](https://doi.org/10.1145/3576915.3623147).
+- 2-party verifiable distributed point function (VDPF), based on [Castro & Polychroniadou (EUROCRYPT '22)]().
 
 [Documentation](https://myl7.github.io/fss/)
 
 Features:
 
 - First-class support for GPU (based on CUDA)
+- Top-tier performance shown by benchmarks
 - Well-commented and documented
 - Header-only library, easy for integration
 
