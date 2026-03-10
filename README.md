@@ -282,29 +282,33 @@ Run a subset using `--benchmark_filter` (regex):
 Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance governor, pinned with `taskset -c 0`.
 
 ```
---------------------------------------------------------------------
-Benchmark                          Time             CPU   Iterations
---------------------------------------------------------------------
-BM_DpfGen_Uint_Aes/14           5401 ns         5399 ns       135596
-BM_DpfGen_Uint_Aes/17           6467 ns         6458 ns       111512
-BM_DpfGen_Uint_Aes/20           7754 ns         7745 ns        94862
-BM_DpfGen_Bytes_Aes/20          7767 ns         7755 ns        93902
-BM_DpfGen_Uint_ChaCha/20      134016 ns       133877 ns         5130
-BM_DpfEval_Uint_Aes/14          2883 ns         2880 ns       239868
-BM_DpfEval_Uint_Aes/17          3515 ns         3511 ns       203638
-BM_DpfEval_Uint_Aes/20          3170 ns         3166 ns       179563
-BM_DpfEval_Bytes_Aes/20         2862 ns         2860 ns       337629
-BM_DpfEval_Uint_ChaCha/20      65493 ns        65387 ns        11237
-BM_DcfGen_Uint_Aes/14          12316 ns        12304 ns        58867
-BM_DcfGen_Uint_Aes/17          14896 ns        14881 ns        49506
-BM_DcfGen_Uint_Aes/20          17215 ns        17212 ns        41366
-BM_DcfGen_Bytes_Aes/20         17804 ns        17797 ns        38546
-BM_DcfGen_Uint_ChaCha/20      139071 ns       138851 ns         4857
-BM_DcfEval_Uint_Aes/14          6041 ns         6034 ns       120311
-BM_DcfEval_Uint_Aes/17          7385 ns         7373 ns        98980
-BM_DcfEval_Uint_Aes/20          8753 ns         8750 ns        81551
-BM_DcfEval_Bytes_Aes/20         8991 ns         8988 ns        79812
-BM_DcfEval_Uint_ChaCha/20      69761 ns        69688 ns         9848
+-------------------------------------------------------------------------------
+Benchmark                                     Time             CPU   Iterations
+-------------------------------------------------------------------------------
+BM_DpfEval_Uint_Aes/20                     1704 ns         1703 ns       423203
+BM_DpfEval_Uint_Aes/14                     1117 ns         1117 ns       623553
+BM_DpfEval_Uint_Aes/17                     1408 ns         1407 ns       501122
+BM_DpfGen_Uint_Aes/20                      3226 ns         3224 ns       215461
+BM_DpfEval_Bytes_Aes/20                    1609 ns         1609 ns       431192
+BM_DpfEvalAll_Uint_Aes/20             166795841 ns    166741828 ns            5 items_per_second=6.28862M/s
+BM_DpfEval_Uint_ChaCha/20                 44940 ns        44911 ns        16889
+BM_DpfEval_Uint_AesSoft/20                16184 ns        16172 ns        42681
+BM_DcfEval_Uint_Aes/20                     4318 ns         4315 ns       193683
+BM_DcfGen_Uint_Aes/20                      7461 ns         7456 ns        94162
+BM_DcfEval_Bytes_Aes/20                    3685 ns         3683 ns       187611
+BM_DcfEvalAll_Uint_Aes/20             267235391 ns    267066584 ns            3 items_per_second=3.92627M/s
+BM_DcfEvalAll_Bytes_Aes/20            276631759 ns    276403133 ns            2 items_per_second=3.79365M/s
+BM_VdpfEval_Uint_Aes_Sha256/20             2959 ns         2957 ns       238919
+BM_VdpfGen_Uint_Aes_Sha256/20              6000 ns         5998 ns       100000
+BM_VdpfEval_Uint_Aes_Blake3/20             7354 ns         7349 ns        95737
+BM_VdpfProve_Uint_ChaCha_Blake3/20         1890 ns         1888 ns       363291
+BM_VdpfEvalAll_Uint_Aes_Sha256/20    1424750352 ns   1424019165 ns            1 items_per_second=736.35k/s
+BM_HalfTreeDpfEval_Uint_Aes/20              985 ns          985 ns       722157
+BM_HalfTreeDpfGen_Uint_Aes/20              2204 ns         2203 ns       319493
+BM_HalfTreeDpfEvalAll_Uint_Aes/20      97681794 ns     97599273 ns            7 items_per_second=10.7437M/s
+BM_GrottoDcfEval_Aes/20                    46.9 ns         46.9 ns     15044877
+BM_GrottoDcfPreprocess_Aes/20         130893070 ns    130785021 ns            5
+BM_GrottoDcfPreprocessEvalAll_Aes/20  260231883 ns    260023892 ns            3 items_per_second=4.03261M/s
 ```
 
 ### GPU Results
@@ -312,51 +316,39 @@ BM_DcfEval_Uint_ChaCha/20      69761 ns        69688 ns         9848
 Run on NVIDIA RTX A6000 (48GB VRAM), CUDA 12.6, driver 560.35.05. Each iteration runs 1M (2^20) Gen/Eval in parallel. The GPU was warmed up before running the benchmarks.
 
 ```
-------------------------------------------------------------------------------------------
-Benchmark                                Time             CPU   Iterations UserCounters...
-------------------------------------------------------------------------------------------
-BM_DpfGen_Bytes/14/manual_time     3742742 ns      3758600 ns          188 items_per_second=280.162M/s
-BM_DpfGen_Uint/14/manual_time      3605138 ns      3620776 ns          195 items_per_second=290.856M/s
-BM_DpfEval_Bytes/14/manual_time    1834773 ns      1846636 ns          385 items_per_second=571.502M/s
-BM_DpfEval_Uint/14/manual_time     1829063 ns      1840391 ns          386 items_per_second=573.286M/s
-BM_DcfGen_Bytes/14/manual_time     3683808 ns      3690193 ns          191 items_per_second=284.645M/s
-BM_DcfGen_Uint/14/manual_time      3660811 ns      3669146 ns          192 items_per_second=286.433M/s
-BM_DcfEval_Bytes/14/manual_time    1896609 ns      1904905 ns          371 items_per_second=552.869M/s
-BM_DcfEval_Uint/14/manual_time     1958738 ns      1967174 ns          362 items_per_second=535.333M/s
-BM_DpfGen_Bytes/17/manual_time     4581579 ns      4597150 ns          154 items_per_second=228.868M/s
-BM_DpfGen_Uint/17/manual_time      4420796 ns      4432505 ns          159 items_per_second=237.192M/s
-BM_DpfEval_Bytes/17/manual_time    2234414 ns      2243475 ns          316 items_per_second=469.285M/s
-BM_DpfEval_Uint/17/manual_time     2232655 ns      2237366 ns          315 items_per_second=469.654M/s
-BM_DcfGen_Bytes/17/manual_time     4508062 ns      4519748 ns          156 items_per_second=232.6M/s
-BM_DcfGen_Uint/17/manual_time      4481349 ns      4493369 ns          156 items_per_second=233.987M/s
-BM_DcfEval_Bytes/17/manual_time    2336961 ns      2352788 ns          300 items_per_second=448.692M/s
-BM_DcfEval_Uint/17/manual_time     2387943 ns      2398429 ns          294 items_per_second=439.113M/s
-BM_DpfGen_Bytes/20/manual_time     5405055 ns      5418053 ns          139 items_per_second=193.999M/s
-BM_DpfGen_Uint/20/manual_time      5234761 ns      5240723 ns          100 items_per_second=200.31M/s
-BM_DpfEval_Bytes/20/manual_time    2661169 ns      2670157 ns          261 items_per_second=394.028M/s
-BM_DpfEval_Uint/20/manual_time     2643466 ns      2655424 ns          262 items_per_second=396.667M/s
-BM_DcfGen_Bytes/20/manual_time     5308714 ns      5318537 ns          100 items_per_second=197.52M/s
-BM_DcfGen_Uint/20/manual_time      5294843 ns      5306015 ns          100 items_per_second=198.037M/s
-BM_DcfEval_Bytes/20/manual_time    2741223 ns      2749239 ns          252 items_per_second=382.521M/s
-BM_DcfEval_Uint/20/manual_time     2833979 ns      2842343 ns          248 items_per_second=370.001M/s
+-------------------------------------------------------------------------------------------------
+Benchmark                                       Time             CPU   Iterations UserCounters...
+-------------------------------------------------------------------------------------------------
+BM_DpfEval_Uint/20/manual_time            5003011 ns      7320763 ns          100 items_per_second=209.589M/s
+BM_DpfEval_Uint/14/manual_time            1283038 ns      3108089 ns          527 items_per_second=817.26M/s
+BM_DpfEval_Uint/17/manual_time            1664344 ns      3599944 ns          425 items_per_second=630.024M/s
+BM_DpfGen_Uint/20/manual_time             5530518 ns      7397631 ns          113 items_per_second=189.598M/s
+BM_DpfEval_Bytes/20/manual_time           4356800 ns      6046874 ns          139 items_per_second=240.676M/s
+BM_DpfEval_Uint_AesSoft/20/manual_time   20864855 ns     22624837 ns           29 items_per_second=50.2556M/s
+BM_DcfEval_Uint/20/manual_time            4356972 ns      6142652 ns          173 items_per_second=240.666M/s
+BM_DcfGen_Uint/20/manual_time             5926477 ns      8139248 ns          114 items_per_second=176.931M/s
+BM_VdpfEval_Uint/20/manual_time           3990959 ns      5761747 ns          155 items_per_second=262.738M/s
+BM_VdpfGen_Uint/20/manual_time            5787254 ns      7720680 ns          130 items_per_second=181.187M/s
+BM_HalfTreeDpfEval_Uint/20/manual_time    1746974 ns      4011309 ns          403 items_per_second=600.224M/s
+BM_HalfTreeDpfGen_Uint/20/manual_time     5996544 ns      8311199 ns          118 items_per_second=174.863M/s
 ```
 
 GPU kernel register usage (compiled for sm_52, `--ptxas-options=-v`):
 
-| Kernel          | Group      | Registers | Stack |
-| --------------- | ---------- | --------- | ----- |
-| DpfEval         | Uint/Bytes | 39        |       |
-| DpfGen          | Uint/Bytes | 48        |       |
-| DpfEvalAes      | Uint       | 255       | 608B  |
-| DpfGenAes       | Uint       | 255       | 608B  |
-| HalfTreeDpfEval | Uint       | 41        |       |
-| HalfTreeDpfGen  | Uint       | 47        |       |
-| VdpfEval        | Uint       | 38        |       |
-| VdpfGen         | Uint       | 72        |       |
-| DcfEval         | Uint       | 38        |       |
-| DcfGen          | Uint       | 56        |       |
+| Kernel          | Group      | Registers | Stack | Smem  |
+| --------------- | ---------- | --------- | ----- | ----- |
+| DpfEval         | Uint/Bytes | 39        |       |       |
+| DpfGen          | Uint/Bytes | 48        |       |       |
+| DpfEvalAes      | Uint       | 72        | 992B  | 1280B |
+| DpfGenAes       | Uint       | 72        | 992B  | 1280B |
+| HalfTreeDpfEval | Uint       | 41        |       |       |
+| HalfTreeDpfGen  | Uint       | 47        |       |       |
+| VdpfEval        | Uint       | 38        |       |       |
+| VdpfGen         | Uint       | 72        |       |       |
+| DcfEval         | Uint       | 38        |       |       |
+| DcfGen          | Uint       | 56        |       |       |
 
-The AES-based kernels hit the 255-register cap and spill to stack. All other kernels have zero spills.
+The AES-based kernels use shared memory and spill to stack. All other kernels have zero spills.
 
 ### Flamegraph
 
