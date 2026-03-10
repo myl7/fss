@@ -3,6 +3,7 @@ CPU_ID ?= 0
 CPU_SG := /sys/devices/system/cpu/cpu$(CPU_ID)/cpufreq/scaling_governor
 FLAMEGRAPH_DIR ?= ../FlameGraph
 FLAMEGRAPH_BENCH ?= BM_DpfEval_Uint_Aes/20
+export OMP_NUM_THREADS = 1
 
 .PHONY: format format_check bench_cpu bench_gpu bench_build flamegraph ptx_info
 
