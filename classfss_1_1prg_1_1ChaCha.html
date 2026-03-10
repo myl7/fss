@@ -35,7 +35,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.0.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.1.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -121,11 +121,11 @@ cuda::std::array&lt; int4, mul &gt;&#160;</td><td class="memItemRight" valign="b
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int mul, int rounds = 20&gt;<br />
-requires (rounds % 2 == 0 &amp;&amp; (mul == 2 || mul == 4))<br />
+requires (rounds % 2 == 0 &amp;&amp; (mul == 1 || mul == 2 || mul == 4))<br />
 class fss::prg::ChaCha&lt; mul, rounds &gt;</div><p>ChaCha as a PRG. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">mul</td><td>See Prgable mul. For this class, can only be 2 or 4. </td></tr>
+    <tr><td class="paramname">mul</td><td>See Prgable mul. For this class, can only be 1, 2, or 4. </td></tr>
     <tr><td class="paramname">rounds</td><td>Security parameter. The default value is secure enough and widely used, thus preferred. </td></tr>
   </table>
   </dd>

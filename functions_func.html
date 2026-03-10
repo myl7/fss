@@ -35,7 +35,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.0.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.1.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -102,11 +102,18 @@ $(document).ready(function(){initNavTree('functions_func.html',''); initResizabl
 <div class="contents">
 <div class="textblock">Here is a list of all documented functions with links to the class documentation for each member:</div><ul>
 <li>Aes128Mmo()&#160;:&#160;<a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a797d22b22192bfdf2a8c3af16082dcfc">fss::prg::Aes128Mmo&lt; mul &gt;</a></li>
+<li>Aes128Soft()&#160;:&#160;<a class="el" href="classfss_1_1prg_1_1Aes128Soft.html#ac3fca29a243a9d93ce1a07aa238fd5c7">fss::prg::Aes128Soft&lt; mul &gt;</a></li>
+<li>Blake3()&#160;:&#160;<a class="el" href="classfss_1_1hash_1_1Blake3.html#a278a98ae4bafe690356136eaf97fa716">fss::hash::Blake3</a></li>
 <li>ChaCha()&#160;:&#160;<a class="el" href="classfss_1_1prg_1_1ChaCha.html#a3cc5a97358c386d0c9545488f5f082f1">fss::prg::ChaCha&lt; mul, rounds &gt;</a></li>
 <li>CreateCtxs()&#160;:&#160;<a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a59e602ac038fdd21c6ff7f64d6a1478c">fss::prg::Aes128Mmo&lt; mul &gt;</a></li>
-<li>Eval()&#160;:&#160;<a class="el" href="classfss_1_1Dcf.html#a3031b91814f5ed824c6883aa24916195">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</a>, <a class="el" href="classfss_1_1Dpf.html#a1416dbe8fa4f43437ea3951bb49655d3">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a></li>
-<li>EvalAll()&#160;:&#160;<a class="el" href="classfss_1_1Dcf.html#ac3eac12d3ef7e72917d292329ed35a0a">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</a>, <a class="el" href="classfss_1_1Dpf.html#a99bbc5176026a65fc2385186af3b6483">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a></li>
-<li>Gen()&#160;:&#160;<a class="el" href="classfss_1_1Dcf.html#aafb0247572b03e778041c9c57acfd494">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</a>, <a class="el" href="classfss_1_1Dpf.html#abb6b5745a642a4bd176ebafc3d65dc9f">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a></li>
+<li>Eval()&#160;:&#160;<a class="el" href="classfss_1_1Dcf.html#a3031b91814f5ed824c6883aa24916195">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</a>, <a class="el" href="classfss_1_1Dpf.html#a1416dbe8fa4f43437ea3951bb49655d3">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1HalfTreeDpf.html#a47ba4e082e65fdaaeada4fa4329bf3c7">fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1Vdpf.html#a3367b1502b0ec3c40f25a68af8fb10cc">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</a></li>
+<li>EvalAll()&#160;:&#160;<a class="el" href="classfss_1_1Dcf.html#ac3eac12d3ef7e72917d292329ed35a0a">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</a>, <a class="el" href="classfss_1_1Dpf.html#a99bbc5176026a65fc2385186af3b6483">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1GrottoDcf.html#af2feed42576cd942b3c9fab811913a1f">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1HalfTreeDpf.html#a2571df91e531622bcf446a2ce7b05d58">fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1Vdpf.html#af57ab293080d64313a1717d1a98b7440">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</a></li>
+<li>Gen()&#160;:&#160;<a class="el" href="classfss_1_1Dcf.html#aafb0247572b03e778041c9c57acfd494">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</a>, <a class="el" href="classfss_1_1Dpf.html#abb6b5745a642a4bd176ebafc3d65dc9f">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1GrottoDcf.html#a0d296570064eba952753551008abeaf4">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce">fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt;</a>, <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</a></li>
+<li>Hash()&#160;:&#160;<a class="el" href="classfss_1_1hash_1_1Blake3.html#a68147081131a2e3af1c0ff456bb060db">fss::hash::Blake3</a>, <a class="el" href="classfss_1_1hash_1_1Sha256.html#af68a5f6e43464d045ccc36e50c75155b">fss::hash::Sha256</a></li>
+<li>Preprocess()&#160;:&#160;<a class="el" href="classfss_1_1GrottoDcf.html#ad1193bc4b5ce2ae33d4f8afaa352f5ce">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</a></li>
+<li>Prove()&#160;:&#160;<a class="el" href="classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</a></li>
+<li>Sha256()&#160;:&#160;<a class="el" href="classfss_1_1hash_1_1Sha256.html#a1e31d36a519e0c469aba396646a4184a">fss::hash::Sha256</a></li>
+<li>Verify()&#160;:&#160;<a class="el" href="classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

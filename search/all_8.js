@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['kgt_0',['kGt',['../dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509af166c5f480408355d40fdedd40d08cd5',1,'fss']]],
-  ['klt_1',['kLt',['../dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509a79e0a0a6afb3ede6b7579b1c22fd5e66',1,'fss']]]
+  ['implementation_20details_0',['implementation details',['../dcf_8cuh.html#autotoc_md14',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md18',1,'Implementation Details'],['../conceptGroupable.html#autotoc_md22',1,'Implementation Details'],['../vdpf_8cuh.html#autotoc_md27',1,'Implementation Details']]],
+  ['introduction_1',['Introduction',['../index.html#autotoc_md1',1,'']]]
 ];
