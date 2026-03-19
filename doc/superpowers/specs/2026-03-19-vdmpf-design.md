@@ -68,9 +68,11 @@ struct PrpHash {
 };
 ```
 
-Implements Equations (1) and (2) from the paper:
-- $h_i(x) = \lfloor \text{PRP}(\sigma, x + n \cdot (i-1)) / B \rfloor$
-- $\text{index}_i(x) = \text{PRP}(\sigma, x + n \cdot (i-1)) \mod B$
+Implements Equations (1) and (2) from the paper. Parameter `k` is 0-indexed (paper uses 1-indexed `i`):
+- $h_k(x) = \lfloor \text{PRP}(\sigma, x + n \cdot k) / B \rfloor$
+- $\text{index}_k(x) = \text{PRP}(\sigma, x + n \cdot k) \mod B$
+
+Note: for AES-128 PRP, `x + n * k` must fit in 128 bits, so `in_bits <= 126` when `kappa = 3`.
 
 ### Compact
 
@@ -80,10 +82,13 @@ template <typename Prp, typename In>
 struct Compact {
     Prp prp;
     // Inserts t elements into m buckets. Algorithm 4 from paper.
-    // table[i] = (alpha_j, k) if occupied, or empty.
+    // table[i] = (j, k) where j is the index into as and k is the hash function
+    // index that placed it. Unlike Algorithm 4 which stores elements directly,
+    // we store (index, hash_fn) so Gen can retrieve b_bufs[j] and compute index_k.
+    // ch_retry: max eviction attempts before declaring failure.
     // Returns 0 on success, 1 on failure.
     int Run(std::span<const In> as, int m, int4 sigma, In n, int b_size,
-            std::span<std::pair<In, int>> table);
+            int ch_retry, std::span<std::pair<int, int>> table);
 };
 ```
 
@@ -101,9 +106,10 @@ public:
     static constexpr int kappa = 3;
     static constexpr int m = cuckoo_hash::ChBucket(max_points, kappa, 127);
     static constexpr In n = In(1) << in_bits;
-    static constexpr int b_size = (int)((uint64_t)n * kappa + m - 1) / m;
+    // For in_bits > 62, use __uint128_t arithmetic to avoid overflow.
+    static constexpr int b_size = /* ceil(n * kappa / m) with wide arithmetic */;
 
-    using InnerVdpf = Vdpf<bucket_bits, Group, Prg, XorHash, Hash, int>;
+    using InnerVdpf = Vdpf<bucket_bits, Group, Prg, XorHash, Hash, uint>;
 
     Prg prg;
     XorHash xor_hash;
@@ -141,7 +147,7 @@ public:
 3. Compute runtime `B` = `ceil(n * kappa / m_)`. Assert `B <= (1 << bucket_bits)`.
 4. Run `Compact` to insert `as[0..t]` into `m_` buckets. Return 1 on failure.
 5. For each bucket `i` in `[0, m)`:
-   - If `i < m_` and `table[i]` is occupied: `a' = index_k(alpha_j)`, `b_buf' = b_bufs[j]`.
+   - If `i < m_` and `table[i]` is occupied: let `(alpha_j, k) = table[i]` where `k` is the hash function that placed it and `j` is the index into `as`. Then `a' = index_k(alpha_j)`, `b_buf' = b_bufs[j]`.
    - Else: `a' = 0`, `b_buf' = 0` (zero function).
    - Call `inner_vdpf.Gen(bks[i].cws, bks[i].cs, bks[i].ocw, s0s[i], a', b_buf')`.
    - Retry (return 1) if inner Gen returns 1.
@@ -158,10 +164,11 @@ public:
      - Append `(j_k, omega)` to `inputs[i_k]`, deduplicating per bucket.
 3. Initialize `ys[0..eta]` to zero. Initialize `pi = {0, 0, 0, 0}`.
 4. For each bucket `i` in `[0, m)`:
+   - Initialize per-bucket proof: `pi_bucket = {bks[i].cs[0], bks[i].cs[1], bks[i].cs[2], bks[i].cs[3]}`.
    - For each `(j_ell, omega_ell)` in `inputs[i]`:
-     - `pi_tilde = inner_vdpf.Eval(b, bks[i].s0, bks[i].cws, bks[i].cs, bks[i].ocw, j_ell, y)`
+     - `pi_tilde_ell = inner_vdpf.Eval(b, bks[i].s0, bks[i].cws, bks[i].cs, bks[i].ocw, j_ell, y)`
      - `ys[omega_ell] += y` (group addition).
-     - Accumulate per-bucket proof (same as `Vdpf::Prove` logic).
+     - Accumulate into `pi_bucket`: `h_input = pi_bucket XOR pi_tilde_ell`, `h_out = H'(h_input)`, `pi_bucket[0..1] ^= h_out[0..1]` (same as `Vdpf::Prove`).
    - Cross-bucket proof: `pi = pi XOR H'(pi XOR pi_bucket)`.
 5. Output `ys`, `pi`.
 
