@@ -78,6 +78,10 @@ if(BUILD_TESTING)
     add_executable(grotto_dcf_test src/grotto_dcf_test.cu)
     target_link_libraries(grotto_dcf_test GTest::gtest_main fss)
     gtest_discover_tests(grotto_dcf_test)
+
+    add_executable(vdmpf_test src/vdmpf_test.cu)
+    target_link_libraries(vdmpf_test GTest::gtest_main fss OpenSSL::Crypto)
+    gtest_discover_tests(vdmpf_test)
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
