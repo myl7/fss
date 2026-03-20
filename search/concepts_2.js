@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['prgable_0',['Prgable',['../conceptPrgable.html',1,'']]]
+  ['permutable_0',['Permutable',['../conceptPermutable.html',1,'']]],
+  ['prgable_1',['Prgable',['../conceptPrgable.html',1,'']]]
 ];

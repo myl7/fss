@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['sha256_0',['Sha256',['../classfss_1_1hash_1_1Sha256.html',1,'fss::hash']]]
+  ['paritytree_0',['ParityTree',['../structfss_1_1GrottoDcf_1_1ParityTree.html',1,'fss::GrottoDcf']]],
+  ['prphash_1',['PrpHash',['../structfss_1_1cuckoo__hash_1_1PrpHash.html',1,'fss::cuckoo_hash']]]
 ];

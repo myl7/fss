@@ -1,6 +1,10 @@
 var annotated_dup =
 [
     [ "fss", null, [
+      [ "cuckoo_hash", null, [
+        [ "Compact", "structfss_1_1cuckoo__hash_1_1Compact.html", "structfss_1_1cuckoo__hash_1_1Compact" ],
+        [ "PrpHash", "structfss_1_1cuckoo__hash_1_1PrpHash.html", "structfss_1_1cuckoo__hash_1_1PrpHash" ]
+      ] ],
       [ "group", null, [
         [ "Bytes", "structfss_1_1group_1_1Bytes.html", null ],
         [ "Uint", "structfss_1_1group_1_1Uint.html", null ]
@@ -14,10 +18,14 @@ var annotated_dup =
         [ "Aes128Soft", "classfss_1_1prg_1_1Aes128Soft.html", "classfss_1_1prg_1_1Aes128Soft" ],
         [ "ChaCha", "classfss_1_1prg_1_1ChaCha.html", "classfss_1_1prg_1_1ChaCha" ]
       ] ],
+      [ "prp", null, [
+        [ "Aes128Feistel", "classfss_1_1prp_1_1Aes128Feistel.html", "classfss_1_1prp_1_1Aes128Feistel" ]
+      ] ],
       [ "Dcf", "classfss_1_1Dcf.html", "classfss_1_1Dcf" ],
       [ "Dpf", "classfss_1_1Dpf.html", "classfss_1_1Dpf" ],
       [ "GrottoDcf", "classfss_1_1GrottoDcf.html", "classfss_1_1GrottoDcf" ],
       [ "HalfTreeDpf", "classfss_1_1HalfTreeDpf.html", "classfss_1_1HalfTreeDpf" ],
+      [ "Vdmpf", "classfss_1_1Vdmpf.html", "classfss_1_1Vdmpf" ],
       [ "Vdpf", "classfss_1_1Vdpf.html", "classfss_1_1Vdpf" ]
     ] ],
     [ "AesCtx", "structAesCtx.html", null ],
