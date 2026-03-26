@@ -10,8 +10,10 @@
 /doc/html
 
 # AI agents
-.claude/**/*.local.*
-/doc/plans
+.claude
+superpowers
+.worktrees
+.firecrawl
 
 # Benchmarks
 perf.data
