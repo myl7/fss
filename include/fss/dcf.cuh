@@ -136,7 +136,7 @@ public:
             v1r_buf = util::SetLsb(v1r_buf, false);
             auto v1r = Group::From(v1r_buf);
 
-            bool a_bit = (a >> in_bits - 1 - i) & 1;
+            bool a_bit = (a >> (in_bits - 1 - i)) & 1;
 
             int4 s_cw;
             if (!a_bit) s_cw = util::Xor(s0r, s1r);
@@ -182,7 +182,6 @@ public:
                 else t1 = t1r;
             }
 
-            // s_cw is updated here
             s_cw = util::SetLsb(s_cw, tl_cw);
             int4 v_buf = v_cw.Into();
             v_buf = util::SetLsb(v_buf, tr_cw);
@@ -240,7 +239,7 @@ public:
                 tr = tr ^ tr_cw;
             }
 
-            bool x_bit = (x >> in_bits - 1 - i) & 1;
+            bool x_bit = (x >> (in_bits - 1 - i)) & 1;
 
             if (b) {
                 if (!x_bit) v = v + (-vl);
@@ -301,13 +300,7 @@ public:
         size_t r = 1ULL << in_bits;
         int i = 0;
 
-        int par_depth_ = 0;
-        if (par_depth == -1) {
-            int threads = omp_get_max_threads();
-            while ((1 << par_depth_) < threads) {
-                par_depth_++;
-            }
-        } else par_depth_ = par_depth;
+        int par_depth_ = util::ResolveParDepth(par_depth);
 
         Group v;
 

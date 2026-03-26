@@ -158,20 +158,7 @@ public:
         }
 
         // Verification hash
-        int4 a_buf = {};
-        if constexpr (sizeof(In) <= 4) {
-            a_buf.x = static_cast<int>(a);
-        } else if constexpr (sizeof(In) <= 8) {
-            auto a64 = static_cast<uint64_t>(a);
-            a_buf.x = static_cast<int>(a64 & 0xFFFFFFFF);
-            a_buf.y = static_cast<int>((a64 >> 32) & 0xFFFFFFFF);
-        } else {
-            auto a128 = static_cast<__uint128_t>(a);
-            a_buf.x = static_cast<int>(a128 & 0xFFFFFFFF);
-            a_buf.y = static_cast<int>((a128 >> 32) & 0xFFFFFFFF);
-            a_buf.z = static_cast<int>((a128 >> 64) & 0xFFFFFFFF);
-            a_buf.w = static_cast<int>((a128 >> 96) & 0xFFFFFFFF);
-        }
+        int4 a_buf = util::Pack(a);
 
         auto pi_tilde_0 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s0});
         auto pi_tilde_1 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s1});
@@ -247,20 +234,7 @@ public:
         y = g.Into();
 
         // Corrected verification hash
-        int4 x_buf = {};
-        if constexpr (sizeof(In) <= 4) {
-            x_buf.x = static_cast<int>(x);
-        } else if constexpr (sizeof(In) <= 8) {
-            auto x64 = static_cast<uint64_t>(x);
-            x_buf.x = static_cast<int>(x64 & 0xFFFFFFFF);
-            x_buf.y = static_cast<int>((x64 >> 32) & 0xFFFFFFFF);
-        } else {
-            auto x128 = static_cast<__uint128_t>(x);
-            x_buf.x = static_cast<int>(x128 & 0xFFFFFFFF);
-            x_buf.y = static_cast<int>((x128 >> 32) & 0xFFFFFFFF);
-            x_buf.z = static_cast<int>((x128 >> 64) & 0xFFFFFFFF);
-            x_buf.w = static_cast<int>((x128 >> 96) & 0xFFFFFFFF);
-        }
+        int4 x_buf = util::Pack(x);
 
         auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
         if (t) {
@@ -333,13 +307,7 @@ public:
         size_t r = 1ULL << in_bits;
         int i = 0;
 
-        int par_depth_ = 0;
-        if (par_depth == -1) {
-            int threads = omp_get_max_threads();
-            while ((1 << par_depth_) < threads) {
-                par_depth_++;
-            }
-        } else par_depth_ = par_depth;
+        int par_depth_ = util::ResolveParDepth(par_depth);
 
         // Phase 1: tree traversal, store (s, t) packed into ys temporarily
 #pragma omp parallel
@@ -349,6 +317,8 @@ public:
         // Phase 2: sequential output computation and proof accumulation
         pi = {cs[0], cs[1], cs[2], cs[3]};
         size_t n = 1ULL << in_bits;
+        assert((ocw.w & 1) == 0);
+        auto ocw_group = Group::From(ocw);
         for (size_t j = 0; j < n; ++j) {
             int4 sj = ys[j];
             bool tj = util::GetLsb(sj);
@@ -356,26 +326,12 @@ public:
 
             // Output share
             auto g = Group::From(sj);
-            assert((ocw.w & 1) == 0);
-            if (tj) g = g + Group::From(ocw);
+            if (tj) g = g + ocw_group;
             if (b) g = -g;
             ys[j] = g.Into();
 
             // Proof accumulation
-            int4 x_buf = {};
-            if constexpr (sizeof(In) <= 4) {
-                x_buf.x = static_cast<int>(static_cast<In>(j));
-            } else if constexpr (sizeof(In) <= 8) {
-                auto x64 = static_cast<uint64_t>(j);
-                x_buf.x = static_cast<int>(x64 & 0xFFFFFFFF);
-                x_buf.y = static_cast<int>((x64 >> 32) & 0xFFFFFFFF);
-            } else {
-                auto x128 = static_cast<__uint128_t>(j);
-                x_buf.x = static_cast<int>(x128 & 0xFFFFFFFF);
-                x_buf.y = static_cast<int>((x128 >> 32) & 0xFFFFFFFF);
-                x_buf.z = static_cast<int>((x128 >> 64) & 0xFFFFFFFF);
-                x_buf.w = static_cast<int>((x128 >> 96) & 0xFFFFFFFF);
-            }
+            int4 x_buf = util::Pack(static_cast<In>(j));
 
             auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
             if (tj) {

@@ -143,7 +143,6 @@ public:
                 else t1 = t1r;
             }
 
-            // s_cw is updated here
             s_cw = util::SetLsb(s_cw, tl_cw);
             cws[i] = {s_cw, tr_cw};
         }
@@ -233,13 +232,7 @@ public:
         size_t r = 1ULL << in_bits;
         int i = 0;
 
-        int par_depth_ = 0;
-        if (par_depth == -1) {
-            int threads = omp_get_max_threads();
-            while ((1 << par_depth_) < threads) {
-                par_depth_++;
-            }
-        } else par_depth_ = par_depth;
+        int par_depth_ = util::ResolveParDepth(par_depth);
 
 #pragma omp parallel
 #pragma omp single

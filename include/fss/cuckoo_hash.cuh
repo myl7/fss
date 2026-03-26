@@ -59,6 +59,7 @@ constexpr double Ceil(double x) {
 
 /**
  * Compute the number of Cuckoo-hash buckets from Lemma 5 of the paper, simplified per Remark 1.
+ * This formula assumes kappa = 3 hash functions.
  *
  * For sufficiently large t (>= 30), the Normal CDF factors in Lemma 5 become effectively 1,
  * giving the simplified formula:
@@ -90,7 +91,7 @@ constexpr int ChBucket(int t, int lambda) {
  * @tparam Prp PRP type satisfying Permutable.
  * @tparam In Input domain type (unsigned integer up to __uint128_t).
  */
-template <typename Prp, typename In>
+template <typename Prp, typename In, int kappa = 3>
     requires Permutable<Prp>
 struct PrpHash {
     Prp prp;
@@ -112,7 +113,7 @@ struct PrpHash {
      */
     std::pair<int, int> Locate(int4 sigma, In x, int k, __uint128_t n, int b_size) {
         __uint128_t val = static_cast<__uint128_t>(x) + n * k;
-        __uint128_t domain = n * 3;  // kappa = 3
+        __uint128_t domain = n * kappa;
         __uint128_t y = prp.Permu(sigma, val, domain);
 
         auto bs = static_cast<__uint128_t>(b_size);
@@ -152,7 +153,7 @@ struct Compact {
      */
     int Run(std::span<const In> as, int m, int4 sigma, __uint128_t n, int b_size, int ch_retry,
         std::span<std::pair<int, int>> table) {
-        PrpHash<Prp, In> hasher{prp};
+        PrpHash<Prp, In, kappa> hasher{prp};
         int t = static_cast<int>(as.size());
 
         // Initialize table to empty.

@@ -239,13 +239,7 @@ public:
 
         assert(in_bits < sizeof(size_t) * 8);
 
-        int par_depth_ = 0;
-        if (par_depth == -1) {
-            int threads = omp_get_max_threads();
-            while ((1 << par_depth_) < threads) {
-                par_depth_++;
-            }
-        } else par_depth_ = par_depth;
+        int par_depth_ = util::ResolveParDepth(par_depth);
 
         if constexpr (in_bits == 1) {
             // Only level n (last level), no tree traversal
@@ -266,44 +260,14 @@ public:
         EvalTree(node, cws, ys, 0, num_leaves, 0, par_depth_);
 
         // Phase 2: level n + output conversion
-        // Unpack CW_n
         int4 hcw = util::SetLsb(cws[in_bits - 1].s, false);
         bool lcw_0 = util::GetLsb(cws[in_bits - 1].s);
         bool lcw_1 = cws[in_bits - 1].extra;
+        auto ocw_group = Group::From(ocw);
 
         // Iterate backward to avoid overwriting unprocessed parent nodes.
-        // ys[j] holds parent, writes go to ys[2*j] and ys[2*j+1].
-        // Processing j before j-1 ensures no read-after-write conflict.
         for (size_t j = num_leaves; j-- > 0;) {
-            int4 parent = ys[j];
-            bool t_parent = util::GetLsb(parent);
-
-            int4 h0 = prg.Gen(util::Xor(hash_key, util::SetLsb(parent, false)))[0];
-            int4 h1 = prg.Gen(util::Xor(hash_key, util::SetLsb(parent, true)))[0];
-
-            int4 high0 = util::SetLsb(h0, false);
-            bool low0 = util::GetLsb(h0);
-            int4 high1 = util::SetLsb(h1, false);
-            bool low1 = util::GetLsb(h1);
-
-            if (t_parent) {
-                high0 = util::Xor(high0, hcw);
-                low0 = low0 ^ lcw_0;
-                high1 = util::Xor(high1, hcw);
-                low1 = low1 ^ lcw_1;
-            }
-
-            // Output: (-1)^b * (ConvertG(s) + t * ocw) for both children
-            auto y0 = Group::From(high0);
-            if (low0) y0 = y0 + Group::From(ocw);
-            if (b) y0 = -y0;
-
-            auto y1 = Group::From(high1);
-            if (low1) y1 = y1 + Group::From(ocw);
-            if (b) y1 = -y1;
-
-            ys[2 * j] = y0.Into();
-            ys[2 * j + 1] = y1.Into();
+            ConvertLastLevel(b, ys[j], hcw, lcw_0, lcw_1, ocw_group, ys[2 * j], ys[2 * j + 1]);
         }
     }
 
@@ -343,15 +307,18 @@ private:
     }
 
     void EvalLastLevel(bool b, int4 node, const Cw cws[], int4 ocw, int4 ys[]) {
-        // For in_bits == 1, the initial node goes directly to level n processing
-        bool t_parent = util::GetLsb(node);
-
         int4 hcw = util::SetLsb(cws[0].s, false);
         bool lcw_0 = util::GetLsb(cws[0].s);
         bool lcw_1 = cws[0].extra;
+        ConvertLastLevel(b, node, hcw, lcw_0, lcw_1, Group::From(ocw), ys[0], ys[1]);
+    }
 
-        int4 h0 = prg.Gen(util::Xor(hash_key, util::SetLsb(node, false)))[0];
-        int4 h1 = prg.Gen(util::Xor(hash_key, util::SetLsb(node, true)))[0];
+    void ConvertLastLevel(bool b, int4 parent, int4 hcw, bool lcw_0, bool lcw_1, Group ocw_group,
+        int4 &y0_out, int4 &y1_out) {
+        bool t_parent = util::GetLsb(parent);
+
+        int4 h0 = prg.Gen(util::Xor(hash_key, util::SetLsb(parent, false)))[0];
+        int4 h1 = prg.Gen(util::Xor(hash_key, util::SetLsb(parent, true)))[0];
 
         int4 high0 = util::SetLsb(h0, false);
         bool low0 = util::GetLsb(h0);
@@ -366,15 +333,15 @@ private:
         }
 
         auto y0 = Group::From(high0);
-        if (low0) y0 = y0 + Group::From(ocw);
+        if (low0) y0 = y0 + ocw_group;
         if (b) y0 = -y0;
 
         auto y1 = Group::From(high1);
-        if (low1) y1 = y1 + Group::From(ocw);
+        if (low1) y1 = y1 + ocw_group;
         if (b) y1 = -y1;
 
-        ys[0] = y0.Into();
-        ys[1] = y1.Into();
+        y0_out = y0.Into();
+        y1_out = y1.Into();
     }
 };
 

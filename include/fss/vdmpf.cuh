@@ -156,7 +156,7 @@ public:
         k1.b_size_rt = b_rt;
 
         // Run Cuckoo hashing.
-        cuckoo_hash::PrpHash<Prp, In> prp_hash{prp};
+        cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
         std::vector<std::pair<int, int>> table(m_, {-1, -1});
         cuckoo_hash::Compact<Prp, In, kappa> compact{prp};
         int ret = compact.Run(
@@ -212,7 +212,7 @@ public:
         int m_ = key.m_rt;
         int b_rt = key.b_size_rt;
 
-        cuckoo_hash::PrpHash<Prp, In> prp_hash{prp};
+        cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
 
         // Build per-bucket input lists.
         // inputs[i] = vector of (within_bucket_index, original_input_index).

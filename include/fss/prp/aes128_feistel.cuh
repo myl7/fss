@@ -28,6 +28,18 @@
 namespace fss::prp {
 
 class Aes128Feistel {
+    EVP_CIPHER_CTX *ctx_;
+
+    void InitCtx() {
+        ctx_ = EVP_CIPHER_CTX_new();
+        assert(ctx_ != NULL);
+        unsigned char dummy[16] = {};
+        int ret = EVP_EncryptInit_ex2(ctx_, EVP_aes_128_ecb(), dummy, NULL, NULL);
+        assert(ret == 1);
+        ret = EVP_CIPHER_CTX_set_padding(ctx_, 0);
+        assert(ret == 1);
+    }
+
     static int CeilLog2(__uint128_t x) {
         if (x <= 1) return 0;
         int bits = 0;
@@ -39,27 +51,20 @@ class Aes128Feistel {
         return bits;
     }
 
-    static int4 RawAes(int4 key, int4 plaintext) {
+    int4 RawAes(int4 key, int4 plaintext) {
         int4 out{};
         auto key_ptr = reinterpret_cast<const unsigned char *>(&key);
         auto in_ptr = reinterpret_cast<const unsigned char *>(&plaintext);
         auto out_ptr = reinterpret_cast<unsigned char *>(&out);
 
-        EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-        assert(ctx != NULL);
-
-        int ret = EVP_EncryptInit_ex2(ctx, EVP_aes_128_ecb(), key_ptr, NULL, NULL);
-        assert(ret == 1);
-
-        ret = EVP_CIPHER_CTX_set_padding(ctx, 0);
+        int ret = EVP_EncryptInit_ex2(ctx_, NULL, key_ptr, NULL, NULL);
         assert(ret == 1);
 
         int cipher_len = 0;
-        ret = EVP_EncryptUpdate(ctx, out_ptr, &cipher_len, in_ptr, AES_BLOCK_SIZE);
+        ret = EVP_EncryptUpdate(ctx_, out_ptr, &cipher_len, in_ptr, AES_BLOCK_SIZE);
         assert(ret == 1);
         assert(cipher_len == AES_BLOCK_SIZE);
 
-        EVP_CIPHER_CTX_free(ctx);
         return out;
     }
 
@@ -78,6 +83,30 @@ class Aes128Feistel {
     }
 
 public:
+    Aes128Feistel() {
+        InitCtx();
+    }
+    ~Aes128Feistel() {
+        if (ctx_) EVP_CIPHER_CTX_free(ctx_);
+    }
+    Aes128Feistel(const Aes128Feistel &) {
+        InitCtx();
+    }
+    Aes128Feistel &operator=(const Aes128Feistel &) {
+        return *this;
+    }
+    Aes128Feistel(Aes128Feistel &&o) noexcept : ctx_(o.ctx_) {
+        o.ctx_ = nullptr;
+    }
+    Aes128Feistel &operator=(Aes128Feistel &&o) noexcept {
+        if (this != &o) {
+            EVP_CIPHER_CTX_free(ctx_);
+            ctx_ = o.ctx_;
+            o.ctx_ = nullptr;
+        }
+        return *this;
+    }
+
     /**
      * Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.
      *
