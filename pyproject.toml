@@ -1,0 +1,20 @@
+[project]
+name = "fss-crypto"
+version = "0.1.0"
+description = "PyTorch bindings for the FSS (Function Secret Sharing) library"
+requires-python = ">=3.13"
+dependencies = ["torch>=2.6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=75.0", "torch>=2.6"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["fss_crypto*"]
+
+[tool.setuptools.package-data]
+"fss_crypto._csrc" = ["*.cuh"]
+"*" = ["include/fss/**/*.cuh"]
