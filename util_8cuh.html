@@ -108,6 +108,7 @@ $(document).ready(function(){initNavTree('util_8cuh.html',''); initResizable(); 
 <div class="textblock"><code>#include &lt;cuda_runtime.h&gt;</code><br />
 <code>#include &lt;cuda/std/array&gt;</code><br />
 <code>#include &lt;cuda/std/span&gt;</code><br />
+<code>#include &lt;omp.h&gt;</code><br />
 </div>
 <p><a href="util_8cuh_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
@@ -128,6 +129,13 @@ int4&#160;</td><td class="memItemRight" valign="bottom"><b>fss::util::SetLsb</b>
 <tr class="memitem:a465474cbc6e677a9d9cd4d165ba69688" id="r_a465474cbc6e677a9d9cd4d165ba69688"><td class="memItemLeft" align="right" valign="top"><a id="a465474cbc6e677a9d9cd4d165ba69688" name="a465474cbc6e677a9d9cd4d165ba69688"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><b>fss::util::GetLsb</b> (int4 val)</td></tr>
 <tr class="separator:a465474cbc6e677a9d9cd4d165ba69688"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7559d02ff577ecd4186c3266300bc0bb" id="r_a7559d02ff577ecd4186c3266300bc0bb"><td class="memItemLeft" align="right" valign="top"><a id="a7559d02ff577ecd4186c3266300bc0bb" name="a7559d02ff577ecd4186c3266300bc0bb"></a>
+int&#160;</td><td class="memItemRight" valign="bottom"><b>fss::util::ResolveParDepth</b> (int par_depth)</td></tr>
+<tr class="separator:a7559d02ff577ecd4186c3266300bc0bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a22302e3fb27938ff80ba59995b6053b1" id="r_a22302e3fb27938ff80ba59995b6053b1"><td class="memTemplParams" colspan="2"><a id="a22302e3fb27938ff80ba59995b6053b1" name="a22302e3fb27938ff80ba59995b6053b1"></a>
+template&lt;typename In &gt; </td></tr>
+<tr class="memitem:a22302e3fb27938ff80ba59995b6053b1"><td class="memTemplItemLeft" align="right" valign="top">int4&#160;</td><td class="memTemplItemRight" valign="bottom"><b>fss::util::Pack</b> (In val)</td></tr>
+<tr class="separator:a22302e3fb27938ff80ba59995b6053b1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>

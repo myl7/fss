@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::cuckoo_hash::PrpHash&lt; Prp, In &gt; Struct Template Reference</title>
+<title>myl7/fss: fss::cuckoo_hash::PrpHash&lt; Prp, In, kappa &gt; Struct Template Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -104,7 +104,7 @@ $(document).ready(function(){initNavTree('structfss_1_1cuckoo__hash_1_1PrpHash.h
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structfss_1_1cuckoo__hash_1_1PrpHash-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::cuckoo_hash::PrpHash&lt; Prp, In &gt; Struct Template Reference</div></div>
+  <div class="headertitle"><div class="title">fss::cuckoo_hash::PrpHash&lt; Prp, In, kappa &gt; Struct Template Reference</div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -113,20 +113,20 @@ $(document).ready(function(){initNavTree('structfss_1_1cuckoo__hash_1_1PrpHash.h
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:af767437b33d1ea0e72ed9a03a9cc3880" id="r_af767437b33d1ea0e72ed9a03a9cc3880"><td class="memItemLeft" align="right" valign="top">std::pair&lt; int, int &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#af767437b33d1ea0e72ed9a03a9cc3880">Locate</a> (int4 sigma, In x, int k, __uint128_t n, int b_size)</td></tr>
-<tr class="memdesc:af767437b33d1ea0e72ed9a03a9cc3880"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compute bucket index and within-bucket index for hash function k.  <br /></td></tr>
-<tr class="separator:af767437b33d1ea0e72ed9a03a9cc3880"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1a8aea801fc13fb642bfb5e2b13b5229" id="r_a1a8aea801fc13fb642bfb5e2b13b5229"><td class="memItemLeft" align="right" valign="top">std::pair&lt; int, int &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a1a8aea801fc13fb642bfb5e2b13b5229">Locate</a> (int4 sigma, In x, int k, __uint128_t n, int b_size)</td></tr>
+<tr class="memdesc:a1a8aea801fc13fb642bfb5e2b13b5229"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compute bucket index and within-bucket index for hash function k.  <br /></td></tr>
+<tr class="separator:a1a8aea801fc13fb642bfb5e2b13b5229"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
-<tr class="memitem:aab38f986145dd439664eecae88a00c12" id="r_aab38f986145dd439664eecae88a00c12"><td class="memItemLeft" align="right" valign="top"><a id="aab38f986145dd439664eecae88a00c12" name="aab38f986145dd439664eecae88a00c12"></a>
+<tr class="memitem:a2188c0b56acae691471e562289a9fcc1" id="r_a2188c0b56acae691471e562289a9fcc1"><td class="memItemLeft" align="right" valign="top"><a id="a2188c0b56acae691471e562289a9fcc1" name="a2188c0b56acae691471e562289a9fcc1"></a>
 Prp&#160;</td><td class="memItemRight" valign="bottom"><b>prp</b></td></tr>
-<tr class="separator:aab38f986145dd439664eecae88a00c12"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="separator:a2188c0b56acae691471e562289a9fcc1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;typename Prp, typename In&gt;<br />
+<div class="textblock"><div class="compoundTemplParams">template&lt;typename Prp, typename In, int kappa = 3&gt;<br />
 requires <a class="el" href="conceptPermutable.html">Permutable</a>&lt;Prp&gt;<br />
-struct fss::cuckoo_hash::PrpHash&lt; Prp, In &gt;</div><p>PRP-based hash for Cuckoo hashing. </p>
+struct fss::cuckoo_hash::PrpHash&lt; Prp, In, kappa &gt;</div><p>PRP-based hash for Cuckoo hashing. </p>
 <p>Implements the hash functions from Equations (1) and (2) of the paper using a PRP.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
@@ -136,19 +136,19 @@ struct fss::cuckoo_hash::PrpHash&lt; Prp, In &gt;</div><p>PRP-based hash for Cuc
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="af767437b33d1ea0e72ed9a03a9cc3880" name="af767437b33d1ea0e72ed9a03a9cc3880"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af767437b33d1ea0e72ed9a03a9cc3880">&#9670;&#160;</a></span>Locate()</h2>
+<a id="a1a8aea801fc13fb642bfb5e2b13b5229" name="a1a8aea801fc13fb642bfb5e2b13b5229"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1a8aea801fc13fb642bfb5e2b13b5229">&#9670;&#160;</a></span>Locate()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;typename Prp , typename In &gt; </div>
+template&lt;typename Prp , typename In , int kappa = 3&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">std::pair&lt; int, int &gt; <a class="el" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">fss::cuckoo_hash::PrpHash</a>&lt; Prp, In &gt;::Locate </td>
+          <td class="memname">std::pair&lt; int, int &gt; <a class="el" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">fss::cuckoo_hash::PrpHash</a>&lt; Prp, In, kappa &gt;::Locate </td>
           <td>(</td>
           <td class="paramtype">int4&#160;</td>
           <td class="paramname"><em>sigma</em>, </td>

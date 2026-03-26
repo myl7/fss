@@ -120,7 +120,7 @@ $(document).ready(function(){initNavTree('cuckoo__hash_8cuh.html',''); initResiz
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">fss::cuckoo_hash::PrpHash&lt; Prp, In &gt;</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">fss::cuckoo_hash::PrpHash&lt; Prp, In, kappa &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">PRP-based hash for Cuckoo hashing.  <a href="structfss_1_1cuckoo__hash_1_1PrpHash.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1Compact.html">fss::cuckoo_hash::Compact&lt; Prp, In, kappa &gt;</a></td></tr>
@@ -185,6 +185,7 @@ References</h2>
 </div><div class="memdoc">
 
 <p>Compute the number of Cuckoo-hash buckets from Lemma 5 of the paper, simplified per Remark 1. </p>
+<p>This formula assumes kappa = 3 hash functions.</p>
 <p>For sufficiently large t (&gt;= 30), the Normal CDF factors in Lemma 5 become effectively 1, giving the simplified formula: lambda = 123.5 * e - 130 - log2(t) e = (lambda + 130 + log2(t)) / 123.5 m = ceil(e * t)</p>
 <p>This formula is monotonic in t, so ChBucket(max_t) &gt;= ChBucket(t) for all t &lt;= max_t.</p>
 <dl class="params"><dt>Parameters</dt><dd>
