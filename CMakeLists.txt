@@ -97,6 +97,7 @@ if(BUILD_BENCH)
 
     add_executable(bench_cpu src/bench_cpu.cu)
     target_link_libraries(bench_cpu benchmark::benchmark_main fss OpenSSL::Crypto)
+    target_compile_options(bench_cpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
 
     add_executable(bench_gpu src/bench_gpu.cu)
     target_link_libraries(bench_gpu benchmark::benchmark_main fss)

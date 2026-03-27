@@ -8,6 +8,7 @@
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/prg/aes128_mmo.cuh>
+#include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/hash/sha256.cuh>
@@ -48,6 +49,23 @@ private:
             return Prg::CreateCtxs(keys);
         }
     }
+};
+
+// --- AesMmoRaw PRG helper ---
+
+template <int mul>
+struct RawAesCtx {
+    using Prg = fss::prg::Aes128MmoRaw<mul>;
+    Prg prg;
+    RawAesCtx() : prg(gRawAesKeys) {}
+
+private:
+    static constexpr uint8_t gRawAesKeys[4][16] = {
+        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+        {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
+        {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8},
+        {8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1},
+    };
 };
 
 // --- ChaCha PRG helper ---
@@ -103,6 +121,13 @@ static void BM_DpfGen(benchmark::State &state) {
             dpf.Gen(cws, seeds, alpha, beta);
             benchmark::DoNotOptimize(cws);
         }
+    } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
+        RawAesCtx<2> ctx;
+        DpfType dpf{ctx.prg};
+        for (auto _ : state) {
+            dpf.Gen(cws, seeds, alpha, beta);
+            benchmark::DoNotOptimize(cws);
+        }
     } else {
         Prg prg(gNonce);
         DpfType dpf{prg};
@@ -146,6 +171,14 @@ static void BM_DpfEval(benchmark::State &state) {
             int4 y = dpf.Eval(false, seeds[0], cws, x);
             benchmark::DoNotOptimize(y);
         }
+    } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
+        RawAesCtx<2> ctx;
+        DpfType dpf{ctx.prg};
+        dpf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            int4 y = dpf.Eval(false, seeds[0], cws, x);
+            benchmark::DoNotOptimize(y);
+        }
     } else {
         Prg prg(gNonce);
         DpfType dpf{prg};
@@ -180,6 +213,14 @@ static void BM_DpfEvalAll(benchmark::State &state) {
             dpf.EvalAll(false, seeds[0], cws, ys.data());
             benchmark::DoNotOptimize(ys.data());
         }
+    } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
+        RawAesCtx<2> ctx;
+        DpfType dpf{ctx.prg};
+        dpf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            dpf.EvalAll(false, seeds[0], cws, ys.data());
+            benchmark::DoNotOptimize(ys.data());
+        }
     } else {
         Prg prg(gNonce);
         DpfType dpf{prg};
@@ -206,11 +247,20 @@ static void BM_DcfGen(benchmark::State &state) {
     int4 beta = {7, 0, 0, 0};
     typename DcfType::Cw cws[in_bits + 1];
 
-    AesCtx<4> ctx;
-    DcfType dcf{ctx.prg};
-    for (auto _ : state) {
-        dcf.Gen(cws, seeds, alpha, beta);
-        benchmark::DoNotOptimize(cws);
+    if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
+        RawAesCtx<4> ctx;
+        DcfType dcf{ctx.prg};
+        for (auto _ : state) {
+            dcf.Gen(cws, seeds, alpha, beta);
+            benchmark::DoNotOptimize(cws);
+        }
+    } else {
+        AesCtx<4> ctx;
+        DcfType dcf{ctx.prg};
+        for (auto _ : state) {
+            dcf.Gen(cws, seeds, alpha, beta);
+            benchmark::DoNotOptimize(cws);
+        }
     }
 }
 
@@ -227,12 +277,22 @@ static void BM_DcfEval(benchmark::State &state) {
     typename DcfType::Cw cws[in_bits + 1];
     uint x = 100;
 
-    AesCtx<4> ctx;
-    DcfType dcf{ctx.prg};
-    dcf.Gen(cws, seeds, alpha, beta);
-    for (auto _ : state) {
-        int4 y = dcf.Eval(false, seeds[0], cws, x);
-        benchmark::DoNotOptimize(y);
+    if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
+        RawAesCtx<4> ctx;
+        DcfType dcf{ctx.prg};
+        dcf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            int4 y = dcf.Eval(false, seeds[0], cws, x);
+            benchmark::DoNotOptimize(y);
+        }
+    } else {
+        AesCtx<4> ctx;
+        DcfType dcf{ctx.prg};
+        dcf.Gen(cws, seeds, alpha, beta);
+        for (auto _ : state) {
+            int4 y = dcf.Eval(false, seeds[0], cws, x);
+            benchmark::DoNotOptimize(y);
+        }
     }
 }
 
@@ -574,7 +634,9 @@ static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
 using DpfAes = fss::prg::Aes128Mmo<2>;
 using DpfChaCha = fss::prg::ChaCha<2>;
 using DpfAesSoft = fss::prg::Aes128Soft<2>;
+using DpfAesRaw = fss::prg::Aes128MmoRaw<2>;
 using DcfAes = fss::prg::Aes128Mmo<4>;
+using DcfAesRaw = fss::prg::Aes128MmoRaw<4>;
 using HtDpfAes = fss::prg::Aes128Mmo<1>;
 using GdcfAes = fss::prg::Aes128Mmo<2>;
 using Sha256 = fss::hash::Sha256;
@@ -597,6 +659,16 @@ BENCHMARK(BM_DpfEvalAll<20, UintGroup, DpfAes>)->Name("BM_DpfEvalAll_Uint_Aes/20
 BENCHMARK(BM_DpfEval<20, UintGroup, DpfChaCha>)->Name("BM_DpfEval_Uint_ChaCha/20");
 // 8. BM_DpfEval_Uint_AesSoft/20
 BENCHMARK(BM_DpfEval<20, UintGroup, DpfAesSoft>)->Name("BM_DpfEval_Uint_AesSoft/20");
+
+// AesMmoRaw
+BENCHMARK(BM_DpfEval<20, UintGroup, DpfAesRaw>)->Name("BM_DpfEval_Uint_AesRaw/20");
+BENCHMARK(BM_DpfEval<20, BytesGroup, DpfAesRaw>)->Name("BM_DpfEval_Bytes_AesRaw/20");
+BENCHMARK(BM_DpfGen<20, UintGroup, DpfAesRaw>)->Name("BM_DpfGen_Uint_AesRaw/20");
+BENCHMARK(BM_DpfGen<20, BytesGroup, DpfAesRaw>)->Name("BM_DpfGen_Bytes_AesRaw/20");
+BENCHMARK(BM_DcfEval<20, UintGroup, DcfAesRaw>)->Name("BM_DcfEval_Uint_AesRaw/20");
+BENCHMARK(BM_DcfEval<20, BytesGroup, DcfAesRaw>)->Name("BM_DcfEval_Bytes_AesRaw/20");
+BENCHMARK(BM_DcfGen<20, UintGroup, DcfAesRaw>)->Name("BM_DcfGen_Uint_AesRaw/20");
+BENCHMARK(BM_DcfGen<20, BytesGroup, DcfAesRaw>)->Name("BM_DcfGen_Bytes_AesRaw/20");
 
 // 9. BM_DcfEval_Uint_Aes/20
 BENCHMARK(BM_DcfEval<20, UintGroup, DcfAes>)->Name("BM_DcfEval_Uint_Aes/20");
