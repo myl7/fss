@@ -293,7 +293,11 @@ GPU</h2>
 <h2><a class="anchor" id="autotoc_md7"></a>
 Compiler Warnings</h2>
 <p>You may see warnings like "integer constant is so large that it is unsigned" during compilation. These cannot be easily suppressed but are harmless and can be safely ignored.</p>
-<h1><a class="anchor" id="autotoc_md8"></a>
+<h2><a class="anchor" id="autotoc_md8"></a>
+nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument</h2>
+<p>nvcc 12.8 fails to compile the stub file when <code><a class="el" href="structfss_1_1group_1_1Uint.html" title="Unsigned integers with arithmetic addition and optional modulo as a group.">fss::group::Uint</a>&lt;__uint128_t, ...&gt;</code> is used as a template argument to a <code>__global__</code> kernel — it emits a 128-bit integer literal that g++ cannot parse. <code>__device__</code> functions are not affected (no stub is generated for them).</p>
+<p>Workaround: wrap the type in a plain aggregate struct that satisfies <code>Groupable</code> but has no <code>__uint128_t</code> non-type template parameter in its name. The struct must have no user-declared constructors to remain an aggregate. See <code>third_party/fss/bench.cu</code> for an example.</p>
+<h1><a class="anchor" id="autotoc_md9"></a>
 Benchmarks</h1>
 <p>Microbenchmarks for DPF/DCF <code>Gen</code>/<code>Eval</code> using <a href="https://github.com/google/benchmark">Google Benchmark</a>, covering both CPU (AES-128 MMO PRG) and GPU (ChaCha PRG) paths.</p>
 <p>Configure with <code>BUILD_BENCH=ON</code> and build the targets:</p>
@@ -305,7 +309,7 @@ Benchmarks</h1>
 </div><!-- fragment --><p>Run a subset using <code>--benchmark_filter</code> (regex):</p>
 <div class="fragment"><div class="line">./build/bench_cpu --benchmark_filter=BM_DcfGen</div>
 <div class="line">./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20</div>
-</div><!-- fragment --><h2><a class="anchor" id="autotoc_md9"></a>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md10"></a>
 CPU Results</h2>
 <p>Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance governor, pinned with <code>taskset -c 0</code>.</p>
 <div class="fragment"><div class="line">-------------------------------------------------------------------------------</div>
@@ -335,7 +339,7 @@ CPU Results</h2>
 <div class="line">BM_GrottoDcfEval_Aes/20                    46.9 ns         46.9 ns     15044877</div>
 <div class="line">BM_GrottoDcfPreprocess_Aes/20         130893070 ns    130785021 ns            5</div>
 <div class="line">BM_GrottoDcfPreprocessEvalAll_Aes/20  260231883 ns    260023892 ns            3 items_per_second=4.03261M/s</div>
-</div><!-- fragment --><h2><a class="anchor" id="autotoc_md10"></a>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md11"></a>
 GPU Results</h2>
 <p>Run on NVIDIA RTX A6000 (48GB VRAM), CUDA 12.6, driver 560.35.05. Each iteration runs 1M (2^20) Gen/Eval in parallel. The GPU was warmed up before running the benchmarks.</p>
 <div class="fragment"><div class="line">-------------------------------------------------------------------------------------------------</div>
@@ -379,13 +383,13 @@ GPU Results</h2>
 <td class="markdownTableBodyNone">DcfGen   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone">56   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 </table>
 <p>The AES-based kernels use shared memory and spill to stack. All other kernels have zero spills.</p>
-<h2><a class="anchor" id="autotoc_md11"></a>
+<h2><a class="anchor" id="autotoc_md12"></a>
 Flamegraph</h2>
 <p>Generate a CPU flamegraph with <code>perf</code> and <a href="https://github.com/brendangregg/FlameGraph">FlameGraph</a>:</p>
 <div class="fragment"><div class="line">perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20</div>
 <div class="line">perf script | /path/to/FlameGraph/stackcollapse-perf.pl | /path/to/FlameGraph/flamegraph.pl &gt; build/flamegraph.svg</div>
 </div><!-- fragment --><p>Open <code>build/flamegraph.svg</code> in a browser. The graph is interactive: click a frame to zoom in.</p>
-<h1><a class="anchor" id="autotoc_md12"></a>
+<h1><a class="anchor" id="autotoc_md13"></a>
 License</h1>
 <p>Apache License, Version 2.0</p>
 <p>Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a> </p>

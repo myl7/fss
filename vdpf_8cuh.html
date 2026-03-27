@@ -137,7 +137,7 @@ Classes</h2></td></tr>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2024/677"><em>Lightweight, Maliciously Secure Verifiable Function Secret Sharing</em></a> (<a class="el" href="vdpf_8cuh.html#vdpf">1: the published version</a>).</p>
-<h2><a class="anchor" id="autotoc_md30"></a>
+<h2><a class="anchor" id="autotoc_md31"></a>
 Definitions</h2>
 <p><b>Point function</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, \(a \in \sG_{in}\), and \(b \in \sG_{out}\), a point function \(f_{a, b}\) is a function that for any input \(x\), the output \(y\) has \(y = b\) only when \(x = a\), otherwise \(y = 0\).</p>
 <p><b>VDPF</b>: extends DPF with verifiability. The evaluation produces both output shares and a proof. Two parties can compare proofs to detect malicious key modification.</p>
@@ -147,11 +147,11 @@ Definitions</h2>
 <li>Proof accumulation: \(Prove(\{\tilde\pi\}, cs) \rightarrow \pi\).</li>
 <li>Verification: \(Verify(\pi_0, \pi_1) \rightarrow \{Accept, Reject\}\).</li>
 </ul>
-<h2><a class="anchor" id="autotoc_md31"></a>
+<h2><a class="anchor" id="autotoc_md32"></a>
 Implementation Details</h2>
 <p>We fix the output domain size at 16B and always set the last word's LSB to 0, corresponding to \(\lambda = 127\). See Groupable for more details.</p>
 <p>We limit the max input domain bit size to 128. This is enough for most applications and allows us to represent the input as an integer.</p>
-<h2><a class="anchor" id="autotoc_md32"></a>
+<h2><a class="anchor" id="autotoc_md33"></a>
 References</h2>
 <ol type="1">
 <li>Leo de Castro, Antigoni Polychroniadou: Lightweight, Maliciously Secure Verifiable Function Secret Sharing. EUROCRYPT 2022: 150-179. <a href="https://doi.org/10.1007/978-3-031-06944-4_6">https://doi.org/10.1007/978-3-031-06944-4_6</a>.<a class="anchor" id="vdpf"></a></li>

@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['m_5frt_0',['m_rt',['../structfss_1_1Vdmpf_1_1Key.html#a01ba1444ba6f4ca55e2bcce87b0708bf',1,'fss::Vdmpf::Key']]],
-  ['myl7_20fss_1',['myl7/fss',['../index.html',1,'']]]
+  ['implementation_20details_0',['implementation details',['../dcf_8cuh.html#autotoc_md16',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md20',1,'Implementation Details'],['../conceptGroupable.html#autotoc_md24',1,'Implementation Details'],['../vdmpf_8cuh.html#autotoc_md29',1,'Implementation Details'],['../vdpf_8cuh.html#autotoc_md32',1,'Implementation Details']]],
+  ['introduction_1',['Introduction',['../index.html#autotoc_md1',1,'']]]
 ];

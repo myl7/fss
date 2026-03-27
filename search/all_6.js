@@ -1,12 +1,10 @@
 var searchData=
 [
-  ['gen_0',['gen',['../classfss_1_1Dcf.html#aafb0247572b03e778041c9c57acfd494',1,'fss::Dcf::Gen()'],['../classfss_1_1Dpf.html#abb6b5745a642a4bd176ebafc3d65dc9f',1,'fss::Dpf::Gen()'],['../classfss_1_1GrottoDcf.html#a0d296570064eba952753551008abeaf4',1,'fss::GrottoDcf::Gen()'],['../classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce',1,'fss::HalfTreeDpf::Gen()'],['../classfss_1_1Vdmpf.html#a864e6a7f82ff7e7734a7c09487125b51',1,'fss::Vdmpf::Gen()'],['../classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3',1,'fss::Vdpf::Gen()']]],
-  ['get_20started_1',['Get Started',['../index.html#autotoc_md2',1,'']]],
-  ['gpu_2',['GPU',['../index.html#autotoc_md6',1,'']]],
-  ['gpu_20results_3',['GPU Results',['../index.html#autotoc_md10',1,'']]],
-  ['gpudata_4',['GpuData',['../structGpuData.html',1,'']]],
-  ['grotto_5fdcf_2ecuh_5',['grotto_dcf.cuh',['../grotto__dcf_8cuh.html',1,'']]],
-  ['grottodcf_6',['GrottoDcf',['../classfss_1_1GrottoDcf.html',1,'fss']]],
-  ['group_2ecuh_7',['group.cuh',['../group_8cuh.html',1,'']]],
-  ['groupable_8',['Groupable',['../conceptGroupable.html',1,'']]]
+  ['dcf_0',['Dcf',['../classfss_1_1Dcf.html',1,'fss']]],
+  ['dcf_2ecuh_1',['dcf.cuh',['../dcf_8cuh.html',1,'']]],
+  ['dcfpred_2',['DcfPred',['../dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509',1,'fss']]],
+  ['definitions_3',['definitions',['../dcf_8cuh.html#autotoc_md15',1,'Definitions'],['../dpf_8cuh.html#autotoc_md19',1,'Definitions'],['../vdmpf_8cuh.html#autotoc_md28',1,'Definitions'],['../vdpf_8cuh.html#autotoc_md31',1,'Definitions']]],
+  ['details_4',['details',['../dcf_8cuh.html#autotoc_md16',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md20',1,'Implementation Details'],['../conceptGroupable.html#autotoc_md24',1,'Implementation Details'],['../vdmpf_8cuh.html#autotoc_md29',1,'Implementation Details'],['../vdpf_8cuh.html#autotoc_md32',1,'Implementation Details']]],
+  ['dpf_5',['Dpf',['../classfss_1_1Dpf.html',1,'fss']]],
+  ['dpf_2ecuh_6',['dpf.cuh',['../dpf_8cuh.html',1,'']]]
 ];

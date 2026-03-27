@@ -31,14 +31,15 @@ var NAVTREE =
       [ "Build", "index.html#autotoc_md4", null ],
       [ "CPU", "index.html#autotoc_md5", null ],
       [ "GPU", "index.html#autotoc_md6", null ],
-      [ "Compiler Warnings", "index.html#autotoc_md7", null ]
+      [ "Compiler Warnings", "index.html#autotoc_md7", null ],
+      [ "nvcc 12.8: <tt>Uint</tt> as a <tt>__global__</tt> kernel template argument", "index.html#autotoc_md8", null ]
     ] ],
-    [ "Benchmarks", "index.html#autotoc_md8", [
-      [ "CPU Results", "index.html#autotoc_md9", null ],
-      [ "GPU Results", "index.html#autotoc_md10", null ],
-      [ "Flamegraph", "index.html#autotoc_md11", null ]
+    [ "Benchmarks", "index.html#autotoc_md9", [
+      [ "CPU Results", "index.html#autotoc_md10", null ],
+      [ "GPU Results", "index.html#autotoc_md11", null ],
+      [ "Flamegraph", "index.html#autotoc_md12", null ]
     ] ],
-    [ "License", "index.html#autotoc_md12", null ],
+    [ "License", "index.html#autotoc_md13", null ],
     [ "Concepts", "concepts.html", "concepts" ],
     [ "Classes", "annotated.html", [
       [ "Class List", "annotated.html", "annotated_dup" ],
