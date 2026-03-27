@@ -1,0 +1,18 @@
+[submodule "libfss"]
+	path = third_party/libfss/libfss
+	url = https://github.com/frankw2/libfss.git
+[submodule "libdpf"]
+	path = third_party/libdpf
+	url = https://github.com/weikengchen/libdpf.git
+[submodule "distributed_point_functions"]
+	path = third_party/distributed_point_functions/distributed_point_functions
+	url = https://github.com/google/distributed_point_functions.git
+[submodule "GPU-DPF"]
+	path = third_party/GPU-DPF/GPU-DPF
+	url = https://github.com/facebookresearch/GPU-DPF.git
+[submodule "EzPC"]
+	path = third_party/EzPC/EzPC
+	url = https://github.com/mpc-msri/EzPC.git
+[submodule "fss-v0.7.0"]
+	path = third_party/fss-v0.7.0/fss-v0.7.0
+	url = https://github.com/myl7/fss.git

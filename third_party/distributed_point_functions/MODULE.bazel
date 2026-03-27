@@ -1,0 +1,26 @@
+module(name = "bench_dpf_google")
+
+bazel_dep(
+    name = "rules_cc",
+    version = "0.1.5",
+)
+
+bazel_dep(
+    name = "google_benchmark",
+    version = "1.8.3",
+    repo_name = "com_github_google_benchmark",
+)
+bazel_dep(
+    name = "abseil-cpp",
+    version = "20240722.0",
+    repo_name = "com_google_absl",
+)
+bazel_dep(
+    name = "distributed_point_functions",
+    version = "0.0.0",
+)
+
+local_path_override(
+    module_name = "distributed_point_functions",
+    path = "./distributed_point_functions",
+)

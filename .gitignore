@@ -3,8 +3,9 @@
 .idea
 
 # Build outputs
-/build
-/cmake-build-*
+build
+cmake-build-*
+target
 
 # Doc outputs
 /doc/html
@@ -18,3 +19,6 @@ superpowers
 # Benchmarks
 perf.data
 perf.data.old
+
+# Bazel symlinks
+/third_party/distributed_point_functions/bazel-*
