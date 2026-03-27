@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Verifiable distributed multi-point function (VDMPF).
+- Verifiable distributed multi-point function (VDMPF)
 - PRP interface, PRP-based Cuckoo hashing, and PRP based on AES-128 and Feistel networks
+- Raw AES-128 MMO PRG
+- Python bindings for DPF and DCF
 
 ## [1.1.0] - 2026-03-10
 
