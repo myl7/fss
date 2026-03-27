@@ -15,6 +15,7 @@ var annotated_dup =
       ] ],
       [ "prg", null, [
         [ "Aes128Mmo", "classfss_1_1prg_1_1Aes128Mmo.html", "classfss_1_1prg_1_1Aes128Mmo" ],
+        [ "Aes128MmoRaw", "classfss_1_1prg_1_1Aes128MmoRaw.html", "classfss_1_1prg_1_1Aes128MmoRaw" ],
         [ "Aes128Soft", "classfss_1_1prg_1_1Aes128Soft.html", "classfss_1_1prg_1_1Aes128Soft" ],
         [ "ChaCha", "classfss_1_1prg_1_1ChaCha.html", "classfss_1_1prg_1_1ChaCha" ]
       ] ],
@@ -29,5 +30,6 @@ var annotated_dup =
       [ "Vdpf", "classfss_1_1Vdpf.html", "classfss_1_1Vdpf" ]
     ] ],
     [ "AesCtx", "structAesCtx.html", null ],
-    [ "GpuData", "structGpuData.html", null ]
+    [ "GpuData", "structGpuData.html", null ],
+    [ "RawAesCtx", "structRawAesCtx.html", null ]
 ];
