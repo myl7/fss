@@ -21,7 +21,7 @@ using T = u64;
 
 static constexpr int kBin = 20;
 static constexpr int kBout = 1;
-static constexpr int kN = 1024;  // batch size
+// batch size is now a benchmark parameter (state.range(0))
 
 // Global state initialized once.
 static AESGlobalContext *g_aes = nullptr;
@@ -145,9 +145,10 @@ u32 *gpuDpfEvalAll(GPUDPFKey k0, int party, TIn *d_X,
 // --- DPF Gen ---
 
 static void BM_DpfGen(benchmark::State &state) {
+  const int N = state.range(0);
   EnsureInit();
   initGPURandomness();
-  auto *d_rin = randomGEOnGpu<T>(kN, kBin);
+  auto *d_rin = randomGEOnGpu<T>(N, kBin);
 
   for (auto _ : state) {
     u8 *startPtr, *curPtr;
@@ -158,7 +159,7 @@ static void BM_DpfGen(benchmark::State &state) {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
 
-    gpuKeyGenDPF(&curPtr, /*party=*/0, kBin, kN, d_rin, g_aes,
+    gpuKeyGenDPF(&curPtr, /*party=*/0, kBin, N, d_rin, g_aes,
                  /*evalAll=*/false);
 
     cudaEventRecord(stop);
@@ -171,7 +172,7 @@ static void BM_DpfGen(benchmark::State &state) {
 
     cpuFree(startPtr);
   }
-  state.SetItemsProcessed(state.iterations() * kN);
+  state.SetItemsProcessed(state.iterations() * N);
   gpuFree(d_rin);
   destroyGPURandomness();
 }
@@ -179,15 +180,16 @@ static void BM_DpfGen(benchmark::State &state) {
 // --- DPF Eval (point eval) ---
 
 static void BM_DpfEval(benchmark::State &state) {
+  const int N = state.range(0);
   EnsureInit();
   initGPURandomness();
-  auto *d_rin = randomGEOnGpu<T>(kN, kBin);
-  auto *d_X = randomGEOnGpu<T>(kN, kBin);
+  auto *d_rin = randomGEOnGpu<T>(N, kBin);
+  auto *d_X = randomGEOnGpu<T>(N, kBin);
 
   // Generate keys for eval.
   u8 *startPtr, *curPtr;
   getKeyBuf(&startPtr, &curPtr, 2 * OneGB);
-  gpuKeyGenDPF(&curPtr, 0, kBin, kN, d_rin, g_aes, false);
+  gpuKeyGenDPF(&curPtr, 0, kBin, N, d_rin, g_aes, false);
   auto k = readGPUDPFKey(&startPtr);
 
   Stats s;
@@ -209,7 +211,7 @@ static void BM_DpfEval(benchmark::State &state) {
 
     gpuFree(d_O);
   }
-  state.SetItemsProcessed(state.iterations() * kN);
+  state.SetItemsProcessed(state.iterations() * N);
   gpuFree(d_rin);
   gpuFree(d_X);
   destroyGPURandomness();
@@ -218,14 +220,15 @@ static void BM_DpfEval(benchmark::State &state) {
 // --- DPF EvalAll ---
 
 static void BM_DpfEvalAll(benchmark::State &state) {
+  const int N = state.range(0);
   EnsureInit();
   initGPURandomness();
-  auto *d_rin = randomGEOnGpu<T>(kN, kBin);
+  auto *d_rin = randomGEOnGpu<T>(N, kBin);
 
   // Generate keys with evalAll=true (different tR packing).
   u8 *startPtr, *curPtr;
   getKeyBuf(&startPtr, &curPtr, 2 * OneGB);
-  gpuKeyGenDPF(&curPtr, 0, kBin, kN, d_rin, g_aes, true);
+  gpuKeyGenDPF(&curPtr, 0, kBin, N, d_rin, g_aes, true);
   auto k = readGPUDPFKey(&startPtr);
 
   Stats s;
@@ -247,7 +250,7 @@ static void BM_DpfEvalAll(benchmark::State &state) {
 
     gpuFree(d_O);
   }
-  state.SetItemsProcessed(state.iterations() * kN);
+  state.SetItemsProcessed(state.iterations() * N);
   gpuFree(d_rin);
   destroyGPURandomness();
 }
@@ -259,9 +262,10 @@ static void BM_DpfEvalAll(benchmark::State &state) {
 // --- DCF Gen ---
 
 static void BM_DcfGen(benchmark::State &state) {
+  const int N = state.range(0);
   EnsureInit();
   initGPURandomness();
-  auto *d_rin = randomGEOnGpu<T>(kN, kBin);
+  auto *d_rin = randomGEOnGpu<T>(N, kBin);
 
   for (auto _ : state) {
     u8 *startPtr, *curPtr;
@@ -272,7 +276,7 @@ static void BM_DcfGen(benchmark::State &state) {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
 
-    dcf::gpuKeyGenDCF(&curPtr, /*party=*/0, kBin, kBout, kN, d_rin,
+    dcf::gpuKeyGenDCF(&curPtr, /*party=*/0, kBin, kBout, N, d_rin,
                       T(1), g_aes);
 
     cudaEventRecord(stop);
@@ -285,7 +289,7 @@ static void BM_DcfGen(benchmark::State &state) {
 
     cpuFree(startPtr);
   }
-  state.SetItemsProcessed(state.iterations() * kN);
+  state.SetItemsProcessed(state.iterations() * N);
   gpuFree(d_rin);
   destroyGPURandomness();
 }
@@ -293,15 +297,16 @@ static void BM_DcfGen(benchmark::State &state) {
 // --- DCF Eval ---
 
 static void BM_DcfEval(benchmark::State &state) {
+  const int N = state.range(0);
   EnsureInit();
   initGPURandomness();
-  auto *d_rin = randomGEOnGpu<T>(kN, kBin);
-  auto *d_X = randomGEOnGpu<T>(kN, kBin);
+  auto *d_rin = randomGEOnGpu<T>(N, kBin);
+  auto *d_X = randomGEOnGpu<T>(N, kBin);
 
   // Generate keys for eval.
   u8 *startPtr, *curPtr;
   getKeyBuf(&startPtr, &curPtr, 2 * OneGB);
-  dcf::gpuKeyGenDCF(&curPtr, 0, kBin, kBout, kN, d_rin, T(1), g_aes);
+  dcf::gpuKeyGenDCF(&curPtr, 0, kBin, kBout, N, d_rin, T(1), g_aes);
   auto k = dcf::readGPUDCFKey(&startPtr);
 
   Stats s;
@@ -324,14 +329,16 @@ static void BM_DcfEval(benchmark::State &state) {
 
     gpuFree(d_O);
   }
-  state.SetItemsProcessed(state.iterations() * kN);
+  state.SetItemsProcessed(state.iterations() * N);
   gpuFree(d_rin);
   gpuFree(d_X);
   destroyGPURandomness();
 }
 
-BENCHMARK(BM_DpfGen)->Name("EzPC/GPU/DPF/Gen")->UseManualTime();
-BENCHMARK(BM_DpfEval)->Name("EzPC/GPU/DPF/Eval")->UseManualTime();
-BENCHMARK(BM_DpfEvalAll)->Name("EzPC/GPU/DPF/EvalAll")->UseManualTime();
-BENCHMARK(BM_DcfGen)->Name("EzPC/GPU/DCF/Gen")->UseManualTime();
-BENCHMARK(BM_DcfEval)->Name("EzPC/GPU/DCF/Eval")->UseManualTime();
+static constexpr int kN = 1 << 18;  // batch size
+
+BENCHMARK(BM_DpfGen)->Name("EzPC/GPU/DPF/Gen")->Arg(kN)->UseManualTime();
+BENCHMARK(BM_DpfEval)->Name("EzPC/GPU/DPF/Eval")->Arg(kN)->UseManualTime();
+BENCHMARK(BM_DpfEvalAll)->Name("EzPC/GPU/DPF/EvalAll")->Arg(kN)->UseManualTime();
+BENCHMARK(BM_DcfGen)->Name("EzPC/GPU/DCF/Gen")->Arg(kN)->UseManualTime();
+BENCHMARK(BM_DcfEval)->Name("EzPC/GPU/DCF/Eval")->Arg(kN)->UseManualTime();

@@ -47,7 +47,7 @@ extern "C" void initGPUMemPool()
     uint64_t threshold = UINT64_MAX;
     checkCudaErrors(cudaMemPoolSetAttribute(mempool, cudaMemPoolAttrReleaseThreshold, &threshold));
     uint64_t *d_dummy_ptr;
-    // Original uses 40 GB which exceeds A30's 24 GB. Use 20 GB instead.
+    // Clamp to 20 GB so it fits when other jobs occupy the GPU.
     uint64_t bytes = 20 * (1ULL << 30);
     checkCudaErrors(cudaMallocAsync(&d_dummy_ptr, bytes, 0));
     checkCudaErrors(cudaFreeAsync(d_dummy_ptr, 0));

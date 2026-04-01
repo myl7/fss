@@ -122,7 +122,7 @@ All benchmarks use in_bits=20 (domain size 2^20 = 1,048,576).
 | PRG | AES-128 |
 | PRG acceleration | Software AES (GPU shared memory S-box lookup, `gpu_aes_shm.cu`) |
 | Output group | u64 (modular integer) |
-| Batch size | 1024 |
+| Batch size | 1024 (original); 2^18 (262144) for tuned run |
 | GPU memory pool | 20 GB pre-allocated (cudaMallocAsync) |
 | Threading | CUDA (256 threads/block) |
 | Build | CMake, Release; requires pre-built sytorch (`cd EzPC/GPU-MPC && bash setup.sh`) |
@@ -274,16 +274,17 @@ Single-threaded, performance governor. Criterion reports 100-sample median; Goog
 ### GPU
 
 CUDA event timing except where noted. Batch sizes vary per library (see Settings).
-fss and fss 0.7.0 run 2^20 parallel instances in a single kernel launch; times are total wall time for that launch.
+fss and fss 0.7.0 run 2^20 parallel instances in a single kernel launch; times are total wall time for that launch divided by batch size.
 
-| Library | Batch | DPF Gen | DPF Eval | DPF EvalAll | DCF Gen | DCF Eval |
-|---------|-------|---------|----------|-------------|---------|----------|
-| GPU-DPF | 512 | 264 µs[^cpug] | — | 264.7 ms | — | — |
-| EzPC | 1024 | 383 µs | 165 µs | 80.6 ms | 565 µs | 173 µs |
-| fss 0.7.0 (bytes) | 2^20 | 426.7 ms | 159.9 ms | — | 745.0 ms | 252.0 ms |
-| fss 0.7.0 (uint) | 2^20 | 430.7 ms | 159.7 ms | — | —[^uc] | —[^uc] |
-| fss (bytes) | 2^20 | 9.909 ms | 4.441 ms | — | 9.398 ms | 4.347 ms |
-| fss (uint) | 2^20 | 10.001 ms | 4.454 ms | — | 11.035 ms | 4.533 ms |
+| Library | Batch | DPF Gen/inst | DPF Eval/inst | DPF EvalAll/inst | DCF Gen/inst | DCF Eval/inst |
+|---------|-------|-------------|--------------|-----------------|-------------|--------------|
+| GPU-DPF | 512 | 516 ns[^cpug] | — | 517 µs | — | — |
+| EzPC | 1024 | 374 ns | 161 ns | 78.7 µs | 552 ns | 169 ns |
+| EzPC (tuned) | 2^18 | 14.7 ns | 11.6 ns | — | 20.7 ns | 12.7 ns |
+| fss 0.7.0 (bytes) | 2^20 | 407 ns | 152 ns | — | 711 ns | 240 ns |
+| fss 0.7.0 (uint) | 2^20 | 411 ns | 152 ns | — | —[^uc] | —[^uc] |
+| fss (bytes) | 2^20 | 9.45 ns | 4.23 ns | — | 8.96 ns | 4.15 ns |
+| fss (uint) | 2^20 | 9.54 ns | 4.25 ns | — | 10.52 ns | 4.32 ns |
 
 [^cpug]: GPU-DPF Gen uses CPU timer (`time.perf_counter`); Eval uses CUDA events.
 [^uc]: Crash: CUDA misaligned address in fss 0.7.0 uint DCF (deferred error from DPF Eval kernel); bytes group unaffected.
