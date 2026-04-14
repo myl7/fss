@@ -6,7 +6,7 @@ requires-python = ">=3.13"
 dependencies = ["torch>=2.6"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=9.0.3"]
 
 [build-system]
 requires = ["setuptools>=75.0", "torch>=2.6"]
