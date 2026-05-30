@@ -109,7 +109,7 @@ $(document).ready(function(){initNavTree('conceptPermutable.html',''); initResiz
 <h2 class="groupheader">Concept definition</h2>
 <div class="fragment"><div class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Prp&gt;</div>
 <div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptPermutable.html">Permutable</a> =  <span class="keyword">requires</span>(Prp prp, int4 seed, __uint128_t x, __uint128_t domain) {</div>
-<div class="line">    { prp.Permu(seed, x, domain) } -&gt; std::same_as&lt;__uint128_t&gt;;</div>
+<div class="line">  { prp.Permu(seed, x, domain) } -&gt; std::same_as&lt;__uint128_t&gt;;</div>
 <div class="line">}</div>
 <div class="ttc" id="aconceptPermutable_html"><div class="ttname"><a href="conceptPermutable.html">Permutable</a></div><div class="ttdoc">Small-domain pseudorandom permutation (PRP) interface.</div><div class="ttdef"><b>Definition</b> prp.cuh:23</div></div>
 </div><!-- fragment --><a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>

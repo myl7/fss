@@ -109,7 +109,7 @@ $(document).ready(function(){initNavTree('conceptPrgable.html',''); initResizabl
 <h2 class="groupheader">Concept definition</h2>
 <div class="fragment"><div class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
 <div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptPrgable.html">Prgable</a> =  <span class="keyword">requires</span>(Prg prg, int4 seed) {</div>
-<div class="line">    { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
+<div class="line">  { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
 <div class="line">}</div>
 <div class="ttc" id="aconceptPrgable_html"><div class="ttname"><a href="conceptPrgable.html">Prgable</a></div><div class="ttdoc">Pseudorandom generator (PRG) interface.</div><div class="ttdef"><b>Definition</b> prg.cuh:21</div></div>
 </div><!-- fragment --><a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>

@@ -109,7 +109,7 @@ $(document).ready(function(){initNavTree('conceptXorHashable.html',''); initResi
 <h2 class="groupheader">Concept definition</h2>
 <div class="fragment"><div class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Hash&gt;</div>
 <div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptXorHashable.html">XorHashable</a> =  <span class="keyword">requires</span>(Hash hash, cuda::std::tuple&lt;int4, const int4&gt; msg) {</div>
-<div class="line">    { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 4&gt;&gt;;</div>
+<div class="line">  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 4&gt;&gt;;</div>
 <div class="line">}</div>
 <div class="ttc" id="aconceptXorHashable_html"><div class="ttname"><a href="conceptXorHashable.html">XorHashable</a></div><div class="ttdoc">Collision-resistant and XOR-collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:27</div></div>
 </div><!-- fragment --><a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>

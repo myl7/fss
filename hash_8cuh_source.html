@@ -119,14 +119,14 @@ $(document).ready(function(){initNavTree('hash_8cuh_source.html',''); initResiza
 <div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
 <div class="foldopen" id="foldopen00019" data-start="{" data-end="}">
 <div class="line"><a id="l00019" name="l00019"></a><span class="lineno"><a class="line" href="conceptHashable.html">   19</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptHashable.html">Hashable</a> = <span class="keyword">requires</span>(Hash hash, cuda::std::span&lt;const int4, 4&gt; msg) {</div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>    { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 2&gt;&gt;;</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 2&gt;&gt;;</div>
 <div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>};</div>
 </div>
 <div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
 <div class="foldopen" id="foldopen00027" data-start="{" data-end="}">
 <div class="line"><a id="l00027" name="l00027"></a><span class="lineno"><a class="line" href="conceptXorHashable.html">   27</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptXorHashable.html">XorHashable</a> = <span class="keyword">requires</span>(Hash hash, cuda::std::tuple&lt;int4, const int4&gt; msg) {</div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>    { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 4&gt;&gt;;</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 4&gt;&gt;;</div>
 <div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>};</div>
 </div>
 <div class="ttc" id="aconceptHashable_html"><div class="ttname"><a href="conceptHashable.html">Hashable</a></div><div class="ttdoc">Collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:19</div></div>

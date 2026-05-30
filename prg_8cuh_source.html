@@ -117,7 +117,7 @@ $(document).ready(function(){initNavTree('prg_8cuh_source.html',''); initResizab
 <div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
 <div class="foldopen" id="foldopen00021" data-start="{" data-end="}">
 <div class="line"><a id="l00021" name="l00021"></a><span class="lineno"><a class="line" href="conceptPrgable.html">   21</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptPrgable.html">Prgable</a> = <span class="keyword">requires</span>(Prg prg, int4 seed) {</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>    { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>  { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
 <div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>};</div>
 </div>
 <div class="ttc" id="aconceptPrgable_html"><div class="ttname"><a href="conceptPrgable.html">Prgable</a></div><div class="ttdoc">Pseudorandom generator (PRG) interface.</div><div class="ttdef"><b>Definition</b> prg.cuh:21</div></div>

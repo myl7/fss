@@ -108,13 +108,12 @@ $(document).ready(function(){initNavTree('conceptGroupable.html',''); initResiza
 <a href="conceptGroupable.html#details">More...</a></p>
 <h2 class="groupheader">Concept definition</h2>
 <div class="fragment"><div class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Group&gt;</div>
-<div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptGroupable.html">Groupable</a> = </div>
-<div class="line">    std::is_default_constructible_v&lt;Group&gt; &amp;&amp; <span class="keyword">requires</span>(Group lhs, Group rhs, int4 buf) {</div>
-<div class="line">        { lhs + rhs } -&gt; std::same_as&lt;Group&gt;;</div>
-<div class="line">        { -lhs } -&gt; std::same_as&lt;Group&gt;;</div>
-<div class="line">        { Group::From(buf) } -&gt; std::same_as&lt;Group&gt;;</div>
-<div class="line">        { lhs.Into() } -&gt; std::same_as&lt;int4&gt;;</div>
-<div class="line">    }</div>
+<div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptGroupable.html">Groupable</a> =  std::is_default_constructible_v&lt;Group&gt; &amp;&amp; <span class="keyword">requires</span>(Group lhs, Group rhs, int4 buf) {</div>
+<div class="line">  { lhs + rhs } -&gt; std::same_as&lt;Group&gt;;</div>
+<div class="line">  { -lhs } -&gt; std::same_as&lt;Group&gt;;</div>
+<div class="line">  { Group::From(buf) } -&gt; std::same_as&lt;Group&gt;;</div>
+<div class="line">  { lhs.Into() } -&gt; std::same_as&lt;int4&gt;;</div>
+<div class="line">}</div>
 <div class="ttc" id="aconceptGroupable_html"><div class="ttname"><a href="conceptGroupable.html">Groupable</a></div><div class="ttdoc">Group interface.</div><div class="ttdef"><b>Definition</b> group.cuh:40</div></div>
 </div><!-- fragment --><a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Group interface. </p>

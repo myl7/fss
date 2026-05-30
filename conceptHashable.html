@@ -109,7 +109,7 @@ $(document).ready(function(){initNavTree('conceptHashable.html',''); initResizab
 <h2 class="groupheader">Concept definition</h2>
 <div class="fragment"><div class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Hash&gt;</div>
 <div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptHashable.html">Hashable</a> =  <span class="keyword">requires</span>(Hash hash, cuda::std::span&lt;const int4, 4&gt; msg) {</div>
-<div class="line">    { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 2&gt;&gt;;</div>
+<div class="line">  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 2&gt;&gt;;</div>
 <div class="line">}</div>
 <div class="ttc" id="aconceptHashable_html"><div class="ttname"><a href="conceptHashable.html">Hashable</a></div><div class="ttdoc">Collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:19</div></div>
 </div><!-- fragment --><a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
