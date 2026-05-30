@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+make format
+
+if ! git diff --quiet; then
+  echo "formatting changed files; review and stage them, then commit again"
+  exit 1
+fi

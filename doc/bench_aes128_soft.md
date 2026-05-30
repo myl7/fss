@@ -19,16 +19,16 @@ Both pre-expand round keys in the constructor (key setup cost excluded).
 
 ## Settings
 
-| Setting | `fss::prg::Aes128Soft<2>` | `torchcsprng::Aes128Mmo<2>` |
-|---------|--------------------------|------------------------------|
-| Algorithm | T-table: Te0[256] + sbox[256] | Textbook: sbox[256] only |
-| GPU tables | `__shared__` memory (1280B/block) | none |
-| Bench name | `fss/{CPU,GPU}/AesSoft` | `torchcsprng/{CPU,GPU}/AesSoft` |
-| Test (CPU) | DPF Eval (BytesGroup, in_bits=20) | raw PRG Gen (single call) |
-| Test (GPU) | DPF Eval (BytesGroup, in_bits=20), 2^20 parallel | raw PRG Gen, 2^20 parallel |
-| GPU threads | 256/block | 256/block |
-| Source | `third_party/fss/bench.cu` | `third_party/torchcsprng/bench.cu` |
-| Build | `cmake -S third_party/fss -B build/fss -DCMAKE_BUILD_TYPE=Release` | `cmake -S third_party/torchcsprng -B build/torchcsprng -DCMAKE_BUILD_TYPE=Release` |
+| Setting     | `fss::prg::Aes128Soft<2>`                                          | `torchcsprng::Aes128Mmo<2>`                                                        |
+| ----------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Algorithm   | T-table: Te0[256] + sbox[256]                                      | Textbook: sbox[256] only                                                           |
+| GPU tables  | `__shared__` memory (1280B/block)                                  | none                                                                               |
+| Bench name  | `fss/{CPU,GPU}/AesSoft`                                            | `torchcsprng/{CPU,GPU}/AesSoft`                                                    |
+| Test (CPU)  | DPF Eval (BytesGroup, in_bits=20)                                  | raw PRG Gen (single call)                                                          |
+| Test (GPU)  | DPF Eval (BytesGroup, in_bits=20), 2^20 parallel                   | raw PRG Gen, 2^20 parallel                                                         |
+| GPU threads | 256/block                                                          | 256/block                                                                          |
+| Source      | `third_party/fss/bench.cu`                                         | `third_party/torchcsprng/bench.cu`                                                 |
+| Build       | `cmake -S third_party/fss -B build/fss -DCMAKE_BUILD_TYPE=Release` | `cmake -S third_party/torchcsprng -B build/torchcsprng -DCMAKE_BUILD_TYPE=Release` |
 
 ## Hardware
 
@@ -41,28 +41,28 @@ Both pre-expand round keys in the constructor (key setup cost excluded).
 
 1M parallel AES-128-MMO raw PRG Gen operations. CUDA event timing (5 reps, median).
 
-| Benchmark | Time (ms) | Throughput | Speedup |
-|-----------|-----------|------------|---------|
-| Aes128Soft | 2.463 | 425.7 M/s | 44x |
-| torchcsprng | 108.63 | 9.65 M/s | 1x |
+| Benchmark   | Time (ms) | Throughput | Speedup |
+| ----------- | --------- | ---------- | ------- |
+| Aes128Soft  | 2.463     | 425.7 M/s  | 44x     |
+| torchcsprng | 108.63    | 9.65 M/s   | 1x      |
 
 ### GPU Resource Usage
 
 `nvcc -O3 -arch=sm_80 --ptxas-options=-v`:
 
-| Kernel | Regs/thread | Shared mem/block | Max occupancy |
-|--------|-------------|------------------|---------------|
-| Aes128Soft | 72 | 1280 B | 896 threads/SM (43%) |
-| torchcsprng | 122 | 0 | 512 threads/SM (25%) |
+| Kernel      | Regs/thread | Shared mem/block | Max occupancy        |
+| ----------- | ----------- | ---------------- | -------------------- |
+| Aes128Soft  | 72          | 1280 B           | 896 threads/SM (43%) |
+| torchcsprng | 122         | 0                | 512 threads/SM (25%) |
 
 ## CPU Results
 
 Single-threaded latency on the same machine (5 reps, median).
 
-| Benchmark | Time/op | Throughput | Speedup |
-|-----------|---------|------------|---------|
-| Aes128Soft | 140 ns | 7.13 M/s | 3.0x |
-| torchcsprng | 421 ns | 2.38 M/s | 1x |
+| Benchmark   | Time/op | Throughput | Speedup |
+| ----------- | ------- | ---------- | ------- |
+| Aes128Soft  | 140 ns  | 7.13 M/s   | 3.0x    |
+| torchcsprng | 421 ns  | 2.38 M/s   | 1x      |
 
 ## Analysis
 

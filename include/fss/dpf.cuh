@@ -59,13 +59,13 @@ namespace fss {
  * Only EvalAll() uses it. See EvalAll() for details.
  */
 template <int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1>
-    requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) &&
-        in_bits <= sizeof(In) * 8 && Groupable<Group> && Prgable<Prg, 2>)
+  requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) && in_bits <= sizeof(In) * 8 &&
+      Groupable<Group> && Prgable<Prg, 2>)
 class Dpf {
 public:
-    Prg prg;
+  Prg prg;
 
-    /**
+  /**
      * Correction word.
      *
      * ## Layout
@@ -73,14 +73,14 @@ public:
      * According to the paper, there are s, tl, tr to be stored.
      * tl is stored at the clamped bit of s.
      */
-    struct __align__(32) Cw {
-        int4 s;
-        bool tr;
-    };
-    // For only 1 and aligned memory access on GPU
-    static_assert(sizeof(Cw) == 32);
+  struct __align__(32) Cw {
+    int4 s;
+    bool tr;
+  };
+  // For only 1 and aligned memory access on GPU
+  static_assert(sizeof(Cw) == 32);
 
-    /**
+  /**
      * Key generation method.
      *
      * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits + 1.
@@ -90,69 +90,69 @@ public:
      *
      * The key for party i consists of cws + s0s[i].
      */
-    __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
-        int4 s0 = s0s[0];
-        s0 = util::SetLsb(s0, false);
-        int4 s1 = s0s[1];
-        s1 = util::SetLsb(s1, false);
-        bool t0 = false;
-        bool t1 = true;
-        b_buf = util::SetLsb(b_buf, false);
+  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
+    int4 s0 = s0s[0];
+    s0 = util::SetLsb(s0, false);
+    int4 s1 = s0s[1];
+    s1 = util::SetLsb(s1, false);
+    bool t0 = false;
+    bool t1 = true;
+    b_buf = util::SetLsb(b_buf, false);
 
-        for (int i = 0; i < in_bits; ++i) {
-            auto [s0l, s0r] = prg.Gen(s0);
-            auto [s1l, s1r] = prg.Gen(s1);
+    for (int i = 0; i < in_bits; ++i) {
+      auto [s0l, s0r] = prg.Gen(s0);
+      auto [s1l, s1r] = prg.Gen(s1);
 
-            bool t0l = util::GetLsb(s0l);
-            s0l = util::SetLsb(s0l, false);
-            bool t0r = util::GetLsb(s0r);
-            s0r = util::SetLsb(s0r, false);
-            bool t1l = util::GetLsb(s1l);
-            s1l = util::SetLsb(s1l, false);
-            bool t1r = util::GetLsb(s1r);
-            s1r = util::SetLsb(s1r, false);
+      bool t0l = util::GetLsb(s0l);
+      s0l = util::SetLsb(s0l, false);
+      bool t0r = util::GetLsb(s0r);
+      s0r = util::SetLsb(s0r, false);
+      bool t1l = util::GetLsb(s1l);
+      s1l = util::SetLsb(s1l, false);
+      bool t1r = util::GetLsb(s1r);
+      s1r = util::SetLsb(s1r, false);
 
-            bool a_bit = (a >> (in_bits - 1 - i)) & 1;
+      bool a_bit = (a >> (in_bits - 1 - i)) & 1;
 
-            int4 s_cw;
-            if (!a_bit) s_cw = util::Xor(s0r, s1r);
-            else s_cw = util::Xor(s0l, s1l);
+      int4 s_cw;
+      if (!a_bit) s_cw = util::Xor(s0r, s1r);
+      else s_cw = util::Xor(s0l, s1l);
 
-            bool tl_cw = t0l ^ t1l ^ a_bit ^ 1;
-            bool tr_cw = t0r ^ t1r ^ a_bit;
+      bool tl_cw = t0l ^ t1l ^ a_bit ^ 1;
+      bool tr_cw = t0r ^ t1r ^ a_bit;
 
-            if (!a_bit) {
-                s0 = s0l;
-                if (t0) s0 = util::Xor(s0, s_cw);
-                s1 = s1l;
-                if (t1) s1 = util::Xor(s1, s_cw);
+      if (!a_bit) {
+        s0 = s0l;
+        if (t0) s0 = util::Xor(s0, s_cw);
+        s1 = s1l;
+        if (t1) s1 = util::Xor(s1, s_cw);
 
-                if (t0) t0 = t0l ^ tl_cw;
-                else t0 = t0l;
-                if (t1) t1 = t1l ^ tl_cw;
-                else t1 = t1l;
-            } else {
-                s0 = s0r;
-                if (t0) s0 = util::Xor(s0, s_cw);
-                s1 = s1r;
-                if (t1) s1 = util::Xor(s1, s_cw);
+        if (t0) t0 = t0l ^ tl_cw;
+        else t0 = t0l;
+        if (t1) t1 = t1l ^ tl_cw;
+        else t1 = t1l;
+      } else {
+        s0 = s0r;
+        if (t0) s0 = util::Xor(s0, s_cw);
+        s1 = s1r;
+        if (t1) s1 = util::Xor(s1, s_cw);
 
-                if (t0) t0 = t0r ^ tr_cw;
-                else t0 = t0r;
-                if (t1) t1 = t1r ^ tr_cw;
-                else t1 = t1r;
-            }
+        if (t0) t0 = t0r ^ tr_cw;
+        else t0 = t0r;
+        if (t1) t1 = t1r ^ tr_cw;
+        else t1 = t1r;
+      }
 
-            s_cw = util::SetLsb(s_cw, tl_cw);
-            cws[i] = {s_cw, tr_cw};
-        }
-
-        auto v_cw_np1 = Group::From(b_buf) + (-Group::From(s0)) + Group::From(s1);
-        if (t1) v_cw_np1 = -v_cw_np1;
-        cws[in_bits] = {v_cw_np1.Into(), false};
+      s_cw = util::SetLsb(s_cw, tl_cw);
+      cws[i] = {s_cw, tr_cw};
     }
 
-    /**
+    auto v_cw_np1 = Group::From(b_buf) + (-Group::From(s0)) + Group::From(s1);
+    if (t1) v_cw_np1 = -v_cw_np1;
+    cws[in_bits] = {v_cw_np1.Into(), false};
+  }
+
+  /**
      * Evaluation method.
      *
      * @param b Party index. False for 0 and true for 1. $i$.
@@ -161,53 +161,53 @@ public:
      * @param x Evaluated input. $x$.
      * @return Output share. $y_{i,x}$.
      */
-    __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x) {
-        int4 s = s0;
-        s = util::SetLsb(s, false);
-        bool t = b;
+  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x) {
+    int4 s = s0;
+    s = util::SetLsb(s, false);
+    bool t = b;
 
-        for (int i = 0; i < in_bits; ++i) {
-            Cw cw = cws[i];
-            int4 s_cw = cw.s;
-            bool tl_cw = util::GetLsb(s_cw);
-            s_cw = util::SetLsb(s_cw, false);
-            bool tr_cw = cw.tr;
+    for (int i = 0; i < in_bits; ++i) {
+      Cw cw = cws[i];
+      int4 s_cw = cw.s;
+      bool tl_cw = util::GetLsb(s_cw);
+      s_cw = util::SetLsb(s_cw, false);
+      bool tr_cw = cw.tr;
 
-            auto [sl, sr] = prg.Gen(s);
+      auto [sl, sr] = prg.Gen(s);
 
-            bool tl = util::GetLsb(sl);
-            sl = util::SetLsb(sl, false);
-            bool tr = util::GetLsb(sr);
-            sr = util::SetLsb(sr, false);
+      bool tl = util::GetLsb(sl);
+      sl = util::SetLsb(sl, false);
+      bool tr = util::GetLsb(sr);
+      sr = util::SetLsb(sr, false);
 
-            if (t) {
-                sl = util::Xor(sl, s_cw);
-                sr = util::Xor(sr, s_cw);
-                tl = tl ^ tl_cw;
-                tr = tr ^ tr_cw;
-            }
+      if (t) {
+        sl = util::Xor(sl, s_cw);
+        sr = util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
 
-            bool x_bit = (x >> (in_bits - 1 - i)) & 1;
+      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
 
-            if (!x_bit) {
-                s = sl;
-                t = tl;
-            } else {
-                s = sr;
-                t = tr;
-            }
-        }
-
-        auto y = Group::From(s);
-        int4 v_cw_np1 = cws[in_bits].s;
-        assert((v_cw_np1.w & 1) == 0);
-        if (t) y = y + Group::From(v_cw_np1);
-        if (b) y = -y;
-
-        return y.Into();
+      if (!x_bit) {
+        s = sl;
+        t = tl;
+      } else {
+        s = sr;
+        t = tr;
+      }
     }
 
-    /**
+    auto y = Group::From(s);
+    int4 v_cw_np1 = cws[in_bits].s;
+    assert((v_cw_np1.w & 1) == 0);
+    if (t) y = y + Group::From(v_cw_np1);
+    if (b) y = -y;
+
+    return y.Into();
+  }
+
+  /**
      * Full domain evaluation method.
      *
      * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
@@ -222,79 +222,78 @@ public:
      * par_depth = -1: use ceil(log(num of threads)).
      * par_depth = 0: no parallelism, i.e., sequential execution.
      */
-    void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
-        int4 st = s0;
-        bool t = b;
-        st = util::SetLsb(st, t);
+  void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
+    int4 st = s0;
+    bool t = b;
+    st = util::SetLsb(st, t);
 
-        assert(in_bits < sizeof(size_t) * 8);
-        size_t l = 0;
-        size_t r = 1ULL << in_bits;
-        int i = 0;
+    assert(in_bits < sizeof(size_t) * 8);
+    size_t l = 0;
+    size_t r = 1ULL << in_bits;
+    int i = 0;
 
-        int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth);
 
 #pragma omp parallel
 #pragma omp single
-        EvalTree(b, st, cws, ys, l, r, i, par_depth_);
-    }
+    EvalTree(b, st, cws, ys, l, r, i, par_depth_);
+  }
 
 private:
-    void EvalTree(
-        bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_) {
-        bool t = util::GetLsb(st);
-        int4 s = st;
-        s = util::SetLsb(s, false);
+  void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_) {
+    bool t = util::GetLsb(st);
+    int4 s = st;
+    s = util::SetLsb(s, false);
 
-        if (i == in_bits) {
-            auto y = Group::From(s);
-            int4 v_cw_np1 = cws[in_bits].s;
-            assert((v_cw_np1.w & 1) == 0);
-            if (t) y = y + Group::From(v_cw_np1);
-            if (b) y = -y;
-            assert(l + 1 == r);
-            ys[l] = y.Into();
-            return;
-        }
-
-        Cw cw = cws[i];
-        int4 s_cw = cw.s;
-        bool tl_cw = util::GetLsb(s_cw);
-        s_cw = util::SetLsb(s_cw, false);
-        bool tr_cw = cw.tr;
-
-        auto [sl, sr] = prg.Gen(s);
-
-        bool tl = util::GetLsb(sl);
-        sl = util::SetLsb(sl, false);
-        bool tr = util::GetLsb(sr);
-        sr = util::SetLsb(sr, false);
-
-        if (t) {
-            sl = util::Xor(sl, s_cw);
-            sr = util::Xor(sr, s_cw);
-            tl = tl ^ tl_cw;
-            tr = tr ^ tr_cw;
-        }
-
-        int4 stl = sl;
-        stl = util::SetLsb(stl, tl);
-        int4 str = sr;
-        str = util::SetLsb(str, tr);
-
-        size_t mid = (l + r) / 2;
-
-        if (i < par_depth_) {
-#pragma omp task
-            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
-#pragma omp task
-            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
-#pragma omp taskwait
-        } else {
-            EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
-            EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
-        }
+    if (i == in_bits) {
+      auto y = Group::From(s);
+      int4 v_cw_np1 = cws[in_bits].s;
+      assert((v_cw_np1.w & 1) == 0);
+      if (t) y = y + Group::From(v_cw_np1);
+      if (b) y = -y;
+      assert(l + 1 == r);
+      ys[l] = y.Into();
+      return;
     }
+
+    Cw cw = cws[i];
+    int4 s_cw = cw.s;
+    bool tl_cw = util::GetLsb(s_cw);
+    s_cw = util::SetLsb(s_cw, false);
+    bool tr_cw = cw.tr;
+
+    auto [sl, sr] = prg.Gen(s);
+
+    bool tl = util::GetLsb(sl);
+    sl = util::SetLsb(sl, false);
+    bool tr = util::GetLsb(sr);
+    sr = util::SetLsb(sr, false);
+
+    if (t) {
+      sl = util::Xor(sl, s_cw);
+      sr = util::Xor(sr, s_cw);
+      tl = tl ^ tl_cw;
+      tr = tr ^ tr_cw;
+    }
+
+    int4 stl = sl;
+    stl = util::SetLsb(stl, tl);
+    int4 str = sr;
+    str = util::SetLsb(str, tr);
+
+    size_t mid = (l + r) / 2;
+
+    if (i < par_depth_) {
+#pragma omp task
+      EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
+#pragma omp task
+      EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
+#pragma omp taskwait
+    } else {
+      EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
+      EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
+    }
+  }
 };
 
 }  // namespace fss

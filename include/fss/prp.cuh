@@ -21,5 +21,5 @@
  */
 template <typename Prp>
 concept Permutable = requires(Prp prp, int4 seed, __uint128_t x, __uint128_t domain) {
-    { prp.Permu(seed, x, domain) } -> std::same_as<__uint128_t>;
+  { prp.Permu(seed, x, domain) } -> std::same_as<__uint128_t>;
 };

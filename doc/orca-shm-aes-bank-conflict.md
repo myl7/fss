@@ -3,8 +3,8 @@
 ## Background
 
 Standard AES intermediate rounds (SubBytes + ShiftRows + MixColumns) can be
-merged into four uint32_t lookups from a 256-entry T-table plus XOR.  On a GPU,
-shared memory has 32 banks.  When threads in the same warp access different
+merged into four uint32_t lookups from a 256-entry T-table plus XOR. On a GPU,
+shared memory has 32 banks. When threads in the same warp access different
 addresses in the same bank, accesses serialize (bank conflict).
 
 Orca (IEEE S&P 2024) proposes replicating the T-table 32 times
@@ -39,16 +39,16 @@ public:
 
 ### Comparison with `Aes128Soft`
 
-| Aspect | Aes128Soft | Aes128ShmSoft |
-|--------|-----------|---------------|
-| AES algorithm | T-table: 4x u32 lookup + rotation + XOR | Same, but from 32-copy table |
-| Table storage | Shared memory, single copy | Shared memory, 32 copies |
-| Bank conflict | Possible | Eliminated |
-| Host support | `__host__ __device__` | `__device__` only |
-| Construction | Needs external te0/sbox pointers | Needs external ShmContext |
-| Shared memory | ~1 KB (te0[256] + sbox[256]) | ~33 KB (t0[256][32] + sbox[256]) |
-| Byte rotation | Shift-based (`RotWord8/16/24`) | `__byte_perm` intrinsic |
-| Byte swap | `reinterpret_cast` to `uint8_t*` | `__byte_perm(val, 0, 0x0123)` |
+| Aspect        | Aes128Soft                              | Aes128ShmSoft                    |
+| ------------- | --------------------------------------- | -------------------------------- |
+| AES algorithm | T-table: 4x u32 lookup + rotation + XOR | Same, but from 32-copy table     |
+| Table storage | Shared memory, single copy              | Shared memory, 32 copies         |
+| Bank conflict | Possible                                | Eliminated                       |
+| Host support  | `__host__ __device__`                   | `__device__` only                |
+| Construction  | Needs external te0/sbox pointers        | Needs external ShmContext        |
+| Shared memory | ~1 KB (te0[256] + sbox[256])            | ~33 KB (t0[256][32] + sbox[256]) |
+| Byte rotation | Shift-based (`RotWord8/16/24`)          | `__byte_perm` intrinsic          |
+| Byte swap     | `reinterpret_cast` to `uint8_t*`        | `__byte_perm(val, 0, 0x0123)`    |
 
 ### Kernel usage pattern
 
@@ -69,12 +69,12 @@ __global__ void ExampleKernel(...) {
 }
 ```
 
-`__syncthreads()` must precede the early return guard.  If placed after it,
+`__syncthreads()` must precede the early return guard. If placed after it,
 threads that exit early cause the remaining threads to deadlock.
 
 ### Shared memory budget
 
-- `t0[256][32]` = 256 * 32 * 4 B = 32768 B
+- `t0[256][32]` = 256 _ 32 _ 4 B = 32768 B
 - `sbox[256]` = 256 B
 - Total: 33024 B
 
@@ -99,15 +99,15 @@ uint32_t t0 = ctx_->t0[s0 >> 24][wTid]
 
 `RotRight8/16/24` use `__byte_perm(x, x, selector)`:
 
-| Function | Selector | Effect |
-|----------|----------|--------|
-| RotRight8 | `0x0321` | `(x >> 8) \| (x << 24)` |
+| Function   | Selector | Effect                   |
+| ---------- | -------- | ------------------------ |
+| RotRight8  | `0x0321` | `(x >> 8) \| (x << 24)`  |
 | RotRight16 | `0x1032` | `(x >> 16) \| (x << 16)` |
-| RotRight24 | `0x2103` | `(x >> 24) \| (x << 8)` |
+| RotRight24 | `0x2103` | `(x >> 24) \| (x << 8)`  |
 
 ### Byte order conversion
 
-`int4` stores four little-endian ints.  AES state columns are big-endian u32.
+`int4` stores four little-endian ints. AES state columns are big-endian u32.
 The conversion in both directions is `__byte_perm(val, 0, 0x0123)` (byte
 reverse).
 
@@ -115,26 +115,26 @@ reverse).
 
 Reuses the existing `aes_detail::KeyExpansion` (byte-level), then converts the
 176-byte round key array into 44 big-endian `uint32_t` values at construction
-time.  This runs once per thread and is not on the hot path.
+time. This runs once per thread and is not on the hot path.
 
 ### Register usage
 
 Compiled for sm_75 (local) and sm_52 (remote):
 
-| Kernel | Registers | Stack | Spill |
-|--------|-----------|-------|-------|
-| `AesShmPrgTestKernel` (sm_75) | 72 | 624 B | 0 |
-| `DpfEvalKernelAesShm` (sm_52) | 56 | 608 B | 0 |
-| `DpfGenKernelAesShm` (sm_52) | 73 | 624 B | 0 |
+| Kernel                        | Registers | Stack | Spill |
+| ----------------------------- | --------- | ----- | ----- |
+| `AesShmPrgTestKernel` (sm_75) | 72        | 624 B | 0     |
+| `DpfEvalKernelAesShm` (sm_52) | 56        | 608 B | 0     |
+| `DpfGenKernelAesShm` (sm_52)  | 73        | 624 B | 0     |
 
-No spills.  The 624 B stack frame comes from `KeyExpansion`'s 176-byte
+No spills. The 624 B stack frame comes from `KeyExpansion`'s 176-byte
 temporary buffer and the `round_keys_[2][44]` member (352 B).
 
 ## Correctness
 
 A test (`src/aes128_shm_soft_test.cu`) runs `Aes128ShmSoft<2>::Gen()` on GPU
 for 1024 random seeds and compares each output byte-for-byte against
-`Aes128Soft<2>::Gen()` on host with the same keys.  The test passes,
+`Aes128Soft<2>::Gen()` on host with the same keys. The test passes,
 confirming identical AES encryption results.
 
 ## Benchmark results
@@ -157,23 +157,23 @@ The lack of significant speedup likely comes from several factors:
 
 1. The single-copy `Aes128Soft` already uses shared memory for its T-table.
    With 256 threads per block, the 32 threads within each warp access T-table
-   entries determined by AES state bytes, which are pseudo-random.  Random
+   entries determined by AES state bytes, which are pseudo-random. Random
    accesses across 256 entries in 32 banks have a low collision probability by
    chance (~2-3 conflicts per round on average), so the baseline already has
    limited bank conflict overhead.
 
-2. The 33 KB shared memory footprint of `Aes128ShmSoft` reduces occupancy.  On
+2. The 33 KB shared memory footprint of `Aes128ShmSoft` reduces occupancy. On
    A6000 (100 KB shared memory per SM), this allows at most 3 blocks per SM
-   vs. potentially 4+ for the 1 KB `Aes128Soft`.  Lower occupancy reduces the
+   vs. potentially 4+ for the 1 KB `Aes128Soft`. Lower occupancy reduces the
    GPU's ability to hide memory latency through warp switching.
 
-3. The DPF computation is not purely AES-bound.  Each DPF level calls
+3. The DPF computation is not purely AES-bound. Each DPF level calls
    `prg.Gen()` once but also does control-bit logic, XOR corrections, and
-   memory loads for correction words.  AES throughput improvements are diluted
+   memory loads for correction words. AES throughput improvements are diluted
    by these surrounding operations.
 
 4. Orca targets a different workload (large-batch AES encryption with many
-   rounds per thread) where bank conflicts dominate.  In DPF evaluation, each
+   rounds per thread) where bank conflicts dominate. In DPF evaluation, each
    thread does 20 AES calls (one per tree level) with other work interleaved,
    which changes the performance profile.
 

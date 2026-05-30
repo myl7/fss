@@ -17,7 +17,7 @@
  */
 template <typename Hash>
 concept Hashable = requires(Hash hash, cuda::std::span<const int4, 4> msg) {
-    { hash.Hash(msg) } -> std::same_as<cuda::std::array<int4, 2>>;
+  { hash.Hash(msg) } -> std::same_as<cuda::std::array<int4, 2>>;
 };
 
 /**
@@ -25,5 +25,5 @@ concept Hashable = requires(Hash hash, cuda::std::span<const int4, 4> msg) {
  */
 template <typename Hash>
 concept XorHashable = requires(Hash hash, cuda::std::tuple<int4, const int4> msg) {
-    { hash.Hash(msg) } -> std::same_as<cuda::std::array<int4, 4>>;
+  { hash.Hash(msg) } -> std::same_as<cuda::std::array<int4, 4>>;
 };

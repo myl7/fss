@@ -37,10 +37,9 @@
  * 1. 	Zachary Newman, Sacha Servan-Schreiber, Srinivas Devadas: Spectrum: High-bandwidth Anonymous Broadcast. NSDI 2022: 229-248. <https://www.usenix.org/conference/nsdi22/presentation/newman>. @anchor spectrum
  */
 template <typename Group>
-concept Groupable =
-    std::is_default_constructible_v<Group> && requires(Group lhs, Group rhs, int4 buf) {
-        { lhs + rhs } -> std::same_as<Group>;
-        { -lhs } -> std::same_as<Group>;
-        { Group::From(buf) } -> std::same_as<Group>;
-        { lhs.Into() } -> std::same_as<int4>;
-    };
+concept Groupable = std::is_default_constructible_v<Group> && requires(Group lhs, Group rhs, int4 buf) {
+  { lhs + rhs } -> std::same_as<Group>;
+  { -lhs } -> std::same_as<Group>;
+  { Group::From(buf) } -> std::same_as<Group>;
+  { lhs.Into() } -> std::same_as<int4>;
+};

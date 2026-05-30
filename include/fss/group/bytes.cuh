@@ -17,29 +17,29 @@ namespace fss::group {
  * Bytes with XOR as a group.
  */
 struct Bytes {
-    int4 val;
+  int4 val;
 
-    __host__ __device__ Bytes operator+(Bytes rhs) const {
-        return util::Xor(val, rhs.val);
-    }
+  __host__ __device__ Bytes operator+(Bytes rhs) const {
+    return util::Xor(val, rhs.val);
+  }
 
-    __host__ __device__ Bytes operator-() const {
-        return *this;
-    }
+  __host__ __device__ Bytes operator-() const {
+    return *this;
+  }
 
-    __host__ __device__ Bytes() : val({0, 0, 0, 0}) {}
+  __host__ __device__ Bytes() : val({0, 0, 0, 0}) {}
 
-    __host__ __device__ static Bytes From(int4 buf) {
-        assert((buf.w & 1) == 0);
-        return Bytes(buf);
-    }
+  __host__ __device__ static Bytes From(int4 buf) {
+    assert((buf.w & 1) == 0);
+    return Bytes(buf);
+  }
 
-    __host__ __device__ int4 Into() const {
-        return val;
-    }
+  __host__ __device__ int4 Into() const {
+    return val;
+  }
 
 private:
-    __host__ __device__ Bytes(int4 buf) : val(buf) {}
+  __host__ __device__ Bytes(int4 buf) : val(buf) {}
 };
 static_assert(Groupable<Bytes>);
 

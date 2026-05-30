@@ -60,18 +60,17 @@ namespace fss {
  * @tparam par_depth -1 is to use ceil(log(num of threads)), which should be good enough.
  * Only EvalAll() uses it. See EvalAll() for details.
  */
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash,
-    typename In = uint, int par_depth = -1>
-    requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) &&
-        in_bits <= sizeof(In) * 8 && Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> &&
-        Hashable<Hash>)
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In = uint,
+    int par_depth = -1>
+  requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) && in_bits <= sizeof(In) * 8 &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 class Vdpf {
 public:
-    Prg prg;
-    XorHash xor_hash;
-    Hash hash;
+  Prg prg;
+  XorHash xor_hash;
+  Hash hash;
 
-    /**
+  /**
      * Correction word.
      *
      * ## Layout
@@ -79,14 +78,14 @@ public:
      * According to the paper, there are s, tl, tr to be stored.
      * tl is stored at the clamped bit of s.
      */
-    struct __align__(32) Cw {
-        int4 s;
-        bool tr;
-    };
-    // For only 1 and aligned memory access on GPU
-    static_assert(sizeof(Cw) == 32);
+  struct __align__(32) Cw {
+    int4 s;
+    bool tr;
+  };
+  // For only 1 and aligned memory access on GPU
+  static_assert(sizeof(Cw) == 32);
 
-    /**
+  /**
      * Key generation method.
      *
      * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits.
@@ -99,84 +98,83 @@ public:
      *
      * The key for party i consists of cws + cs + ocw + s0s[i].
      */
-    __host__ __device__ int Gen(Cw cws[], cuda::std::array<int4, 4> &cs, int4 &ocw,
-        cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
-        int4 s0 = s0s[0];
-        s0 = util::SetLsb(s0, false);
-        int4 s1 = s0s[1];
-        s1 = util::SetLsb(s1, false);
-        bool t0 = false;
-        bool t1 = true;
-        b_buf = util::SetLsb(b_buf, false);
+  __host__ __device__ int Gen(
+      Cw cws[], cuda::std::array<int4, 4> &cs, int4 &ocw, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+    int4 s0 = s0s[0];
+    s0 = util::SetLsb(s0, false);
+    int4 s1 = s0s[1];
+    s1 = util::SetLsb(s1, false);
+    bool t0 = false;
+    bool t1 = true;
+    b_buf = util::SetLsb(b_buf, false);
 
-        for (int i = 0; i < in_bits; ++i) {
-            auto [s0l, s0r] = prg.Gen(s0);
-            auto [s1l, s1r] = prg.Gen(s1);
+    for (int i = 0; i < in_bits; ++i) {
+      auto [s0l, s0r] = prg.Gen(s0);
+      auto [s1l, s1r] = prg.Gen(s1);
 
-            bool t0l = util::GetLsb(s0l);
-            s0l = util::SetLsb(s0l, false);
-            bool t0r = util::GetLsb(s0r);
-            s0r = util::SetLsb(s0r, false);
-            bool t1l = util::GetLsb(s1l);
-            s1l = util::SetLsb(s1l, false);
-            bool t1r = util::GetLsb(s1r);
-            s1r = util::SetLsb(s1r, false);
+      bool t0l = util::GetLsb(s0l);
+      s0l = util::SetLsb(s0l, false);
+      bool t0r = util::GetLsb(s0r);
+      s0r = util::SetLsb(s0r, false);
+      bool t1l = util::GetLsb(s1l);
+      s1l = util::SetLsb(s1l, false);
+      bool t1r = util::GetLsb(s1r);
+      s1r = util::SetLsb(s1r, false);
 
-            bool a_bit = (a >> (in_bits - 1 - i)) & 1;
+      bool a_bit = (a >> (in_bits - 1 - i)) & 1;
 
-            int4 s_cw;
-            if (!a_bit) s_cw = util::Xor(s0r, s1r);
-            else s_cw = util::Xor(s0l, s1l);
+      int4 s_cw;
+      if (!a_bit) s_cw = util::Xor(s0r, s1r);
+      else s_cw = util::Xor(s0l, s1l);
 
-            bool tl_cw = t0l ^ t1l ^ a_bit ^ 1;
-            bool tr_cw = t0r ^ t1r ^ a_bit;
+      bool tl_cw = t0l ^ t1l ^ a_bit ^ 1;
+      bool tr_cw = t0r ^ t1r ^ a_bit;
 
-            if (!a_bit) {
-                s0 = s0l;
-                if (t0) s0 = util::Xor(s0, s_cw);
-                s1 = s1l;
-                if (t1) s1 = util::Xor(s1, s_cw);
+      if (!a_bit) {
+        s0 = s0l;
+        if (t0) s0 = util::Xor(s0, s_cw);
+        s1 = s1l;
+        if (t1) s1 = util::Xor(s1, s_cw);
 
-                if (t0) t0 = t0l ^ tl_cw;
-                else t0 = t0l;
-                if (t1) t1 = t1l ^ tl_cw;
-                else t1 = t1l;
-            } else {
-                s0 = s0r;
-                if (t0) s0 = util::Xor(s0, s_cw);
-                s1 = s1r;
-                if (t1) s1 = util::Xor(s1, s_cw);
+        if (t0) t0 = t0l ^ tl_cw;
+        else t0 = t0l;
+        if (t1) t1 = t1l ^ tl_cw;
+        else t1 = t1l;
+      } else {
+        s0 = s0r;
+        if (t0) s0 = util::Xor(s0, s_cw);
+        s1 = s1r;
+        if (t1) s1 = util::Xor(s1, s_cw);
 
-                if (t0) t0 = t0r ^ tr_cw;
-                else t0 = t0r;
-                if (t1) t1 = t1r ^ tr_cw;
-                else t1 = t1r;
-            }
+        if (t0) t0 = t0r ^ tr_cw;
+        else t0 = t0r;
+        if (t1) t1 = t1r ^ tr_cw;
+        else t1 = t1r;
+      }
 
-            s_cw = util::SetLsb(s_cw, tl_cw);
-            cws[i] = {s_cw, tr_cw};
-        }
-
-        // Verification hash
-        int4 a_buf = util::Pack(a);
-
-        auto pi_tilde_0 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s0});
-        auto pi_tilde_1 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s1});
-        cs = util::Xor(
-            cuda::std::span<const int4, 4>(pi_tilde_0), cuda::std::span<const int4, 4>(pi_tilde_1));
-
-        // Check retry condition
-        if (t0 == t1) return 1;
-
-        // Output correction word
-        auto v_cw = Group::From(b_buf) + (-Group::From(s0)) + Group::From(s1);
-        if (t1) v_cw = -v_cw;
-        ocw = v_cw.Into();
-
-        return 0;
+      s_cw = util::SetLsb(s_cw, tl_cw);
+      cws[i] = {s_cw, tr_cw};
     }
 
-    /**
+    // Verification hash
+    int4 a_buf = util::Pack(a);
+
+    auto pi_tilde_0 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s0});
+    auto pi_tilde_1 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s1});
+    cs = util::Xor(cuda::std::span<const int4, 4>(pi_tilde_0), cuda::std::span<const int4, 4>(pi_tilde_1));
+
+    // Check retry condition
+    if (t0 == t1) return 1;
+
+    // Output correction word
+    auto v_cw = Group::From(b_buf) + (-Group::From(s0)) + Group::From(s1);
+    if (t1) v_cw = -v_cw;
+    ocw = v_cw.Into();
+
+    return 0;
+  }
+
+  /**
      * Evaluation method.
      *
      * @param b Party index. False for 0 and true for 1. $i$.
@@ -188,63 +186,62 @@ public:
      * @param y Output share written here. $y_{i,x}$.
      * @return Corrected per-point hash ($\correct(\tilde\pi, cs, t)$) for proof accumulation.
      */
-    __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0,
-        cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw, In x, int4 &y) {
-        int4 s = s0;
-        s = util::SetLsb(s, false);
-        bool t = b;
+  __host__ __device__ cuda::std::array<int4, 4> Eval(
+      bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw, In x, int4 &y) {
+    int4 s = s0;
+    s = util::SetLsb(s, false);
+    bool t = b;
 
-        for (int i = 0; i < in_bits; ++i) {
-            Cw cw = cws[i];
-            int4 s_cw = cw.s;
-            bool tl_cw = util::GetLsb(s_cw);
-            s_cw = util::SetLsb(s_cw, false);
-            bool tr_cw = cw.tr;
+    for (int i = 0; i < in_bits; ++i) {
+      Cw cw = cws[i];
+      int4 s_cw = cw.s;
+      bool tl_cw = util::GetLsb(s_cw);
+      s_cw = util::SetLsb(s_cw, false);
+      bool tr_cw = cw.tr;
 
-            auto [sl, sr] = prg.Gen(s);
+      auto [sl, sr] = prg.Gen(s);
 
-            bool tl = util::GetLsb(sl);
-            sl = util::SetLsb(sl, false);
-            bool tr = util::GetLsb(sr);
-            sr = util::SetLsb(sr, false);
+      bool tl = util::GetLsb(sl);
+      sl = util::SetLsb(sl, false);
+      bool tr = util::GetLsb(sr);
+      sr = util::SetLsb(sr, false);
 
-            if (t) {
-                sl = util::Xor(sl, s_cw);
-                sr = util::Xor(sr, s_cw);
-                tl = tl ^ tl_cw;
-                tr = tr ^ tr_cw;
-            }
+      if (t) {
+        sl = util::Xor(sl, s_cw);
+        sr = util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
 
-            bool x_bit = (x >> (in_bits - 1 - i)) & 1;
+      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
 
-            if (!x_bit) {
-                s = sl;
-                t = tl;
-            } else {
-                s = sr;
-                t = tr;
-            }
-        }
-
-        // Output share
-        auto g = Group::From(s);
-        assert((ocw.w & 1) == 0);
-        if (t) g = g + Group::From(ocw);
-        if (b) g = -g;
-        y = g.Into();
-
-        // Corrected verification hash
-        int4 x_buf = util::Pack(x);
-
-        auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
-        if (t) {
-            return util::Xor(
-                cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
-        }
-        return pi_tilde;
+      if (!x_bit) {
+        s = sl;
+        t = tl;
+      } else {
+        s = sr;
+        t = tr;
+      }
     }
 
-    /**
+    // Output share
+    auto g = Group::From(s);
+    assert((ocw.w & 1) == 0);
+    if (t) g = g + Group::From(ocw);
+    if (b) g = -g;
+    y = g.Into();
+
+    // Corrected verification hash
+    int4 x_buf = util::Pack(x);
+
+    auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
+    if (t) {
+      return util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
+    }
+    return pi_tilde;
+  }
+
+  /**
      * Proof accumulation method.
      *
      * Accumulates corrected per-point hashes (from Eval()) into a single proof.
@@ -253,34 +250,31 @@ public:
      * @param cs Returned by Gen().
      * @param pi Proof output.
      */
-    void Prove(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes,
-        cuda::std::span<const int4, 4> cs, cuda::std::array<int4, 4> &pi) {
-        pi = {cs[0], cs[1], cs[2], cs[3]};
-        for (size_t i = 0; i < pi_tildes.size(); ++i) {
-            cuda::std::array<int4, 4> h_input = util::Xor(
-                cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tildes[i]));
-            auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
-            pi[0] = util::Xor(pi[0], h_out[0]);
-            pi[1] = util::Xor(pi[1], h_out[1]);
-        }
+  void Prove(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes, cuda::std::span<const int4, 4> cs,
+      cuda::std::array<int4, 4> &pi) {
+    pi = {cs[0], cs[1], cs[2], cs[3]};
+    for (size_t i = 0; i < pi_tildes.size(); ++i) {
+      cuda::std::array<int4, 4> h_input =
+          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tildes[i]));
+      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
+      pi[0] = util::Xor(pi[0], h_out[0]);
+      pi[1] = util::Xor(pi[1], h_out[1]);
     }
+  }
 
-    /**
+  /**
      * Verification method.
      *
      * @return True if proofs match (Accept), false otherwise (Reject).
      */
-    __host__ __device__ static bool Verify(
-        cuda::std::span<const int4, 4> pi0, cuda::std::span<const int4, 4> pi1) {
-        for (int i = 0; i < 4; ++i) {
-            if (pi0[i].x != pi1[i].x || pi0[i].y != pi1[i].y || pi0[i].z != pi1[i].z ||
-                pi0[i].w != pi1[i].w)
-                return false;
-        }
-        return true;
+  __host__ __device__ static bool Verify(cuda::std::span<const int4, 4> pi0, cuda::std::span<const int4, 4> pi1) {
+    for (int i = 0; i < 4; ++i) {
+      if (pi0[i].x != pi1[i].x || pi0[i].y != pi1[i].y || pi0[i].z != pi1[i].z || pi0[i].w != pi1[i].w) return false;
     }
+    return true;
+  }
 
-    /**
+  /**
      * Full domain evaluation method.
      *
      * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
@@ -296,108 +290,107 @@ public:
      * par_depth = -1: use ceil(log(num of threads)).
      * par_depth = 0: no parallelism, i.e., sequential execution.
      */
-    void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
-        int4 ocw, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
-        int4 st = s0;
-        bool t = b;
-        st = util::SetLsb(st, t);
+  void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw,
+      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+    int4 st = s0;
+    bool t = b;
+    st = util::SetLsb(st, t);
 
-        assert(in_bits < sizeof(size_t) * 8);
-        size_t l = 0;
-        size_t r = 1ULL << in_bits;
-        int i = 0;
+    assert(in_bits < sizeof(size_t) * 8);
+    size_t l = 0;
+    size_t r = 1ULL << in_bits;
+    int i = 0;
 
-        int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth);
 
-        // Phase 1: tree traversal, store (s, t) packed into ys temporarily
+    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
 #pragma omp parallel
 #pragma omp single
-        EvalTree(st, cws, ys, l, r, i, par_depth_);
+    EvalTree(st, cws, ys, l, r, i, par_depth_);
 
-        // Phase 2: sequential output computation and proof accumulation
-        pi = {cs[0], cs[1], cs[2], cs[3]};
-        size_t n = 1ULL << in_bits;
-        assert((ocw.w & 1) == 0);
-        auto ocw_group = Group::From(ocw);
-        for (size_t j = 0; j < n; ++j) {
-            int4 sj = ys[j];
-            bool tj = util::GetLsb(sj);
-            sj = util::SetLsb(sj, false);
+    // Phase 2: sequential output computation and proof accumulation
+    pi = {cs[0], cs[1], cs[2], cs[3]};
+    size_t n = 1ULL << in_bits;
+    assert((ocw.w & 1) == 0);
+    auto ocw_group = Group::From(ocw);
+    for (size_t j = 0; j < n; ++j) {
+      int4 sj = ys[j];
+      bool tj = util::GetLsb(sj);
+      sj = util::SetLsb(sj, false);
 
-            // Output share
-            auto g = Group::From(sj);
-            if (tj) g = g + ocw_group;
-            if (b) g = -g;
-            ys[j] = g.Into();
+      // Output share
+      auto g = Group::From(sj);
+      if (tj) g = g + ocw_group;
+      if (b) g = -g;
+      ys[j] = g.Into();
 
-            // Proof accumulation
-            int4 x_buf = util::Pack(static_cast<In>(j));
+      // Proof accumulation
+      int4 x_buf = util::Pack(static_cast<In>(j));
 
-            auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
-            if (tj) {
-                pi_tilde = util::Xor(
-                    cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
-            }
+      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
+      if (tj) {
+        pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
+      }
 
-            cuda::std::array<int4, 4> h_input = util::Xor(
-                cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tilde));
-            auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
-            pi[0] = util::Xor(pi[0], h_out[0]);
-            pi[1] = util::Xor(pi[1], h_out[1]);
-        }
+      cuda::std::array<int4, 4> h_input =
+          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tilde));
+      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
+      pi[0] = util::Xor(pi[0], h_out[0]);
+      pi[1] = util::Xor(pi[1], h_out[1]);
     }
+  }
 
 private:
-    void EvalTree(int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l,
-        size_t r, int i, int par_depth_) {
-        if (i == in_bits) {
-            assert(l + 1 == r);
-            ys[l] = st;
-            return;
-        }
-
-        bool t = util::GetLsb(st);
-        int4 s = st;
-        s = util::SetLsb(s, false);
-
-        Cw cw = cws[i];
-        int4 s_cw = cw.s;
-        bool tl_cw = util::GetLsb(s_cw);
-        s_cw = util::SetLsb(s_cw, false);
-        bool tr_cw = cw.tr;
-
-        auto [sl, sr] = prg.Gen(s);
-
-        bool tl = util::GetLsb(sl);
-        sl = util::SetLsb(sl, false);
-        bool tr = util::GetLsb(sr);
-        sr = util::SetLsb(sr, false);
-
-        if (t) {
-            sl = util::Xor(sl, s_cw);
-            sr = util::Xor(sr, s_cw);
-            tl = tl ^ tl_cw;
-            tr = tr ^ tr_cw;
-        }
-
-        int4 stl = sl;
-        stl = util::SetLsb(stl, tl);
-        int4 str = sr;
-        str = util::SetLsb(str, tr);
-
-        size_t mid = (l + r) / 2;
-
-        if (i < par_depth_) {
-#pragma omp task
-            EvalTree(stl, cws, ys, l, mid, i + 1, par_depth_);
-#pragma omp task
-            EvalTree(str, cws, ys, mid, r, i + 1, par_depth_);
-#pragma omp taskwait
-        } else {
-            EvalTree(stl, cws, ys, l, mid, i + 1, par_depth_);
-            EvalTree(str, cws, ys, mid, r, i + 1, par_depth_);
-        }
+  void EvalTree(
+      int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_) {
+    if (i == in_bits) {
+      assert(l + 1 == r);
+      ys[l] = st;
+      return;
     }
+
+    bool t = util::GetLsb(st);
+    int4 s = st;
+    s = util::SetLsb(s, false);
+
+    Cw cw = cws[i];
+    int4 s_cw = cw.s;
+    bool tl_cw = util::GetLsb(s_cw);
+    s_cw = util::SetLsb(s_cw, false);
+    bool tr_cw = cw.tr;
+
+    auto [sl, sr] = prg.Gen(s);
+
+    bool tl = util::GetLsb(sl);
+    sl = util::SetLsb(sl, false);
+    bool tr = util::GetLsb(sr);
+    sr = util::SetLsb(sr, false);
+
+    if (t) {
+      sl = util::Xor(sl, s_cw);
+      sr = util::Xor(sr, s_cw);
+      tl = tl ^ tl_cw;
+      tr = tr ^ tr_cw;
+    }
+
+    int4 stl = sl;
+    stl = util::SetLsb(stl, tl);
+    int4 str = sr;
+    str = util::SetLsb(str, tr);
+
+    size_t mid = (l + r) / 2;
+
+    if (i < par_depth_) {
+#pragma omp task
+      EvalTree(stl, cws, ys, l, mid, i + 1, par_depth_);
+#pragma omp task
+      EvalTree(str, cws, ys, mid, r, i + 1, par_depth_);
+#pragma omp taskwait
+    } else {
+      EvalTree(stl, cws, ys, l, mid, i + 1, par_depth_);
+      EvalTree(str, cws, ys, mid, r, i + 1, par_depth_);
+    }
+  }
 };
 
 }  // namespace fss

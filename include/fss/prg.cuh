@@ -19,5 +19,5 @@
  */
 template <typename Prg, int mul>
 concept Prgable = requires(Prg prg, int4 seed) {
-    { prg.Gen(seed) } -> std::same_as<cuda::std::array<int4, mul>>;
+  { prg.Gen(seed) } -> std::same_as<cuda::std::array<int4, mul>>;
 };

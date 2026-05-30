@@ -1,7 +1,7 @@
 BasedOnStyle: Google
-ColumnLimit: 100
-IndentWidth: 4
-AccessModifierOffset: -4
+ColumnLimit: 120
+IndentWidth: 2
+AccessModifierOffset: -2
 
 DerivePointerAlignment: false
 PointerAlignment: Right

@@ -23,49 +23,49 @@ using UintGroup = fss::group::Uint<uint64_t>;
 
 template <int mul>
 struct AesCtx {
-    using Prg = fss::prg::Aes128Mmo<mul>;
-    cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs;
-    Prg prg;
+  using Prg = fss::prg::Aes128Mmo<mul>;
+  cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs;
+  Prg prg;
 
-    AesCtx() : ctxs(MakeCtxs()), prg(ctxs) {}
-    ~AesCtx() {
-        Prg::FreeCtxs(ctxs);
-    }
+  AesCtx() : ctxs(MakeCtxs()), prg(ctxs) {}
+  ~AesCtx() {
+    Prg::FreeCtxs(ctxs);
+  }
 
 private:
-    static cuda::std::array<EVP_CIPHER_CTX *, mul> MakeCtxs() {
-        unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-        unsigned char key1[16] = {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
-        unsigned char key2[16] = {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8};
-        unsigned char key3[16] = {8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1};
-        if constexpr (mul == 1) {
-            const unsigned char *keys[1] = {key0};
-            return Prg::CreateCtxs(keys);
-        } else if constexpr (mul == 2) {
-            const unsigned char *keys[2] = {key0, key1};
-            return Prg::CreateCtxs(keys);
-        } else {
-            const unsigned char *keys[4] = {key0, key1, key2, key3};
-            return Prg::CreateCtxs(keys);
-        }
+  static cuda::std::array<EVP_CIPHER_CTX *, mul> MakeCtxs() {
+    unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    unsigned char key1[16] = {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+    unsigned char key2[16] = {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8};
+    unsigned char key3[16] = {8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1};
+    if constexpr (mul == 1) {
+      const unsigned char *keys[1] = {key0};
+      return Prg::CreateCtxs(keys);
+    } else if constexpr (mul == 2) {
+      const unsigned char *keys[2] = {key0, key1};
+      return Prg::CreateCtxs(keys);
+    } else {
+      const unsigned char *keys[4] = {key0, key1, key2, key3};
+      return Prg::CreateCtxs(keys);
     }
+  }
 };
 
 // --- AesMmoRaw PRG helper ---
 
 template <int mul>
 struct RawAesCtx {
-    using Prg = fss::prg::Aes128MmoRaw<mul>;
-    Prg prg;
-    RawAesCtx() : prg(gRawAesKeys) {}
+  using Prg = fss::prg::Aes128MmoRaw<mul>;
+  Prg prg;
+  RawAesCtx() : prg(gRawAesKeys) {}
 
 private:
-    static constexpr uint8_t gRawAesKeys[4][16] = {
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
-        {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8},
-        {8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1},
-    };
+  static constexpr uint8_t gRawAesKeys[4][16] = {
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
+      {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8},
+      {8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1},
+  };
 };
 
 // --- ChaCha PRG helper ---
@@ -83,8 +83,8 @@ static uint8_t gAesSoftKeys[4][16] = {
 
 // --- Hash helpers ---
 
-static int4 gHashKey = {static_cast<int>(0xAAAAAAAAu), static_cast<int>(0xBBBBBBBBu),
-    static_cast<int>(0xCCCCCCCCu), static_cast<int>(0xDDDDDDDDu)};
+static int4 gHashKey = {static_cast<int>(0xAAAAAAAAu), static_cast<int>(0xBBBBBBBBu), static_cast<int>(0xCCCCCCCCu),
+    static_cast<int>(0xDDDDDDDDu)};
 
 static int4 gBlake3Iv[2] = {
     {0x11111111, 0x22222222, 0x33333333, 0x44444444},
@@ -93,540 +93,537 @@ static int4 gBlake3Iv[2] = {
 
 template <typename H>
 H MakeHash() {
-    if constexpr (std::is_same_v<H, fss::hash::Sha256>) {
-        return H(gHashKey);
-    } else {
-        return H(cuda::std::span<const int4, 2>(gBlake3Iv, 2));
-    }
+  if constexpr (std::is_same_v<H, fss::hash::Sha256>) {
+    return H(gHashKey);
+  } else {
+    return H(cuda::std::span<const int4, 2>(gBlake3Iv, 2));
+  }
 }
 
 // --- DPF benchmarks ---
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_DpfGen(benchmark::State &state) {
-    using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
+  using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
 
-    int4 seeds[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename DpfType::Cw cws[in_bits + 1];
+  int4 seeds[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename DpfType::Cw cws[in_bits + 1];
 
-    if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
-        AesCtx<2> ctx;
-        DpfType dpf{ctx.prg};
-        for (auto _ : state) {
-            dpf.Gen(cws, seeds, alpha, beta);
-            benchmark::DoNotOptimize(cws);
-        }
-    } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
-        RawAesCtx<2> ctx;
-        DpfType dpf{ctx.prg};
-        for (auto _ : state) {
-            dpf.Gen(cws, seeds, alpha, beta);
-            benchmark::DoNotOptimize(cws);
-        }
-    } else {
-        Prg prg(gNonce);
-        DpfType dpf{prg};
-        for (auto _ : state) {
-            dpf.Gen(cws, seeds, alpha, beta);
-            benchmark::DoNotOptimize(cws);
-        }
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    DpfType dpf{ctx.prg};
+    for (auto _ : state) {
+      dpf.Gen(cws, seeds, alpha, beta);
+      benchmark::DoNotOptimize(cws);
     }
+  } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
+    RawAesCtx<2> ctx;
+    DpfType dpf{ctx.prg};
+    for (auto _ : state) {
+      dpf.Gen(cws, seeds, alpha, beta);
+      benchmark::DoNotOptimize(cws);
+    }
+  } else {
+    Prg prg(gNonce);
+    DpfType dpf{prg};
+    for (auto _ : state) {
+      dpf.Gen(cws, seeds, alpha, beta);
+      benchmark::DoNotOptimize(cws);
+    }
+  }
 }
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_DpfEval(benchmark::State &state) {
-    using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
+  using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
 
-    int4 seeds[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename DpfType::Cw cws[in_bits + 1];
-    uint x = 100;
+  int4 seeds[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename DpfType::Cw cws[in_bits + 1];
+  uint x = 100;
 
-    if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
-        AesCtx<2> ctx;
-        DpfType dpf{ctx.prg};
-        dpf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            int4 y = dpf.Eval(false, seeds[0], cws, x);
-            benchmark::DoNotOptimize(y);
-        }
-    } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128Soft<2>>) {
-        uint32_t te0[256];
-        uint8_t sbox[256];
-        fss::prg::aes_detail::InitTe0(te0);
-        fss::prg::aes_detail::InitSbox(sbox);
-        Prg prg(gAesSoftKeys, te0, sbox);
-        DpfType dpf{prg};
-        dpf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            int4 y = dpf.Eval(false, seeds[0], cws, x);
-            benchmark::DoNotOptimize(y);
-        }
-    } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
-        RawAesCtx<2> ctx;
-        DpfType dpf{ctx.prg};
-        dpf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            int4 y = dpf.Eval(false, seeds[0], cws, x);
-            benchmark::DoNotOptimize(y);
-        }
-    } else {
-        Prg prg(gNonce);
-        DpfType dpf{prg};
-        dpf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            int4 y = dpf.Eval(false, seeds[0], cws, x);
-            benchmark::DoNotOptimize(y);
-        }
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    DpfType dpf{ctx.prg};
+    dpf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      int4 y = dpf.Eval(false, seeds[0], cws, x);
+      benchmark::DoNotOptimize(y);
     }
+  } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128Soft<2>>) {
+    uint32_t te0[256];
+    uint8_t sbox[256];
+    fss::prg::aes_detail::InitTe0(te0);
+    fss::prg::aes_detail::InitSbox(sbox);
+    Prg prg(gAesSoftKeys, te0, sbox);
+    DpfType dpf{prg};
+    dpf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      int4 y = dpf.Eval(false, seeds[0], cws, x);
+      benchmark::DoNotOptimize(y);
+    }
+  } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
+    RawAesCtx<2> ctx;
+    DpfType dpf{ctx.prg};
+    dpf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      int4 y = dpf.Eval(false, seeds[0], cws, x);
+      benchmark::DoNotOptimize(y);
+    }
+  } else {
+    Prg prg(gNonce);
+    DpfType dpf{prg};
+    dpf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      int4 y = dpf.Eval(false, seeds[0], cws, x);
+      benchmark::DoNotOptimize(y);
+    }
+  }
 }
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_DpfEvalAll(benchmark::State &state) {
-    using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
+  using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
 
-    int4 seeds[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename DpfType::Cw cws[in_bits + 1];
+  int4 seeds[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename DpfType::Cw cws[in_bits + 1];
 
-    constexpr size_t n = size_t{1} << in_bits;
-    std::vector<int4> ys(n);
+  constexpr size_t n = size_t{1} << in_bits;
+  std::vector<int4> ys(n);
 
-    if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
-        AesCtx<2> ctx;
-        DpfType dpf{ctx.prg};
-        dpf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            dpf.EvalAll(false, seeds[0], cws, ys.data());
-            benchmark::DoNotOptimize(ys.data());
-        }
-    } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
-        RawAesCtx<2> ctx;
-        DpfType dpf{ctx.prg};
-        dpf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            dpf.EvalAll(false, seeds[0], cws, ys.data());
-            benchmark::DoNotOptimize(ys.data());
-        }
-    } else {
-        Prg prg(gNonce);
-        DpfType dpf{prg};
-        dpf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            dpf.EvalAll(false, seeds[0], cws, ys.data());
-            benchmark::DoNotOptimize(ys.data());
-        }
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    DpfType dpf{ctx.prg};
+    dpf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      dpf.EvalAll(false, seeds[0], cws, ys.data());
+      benchmark::DoNotOptimize(ys.data());
     }
-    state.SetItemsProcessed(state.iterations() * n);
+  } else if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
+    RawAesCtx<2> ctx;
+    DpfType dpf{ctx.prg};
+    dpf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      dpf.EvalAll(false, seeds[0], cws, ys.data());
+      benchmark::DoNotOptimize(ys.data());
+    }
+  } else {
+    Prg prg(gNonce);
+    DpfType dpf{prg};
+    dpf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      dpf.EvalAll(false, seeds[0], cws, ys.data());
+      benchmark::DoNotOptimize(ys.data());
+    }
+  }
+  state.SetItemsProcessed(state.iterations() * n);
 }
 
 // --- DCF benchmarks ---
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_DcfGen(benchmark::State &state) {
-    using DcfType = fss::Dcf<in_bits, Group, Prg, uint>;
+  using DcfType = fss::Dcf<in_bits, Group, Prg, uint>;
 
-    int4 seeds[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename DcfType::Cw cws[in_bits + 1];
+  int4 seeds[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename DcfType::Cw cws[in_bits + 1];
 
-    if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
-        RawAesCtx<4> ctx;
-        DcfType dcf{ctx.prg};
-        for (auto _ : state) {
-            dcf.Gen(cws, seeds, alpha, beta);
-            benchmark::DoNotOptimize(cws);
-        }
-    } else {
-        AesCtx<4> ctx;
-        DcfType dcf{ctx.prg};
-        for (auto _ : state) {
-            dcf.Gen(cws, seeds, alpha, beta);
-            benchmark::DoNotOptimize(cws);
-        }
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
+    RawAesCtx<4> ctx;
+    DcfType dcf{ctx.prg};
+    for (auto _ : state) {
+      dcf.Gen(cws, seeds, alpha, beta);
+      benchmark::DoNotOptimize(cws);
     }
+  } else {
+    AesCtx<4> ctx;
+    DcfType dcf{ctx.prg};
+    for (auto _ : state) {
+      dcf.Gen(cws, seeds, alpha, beta);
+      benchmark::DoNotOptimize(cws);
+    }
+  }
 }
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_DcfEval(benchmark::State &state) {
-    using DcfType = fss::Dcf<in_bits, Group, Prg, uint>;
+  using DcfType = fss::Dcf<in_bits, Group, Prg, uint>;
 
-    int4 seeds[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename DcfType::Cw cws[in_bits + 1];
-    uint x = 100;
+  int4 seeds[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename DcfType::Cw cws[in_bits + 1];
+  uint x = 100;
 
-    if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
-        RawAesCtx<4> ctx;
-        DcfType dcf{ctx.prg};
-        dcf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            int4 y = dcf.Eval(false, seeds[0], cws, x);
-            benchmark::DoNotOptimize(y);
-        }
-    } else {
-        AesCtx<4> ctx;
-        DcfType dcf{ctx.prg};
-        dcf.Gen(cws, seeds, alpha, beta);
-        for (auto _ : state) {
-            int4 y = dcf.Eval(false, seeds[0], cws, x);
-            benchmark::DoNotOptimize(y);
-        }
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
+    RawAesCtx<4> ctx;
+    DcfType dcf{ctx.prg};
+    dcf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      int4 y = dcf.Eval(false, seeds[0], cws, x);
+      benchmark::DoNotOptimize(y);
     }
-}
-
-template <int in_bits, typename Group, typename Prg>
-static void BM_DcfEvalAll(benchmark::State &state) {
-    using DcfType = fss::Dcf<in_bits, Group, Prg, uint>;
-
-    int4 seeds[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename DcfType::Cw cws[in_bits + 1];
-
-    constexpr size_t n = size_t{1} << in_bits;
-    std::vector<int4> ys(n);
-
+  } else {
     AesCtx<4> ctx;
     DcfType dcf{ctx.prg};
     dcf.Gen(cws, seeds, alpha, beta);
     for (auto _ : state) {
-        dcf.EvalAll(false, seeds[0], cws, ys.data());
-        benchmark::DoNotOptimize(ys.data());
+      int4 y = dcf.Eval(false, seeds[0], cws, x);
+      benchmark::DoNotOptimize(y);
     }
-    state.SetItemsProcessed(state.iterations() * n);
+  }
+}
+
+template <int in_bits, typename Group, typename Prg>
+static void BM_DcfEvalAll(benchmark::State &state) {
+  using DcfType = fss::Dcf<in_bits, Group, Prg, uint>;
+
+  int4 seeds[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename DcfType::Cw cws[in_bits + 1];
+
+  constexpr size_t n = size_t{1} << in_bits;
+  std::vector<int4> ys(n);
+
+  AesCtx<4> ctx;
+  DcfType dcf{ctx.prg};
+  dcf.Gen(cws, seeds, alpha, beta);
+  for (auto _ : state) {
+    dcf.EvalAll(false, seeds[0], cws, ys.data());
+    benchmark::DoNotOptimize(ys.data());
+  }
+  state.SetItemsProcessed(state.iterations() * n);
 }
 
 // --- VDPF benchmarks ---
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
 static void BM_VdpfGen(benchmark::State &state) {
-    using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
+  using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename VdpfType::Cw cws[in_bits];
-    cuda::std::array<int4, 4> cs;
-    int4 ocw;
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename VdpfType::Cw cws[in_bits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
 
-    auto xor_hash = MakeHash<XorHash>();
-    auto hash_ = MakeHash<Hash>();
+  auto xor_hash = MakeHash<XorHash>();
+  auto hash_ = MakeHash<Hash>();
 
-    if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
-        AesCtx<2> ctx;
-        VdpfType vdpf{ctx.prg, xor_hash, hash_};
-        for (auto _ : state) {
-            vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-            benchmark::DoNotOptimize(cws);
-        }
-    } else {
-        Prg prg(gNonce);
-        VdpfType vdpf{prg, xor_hash, hash_};
-        for (auto _ : state) {
-            vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-            benchmark::DoNotOptimize(cws);
-        }
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    VdpfType vdpf{ctx.prg, xor_hash, hash_};
+    for (auto _ : state) {
+      vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+      benchmark::DoNotOptimize(cws);
     }
+  } else {
+    Prg prg(gNonce);
+    VdpfType vdpf{prg, xor_hash, hash_};
+    for (auto _ : state) {
+      vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+      benchmark::DoNotOptimize(cws);
+    }
+  }
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
 static void BM_VdpfEval(benchmark::State &state) {
-    using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
+  using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename VdpfType::Cw cws[in_bits];
-    cuda::std::array<int4, 4> cs;
-    int4 ocw;
-    uint x = 100;
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename VdpfType::Cw cws[in_bits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+  uint x = 100;
 
-    auto xor_hash = MakeHash<XorHash>();
-    auto hash_ = MakeHash<Hash>();
+  auto xor_hash = MakeHash<XorHash>();
+  auto hash_ = MakeHash<Hash>();
 
-    if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
-        AesCtx<2> ctx;
-        VdpfType vdpf{ctx.prg, xor_hash, hash_};
-        vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-        for (auto _ : state) {
-            int4 y;
-            auto pi_tilde =
-                vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
-                    cuda::std::span<const int4, 4>(cs), ocw, x, y);
-            cuda::std::array<int4, 4> pi;
-            vdpf.Prove({&pi_tilde, 1}, cuda::std::span<const int4, 4>(cs), pi);
-            benchmark::DoNotOptimize(y);
-            benchmark::DoNotOptimize(pi);
-        }
-    } else {
-        Prg prg(gNonce);
-        VdpfType vdpf{prg, xor_hash, hash_};
-        vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-        for (auto _ : state) {
-            int4 y;
-            auto pi_tilde =
-                vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
-                    cuda::std::span<const int4, 4>(cs), ocw, x, y);
-            cuda::std::array<int4, 4> pi;
-            vdpf.Prove({&pi_tilde, 1}, cuda::std::span<const int4, 4>(cs), pi);
-            benchmark::DoNotOptimize(y);
-            benchmark::DoNotOptimize(pi);
-        }
-    }
-}
-
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
-static void BM_VdpfProve(benchmark::State &state) {
-    using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
-
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename VdpfType::Cw cws[in_bits];
-    cuda::std::array<int4, 4> cs;
-    int4 ocw;
-    uint x = 100;
-
-    auto xor_hash = MakeHash<XorHash>();
-    auto hash_ = MakeHash<Hash>();
-    Prg prg(gNonce);
-    VdpfType vdpf{prg, xor_hash, hash_};
-    vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-
-    int4 y;
-    auto pi_tilde =
-        vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
-            cuda::std::span<const int4, 4>(cs), ocw, x, y);
-
-    for (auto _ : state) {
-        cuda::std::array<int4, 4> pi;
-        vdpf.Prove({&pi_tilde, 1}, cuda::std::span<const int4, 4>(cs), pi);
-        benchmark::DoNotOptimize(pi);
-    }
-}
-
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
-static void BM_VdpfEvalAll(benchmark::State &state) {
-    using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
-
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename VdpfType::Cw cws[in_bits];
-    cuda::std::array<int4, 4> cs;
-    int4 ocw;
-
-    constexpr size_t n = size_t{1} << in_bits;
-    std::vector<int4> ys(n);
-
-    auto xor_hash = MakeHash<XorHash>();
-    auto hash_ = MakeHash<Hash>();
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
     vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
-        cuda::std::array<int4, 4> pi;
-        vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
-            cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys.data(), n), pi);
-        benchmark::DoNotOptimize(ys.data());
-        benchmark::DoNotOptimize(pi);
+      int4 y;
+      auto pi_tilde = vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+          cuda::std::span<const int4, 4>(cs), ocw, x, y);
+      cuda::std::array<int4, 4> pi;
+      vdpf.Prove({&pi_tilde, 1}, cuda::std::span<const int4, 4>(cs), pi);
+      benchmark::DoNotOptimize(y);
+      benchmark::DoNotOptimize(pi);
     }
-    state.SetItemsProcessed(state.iterations() * n);
+  } else {
+    Prg prg(gNonce);
+    VdpfType vdpf{prg, xor_hash, hash_};
+    vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    for (auto _ : state) {
+      int4 y;
+      auto pi_tilde = vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+          cuda::std::span<const int4, 4>(cs), ocw, x, y);
+      cuda::std::array<int4, 4> pi;
+      vdpf.Prove({&pi_tilde, 1}, cuda::std::span<const int4, 4>(cs), pi);
+      benchmark::DoNotOptimize(y);
+      benchmark::DoNotOptimize(pi);
+    }
+  }
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
+static void BM_VdpfProve(benchmark::State &state) {
+  using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename VdpfType::Cw cws[in_bits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+  uint x = 100;
+
+  auto xor_hash = MakeHash<XorHash>();
+  auto hash_ = MakeHash<Hash>();
+  Prg prg(gNonce);
+  VdpfType vdpf{prg, xor_hash, hash_};
+  vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+
+  int4 y;
+  auto pi_tilde = vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+      cuda::std::span<const int4, 4>(cs), ocw, x, y);
+
+  for (auto _ : state) {
+    cuda::std::array<int4, 4> pi;
+    vdpf.Prove({&pi_tilde, 1}, cuda::std::span<const int4, 4>(cs), pi);
+    benchmark::DoNotOptimize(pi);
+  }
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
+static void BM_VdpfEvalAll(benchmark::State &state) {
+  using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename VdpfType::Cw cws[in_bits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+
+  constexpr size_t n = size_t{1} << in_bits;
+  std::vector<int4> ys(n);
+
+  auto xor_hash = MakeHash<XorHash>();
+  auto hash_ = MakeHash<Hash>();
+  AesCtx<2> ctx;
+  VdpfType vdpf{ctx.prg, xor_hash, hash_};
+  vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+  for (auto _ : state) {
+    cuda::std::array<int4, 4> pi;
+    vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys.data(), n), pi);
+    benchmark::DoNotOptimize(ys.data());
+    benchmark::DoNotOptimize(pi);
+  }
+  state.SetItemsProcessed(state.iterations() * n);
 }
 
 // --- HalfTreeDpf benchmarks ---
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_HalfTreeDpfGen(benchmark::State &state) {
-    using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
+  using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename HtDpfType::Cw cws[in_bits];
-    int4 ocw;
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename HtDpfType::Cw cws[in_bits];
+  int4 ocw;
 
-    AesCtx<1> ctx;
-    HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
-    for (auto _ : state) {
-        dpf.Gen(cws, ocw, s0s, alpha, beta);
-        benchmark::DoNotOptimize(cws);
-    }
+  AesCtx<1> ctx;
+  HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+  for (auto _ : state) {
+    dpf.Gen(cws, ocw, s0s, alpha, beta);
+    benchmark::DoNotOptimize(cws);
+  }
 }
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_HalfTreeDpfEval(benchmark::State &state) {
-    using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
+  using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename HtDpfType::Cw cws[in_bits];
-    int4 ocw;
-    uint x = 100;
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename HtDpfType::Cw cws[in_bits];
+  int4 ocw;
+  uint x = 100;
 
-    AesCtx<1> ctx;
-    HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
-    dpf.Gen(cws, ocw, s0s, alpha, beta);
-    for (auto _ : state) {
-        int4 y = dpf.Eval(false, s0s[0], cws, ocw, x);
-        benchmark::DoNotOptimize(y);
-    }
+  AesCtx<1> ctx;
+  HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+  dpf.Gen(cws, ocw, s0s, alpha, beta);
+  for (auto _ : state) {
+    int4 y = dpf.Eval(false, s0s[0], cws, ocw, x);
+    benchmark::DoNotOptimize(y);
+  }
 }
 
 template <int in_bits, typename Group, typename Prg>
 static void BM_HalfTreeDpfEvalAll(benchmark::State &state) {
-    using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
+  using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    int4 beta = {7, 0, 0, 0};
-    typename HtDpfType::Cw cws[in_bits];
-    int4 ocw;
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename HtDpfType::Cw cws[in_bits];
+  int4 ocw;
 
-    constexpr size_t n = size_t{1} << in_bits;
-    std::vector<int4> ys(n);
+  constexpr size_t n = size_t{1} << in_bits;
+  std::vector<int4> ys(n);
 
-    AesCtx<1> ctx;
-    HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
-    dpf.Gen(cws, ocw, s0s, alpha, beta);
-    for (auto _ : state) {
-        dpf.EvalAll(false, s0s[0], cws, ocw, ys.data());
-        benchmark::DoNotOptimize(ys.data());
-    }
-    state.SetItemsProcessed(state.iterations() * n);
+  AesCtx<1> ctx;
+  HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+  dpf.Gen(cws, ocw, s0s, alpha, beta);
+  for (auto _ : state) {
+    dpf.EvalAll(false, s0s[0], cws, ocw, ys.data());
+    benchmark::DoNotOptimize(ys.data());
+  }
+  state.SetItemsProcessed(state.iterations() * n);
 }
 
 // --- GrottoDcf benchmarks ---
 
 template <int in_bits, typename Prg>
 static void BM_GrottoDcfEval(benchmark::State &state) {
-    using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
+  using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    typename GdcfType::Cw cws[in_bits + 1];
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  typename GdcfType::Cw cws[in_bits + 1];
 
-    constexpr size_t N = size_t{1} << in_bits;
-    uint x = 100;
+  constexpr size_t N = size_t{1} << in_bits;
+  uint x = 100;
 
-    AesCtx<2> ctx;
-    GdcfType dcf{ctx.prg};
-    dcf.Gen(cws, s0s, alpha);
+  AesCtx<2> ctx;
+  GdcfType dcf{ctx.prg};
+  dcf.Gen(cws, s0s, alpha);
 
-    auto p = std::make_unique<bool[]>(2 * N - 1);
-    typename GdcfType::ParityTree pt{p.get(), false};
-    dcf.Preprocess(pt, s0s[0], cws);
+  auto p = std::make_unique<bool[]>(2 * N - 1);
+  typename GdcfType::ParityTree pt{p.get(), false};
+  dcf.Preprocess(pt, s0s[0], cws);
 
-    for (auto _ : state) {
-        bool y = GdcfType::Eval(pt, x);
-        benchmark::DoNotOptimize(y);
-    }
+  for (auto _ : state) {
+    bool y = GdcfType::Eval(pt, x);
+    benchmark::DoNotOptimize(y);
+  }
 }
 
 template <int in_bits, typename Prg>
 static void BM_GrottoDcfPreprocess(benchmark::State &state) {
-    using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
+  using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    typename GdcfType::Cw cws[in_bits + 1];
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  typename GdcfType::Cw cws[in_bits + 1];
 
-    constexpr size_t N = size_t{1} << in_bits;
+  constexpr size_t N = size_t{1} << in_bits;
 
-    AesCtx<2> ctx;
-    GdcfType dcf{ctx.prg};
-    dcf.Gen(cws, s0s, alpha);
+  AesCtx<2> ctx;
+  GdcfType dcf{ctx.prg};
+  dcf.Gen(cws, s0s, alpha);
 
-    auto p = std::make_unique<bool[]>(2 * N - 1);
-    typename GdcfType::ParityTree pt{p.get(), false};
+  auto p = std::make_unique<bool[]>(2 * N - 1);
+  typename GdcfType::ParityTree pt{p.get(), false};
 
-    for (auto _ : state) {
-        dcf.Preprocess(pt, s0s[0], cws);
-        benchmark::DoNotOptimize(p.get());
-    }
+  for (auto _ : state) {
+    dcf.Preprocess(pt, s0s[0], cws);
+    benchmark::DoNotOptimize(p.get());
+  }
 }
 
 template <int in_bits, typename Prg>
 static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
-    using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
+  using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
 
-    int4 s0s[2] = {
-        {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-    };
-    uint alpha = 42;
-    typename GdcfType::Cw cws[in_bits + 1];
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  typename GdcfType::Cw cws[in_bits + 1];
 
-    constexpr size_t N = size_t{1} << in_bits;
+  constexpr size_t N = size_t{1} << in_bits;
 
-    AesCtx<2> ctx;
-    GdcfType dcf{ctx.prg};
-    dcf.Gen(cws, s0s, alpha);
+  AesCtx<2> ctx;
+  GdcfType dcf{ctx.prg};
+  dcf.Gen(cws, s0s, alpha);
 
-    auto p = std::make_unique<bool[]>(2 * N - 1);
-    typename GdcfType::ParityTree pt{p.get(), false};
-    auto ys = std::make_unique<bool[]>(N);
+  auto p = std::make_unique<bool[]>(2 * N - 1);
+  typename GdcfType::ParityTree pt{p.get(), false};
+  auto ys = std::make_unique<bool[]>(N);
 
-    for (auto _ : state) {
-        dcf.Preprocess(pt, s0s[0], cws);
-        dcf.EvalAll(false, s0s[0], cws, ys.get());
-        benchmark::DoNotOptimize(p.get());
-        benchmark::DoNotOptimize(ys.get());
-    }
-    state.SetItemsProcessed(state.iterations() * N);
+  for (auto _ : state) {
+    dcf.Preprocess(pt, s0s[0], cws);
+    dcf.EvalAll(false, s0s[0], cws, ys.get());
+    benchmark::DoNotOptimize(p.get());
+    benchmark::DoNotOptimize(ys.get());
+  }
+  state.SetItemsProcessed(state.iterations() * N);
 }
 
 // --- Registration ---
@@ -682,28 +679,22 @@ BENCHMARK(BM_DcfEvalAll<20, UintGroup, DcfAes>)->Name("BM_DcfEvalAll_Uint_Aes/20
 BENCHMARK(BM_DcfEvalAll<20, BytesGroup, DcfAes>)->Name("BM_DcfEvalAll_Bytes_Aes/20");
 
 // 14. BM_VdpfEval_Uint_Aes_Sha256/20
-BENCHMARK((BM_VdpfEval<20, UintGroup, DpfAes, Sha256, Sha256>))
-    ->Name("BM_VdpfEval_Uint_Aes_Sha256/20");
+BENCHMARK((BM_VdpfEval<20, UintGroup, DpfAes, Sha256, Sha256>))->Name("BM_VdpfEval_Uint_Aes_Sha256/20");
 // 15. BM_VdpfGen_Uint_Aes_Sha256/20
-BENCHMARK((BM_VdpfGen<20, UintGroup, DpfAes, Sha256, Sha256>))
-    ->Name("BM_VdpfGen_Uint_Aes_Sha256/20");
+BENCHMARK((BM_VdpfGen<20, UintGroup, DpfAes, Sha256, Sha256>))->Name("BM_VdpfGen_Uint_Aes_Sha256/20");
 // 16. BM_VdpfEval_Uint_Aes_Blake3/20
-BENCHMARK((BM_VdpfEval<20, UintGroup, DpfAes, Blake3, Blake3>))
-    ->Name("BM_VdpfEval_Uint_Aes_Blake3/20");
+BENCHMARK((BM_VdpfEval<20, UintGroup, DpfAes, Blake3, Blake3>))->Name("BM_VdpfEval_Uint_Aes_Blake3/20");
 // 17. BM_VdpfProve_Uint_ChaCha_Blake3/20
-BENCHMARK((BM_VdpfProve<20, UintGroup, DpfChaCha, Blake3, Blake3>))
-    ->Name("BM_VdpfProve_Uint_ChaCha_Blake3/20");
+BENCHMARK((BM_VdpfProve<20, UintGroup, DpfChaCha, Blake3, Blake3>))->Name("BM_VdpfProve_Uint_ChaCha_Blake3/20");
 // 18. BM_VdpfEvalAll_Uint_Aes_Sha256/20
-BENCHMARK((BM_VdpfEvalAll<20, UintGroup, DpfAes, Sha256, Sha256>))
-    ->Name("BM_VdpfEvalAll_Uint_Aes_Sha256/20");
+BENCHMARK((BM_VdpfEvalAll<20, UintGroup, DpfAes, Sha256, Sha256>))->Name("BM_VdpfEvalAll_Uint_Aes_Sha256/20");
 
 // 19. BM_HalfTreeDpfEval_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEval_Uint_Aes/20");
 // 20. BM_HalfTreeDpfGen_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfGen_Uint_Aes/20");
 // 21. BM_HalfTreeDpfEvalAll_Uint_Aes/20
-BENCHMARK(BM_HalfTreeDpfEvalAll<20, UintGroup, HtDpfAes>)
-    ->Name("BM_HalfTreeDpfEvalAll_Uint_Aes/20");
+BENCHMARK(BM_HalfTreeDpfEvalAll<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEvalAll_Uint_Aes/20");
 
 // 22. BM_GrottoDcfEval_Aes/20
 BENCHMARK(BM_GrottoDcfEval<20, GdcfAes>)->Name("BM_GrottoDcfEval_Aes/20");
