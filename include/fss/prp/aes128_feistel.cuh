@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * @file prp/aes128_fpe.cuh
+ * @file prp/aes128_feistel.cuh
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl7.org>.
  * @author Yulong Ming <i@myl7.org>
  *
@@ -27,6 +27,13 @@
 
 namespace fss::prp {
 
+/**
+ * Small-domain AES-128 Feistel PRP for Cuckoo hashing.
+ *
+ * This backend is host-only because it uses OpenSSL. It satisfies Permutable
+ * and is intended for VDMPF setup paths that need a permutation over a compact
+ * integer domain.
+ */
 class Aes128Feistel {
   EVP_CIPHER_CTX *ctx_;
 

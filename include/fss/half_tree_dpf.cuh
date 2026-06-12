@@ -230,6 +230,10 @@ public:
      *
      * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
      *
+     * @param b Party index. False for 0 and true for 1.
+     * @param s0 Initial seed of the party.
+     * @param cws Correction words returned by Gen().
+     * @param ocw Output correction word returned by Gen().
      * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
      *
      * Support parallel using OpenMP.

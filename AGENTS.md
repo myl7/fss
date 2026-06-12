@@ -45,6 +45,33 @@
 - Python wheels install the public C++ headers as data files. Keep
   `pyproject.toml` and `fss_crypto/_jit.py` in sync if the header layout moves.
 
+## File Index
+
+- `CMakeLists.txt`: library target, tests, benchmarks, install rules, and
+  external dependencies fetched for test or benchmark builds.
+- `Makefile`: formatting, CPU/GPU benchmark, flamegraph, and PTX helper
+  commands. Keep generated outputs under `build`.
+- `Doxyfile`: generated API documentation config. Public docs should focus on
+  `README.md`, `include/fss`, and examples instead of benchmark internals.
+- `doc/doxygen_input_filter.py`: Doxygen math filter for `$...$` comments and
+  Markdown.
+- `include/fss/*.cuh`: public scheme and concept headers.
+- `include/fss/group/*.cuh`: built-in output groups.
+- `include/fss/prg/*.cuh`: PRG backends for CPU and GPU paths.
+- `include/fss/hash/*.cuh`: hash and xor-hash backends for verifiable schemes.
+- `include/fss/prp/*.cuh`: PRP backends used by Cuckoo hashing in VDMPF.
+- `src/*_test.cu`: C++/CUDA tests registered through CTest and GTest.
+- `src/bench_cpu.cu`: Google Benchmark CPU microbenchmarks.
+- `src/bench_gpu.cu`: Google Benchmark GPU microbenchmarks. Use
+  `CUDA_VISIBLE_DEVICES` to pin a run to a free GPU.
+- `samples/dpf_dcf_cpu.cu` and `samples/dpf_dcf_gpu.cu`: small integration
+  examples for users.
+- `fss_crypto/*.py`: public Python wrappers and validation.
+- `fss_crypto/_csrc/*.cuh`: CUDA binding implementation compiled by PyTorch JIT.
+- `test/*.py`: Python integration and validation tests.
+- `third_party/`: comparison benchmark ports. Read it for benchmark context, not
+  for core library architecture.
+
 ## Build And Test
 
 - Configure regular tests with `cmake -B build`.
