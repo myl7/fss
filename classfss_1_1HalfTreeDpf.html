@@ -103,7 +103,6 @@ $(document).ready(function(){initNavTree('classfss_1_1HalfTreeDpf.html',''); ini
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
-<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="classfss_1_1HalfTreeDpf-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt; Class Template Reference</div></div>
 </div><!--header-->
@@ -129,15 +128,6 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a2571df91e531622bcf446a2ce7b05d58" id="r_a2571df91e531622bcf446a2ce7b05d58"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a2571df91e531622bcf446a2ce7b05d58">EvalAll</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a> cws[], int4 ocw, int4 ys[])</td></tr>
 <tr class="memdesc:a2571df91e531622bcf446a2ce7b05d58"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
 <tr class="separator:a2571df91e531622bcf446a2ce7b05d58"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:a03a8b648304e293fa719dfcd49b58a70" id="r_a03a8b648304e293fa719dfcd49b58a70"><td class="memItemLeft" align="right" valign="top"><a id="a03a8b648304e293fa719dfcd49b58a70" name="a03a8b648304e293fa719dfcd49b58a70"></a>
-Prg&#160;</td><td class="memItemRight" valign="bottom"><b>prg</b></td></tr>
-<tr class="separator:a03a8b648304e293fa719dfcd49b58a70"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aaccb612aea54a107c6afcd0a0670b20b" id="r_aaccb612aea54a107c6afcd0a0670b20b"><td class="memItemLeft" align="right" valign="top"><a id="aaccb612aea54a107c6afcd0a0670b20b" name="aaccb612aea54a107c6afcd0a0670b20b"></a>
-int4&#160;</td><td class="memItemRight" valign="bottom"><b>hash_key</b></td></tr>
-<tr class="separator:aaccb612aea54a107c6afcd0a0670b20b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
@@ -281,6 +271,10 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 <p>Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">ocw</td><td>Output correction word returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits.</td></tr>
   </table>
   </dd>
@@ -358,7 +352,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="half__tree__dpf_8cuh_source.html">half_tree_dpf.cuh</a></li>
+<li>include/fss/<a class="el" href="half__tree__dpf_8cuh.html">half_tree_dpf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

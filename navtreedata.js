@@ -59,7 +59,7 @@ var NAVTREE =
 
 var NAVTREEINDEX =
 [
-"aes128__mmo_8cuh.html"
+"aes128__feistel_8cuh.html"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronisation';

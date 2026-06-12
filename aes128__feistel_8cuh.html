@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: GpuData Struct Reference</title>
+<title>myl7/fss: include/fss/prp/aes128_feistel.cuh File Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -74,7 +74,7 @@ $(function() {
 </div>
 <script type="text/javascript">
 /* @license magnet:?xt=urn:btih:d3d9a9a6595521f9666a5e94cc830dab83b65699&amp;dn=expat.txt MIT */
-$(document).ready(function(){initNavTree('structGpuData.html',''); initResizable(); });
+$(document).ready(function(){initNavTree('aes128__feistel_8cuh.html',''); initResizable(); });
 /* @license-end */
 </script>
 <div id="doc-content">
@@ -101,42 +101,41 @@ $(document).ready(function(){initNavTree('structGpuData.html',''); initResizable
 
 <div class="header">
   <div class="summary">
-<a href="#pub-attribs">Public Attributes</a> &#124;
-<a href="structGpuData-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">GpuData Struct Reference</div></div>
+<a href="#nested-classes">Classes</a>  </div>
+  <div class="headertitle"><div class="title">aes128_feistel.cuh File Reference</div></div>
 </div><!--header-->
 <div class="contents">
-<table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:a4396b9751059706e87203d115f5f751d" id="r_a4396b9751059706e87203d115f5f751d"><td class="memItemLeft" align="right" valign="top"><a id="a4396b9751059706e87203d115f5f751d" name="a4396b9751059706e87203d115f5f751d"></a>
-int4 *&#160;</td><td class="memItemRight" valign="bottom"><b>d_seeds</b></td></tr>
-<tr class="separator:a4396b9751059706e87203d115f5f751d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5e654e6c56894cb666e6f00c78a7c754" id="r_a5e654e6c56894cb666e6f00c78a7c754"><td class="memItemLeft" align="right" valign="top"><a id="a5e654e6c56894cb666e6f00c78a7c754" name="a5e654e6c56894cb666e6f00c78a7c754"></a>
-int4 *&#160;</td><td class="memItemRight" valign="bottom"><b>d_seeds0</b></td></tr>
-<tr class="separator:a5e654e6c56894cb666e6f00c78a7c754"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3f35fa57136c1aadb48641451854b93e" id="r_a3f35fa57136c1aadb48641451854b93e"><td class="memItemLeft" align="right" valign="top"><a id="a3f35fa57136c1aadb48641451854b93e" name="a3f35fa57136c1aadb48641451854b93e"></a>
-uint *&#160;</td><td class="memItemRight" valign="bottom"><b>d_alphas</b></td></tr>
-<tr class="separator:a3f35fa57136c1aadb48641451854b93e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5bc302adeb1a5aa5be2bf34d77f09df7" id="r_a5bc302adeb1a5aa5be2bf34d77f09df7"><td class="memItemLeft" align="right" valign="top"><a id="a5bc302adeb1a5aa5be2bf34d77f09df7" name="a5bc302adeb1a5aa5be2bf34d77f09df7"></a>
-int4 *&#160;</td><td class="memItemRight" valign="bottom"><b>d_betas</b></td></tr>
-<tr class="separator:a5bc302adeb1a5aa5be2bf34d77f09df7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5ddc84602df86c8622b82ae253f99c72" id="r_a5ddc84602df86c8622b82ae253f99c72"><td class="memItemLeft" align="right" valign="top"><a id="a5ddc84602df86c8622b82ae253f99c72" name="a5ddc84602df86c8622b82ae253f99c72"></a>
-uint *&#160;</td><td class="memItemRight" valign="bottom"><b>d_xs</b></td></tr>
-<tr class="separator:a5ddc84602df86c8622b82ae253f99c72"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2642f37266e851c5a8e9df77a85fa6bb" id="r_a2642f37266e851c5a8e9df77a85fa6bb"><td class="memItemLeft" align="right" valign="top"><a id="a2642f37266e851c5a8e9df77a85fa6bb" name="a2642f37266e851c5a8e9df77a85fa6bb"></a>
-int4 *&#160;</td><td class="memItemRight" valign="bottom"><b>d_ys</b></td></tr>
-<tr class="separator:a2642f37266e851c5a8e9df77a85fa6bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+
+<p>Small-domain PRP via 4-round Feistel network with AES-128 round function and cycle-walking.  
+<a href="#details">More...</a></p>
+<div class="textblock"><code>#include &lt;<a class="el" href="prp_8cuh_source.html">fss/prp.cuh</a>&gt;</code><br />
+<code>#include &lt;cuda_runtime.h&gt;</code><br />
+<code>#include &lt;cassert&gt;</code><br />
+<code>#include &lt;openssl/evp.h&gt;</code><br />
+<code>#include &lt;openssl/aes.h&gt;</code><br />
+</div><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
+Classes</h2></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html">fss::prp::Aes128Feistel</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Small-domain AES-128 Feistel PRP for Cuckoo hashing.  <a href="classfss_1_1prp_1_1Aes128Feistel.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<hr/>The documentation for this struct was generated from the following file:<ul>
-<li>src/<b>bench_gpu.cu</b></li>
-</ul>
-</div><!-- contents -->
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>Small-domain PRP via 4-round Feistel network with AES-128 round function and cycle-walking. </p>
+<dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
+<dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
+<p>Given a target domain [0, domain), the construction:</p><ol type="1">
+<li>Computes b = ceil(log2(domain)) and half = ceil(b / 2).</li>
+<li>Runs a 4-round balanced Feistel on (2 * half)-bit values, using AES-128 as the PRF for each round (with per-round key tweaking).</li>
+<li>Cycle-walks: if the Feistel output &gt;= domain, re-applies the Feistel until it lands in [0, domain). Expected iterations &lt; 4 because 2^(2*half) &lt; 4 * domain.</li>
+</ol>
+<p>Security: 4-round Luby-Rackoff gives CCA-secure PRP. Cycle-walking preserves the permutation property (Black &amp; Rogaway, 2002). </p>
+</div></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->
 <div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->
   <ul>
-    <li class="navelem"><a class="el" href="structGpuData.html">GpuData</a></li>
+    <li class="navelem"><a class="el" href="dir_d44c64559bbebec7f509842c48db8b23.html">include</a></li><li class="navelem"><a class="el" href="dir_1ce451d8baf5c0b810a12cb720228ae9.html">fss</a></li><li class="navelem"><a class="el" href="dir_f31e11ffe1f8ea1f38308ec805b4c957.html">prp</a></li><li class="navelem"><a class="el" href="aes128__feistel_8cuh.html">aes128_feistel.cuh</a></li>
     <li class="footer">Generated by <a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8 </li>
   </ul>
 </div>

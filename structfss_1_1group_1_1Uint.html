@@ -101,9 +101,6 @@ $(document).ready(function(){initNavTree('structfss_1_1group_1_1Uint.html',''); 
 
 <div class="header">
   <div class="summary">
-<a href="#pub-methods">Public Member Functions</a> &#124;
-<a href="#pub-static-methods">Static Public Member Functions</a> &#124;
-<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structfss_1_1group_1_1Uint-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">fss::group::Uint&lt; T, mod &gt; Struct Template Reference</div></div>
 </div><!--header-->
@@ -111,31 +108,6 @@ $(document).ready(function(){initNavTree('structfss_1_1group_1_1Uint.html',''); 
 
 <p>Unsigned integers with arithmetic addition and optional modulo as a group.  
  <a href="structfss_1_1group_1_1Uint.html#details">More...</a></p>
-<table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
-Public Member Functions</h2></td></tr>
-<tr class="memitem:a0b6073c9ace1e50de7cdde22a2af0cc0" id="r_a0b6073c9ace1e50de7cdde22a2af0cc0"><td class="memItemLeft" align="right" valign="top"><a id="a0b6073c9ace1e50de7cdde22a2af0cc0" name="a0b6073c9ace1e50de7cdde22a2af0cc0"></a>
-<a class="el" href="structfss_1_1group_1_1Uint.html">Uint</a>&#160;</td><td class="memItemRight" valign="bottom"><b>operator+</b> (<a class="el" href="structfss_1_1group_1_1Uint.html">Uint</a> rhs) const</td></tr>
-<tr class="separator:a0b6073c9ace1e50de7cdde22a2af0cc0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5f0ff04d41f3ea45897e4f58694496de" id="r_a5f0ff04d41f3ea45897e4f58694496de"><td class="memItemLeft" align="right" valign="top"><a id="a5f0ff04d41f3ea45897e4f58694496de" name="a5f0ff04d41f3ea45897e4f58694496de"></a>
-<a class="el" href="structfss_1_1group_1_1Uint.html">Uint</a>&#160;</td><td class="memItemRight" valign="bottom"><b>operator-</b> () const</td></tr>
-<tr class="separator:a5f0ff04d41f3ea45897e4f58694496de"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7150243803107ef910a50bd743870781" id="r_a7150243803107ef910a50bd743870781"><td class="memItemLeft" align="right" valign="top"><a id="a7150243803107ef910a50bd743870781" name="a7150243803107ef910a50bd743870781"></a>
-int4&#160;</td><td class="memItemRight" valign="bottom"><b>Into</b> () const</td></tr>
-<tr class="separator:a7150243803107ef910a50bd743870781"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
-Static Public Member Functions</h2></td></tr>
-<tr class="memitem:ab8baaff23867e0620afa56f435173c0d" id="r_ab8baaff23867e0620afa56f435173c0d"><td class="memItemLeft" align="right" valign="top"><a id="ab8baaff23867e0620afa56f435173c0d" name="ab8baaff23867e0620afa56f435173c0d"></a>
-static <a class="el" href="structfss_1_1group_1_1Uint.html">Uint</a>&#160;</td><td class="memItemRight" valign="bottom"><b>From</b> (int4 buf)</td></tr>
-<tr class="separator:ab8baaff23867e0620afa56f435173c0d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:ab115258b343c60f52fa28aa92c65993b" id="r_ab115258b343c60f52fa28aa92c65993b"><td class="memItemLeft" align="right" valign="top"><a id="ab115258b343c60f52fa28aa92c65993b" name="ab115258b343c60f52fa28aa92c65993b"></a>
-T&#160;</td><td class="memItemRight" valign="bottom"><b>val</b></td></tr>
-<tr class="separator:ab115258b343c60f52fa28aa92c65993b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;typename T, T mod = 0&gt;<br />
 requires ((std::is_unsigned_v&lt;T&gt; || std::is_same_v&lt;T, __uint128_t&gt;) &amp;&amp; sizeof(T) &lt;= 16 &amp;&amp; (sizeof(T) &lt; 16 || (mod &gt; 0 &amp;&amp; mod &lt;= static_cast&lt;T&gt;(1) &lt;&lt; 127)))<br />
@@ -150,7 +122,7 @@ struct fss::group::Uint&lt; T, mod &gt;</div><p>Unsigned integers with arithmeti
 <p>When T = __uint128_t, because elements are clamped, any element has &lt; 2^127 and 0 &lt; mod &lt;= 2^127.</p>
 <p>Note that if you will use these groups as fields, i.e., perform multiplication, you must set mod to a prime number so that for random \(a, b\), \(a \cdot b\) is uniformly distributed in the field. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
-<li>include/fss/group/<a class="el" href="uint_8cuh_source.html">uint.cuh</a></li>
+<li>include/fss/group/<a class="el" href="uint_8cuh.html">uint.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

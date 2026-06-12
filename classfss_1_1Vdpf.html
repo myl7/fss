@@ -104,7 +104,6 @@ $(document).ready(function(){initNavTree('classfss_1_1Vdpf.html',''); initResiza
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
-<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="classfss_1_1Vdpf-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt; Class Template Reference</div></div>
 </div><!--header-->
@@ -139,18 +138,6 @@ Static Public Member Functions</h2></td></tr>
 <tr class="memitem:ab00eedee69bebec69e716c50a750bbc8" id="r_ab00eedee69bebec69e716c50a750bbc8"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8">Verify</a> (cuda::std::span&lt; const int4, 4 &gt; pi0, cuda::std::span&lt; const int4, 4 &gt; pi1)</td></tr>
 <tr class="memdesc:ab00eedee69bebec69e716c50a750bbc8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Verification method.  <br /></td></tr>
 <tr class="separator:ab00eedee69bebec69e716c50a750bbc8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:a4d930cb584ffcc727b1c39f85a85f1bb" id="r_a4d930cb584ffcc727b1c39f85a85f1bb"><td class="memItemLeft" align="right" valign="top"><a id="a4d930cb584ffcc727b1c39f85a85f1bb" name="a4d930cb584ffcc727b1c39f85a85f1bb"></a>
-Prg&#160;</td><td class="memItemRight" valign="bottom"><b>prg</b></td></tr>
-<tr class="separator:a4d930cb584ffcc727b1c39f85a85f1bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aabe7767d84b098dc7cba9e8e0d194e9b" id="r_aabe7767d84b098dc7cba9e8e0d194e9b"><td class="memItemLeft" align="right" valign="top"><a id="aabe7767d84b098dc7cba9e8e0d194e9b" name="aabe7767d84b098dc7cba9e8e0d194e9b"></a>
-XorHash&#160;</td><td class="memItemRight" valign="bottom"><b>xor_hash</b></td></tr>
-<tr class="separator:aabe7767d84b098dc7cba9e8e0d194e9b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2af141cfdba2fdeae7e00e6dfdcfb772" id="r_a2af141cfdba2fdeae7e00e6dfdcfb772"><td class="memItemLeft" align="right" valign="top"><a id="a2af141cfdba2fdeae7e00e6dfdcfb772" name="a2af141cfdba2fdeae7e00e6dfdcfb772"></a>
-Hash&#160;</td><td class="memItemRight" valign="bottom"><b>hash</b></td></tr>
-<tr class="separator:a2af141cfdba2fdeae7e00e6dfdcfb772"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In = uint, int par_depth = -1&gt;<br />
@@ -320,9 +307,13 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 
 <p>Full domain evaluation method. </p>
 <p>Evaluate the key on each input, i.e., 0b00...0 - 0b11...1. Store the outputs sequentially and accumulate the proof.</p>
-<p>b, s0, cws, cs, ocw are the same as the ones in <a class="el" href="classfss_1_1Vdpf.html#a3367b1502b0ec3c40f25a68af8fb10cc" title="Evaluation method.">Eval()</a>.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">cs</td><td>Check seeds returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">ocw</td><td>Output correction word returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits. </td></tr>
     <tr><td class="paramname">pi</td><td>Proof output.</td></tr>
   </table>

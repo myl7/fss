@@ -4,9 +4,8 @@ var searchData=
   ['get_20started_1',['Get Started',['../index.html#autotoc_md2',1,'']]],
   ['gpu_2',['GPU',['../index.html#autotoc_md6',1,'']]],
   ['gpu_20results_3',['GPU Results',['../index.html#autotoc_md12',1,'']]],
-  ['gpudata_4',['GpuData',['../structGpuData.html',1,'']]],
-  ['grotto_5fdcf_2ecuh_5',['grotto_dcf.cuh',['../grotto__dcf_8cuh.html',1,'']]],
-  ['grottodcf_6',['GrottoDcf',['../classfss_1_1GrottoDcf.html',1,'fss']]],
-  ['group_2ecuh_7',['group.cuh',['../group_8cuh.html',1,'']]],
-  ['groupable_8',['Groupable',['../conceptGroupable.html',1,'']]]
+  ['grotto_5fdcf_2ecuh_4',['grotto_dcf.cuh',['../grotto__dcf_8cuh.html',1,'']]],
+  ['grottodcf_5',['GrottoDcf',['../classfss_1_1GrottoDcf.html',1,'fss']]],
+  ['group_2ecuh_6',['group.cuh',['../group_8cuh.html',1,'']]],
+  ['groupable_7',['Groupable',['../conceptGroupable.html',1,'']]]
 ];

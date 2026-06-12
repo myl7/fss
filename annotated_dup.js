@@ -28,8 +28,5 @@ var annotated_dup =
       [ "HalfTreeDpf", "classfss_1_1HalfTreeDpf.html", "classfss_1_1HalfTreeDpf" ],
       [ "Vdmpf", "classfss_1_1Vdmpf.html", "classfss_1_1Vdmpf" ],
       [ "Vdpf", "classfss_1_1Vdpf.html", "classfss_1_1Vdpf" ]
-    ] ],
-    [ "AesCtx", "structAesCtx.html", null ],
-    [ "GpuData", "structGpuData.html", null ],
-    [ "RawAesCtx", "structRawAesCtx.html", null ]
+    ] ]
 ];

@@ -101,7 +101,6 @@ $(document).ready(function(){initNavTree('structfss_1_1GrottoDcf_1_1ParityTree.h
 
 <div class="header">
   <div class="summary">
-<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structfss_1_1GrottoDcf_1_1ParityTree-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::ParityTree Struct Reference</div></div>
 </div><!--header-->
@@ -109,23 +108,13 @@ $(document).ready(function(){initNavTree('structfss_1_1GrottoDcf_1_1ParityTree.h
 
 <p>Parity segment tree over leaf control bits.  
  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a></p>
-<table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:a8332500acf7f429c5b836e92ff8a8c27" id="r_a8332500acf7f429c5b836e92ff8a8c27"><td class="memItemLeft" align="right" valign="top"><a id="a8332500acf7f429c5b836e92ff8a8c27" name="a8332500acf7f429c5b836e92ff8a8c27"></a>
-bool *&#160;</td><td class="memItemRight" valign="bottom"><b>p</b></td></tr>
-<tr class="separator:a8332500acf7f429c5b836e92ff8a8c27"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a97b4861761a3c294db24f8d635f42968" id="r_a97b4861761a3c294db24f8d635f42968"><td class="memItemLeft" align="right" valign="top"><a id="a97b4861761a3c294db24f8d635f42968" name="a97b4861761a3c294db24f8d635f42968"></a>
-bool&#160;</td><td class="memItemRight" valign="bottom"><b>b</b></td></tr>
-<tr class="separator:a97b4861761a3c294db24f8d635f42968"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
 struct fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::ParityTree</div><p>Parity segment tree over leaf control bits. </p>
 <p>p[0..2N-2]: level-order binary tree where N = 2^in_bits. Root is p[0]. Leaf x has index p[x + N - 1]. Internal node j: p[j] = p[2j+1] XOR p[2j+2].</p>
 <p>b: party index, needed for reconstructing comparison results. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="grotto__dcf_8cuh_source.html">grotto_dcf.cuh</a></li>
+<li>include/fss/<a class="el" href="grotto__dcf_8cuh.html">grotto_dcf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

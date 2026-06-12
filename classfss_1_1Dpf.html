@@ -103,7 +103,6 @@ $(document).ready(function(){initNavTree('classfss_1_1Dpf.html',''); initResizab
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
-<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="classfss_1_1Dpf-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt; Class Template Reference</div></div>
 </div><!--header-->
@@ -129,12 +128,6 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a99bbc5176026a65fc2385186af3b6483" id="r_a99bbc5176026a65fc2385186af3b6483"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dpf.html#a99bbc5176026a65fc2385186af3b6483">EvalAll</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a> cws[], int4 ys[])</td></tr>
 <tr class="memdesc:a99bbc5176026a65fc2385186af3b6483"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
 <tr class="separator:a99bbc5176026a65fc2385186af3b6483"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:a2110bcdf1549b4e347506fb5bfaceea0" id="r_a2110bcdf1549b4e347506fb5bfaceea0"><td class="memItemLeft" align="right" valign="top"><a id="a2110bcdf1549b4e347506fb5bfaceea0" name="a2110bcdf1549b4e347506fb5bfaceea0"></a>
-Prg&#160;</td><td class="memItemRight" valign="bottom"><b>prg</b></td></tr>
-<tr class="separator:a2110bcdf1549b4e347506fb5bfaceea0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
@@ -263,9 +256,11 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 
 <p>Full domain evaluation method. </p>
 <p>Evaluate the key on each input, i.e., 0b00...0 - 0b11...1. Store the outputs sequentially.</p>
-<p>b, s0, cws are the same as the ones in <a class="el" href="classfss_1_1Dpf.html#a1416dbe8fa4f43437ea3951bb49655d3" title="Evaluation method.">Eval()</a>.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words returned by <a class="el" href="classfss_1_1Dpf.html#abb6b5745a642a4bd176ebafc3d65dc9f" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits.</td></tr>
   </table>
   </dd>

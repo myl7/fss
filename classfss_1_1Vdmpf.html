@@ -102,11 +102,8 @@ $(document).ready(function(){initNavTree('classfss_1_1Vdmpf.html',''); initResiz
 <div class="header">
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
-<a href="#pub-types">Public Types</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
-<a href="#pub-attribs">Public Attributes</a> &#124;
-<a href="#pub-static-attribs">Static Public Attributes</a> &#124;
 <a href="classfss_1_1Vdmpf-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt; Class Template Reference</div></div>
 </div><!--header-->
@@ -124,12 +121,6 @@ Classes</h2></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">VDMPF key for one party.  <a href="structfss_1_1Vdmpf_1_1Key.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
-Public Types</h2></td></tr>
-<tr class="memitem:ad7120a6542345b737270fbfa82018d3b" id="r_ad7120a6542345b737270fbfa82018d3b"><td class="memItemLeft" align="right" valign="top"><a id="ad7120a6542345b737270fbfa82018d3b" name="ad7120a6542345b737270fbfa82018d3b"></a>
-using&#160;</td><td class="memItemRight" valign="bottom"><b>InnerVdpf</b> = <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; bucket_bits, Group, Prg, XorHash, Hash, uint &gt;</td></tr>
-<tr class="separator:ad7120a6542345b737270fbfa82018d3b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a864e6a7f82ff7e7734a7c09487125b51" id="r_a864e6a7f82ff7e7734a7c09487125b51"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdmpf.html#a864e6a7f82ff7e7734a7c09487125b51">Gen</a> (<a class="el" href="structfss_1_1Vdmpf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1Vdmpf_1_1Key.html">Key</a> &amp;k1, int4 sigma, cuda::std::span&lt; const cuda::std::array&lt; int4, 2 &gt;, m &gt; s0s, std::span&lt; const In &gt; as, std::span&lt; const int4 &gt; b_bufs, int t, int ch_retry=1000)</td></tr>
@@ -144,33 +135,6 @@ Static Public Member Functions</h2></td></tr>
 <tr class="memitem:ab1ec01f63d0bf30755594f283a9a6b5c" id="r_ab1ec01f63d0bf30755594f283a9a6b5c"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c">Verify</a> (cuda::std::span&lt; const int4, 4 &gt; pi0, cuda::std::span&lt; const int4, 4 &gt; pi1)</td></tr>
 <tr class="memdesc:ab1ec01f63d0bf30755594f283a9a6b5c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Verification method.  <br /></td></tr>
 <tr class="separator:ab1ec01f63d0bf30755594f283a9a6b5c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:a0afc26566ebfa5500321237aceecfa8d" id="r_a0afc26566ebfa5500321237aceecfa8d"><td class="memItemLeft" align="right" valign="top"><a id="a0afc26566ebfa5500321237aceecfa8d" name="a0afc26566ebfa5500321237aceecfa8d"></a>
-Prg&#160;</td><td class="memItemRight" valign="bottom"><b>prg</b></td></tr>
-<tr class="separator:a0afc26566ebfa5500321237aceecfa8d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7acbd89afbbe0a57fdb070831fd93a74" id="r_a7acbd89afbbe0a57fdb070831fd93a74"><td class="memItemLeft" align="right" valign="top"><a id="a7acbd89afbbe0a57fdb070831fd93a74" name="a7acbd89afbbe0a57fdb070831fd93a74"></a>
-XorHash&#160;</td><td class="memItemRight" valign="bottom"><b>xor_hash</b></td></tr>
-<tr class="separator:a7acbd89afbbe0a57fdb070831fd93a74"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac50cb4c0c4fcc8f462a5dd47d4d64057" id="r_ac50cb4c0c4fcc8f462a5dd47d4d64057"><td class="memItemLeft" align="right" valign="top"><a id="ac50cb4c0c4fcc8f462a5dd47d4d64057" name="ac50cb4c0c4fcc8f462a5dd47d4d64057"></a>
-Hash&#160;</td><td class="memItemRight" valign="bottom"><b>hash</b></td></tr>
-<tr class="separator:ac50cb4c0c4fcc8f462a5dd47d4d64057"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a739fe3848de3af143378e8239a191c90" id="r_a739fe3848de3af143378e8239a191c90"><td class="memItemLeft" align="right" valign="top"><a id="a739fe3848de3af143378e8239a191c90" name="a739fe3848de3af143378e8239a191c90"></a>
-Prp&#160;</td><td class="memItemRight" valign="bottom"><b>prp</b></td></tr>
-<tr class="separator:a739fe3848de3af143378e8239a191c90"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-attribs" name="pub-static-attribs"></a>
-Static Public Attributes</h2></td></tr>
-<tr class="memitem:a8a7b9610a84511c5db3815f820e5b2ae" id="r_a8a7b9610a84511c5db3815f820e5b2ae"><td class="memItemLeft" align="right" valign="top"><a id="a8a7b9610a84511c5db3815f820e5b2ae" name="a8a7b9610a84511c5db3815f820e5b2ae"></a>
-static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>m</b> = <a class="el" href="cuckoo__hash_8cuh.html#a7276e4c3bd17951b3cb5ce92591d69bb">cuckoo_hash::ChBucket</a>(max_points, ch_lambda)</td></tr>
-<tr class="separator:a8a7b9610a84511c5db3815f820e5b2ae"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5d297f30c6ff98fef38973e517050fa2" id="r_a5d297f30c6ff98fef38973e517050fa2"><td class="memItemLeft" align="right" valign="top"><a id="a5d297f30c6ff98fef38973e517050fa2" name="a5d297f30c6ff98fef38973e517050fa2"></a>
-static constexpr __uint128_t&#160;</td><td class="memItemRight" valign="bottom"><b>n</b> = __uint128_t(1) &lt;&lt; in_bits</td></tr>
-<tr class="separator:a5d297f30c6ff98fef38973e517050fa2"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a073c2451fea6f3641461eb38ba3a0067" id="r_a073c2451fea6f3641461eb38ba3a0067"><td class="memItemLeft" align="right" valign="top"><a id="a073c2451fea6f3641461eb38ba3a0067" name="a073c2451fea6f3641461eb38ba3a0067"></a>
-static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>b_size</b> = static_cast&lt;int&gt;((static_cast&lt;__uint128_t&gt;(n) * kappa + m - 1) / m)</td></tr>
-<tr class="separator:a073c2451fea6f3641461eb38ba3a0067"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename Prp, typename In = uint, int kappa = 3, int ch_lambda = 80&gt;<br />
