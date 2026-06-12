@@ -17,4 +17,10 @@ include = ["fss_crypto*"]
 
 [tool.setuptools.package-data]
 "fss_crypto._csrc" = ["*.cuh"]
-"*" = ["include/fss/**/*.cuh"]
+
+[tool.setuptools.data-files]
+"include/fss" = ["include/fss/*.cuh"]
+"include/fss/group" = ["include/fss/group/*.cuh"]
+"include/fss/hash" = ["include/fss/hash/*.cuh"]
+"include/fss/prg" = ["include/fss/prg/*.cuh"]
+"include/fss/prp" = ["include/fss/prp/*.cuh"]

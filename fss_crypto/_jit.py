@@ -1,6 +1,7 @@
 """JIT compilation manager for FSS C++ extensions."""
 
 import os
+import sysconfig
 import warnings
 from pathlib import Path
 
@@ -33,15 +34,19 @@ _EXT_CACHE: dict[str, object] = {}
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _CSRC_DIR = _PACKAGE_DIR / "_csrc"
 
-# The include/ dir lives next to fss_crypto/ in the repo layout.
-_INCLUDE_DIR = _PACKAGE_DIR.parent / "include"
+# The include/ dir lives next to fss_crypto/ in a checkout. Wheels install the
+# same header tree under the environment data prefix.
+_CHECKOUT_INCLUDE_DIR = _PACKAGE_DIR.parent / "include"
+_INSTALLED_INCLUDE_DIR = Path(sysconfig.get_paths()["data"]) / "include"
 
 
 def _find_include_dir() -> str:
-    if _INCLUDE_DIR.is_dir():
-        return str(_INCLUDE_DIR)
+    for include_dir in (_CHECKOUT_INCLUDE_DIR, _INSTALLED_INCLUDE_DIR):
+        if (include_dir / "fss").is_dir():
+            return str(include_dir)
     raise RuntimeError(
-        f"cannot find FSS include/ directory (tried {_INCLUDE_DIR})"
+        f"cannot find FSS include/ directory "
+        f"(tried {_CHECKOUT_INCLUDE_DIR} and {_INSTALLED_INCLUDE_DIR})"
     )
 
 

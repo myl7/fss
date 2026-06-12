@@ -251,6 +251,44 @@ DCF follows the same pattern — use `DcfPrg` (mul=4), `Dcf`, and `Dcf::Cw`.
 
 See `samples/dpf_dcf_gpu.cu` for the complete working example.
 
+### Python
+
+The `fss_crypto` package exposes PyTorch wrappers for DPF and DCF. The first
+use of each parameter set JIT-compiles a small CUDA extension with
+`torch.utils.cpp_extension.load`, so the CUDA toolkit is required even when the
+example below runs on CPU tensors.
+
+```bash
+uv sync --extra dev
+uv run pytest
+```
+
+```python
+import torch
+import fss_crypto
+
+dpf = fss_crypto.Dpf(in_bits=8, group="bytes", prg="chacha")
+
+s0s = torch.tensor(
+    [
+        [0x11111111, 0x22222222, 0x33333333, 0x44444440],
+        [0x55555555, 0x66666666, 0x77777777, -0x77777780],
+    ],
+    dtype=torch.int32,
+)
+beta = torch.tensor([7, 0, 0, 0], dtype=torch.int32)
+
+cws = dpf.gen(s0s, alpha=42, beta=beta)
+y0 = dpf.eval(party=0, s0=s0s[0], cws=cws, x=42)
+y1 = dpf.eval(party=1, s0=s0s[1], cws=cws, x=42)
+
+assert torch.bitwise_xor(y0, y1).equal(beta)
+```
+
+`gen` and `eval_all` are CPU-only. `eval` can run on CUDA tensors for ChaCha
+PRG when CUDA is available. The JIT path sets a default `TORCH_CUDA_ARCH_LIST`
+on machines with no visible GPU so CPU tests can still compile the extension.
+
 ### Compiler Warnings
 
 You may see warnings like "integer constant is so large that it is unsigned" during compilation. These cannot be easily suppressed but are harmless and can be safely ignored.

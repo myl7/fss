@@ -11,8 +11,13 @@
 
 - This is a header-only C++20/CUDA20 library. The CMake target `fss` is an
   `INTERFACE` target, so public library code lives under `include/fss`.
+- `fss_crypto` contains PyTorch bindings. The wrappers JIT-compile small CUDA
+  extension modules from `fss_crypto/_csrc` and include headers from
+  `include/fss`.
 - `src` contains tests and benchmarks. It is not the library source tree.
 - `samples` contains small CPU and GPU integration examples.
+- `test` contains Python binding tests. These tests may trigger JIT compilation
+  through PyTorch.
 - `third_party` contains benchmark ports and external comparison code. Do not
   treat it as the core API.
 - Main scheme headers:
@@ -37,6 +42,8 @@
   use ChaCha and must keep nonce lifetime explicit.
 - `EvalAll` APIs use OpenMP on host. Device code paths are marked with
   `__host__ __device__` where they are intended to run on GPU.
+- Python wheels install the public C++ headers as data files. Keep
+  `pyproject.toml` and `fss_crypto/_jit.py` in sync if the header layout moves.
 
 ## Build And Test
 
@@ -44,12 +51,14 @@
 - Build with `cmake --build build`.
 - Run tests from `build` with `ctest --output-on-failure`.
 - Configure benchmarks with `cmake -B build -DBUILD_BENCH=ON`.
+- Run Python tests with `uv run --extra dev pytest`.
 - Keep all build output, perf data, and flamegraphs under `./build`.
 
 ## Updating This File
 
 - Update this file in the same change when repo architecture changes, including:
   new public scheme headers, new concept interfaces, changed source/test/sample
-  ownership, changed build targets, or changed benchmark layout.
+  ownership, changed Python binding layout, changed build targets, or changed
+  benchmark layout.
 - Keep this file short and navigational. Put API tutorials in `README.md` or
   generated docs, not here.

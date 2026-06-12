@@ -37,6 +37,11 @@ class TestDpfEvalShape:
         assert out.dtype == torch.int32
         assert out.device.type == "cpu"
 
+    def test_rejects_out_of_domain_x(self, dpf, s0s, beta):
+        cws = dpf.gen(s0s, alpha=107, beta=beta)
+        with pytest.raises(ValueError, match="x must be"):
+            dpf.eval(party=0, s0=s0s[0], cws=cws, x=2**16)
+
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_output_shape_cuda(self, dpf, s0s, beta):
         cws = dpf.gen(s0s, alpha=107, beta=beta)
