@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['_5f_5fglobal_5f_5f_20tt_20kernel_20template_20argument_0',['nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument',['../index.html#autotoc_md8',1,'']]]
+  ['_5f_5fglobal_5f_5f_20tt_20kernel_20template_20argument_0',['nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument',['../index.html#autotoc_md9',1,'']]]
 ];

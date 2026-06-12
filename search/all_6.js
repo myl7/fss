@@ -3,8 +3,8 @@ var searchData=
   ['dcf_0',['Dcf',['../classfss_1_1Dcf.html',1,'fss']]],
   ['dcf_2ecuh_1',['dcf.cuh',['../dcf_8cuh.html',1,'']]],
   ['dcfpred_2',['DcfPred',['../dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509',1,'fss']]],
-  ['definitions_3',['definitions',['../dcf_8cuh.html#autotoc_md15',1,'Definitions'],['../dpf_8cuh.html#autotoc_md19',1,'Definitions'],['../vdmpf_8cuh.html#autotoc_md28',1,'Definitions'],['../vdpf_8cuh.html#autotoc_md31',1,'Definitions']]],
-  ['details_4',['details',['../dcf_8cuh.html#autotoc_md16',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md20',1,'Implementation Details'],['../conceptGroupable.html#autotoc_md24',1,'Implementation Details'],['../vdmpf_8cuh.html#autotoc_md29',1,'Implementation Details'],['../vdpf_8cuh.html#autotoc_md32',1,'Implementation Details']]],
+  ['definitions_3',['definitions',['../dcf_8cuh.html#autotoc_md16',1,'Definitions'],['../dpf_8cuh.html#autotoc_md20',1,'Definitions'],['../vdmpf_8cuh.html#autotoc_md29',1,'Definitions'],['../vdpf_8cuh.html#autotoc_md32',1,'Definitions']]],
+  ['details_4',['details',['../dcf_8cuh.html#autotoc_md17',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md21',1,'Implementation Details'],['../conceptGroupable.html#autotoc_md25',1,'Implementation Details'],['../vdmpf_8cuh.html#autotoc_md30',1,'Implementation Details'],['../vdpf_8cuh.html#autotoc_md33',1,'Implementation Details']]],
   ['dpf_5',['Dpf',['../classfss_1_1Dpf.html',1,'fss']]],
   ['dpf_2ecuh_6',['dpf.cuh',['../dpf_8cuh.html',1,'']]]
 ];

@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['layout_0',['layout',['../structfss_1_1Dcf_1_1Cw.html#autotoc_md18',1,'Layout'],['../structfss_1_1Dpf_1_1Cw.html#autotoc_md22',1,'Layout'],['../structfss_1_1Vdpf_1_1Cw.html#autotoc_md34',1,'Layout']]],
-  ['license_1',['License',['../index.html#autotoc_md13',1,'']]],
+  ['layout_0',['layout',['../structfss_1_1Dcf_1_1Cw.html#autotoc_md19',1,'Layout'],['../structfss_1_1Dpf_1_1Cw.html#autotoc_md23',1,'Layout'],['../structfss_1_1Vdpf_1_1Cw.html#autotoc_md35',1,'Layout']]],
+  ['license_1',['License',['../index.html#autotoc_md14',1,'']]],
   ['locate_2',['Locate',['../structfss_1_1cuckoo__hash_1_1PrpHash.html#a1a8aea801fc13fb642bfb5e2b13b5229',1,'fss::cuckoo_hash::PrpHash']]]
 ];
