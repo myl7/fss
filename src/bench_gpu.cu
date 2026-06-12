@@ -1,6 +1,7 @@
 #include <benchmark/benchmark.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <utility>
 #include <cuda_runtime.h>
 #include <fss/dpf.cuh>
 #include <fss/dcf.cuh>
@@ -37,10 +38,32 @@ __constant__ uint8_t kAesSoftKeys[2][16] = {
   do { \
     cudaError_t err = (x); \
     if (err != cudaSuccess) { \
-      fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
+      fprintf(stderr, "cuda error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
       exit(1); \
     } \
   } while (0)
+
+template <typename Fn>
+static void RunTimedKernel(benchmark::State &state, Fn &&fn) {
+  cudaEvent_t start;
+  cudaEvent_t stop;
+  CUDA_CHECK(cudaEventCreate(&start));
+  CUDA_CHECK(cudaEventCreate(&stop));
+
+  for (auto _ : state) {
+    CUDA_CHECK(cudaEventRecord(start));
+    std::forward<Fn>(fn)();
+    CUDA_CHECK(cudaPeekAtLastError());
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    float ms = 0;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+    state.SetIterationTime(ms / 1000.0);
+  }
+
+  CUDA_CHECK(cudaEventDestroy(start));
+  CUDA_CHECK(cudaEventDestroy(stop));
+}
 
 // --- DPF Kernels (ChaCha<2>) ---
 
@@ -277,22 +300,9 @@ static void BM_DpfEval(benchmark::State &state) {
   DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     DpfEvalKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -308,22 +318,9 @@ static void BM_DpfGen(benchmark::State &state) {
   typename DpfType::Cw *d_cws;
   CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DpfType::Cw) * (in_bits + 1) * kN));
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -342,23 +339,10 @@ static void BM_DpfEvalAes(benchmark::State &state) {
   DpfGenKernelAes<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     DpfEvalKernelAes<in_bits, Group>
         <<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -377,22 +361,9 @@ static void BM_DcfEval(benchmark::State &state) {
   DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     DcfEvalKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, data.d_xs);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -408,22 +379,9 @@ static void BM_DcfGen(benchmark::State &state) {
   typename DcfType::Cw *d_cws;
   CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DcfType::Cw) * (in_bits + 1) * kN));
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -447,23 +405,10 @@ static void BM_VdpfEval(benchmark::State &state) {
       <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_cs, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     VdpfEvalKernel<in_bits, Group>
         <<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, d_cs, d_ocws, data.d_xs);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -485,23 +430,10 @@ static void BM_VdpfGen(benchmark::State &state) {
   CUDA_CHECK(cudaMalloc(&d_cs, sizeof(cuda::std::array<int4, 4>) * kN));
   CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kN));
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     VdpfGenKernel<in_bits, Group>
         <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_cs, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -525,23 +457,10 @@ static void BM_HalfTreeDpfEval(benchmark::State &state) {
       <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     HalfTreeDpfEvalKernel<in_bits, Group>
         <<<kNumBlocks, kThreadsPerBlock>>>(data.d_ys, false, data.d_seeds0, d_cws, d_ocws, data.d_xs);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);
@@ -560,23 +479,10 @@ static void BM_HalfTreeDpfGen(benchmark::State &state) {
   CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename HtDpf::Cw) * in_bits * kN));
   CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kN));
 
-  for (auto _ : state) {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
+  RunTimedKernel(state, [&] {
     HalfTreeDpfGenKernel<in_bits, Group>
         <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0;
-    cudaEventElapsedTime(&ms, start, stop);
-    state.SetIterationTime(ms / 1000.0);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-  }
+  });
   state.SetItemsProcessed(state.iterations() * kN);
 
   cudaFree(d_cws);

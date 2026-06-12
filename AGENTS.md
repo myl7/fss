@@ -78,6 +78,10 @@
 - Build with `cmake --build build`.
 - Run tests from `build` with `ctest --output-on-failure`.
 - Configure benchmarks with `cmake -B build -DBUILD_BENCH=ON`.
+- Run GPU benchmarks with `GPU_ID=1 CUDA_ARCH=86 make bench_gpu` when CMake
+  cannot infer the CUDA arch or when a specific GPU is free.
+- Capture a GPU Nsight Systems profile with
+  `GPU_ID=1 GPU_PROFILE_BENCH=BM_DpfEval_Uint/20 make profile_gpu`.
 - Run Python tests with `uv run --extra dev pytest`.
 - Keep all build output, perf data, and flamegraphs under `./build`.
 
