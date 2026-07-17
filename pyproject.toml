@@ -3,13 +3,13 @@ name = "fss-crypto"
 version = "0.1.0"
 description = "PyTorch bindings for the FSS (Function Secret Sharing) library"
 requires-python = ">=3.13"
-dependencies = ["torch>=2.6"]
+dependencies = ["torch>=2.13.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.3"]
 
 [build-system]
-requires = ["setuptools>=75.0", "torch>=2.6"]
+requires = ["setuptools>=75.0", "torch>=2.13.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
