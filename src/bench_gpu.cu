@@ -8,6 +8,7 @@
 #include <fss/vdpf.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/eval_all_gpu.cuh>
+#include <fss/point_eval_gpu.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/prg/chacha.cuh>
@@ -589,6 +590,116 @@ static void BM_DpfEvalAllGpu(benchmark::State &state) {
   cudaFree(d_ys);
 }
 
+// --- GPU point eval benchmarks (level-major layout) ---
+//
+// Same workload as the per-key Eval benchmarks above (one output per key at
+// one random point each), but the correction words are relaid level-major
+// once after Gen: level i of every key adjacent, plus the packed control bits
+// and the output correction words. Each level load is then one coalesced 128B
+// transaction per warp instead of 32 lines of 128B each, which removes the
+// DRAM bound for DPF and DCF point evaluation. The relayout is a one-time
+// preprocessing cost outside the timed loop, same as Gen.
+
+template <int in_bits, typename Group>
+static void BM_DpfEvalPointGpu(benchmark::State &state) {
+  using DpfType = fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>;
+  GpuData data;
+
+  typename DpfType::Cw *d_cws;
+  int4 *d_cw_s, *d_out_cw;
+  uint32_t *d_extra;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DpfType::Cw) * (in_bits + 1) * kN));
+  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(uint32_t) * kN));
+  CUDA_CHECK(cudaMalloc(&d_out_cw, sizeof(int4) * kN));
+
+  DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  fss::gpu::DpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<2>, uint>(d_cws, kN, d_cw_s, d_extra, d_out_cw);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  fss::prg::ChaCha<2> prg(kNonce);
+  DpfType dpf{prg};
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::DpfEvalPointGpu<1, in_bits, Group, fss::prg::ChaCha<2>, uint>(
+        false, data.d_seeds0, d_cw_s, d_extra, d_out_cw, data.d_xs, data.d_ys, kN, dpf);
+  });
+  state.SetItemsProcessed(state.iterations() * kN);
+
+  cudaFree(d_cws);
+  cudaFree(d_cw_s);
+  cudaFree(d_extra);
+  cudaFree(d_out_cw);
+}
+
+template <int in_bits, typename Group>
+static void BM_DcfEvalPointGpu(benchmark::State &state) {
+  using DcfType = fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>;
+  GpuData data;
+
+  typename DcfType::Cw *d_cws;
+  int4 *d_cw_s, *d_cw_v, *d_out_cw;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DcfType::Cw) * (in_bits + 1) * kN));
+  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_cw_v, sizeof(int4) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_out_cw, sizeof(int4) * kN));
+
+  DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  fss::gpu::DcfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<4>, uint>(d_cws, kN, d_cw_s, d_cw_v, d_out_cw);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  fss::prg::ChaCha<4> prg(kNonce);
+  DcfType dcf{prg};
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::DcfEvalPointGpu<4, in_bits, Group, fss::prg::ChaCha<4>, uint>(
+        false, data.d_seeds0, d_cw_s, d_cw_v, d_out_cw, data.d_xs, data.d_ys, kN, dcf);
+  });
+  state.SetItemsProcessed(state.iterations() * kN);
+
+  cudaFree(d_cws);
+  cudaFree(d_cw_s);
+  cudaFree(d_cw_v);
+  cudaFree(d_out_cw);
+}
+
+template <int in_bits, typename Group>
+static void BM_HalfTreeDpfEvalPointGpu(benchmark::State &state) {
+  using HtDpf = HtDpfType<in_bits, Group>;
+  GpuData data;
+
+  typename HtDpf::Cw *d_cws;
+  int4 *d_cw_s;
+  uint32_t *d_extra;
+  int4 *d_ocws;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename HtDpf::Cw) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(uint32_t) * kN));
+  CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kN));
+
+  HalfTreeDpfGenKernel<in_bits, Group>
+      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  fss::gpu::HalfTreeDpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<1>, uint>(d_cws, kN, d_cw_s, d_extra);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  fss::prg::ChaCha<1> prg(kNonce);
+  HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::HalfTreeDpfEvalPointGpu<4, in_bits, Group, fss::prg::ChaCha<1>, uint>(
+        false, data.d_seeds0, d_cw_s, d_extra, d_ocws, data.d_xs, data.d_ys, kN, dpf);
+  });
+  state.SetItemsProcessed(state.iterations() * kN);
+
+  cudaFree(d_cws);
+  cudaFree(d_cw_s);
+  cudaFree(d_extra);
+  cudaFree(d_ocws);
+}
+
 // --- Register all 14 benchmarks ---
 
 // DPF (ChaCha<2>)
@@ -616,3 +727,8 @@ BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup>)->Name("BM_HalfTreeDpfGen_Uint/20")->
 // GPU full-domain eval
 BENCHMARK(BM_HalfTreeDpfEvalAllGpu<20, UintGroup>)->Name("BM_HalfTreeDpfEvalAllGpu_Uint/20")->UseManualTime();
 BENCHMARK(BM_DpfEvalAllGpu<20, UintGroup>)->Name("BM_DpfEvalAllGpu_Uint/20")->UseManualTime();
+
+// GPU point eval (level-major layout)
+BENCHMARK(BM_DpfEvalPointGpu<20, UintGroup>)->Name("BM_DpfEvalPointGpu_Uint/20")->UseManualTime();
+BENCHMARK(BM_DcfEvalPointGpu<20, UintGroup>)->Name("BM_DcfEvalPointGpu_Uint/20")->UseManualTime();
+BENCHMARK(BM_HalfTreeDpfEvalPointGpu<20, UintGroup>)->Name("BM_HalfTreeDpfEvalPointGpu_Uint/20")->UseManualTime();
