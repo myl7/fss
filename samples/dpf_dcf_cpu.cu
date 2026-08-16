@@ -73,6 +73,21 @@ static void DpfSample() {
   sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, Equal(sum, zero) ? "yes" : "NO");
 
+  // Full-domain evaluation over all 2^8 inputs
+  int4 ys0[1 << kInBits];
+  int4 ys1[1 << kInBits];
+  dpf.EvalAll(false, seeds[0], cws, ys0);
+  dpf.EvalAll(true, seeds[1], cws, ys1);
+
+  int mismatches = 0;
+  for (int i = 0; i < (1 << kInBits); ++i) {
+    int4 expected = (i == alpha) ? beta : zero;
+    if (!Equal(Reconstruct(ys0[i], ys1[i]), expected)) {
+      ++mismatches;
+    }
+  }
+  printf("  EvalAll: mismatches over 2^%d inputs: %d\n", kInBits, mismatches);
+
   DpfPrg::FreeCtxs(ctxs);
 }
 
@@ -126,6 +141,21 @@ static void DcfSample() {
   y1 = dcf.Eval(true, seeds[1], cws, x_gt);
   sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d > alpha): y0+y1 == 0?    %s\n", x_gt, Equal(sum, zero) ? "yes" : "NO");
+
+  // Full-domain evaluation over all 2^8 inputs
+  int4 ys0[1 << kInBits];
+  int4 ys1[1 << kInBits];
+  dcf.EvalAll(false, seeds[0], cws, ys0);
+  dcf.EvalAll(true, seeds[1], cws, ys1);
+
+  int mismatches = 0;
+  for (int i = 0; i < (1 << kInBits); ++i) {
+    int4 expected = (i < alpha) ? beta : zero;
+    if (!Equal(Reconstruct(ys0[i], ys1[i]), expected)) {
+      ++mismatches;
+    }
+  }
+  printf("  EvalAll: mismatches over 2^%d inputs: %d\n", kInBits, mismatches);
 
   DcfPrg::FreeCtxs(ctxs);
 }
