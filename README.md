@@ -326,37 +326,42 @@ Run a subset using `--benchmark_filter` (regex):
 
 ### CPU Results
 
-Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance governor, pinned with `taskset -c 0`.
+Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance governor, pinned with `taskset -c 0`. Per-key rows run one op per iteration, so `Avg per item` equals `Time`. `EvalAll` rows process 2^20 outputs per iteration and `Avg per item` is the reciprocal of `Items/s`.
 
-```
--------------------------------------------------------------------------------
-Benchmark                                     Time             CPU   Iterations
--------------------------------------------------------------------------------
-BM_DpfEval_Uint_Aes/20                     1704 ns         1703 ns       423203
-BM_DpfEval_Uint_Aes/14                     1117 ns         1117 ns       623553
-BM_DpfEval_Uint_Aes/17                     1408 ns         1407 ns       501122
-BM_DpfGen_Uint_Aes/20                      3226 ns         3224 ns       215461
-BM_DpfEval_Bytes_Aes/20                    1609 ns         1609 ns       431192
-BM_DpfEvalAll_Uint_Aes/20             166795841 ns    166741828 ns            5 items_per_second=6.28862M/s
-BM_DpfEval_Uint_ChaCha/20                 44940 ns        44911 ns        16889
-BM_DpfEval_Uint_AesSoft/20                16184 ns        16172 ns        42681
-BM_DcfEval_Uint_Aes/20                     4318 ns         4315 ns       193683
-BM_DcfGen_Uint_Aes/20                      7461 ns         7456 ns        94162
-BM_DcfEval_Bytes_Aes/20                    3685 ns         3683 ns       187611
-BM_DcfEvalAll_Uint_Aes/20             267235391 ns    267066584 ns            3 items_per_second=3.92627M/s
-BM_DcfEvalAll_Bytes_Aes/20            276631759 ns    276403133 ns            2 items_per_second=3.79365M/s
-BM_VdpfEval_Uint_Aes_Sha256/20             2959 ns         2957 ns       238919
-BM_VdpfGen_Uint_Aes_Sha256/20              6000 ns         5998 ns       100000
-BM_VdpfEval_Uint_Aes_Blake3/20             7354 ns         7349 ns        95737
-BM_VdpfProve_Uint_ChaCha_Blake3/20         1890 ns         1888 ns       363291
-BM_VdpfEvalAll_Uint_Aes_Sha256/20    1424750352 ns   1424019165 ns            1 items_per_second=736.35k/s
-BM_HalfTreeDpfEval_Uint_Aes/20              985 ns          985 ns       722157
-BM_HalfTreeDpfGen_Uint_Aes/20              2204 ns         2203 ns       319493
-BM_HalfTreeDpfEvalAll_Uint_Aes/20      97681794 ns     97599273 ns            7 items_per_second=10.7437M/s
-BM_GrottoDcfEval_Aes/20                    46.9 ns         46.9 ns     15044877
-BM_GrottoDcfPreprocess_Aes/20         130893070 ns    130785021 ns            5
-BM_GrottoDcfPreprocessEvalAll_Aes/20  260231883 ns    260023892 ns            3 items_per_second=4.03261M/s
-```
+| Benchmark | Time | Avg per item | Items/s |
+| --- | --- | --- | --- |
+| BM_DpfEval_Uint_Aes/20 | 1078 ns | 1078 ns | 927.6M/s |
+| BM_DpfEval_Uint_Aes/14 | 751 ns | 751 ns | 1.332G/s |
+| BM_DpfEval_Uint_Aes/17 | 931 ns | 931 ns | 1.074G/s |
+| BM_DpfGen_Uint_Aes/20 | 2272 ns | 2272 ns | 440.1M/s |
+| BM_DpfEval_Bytes_Aes/20 | 1076 ns | 1076 ns | 929.4M/s |
+| BM_DpfEvalAll_Uint_Aes/20 | 78.7 ms | 74.9 ns | 13.34M/s |
+| BM_DpfEval_Uint_ChaCha/20 | 3823 ns | 3823 ns | 261.6M/s |
+| BM_DpfEval_Uint_AesSoft/20 | 4094 ns | 4094 ns | 244.3M/s |
+| BM_DpfEval_Uint_AesRaw/20 | 333 ns | 333 ns | 3.003G/s |
+| BM_DpfEval_Bytes_AesRaw/20 | 345 ns | 345 ns | 2.899G/s |
+| BM_DpfGen_Uint_AesRaw/20 | 463 ns | 463 ns | 2.160G/s |
+| BM_DpfGen_Bytes_AesRaw/20 | 428 ns | 428 ns | 2.336G/s |
+| BM_DcfEval_Uint_AesRaw/20 | 343 ns | 343 ns | 2.915G/s |
+| BM_DcfEval_Bytes_AesRaw/20 | 412 ns | 412 ns | 2.427G/s |
+| BM_DcfGen_Uint_AesRaw/20 | 645 ns | 645 ns | 1.550G/s |
+| BM_DcfGen_Bytes_AesRaw/20 | 698 ns | 698 ns | 1.433G/s |
+| BM_DcfEval_Uint_Aes/20 | 1481 ns | 1481 ns | 675.2M/s |
+| BM_DcfGen_Uint_Aes/20 | 3264 ns | 3264 ns | 306.4M/s |
+| BM_DcfEval_Bytes_Aes/20 | 1772 ns | 1772 ns | 564.3M/s |
+| BM_DcfEvalAll_Uint_Aes/20 | 97.8 ms | 93.2 ns | 10.73M/s |
+| BM_DcfEvalAll_Bytes_Aes/20 | 98.6 ms | 93.9 ns | 10.64M/s |
+| BM_VdpfEval_Uint_Aes_Sha256/20 | 2499 ns | 2499 ns | 400.2M/s |
+| BM_VdpfGen_Uint_Aes_Sha256/20 | 4146 ns | 4146 ns | 241.2M/s |
+| BM_VdpfEval_Uint_Aes_Blake3/20 | 1437 ns | 1437 ns | 695.9M/s |
+| BM_VdpfProve_Uint_ChaCha_Blake3/20 | 181 ns | 181 ns | 5.525G/s |
+| BM_VdpfEvalAll_Uint_Aes_Sha256/20 | 2138 ms | 2037 ns | 491k/s |
+| BM_HalfTreeDpfEval_Uint_Aes/20 | 1017 ns | 1017 ns | 983.3M/s |
+| BM_HalfTreeDpfGen_Uint_Aes/20 | 2236 ns | 2236 ns | 447.2M/s |
+| BM_HalfTreeDpfEvalAll_Uint_Aes/20 | 86.9 ms | 82.8 ns | 12.08M/s |
+| BM_GrottoDcfEval_Aes/20 | 17.0 ns | 17.0 ns | 58.82G/s |
+| BM_GrottoDcfPreprocess_Aes/20 | 57.7 ms | — | — |
+| BM_GrottoDcfPreprocessEvalAll_Aes/20 | 119.9 ms | 114.2 ns | 8.758M/s |
 
 ### GPU Results
 
