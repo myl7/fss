@@ -7,6 +7,7 @@
 #include <fss/dcf.cuh>
 #include <fss/vdpf.cuh>
 #include <fss/half_tree_dpf.cuh>
+#include <fss/eval_all_gpu.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/prg/chacha.cuh>
@@ -27,7 +28,7 @@ __constant__ int4 kBlake3Iv[2] = {
     {0x00112233, 0x44556677, static_cast<int>(0x8899aabbu), static_cast<int>(0xccddeeffu)},
 };
 
-__constant__ int4 kHalfTreeHashKey = {0x12345678, static_cast<int>(0x9abcdef0u), 0x0fedcba9, 0x87654321};
+const int4 kHalfTreeHashKeyHost = {0x12345678, static_cast<int>(0x9abcdef0u), 0x0fedcba9, static_cast<int>(0x87654321u)};
 
 __constant__ uint8_t kAesSoftKeys[2][16] = {
     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -214,7 +215,7 @@ __global__ void HalfTreeDpfGenKernel(
   if (tid >= kN) return;
 
   fss::prg::ChaCha<1> prg(kNonce);
-  HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKey};
+  HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
 
   int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
   dpf.Gen(cws + tid * in_bits, ocws[tid], s0s, alphas[tid], betas[tid]);
@@ -227,7 +228,7 @@ __global__ void HalfTreeDpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   if (tid >= kN) return;
 
   fss::prg::ChaCha<1> prg(kNonce);
-  HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKey};
+  HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
 
   ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * in_bits, ocws[tid], xs[tid]);
 }
@@ -489,7 +490,106 @@ static void BM_HalfTreeDpfGen(benchmark::State &state) {
   cudaFree(d_ocws);
 }
 
-// --- Register all 12 benchmarks ---
+
+// --- GPU full-domain eval benchmarks ---
+
+template <int in_bits, typename Group>
+static void BM_HalfTreeDpfEvalAllGpu(benchmark::State &state) {
+  using HtDpf = HtDpfType<in_bits, Group>;
+  GpuData data;
+
+  // Keys per launch. One launch covers 2^b1 * kBatch blocks, which fills the
+  // device (110 SMs) many times over and amortizes tail waves; the single-key
+  // path leaves the tail ~1.5 waves and runs ~25% slower per key. Large
+  // batches also amortize the ~0.2us inter-launch gap over the kN-key sweep.
+  constexpr int kBatch = 1024;
+
+  typename HtDpf::Cw *d_cws;
+  int4 *d_ocws;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename HtDpf::Cw) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kN));
+
+  HalfTreeDpfGenKernel<in_bits, Group>
+      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  // EvalAllGpuBatch takes party-major seeds; GpuData keeps them key-major
+  // (seeds[i*2 + b]). Re-lay all kN keys party-major.
+  int4 *d_s0s;
+  CUDA_CHECK(cudaMalloc(&d_s0s, sizeof(int4) * kN * 2));
+  for (int b = 0; b < 2; ++b)
+    CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kN, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
+        sizeof(int4), kN, cudaMemcpyDeviceToDevice));
+
+  fss::prg::ChaCha<1> prg(kNonce);
+  HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
+
+  int4 *d_ys;
+  CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * (1 << in_bits) * kBatch));
+
+  // Warm the clocks once; the harness's first timed iteration otherwise pays
+  // the boost ramp from idle (idle 180 MHz vs sustained ~2.6 GHz costs ~10%).
+  fss::gpu::HalfTreeDpfEvalAllGpuBatch<17, 9, 256>(
+      false, d_s0s, d_cws, d_ocws, kBatch, d_ys, dpf);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  RunTimedKernel(state, [&] {
+    for (int off = 0; off < kN; off += kBatch)
+      fss::gpu::HalfTreeDpfEvalAllGpuBatch<17, 9, 256>(
+          false, d_s0s + off, d_cws + off * in_bits, d_ocws + off, kBatch, d_ys, dpf);
+  });
+  state.SetItemsProcessed(state.iterations() * kN * (1 << in_bits));
+
+  cudaFree(d_cws);
+  cudaFree(d_ocws);
+  cudaFree(d_s0s);
+  cudaFree(d_ys);
+}
+
+template <int in_bits, typename Group>
+static void BM_DpfEvalAllGpu(benchmark::State &state) {
+  using DpfType = fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>;
+  GpuData data;
+
+  // See BM_HalfTreeDpfEvalAllGpu: batch several keys per launch so the grid
+  // fills the device and tail waves / launch overhead amortize.
+  constexpr int kBatch = 1024;
+
+  typename DpfType::Cw *d_cws;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DpfType::Cw) * (in_bits + 1) * kN));
+
+  DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  int4 *d_s0s;
+  CUDA_CHECK(cudaMalloc(&d_s0s, sizeof(int4) * kN * 2));
+  for (int b = 0; b < 2; ++b)
+    CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kN, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
+        sizeof(int4), kN, cudaMemcpyDeviceToDevice));
+
+  fss::prg::ChaCha<2> prg(kNonce);
+  DpfType dpf{prg};
+
+  int4 *d_ys;
+  CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * (1 << in_bits) * kBatch));
+
+  // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
+  fss::gpu::DpfEvalAllGpuBatch<17, 9, 256>(false, d_s0s, d_cws, kBatch, d_ys, dpf);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  RunTimedKernel(state, [&] {
+    for (int off = 0; off < kN; off += kBatch)
+      fss::gpu::DpfEvalAllGpuBatch<17, 9, 256>(
+          false, d_s0s + off, d_cws + off * (in_bits + 1), kBatch, d_ys, dpf);
+  });
+  state.SetItemsProcessed(state.iterations() * kN * (1 << in_bits));
+
+  cudaFree(d_cws);
+  cudaFree(d_s0s);
+  cudaFree(d_ys);
+}
+
+// --- Register all 14 benchmarks ---
 
 // DPF (ChaCha<2>)
 BENCHMARK(BM_DpfEval<20, UintGroup>)->Name("BM_DpfEval_Uint/20")->UseManualTime();
@@ -512,3 +612,7 @@ BENCHMARK(BM_VdpfGen<20, UintGroup>)->Name("BM_VdpfGen_Uint/20")->UseManualTime(
 // HalfTreeDpf (ChaCha<1>)
 BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup>)->Name("BM_HalfTreeDpfEval_Uint/20")->UseManualTime();
 BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup>)->Name("BM_HalfTreeDpfGen_Uint/20")->UseManualTime();
+
+// GPU full-domain eval
+BENCHMARK(BM_HalfTreeDpfEvalAllGpu<20, UintGroup>)->Name("BM_HalfTreeDpfEvalAllGpu_Uint/20")->UseManualTime();
+BENCHMARK(BM_DpfEvalAllGpu<20, UintGroup>)->Name("BM_DpfEvalAllGpu_Uint/20")->UseManualTime();
