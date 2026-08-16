@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PRP interface, PRP-based Cuckoo hashing, and PRP based on AES-128 and Feistel networks
 - Raw AES-128 MMO PRG
 - Python bindings for DPF and DCF
+- GPU full-domain evaluation kernels for DPF and Half-Tree DPF
+- Level-major GPU point evaluation kernels for DPF, DCF, VDPF, and Half-Tree DPF
+
+### Fixed
+
+- GPU key generation for DPF, VDPF, and Half-Tree DPF wrote only part of each correction-word slot, leaving the padding undefined and forcing NVCC to emit a masked 256-bit store; the partial-sector write triggered a write-allocate round trip per level (~2x Gen time). Both 16B halves are now written explicitly, roughly halving GPU Gen time.
 
 ## [1.1.0] - 2026-03-10
 
