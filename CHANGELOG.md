@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-17
+
 ### Added
 
 - Verifiable distributed multi-point function (VDMPF)
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-03-05
 
-[unreleased]: https://github.com/myl7/fss/compare/v1.1.0...HEAD
+[unreleased]: https://github.com/myl7/fss/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/myl7/fss/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/myl7/fss/releases/tag/v1.1.0
 [1.0.0]: https://github.com/myl7/fss/releases/tag/v1.0.0
