@@ -153,7 +153,13 @@ public:
       }
 
       s_cw = util::SetLsb(s_cw, tl_cw);
-      cws[i] = {s_cw, tr_cw};
+      // Both 16B halves written so the full 32B slot gets unmasked stores.
+      // {s_cw, tr_cw} alone leaves padding undefined: NVCC emits a masked
+      // 256-bit store, and the partial-sector write forces a write-allocate
+      // round trip per level on GPU (measured ~2x Gen time).
+      int4 *cw_slot = reinterpret_cast<int4 *>(&cws[i]);
+      cw_slot[0] = s_cw;
+      cw_slot[1] = make_int4(tr_cw, 0, 0, 0);
     }
 
     // Verification hash

@@ -141,8 +141,13 @@ public:
       bool LCW_0 = low0_0 ^ low1_0 ^ !a_n;
       bool LCW_1 = low0_1 ^ low1_1 ^ a_n;
 
-      // Store CW_n
-      cws[in_bits - 1] = {util::SetLsb(HCW, LCW_0), LCW_1};
+      // Store CW_n. Both 16B halves written so the full 32B slot gets unmasked
+      // stores: {s, LCW_1} alone leaves padding undefined, NVCC emits a masked
+      // 256-bit store, and the partial-sector write forces a write-allocate
+      // round trip on GPU (measured ~2x Gen time for the same pattern).
+      int4 *cw_slot = reinterpret_cast<int4 *>(&cws[in_bits - 1]);
+      cw_slot[0] = util::SetLsb(HCW, LCW_0);
+      cw_slot[1] = make_int4(LCW_1, 0, 0, 0);
 
       // Compute leaf for each party
       // leaf_b = (a_n ? high{1}_b||low{1}_b : high{0}_b||low{0}_b)
