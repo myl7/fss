@@ -326,7 +326,7 @@ Run a subset using `--benchmark_filter` (regex):
 
 ### CPU Results
 
-Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance governor, pinned with `taskset -c 0`. Per-key rows run one op per iteration, so `Avg per item` equals `Time`. `EvalAll` rows process 2^20 outputs per iteration and `Avg per item` is the reciprocal of `Items/s`.
+Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, pinned with `taskset -c 0`. The host is shared and runs the schedutil cpufreq governor, so the effective single-core clock varies with host load (observed 0.8-3.5 GHz). Per-key rows run one op per iteration, so `Avg per item` equals `Time`. `EvalAll` rows process 2^20 outputs per iteration and `Avg per item` is the reciprocal of `Items/s`.
 
 | Benchmark | Time | Avg per item | Items/s |
 | --- | --- | --- | --- |
@@ -365,7 +365,7 @@ Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, performance 
 
 ### GPU Results
 
-Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. The GPU was warmed up before running the benchmarks. Each iteration runs 1M (2^20) keys in parallel. `Time` is the whole batch. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per output for `EvalAll` rows (2^40 outputs per iteration).
+Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. The host is shared: the GPU boost clock varies with host state (observed 180-2355 MHz). Each iteration runs 1M (2^20) keys in parallel. `Time` is the whole batch. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per output for `EvalAll` rows (2^40 outputs per iteration).
 
 | Benchmark | Time | Avg per item | Items/s |
 | --- | --- | --- | --- |
@@ -388,22 +388,30 @@ Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595
 | BM_HalfTreeDpfEvalPointGpu_Uint/20 | 1000.9 µs | 0.955 ns | 1.048G/s |
 | BM_VdpfEvalPointGpu_Uint/20 | 1109.2 µs | 1.058 ns | 945.3M/s |
 
-GPU kernel register usage (compiled for sm_52, `--ptxas-options=-v`):
+GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 
-| Kernel          | Group      | Registers | Stack | Smem  |
-| --------------- | ---------- | --------- | ----- | ----- |
-| DpfEval         | Uint/Bytes | 39        |       |       |
-| DpfGen          | Uint/Bytes | 48        |       |       |
-| DpfEvalAes      | Uint       | 72        | 992B  | 1280B |
-| DpfGenAes       | Uint       | 72        | 992B  | 1280B |
-| HalfTreeDpfEval | Uint       | 41        |       |       |
-| HalfTreeDpfGen  | Uint       | 47        |       |       |
-| VdpfEval        | Uint       | 38        |       |       |
-| VdpfGen         | Uint       | 72        |       |       |
-| DcfEval         | Uint       | 38        |       |       |
-| DcfGen          | Uint       | 56        |       |       |
+| Kernel              | Group | Registers | Stack | Smem  |
+| ------------------- | ----- | --------- | ----- | ----- |
+| DpfEval             | Uint  | 39        |       |       |
+| DpfEval             | Bytes | 40        |       |       |
+| DpfGen              | Uint  | 43        |       |       |
+| DpfGen              | Bytes | 48        |       |       |
+| DpfEvalAes          | Uint  | 80        | 624B  | 2304B |
+| DpfGenAes           | Uint  | 80        | 624B  | 2304B |
+| HalfTreeDpfEval     | Uint  | 40        |       |       |
+| HalfTreeDpfGen      | Uint  | 46        |       |       |
+| VdpfEval            | Uint  | 40        |       |       |
+| VdpfGen             | Uint  | 79        |       |       |
+| DcfEval             | Uint  | 42        |       |       |
+| DcfGen              | Uint  | 50        |       |       |
+| DpfEvalAll          | Uint  | 55        |       | 5120B |
+| HalfTreeDpfEvalAll  | Uint  | 55        |       | 5120B |
+| DpfEvalPoint        | Uint  | 39        |       |       |
+| DcfEvalPoint        | Uint  | 46        |       |       |
+| VdpfEvalPoint       | Uint  | 40        |       |       |
+| HalfTreeDpfEvalPoint| Uint  | 38        |       |       |
 
-The AES-based kernels use shared memory and spill to stack. All other kernels have zero spills.
+The AES-based kernels use shared memory and spill to stack. The `EvalAll` kernels use shared memory for per-block staging. All other kernels have zero spills.
 
 ### Flamegraph
 
