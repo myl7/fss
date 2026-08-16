@@ -700,6 +700,48 @@ static void BM_HalfTreeDpfEvalPointGpu(benchmark::State &state) {
   cudaFree(d_ocws);
 }
 
+template <int in_bits, typename Group>
+static void BM_VdpfEvalPointGpu(benchmark::State &state) {
+  using Vdpf = VdpfType<in_bits, Group>;
+  GpuData data;
+
+  typename Vdpf::Cw *d_cws;
+  int4 *d_cw_s, *d_pi;
+  uint32_t *d_extra;
+  cuda::std::array<int4, 4> *d_cs;
+  int4 *d_ocws;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename Vdpf::Cw) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kN));
+  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(uint32_t) * kN));
+  CUDA_CHECK(cudaMalloc(&d_pi, sizeof(int4) * kN * 4));
+  CUDA_CHECK(cudaMalloc(&d_cs, sizeof(cuda::std::array<int4, 4>) * kN));
+  CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kN));
+
+  VdpfGenKernel<in_bits, Group>
+      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_cs, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  fss::gpu::VdpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3, uint>(
+      d_cws, kN, d_cw_s, d_extra);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  fss::prg::ChaCha<2> prg(kNonce);
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
+  Vdpf vdpf{prg, xor_hash, xor_hash};
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::VdpfEvalPointGpu<1, in_bits, Group, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3, uint>(
+        false, data.d_seeds0, d_cw_s, d_extra, d_cs, d_ocws, data.d_xs, data.d_ys, d_pi, kN, vdpf);
+  });
+  state.SetItemsProcessed(state.iterations() * kN);
+
+  cudaFree(d_cws);
+  cudaFree(d_cw_s);
+  cudaFree(d_extra);
+  cudaFree(d_pi);
+  cudaFree(d_cs);
+  cudaFree(d_ocws);
+}
+
 // --- Register all 14 benchmarks ---
 
 // DPF (ChaCha<2>)
@@ -732,3 +774,4 @@ BENCHMARK(BM_DpfEvalAllGpu<20, UintGroup>)->Name("BM_DpfEvalAllGpu_Uint/20")->Us
 BENCHMARK(BM_DpfEvalPointGpu<20, UintGroup>)->Name("BM_DpfEvalPointGpu_Uint/20")->UseManualTime();
 BENCHMARK(BM_DcfEvalPointGpu<20, UintGroup>)->Name("BM_DcfEvalPointGpu_Uint/20")->UseManualTime();
 BENCHMARK(BM_HalfTreeDpfEvalPointGpu<20, UintGroup>)->Name("BM_HalfTreeDpfEvalPointGpu_Uint/20")->UseManualTime();
+BENCHMARK(BM_VdpfEvalPointGpu<20, UintGroup>)->Name("BM_VdpfEvalPointGpu_Uint/20")->UseManualTime();
