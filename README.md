@@ -346,7 +346,7 @@ Run a subset using `--benchmark_filter` (regex):
 
 ```bash
 ./build/bench_cpu --benchmark_filter=BM_DcfGen
-./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20
+./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20
 ```
 
 ### CPU Results
@@ -443,7 +443,7 @@ The PRG drives most of the difference. Software AES-128 MMO costs about twice th
 Generate a CPU flamegraph with `perf` and [FlameGraph](https://github.com/brendangregg/FlameGraph):
 
 ```bash
-perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint/20
+perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20
 perf script | /path/to/FlameGraph/stackcollapse-perf.pl | /path/to/FlameGraph/flamegraph.pl > build/flamegraph.svg
 ```
 
