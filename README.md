@@ -253,10 +253,28 @@ See `samples/dpf_dcf_gpu.cu` for the complete working example.
 
 ### Python
 
-The `fss_crypto` package exposes PyTorch wrappers for DPF and DCF. The first
-use of each parameter set JIT-compiles a small CUDA extension with
+The `fss_crypto` package exposes PyTorch wrappers for DPF and DCF. It is
+published on PyPI as `fss-crypto`.
+
+Install it with pip:
+
+```bash
+pip install fss-crypto
+```
+
+Or add it to a uv project:
+
+```bash
+uv add fss-crypto
+```
+
+The package requires Python >= 3.13 and PyTorch >= 2.6. The first use of each
+parameter set JIT-compiles a small CUDA extension with
 `torch.utils.cpp_extension.load`, so the CUDA toolkit is required even when the
-example below runs on CPU tensors.
+example below runs on CPU tensors. The `aes128_mmo` PRG also links OpenSSL at
+JIT time. Compiled extensions are cached under `~/.cache/fss_crypto`.
+
+To develop against a checkout instead, install the dev extra and run the tests:
 
 ```bash
 uv sync --extra dev
@@ -301,7 +319,14 @@ Workaround: wrap the type in a plain aggregate struct that satisfies `Groupable`
 
 ## Benchmarks
 
-Microbenchmarks for DPF/DCF/VDPF/HalfTreeDpf `Gen`/`Eval`, GPU point eval, and full-domain GPU `EvalAll` using [Google Benchmark](https://github.com/google/benchmark), covering both CPU (AES-128 MMO PRG) and GPU (ChaCha PRG) paths.
+Microbenchmarks built on [Google Benchmark](https://github.com/google/benchmark), covering:
+
+- Schemes: DPF, DCF, VDPF, Half-Tree DPF, and Grotto DCF.
+- Operations: `Gen`, `Eval`, host `EvalAll`, VDPF `Prove`, Grotto DCF `Preprocess` and `PreprocessEvalAll`, GPU point eval, and full-domain GPU `EvalAll`.
+- PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics, software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on device.
+- Output groups: `Uint` and `Bytes`.
+- VDPF hashes: SHA-256 and BLAKE3.
+- Input domain sizes: 2^20 everywhere, plus 2^14 and 2^17 for DPF `Eval`.
 
 Configure with `BUILD_BENCH=ON` and build the targets:
 
@@ -390,28 +415,28 @@ Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595
 
 GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 
-| Kernel              | Group | Registers | Stack | Smem  |
-| ------------------- | ----- | --------- | ----- | ----- |
-| DpfEval             | Uint  | 39        |       |       |
-| DpfEval             | Bytes | 40        |       |       |
-| DpfGen              | Uint  | 43        |       |       |
-| DpfGen              | Bytes | 48        |       |       |
-| DpfEvalAes          | Uint  | 80        | 624B  | 2304B |
-| DpfGenAes           | Uint  | 80        | 624B  | 2304B |
-| HalfTreeDpfEval     | Uint  | 40        |       |       |
-| HalfTreeDpfGen      | Uint  | 46        |       |       |
-| VdpfEval            | Uint  | 40        |       |       |
-| VdpfGen             | Uint  | 79        |       |       |
-| DcfEval             | Uint  | 42        |       |       |
-| DcfGen              | Uint  | 50        |       |       |
-| DpfEvalAll          | Uint  | 55        |       | 5120B |
-| HalfTreeDpfEvalAll  | Uint  | 55        |       | 5120B |
-| DpfEvalPoint        | Uint  | 39        |       |       |
-| DcfEvalPoint        | Uint  | 46        |       |       |
-| VdpfEvalPoint       | Uint  | 40        |       |       |
-| HalfTreeDpfEvalPoint| Uint  | 38        |       |       |
+| Kernel               | Group | PRG             | Registers | Stack | Smem  |
+| -------------------- | ----- | --------------- | --------- | ----- | ----- |
+| DpfEval              | Uint  | `ChaCha<2>`     | 39        |       |       |
+| DpfEval              | Bytes | `ChaCha<2>`     | 40        |       |       |
+| DpfGen               | Uint  | `ChaCha<2>`     | 43        |       |       |
+| DpfGen               | Bytes | `ChaCha<2>`     | 48        |       |       |
+| DpfEval              | Uint  | `Aes128Soft<2>` | 80        | 624B  | 2304B |
+| DpfGen               | Uint  | `Aes128Soft<2>` | 80        | 624B  | 2304B |
+| HalfTreeDpfEval      | Uint  | `ChaCha<1>`     | 40        |       |       |
+| HalfTreeDpfGen       | Uint  | `ChaCha<1>`     | 46        |       |       |
+| VdpfEval             | Uint  | `ChaCha<2>`     | 40        |       |       |
+| VdpfGen              | Uint  | `ChaCha<2>`     | 79        |       |       |
+| DcfEval              | Uint  | `ChaCha<4>`     | 42        |       |       |
+| DcfGen               | Uint  | `ChaCha<4>`     | 50        |       |       |
+| DpfEvalAll           | Uint  | `ChaCha<2>`     | 55        |       | 5120B |
+| HalfTreeDpfEvalAll   | Uint  | `ChaCha<1>`     | 55        |       | 5120B |
+| DpfEvalPoint         | Uint  | `ChaCha<2>`     | 39        |       |       |
+| DcfEvalPoint         | Uint  | `ChaCha<4>`     | 46        |       |       |
+| VdpfEvalPoint        | Uint  | `ChaCha<2>`     | 40        |       |       |
+| HalfTreeDpfEvalPoint | Uint  | `ChaCha<1>`     | 38        |       |       |
 
-The AES-based kernels use shared memory and spill to stack. The `EvalAll` kernels use shared memory for per-block staging. All other kernels have zero spills.
+The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here that spills to stack and holds a T-table in shared memory. The `mul` parameter is part of the PRG type because it sets how many 16B blocks one `Gen` call produces. The `EvalAll` kernels use shared memory for per-block staging. Every kernel other than the two software-AES ones has zero spills.
 
 ### Flamegraph
 
