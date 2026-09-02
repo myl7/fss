@@ -251,6 +251,26 @@ DCF follows the same pattern — use `DcfPrg` (mul=4), `Dcf`, and `Dcf::Cw`.
 
 See `samples/dpf_dcf_gpu.cu` for the complete working example.
 
+### Samples
+
+`samples/` holds a standalone program per scheme. They form their own CMake project:
+
+```bash
+cmake -B build/samples -S samples
+cmake --build build/samples
+```
+
+| Sample                 | Scheme        | Shows                                                                |
+| ---------------------- | ------------- | -------------------------------------------------------------------- |
+| `dpf_dcf_cpu.cu`       | DPF, DCF      | Host `Gen`/`Eval` with AES-128 MMO PRG                               |
+| `dpf_dcf_gpu.cu`       | DPF, DCF      | `Gen`/`Eval` inside CUDA kernels with ChaCha PRG                     |
+| `half_tree_dpf_cpu.cu` | Half-Tree DPF | `Gen`/`Eval`/`EvalAll` with a mul=1 PRG and a separate hash key      |
+| `grotto_dcf_cpu.cu`    | Grotto DCF    | `Gen`/`Preprocess`/`Eval` over a parity segment tree, plus `EvalAll` |
+| `vdpf_cpu.cu`          | VDPF          | `Gen`/`Eval` plus the `Prove`/`Verify` check                         |
+| `vdmpf_cpu.cu`         | VDMPF         | `Gen`/`BatchEval` over cuckoo-hash packed points                     |
+
+The CPU samples link OpenSSL, and `EvalAll` uses OpenMP when it is found.
+
 ### Python
 
 The `fss_crypto` package exposes PyTorch wrappers for DPF and DCF. It is
@@ -349,69 +369,85 @@ Run a subset using `--benchmark_filter` (regex):
 ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20
 ```
 
+The `Makefile` has shortcuts for the same runs. `make bench_cpu` pins the run to
+one core and switches that core to the performance governor, which needs
+`sudo`. `make bench_gpu` pins the run to one GPU. Both write their log under
+`build/`.
+
+```bash
+CPU_ID=0 make bench_cpu
+GPU_ID=1 CUDA_ARCH=120 make bench_gpu
+```
+
+`CUDA_ARCH` is only needed when CMake cannot infer the architecture. Two more
+targets support the sections below: `make ptx_info` rebuilds with
+`--ptxas-options=-v` and collects the register usage into `build/ptx_info.log`,
+and `make profile_gpu` records an Nsight Systems profile of one benchmark
+selected by `GPU_PROFILE_BENCH`.
+
 ### CPU Results
 
-Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, pinned with `taskset -c 0`. The host is shared and runs the schedutil cpufreq governor, so the effective single-core clock varies with host load (observed 0.8-3.5 GHz). Per-key rows run one op per iteration, so `Avg per item` equals `Time`. `EvalAll` rows process 2^20 outputs per iteration and `Avg per item` is the reciprocal of `Items/s`.
+Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, pinned with `taskset -c 0`. The host is shared and runs the schedutil cpufreq governor, so the effective single-core clock varies with host load (observed 0.8-3.5 GHz). Per-key rows run one op per iteration, so `Avg per item` equals `Time` and `Items/s` counts keys. `EvalAll` rows process 2^20 outputs per iteration, so their `Items/s` counts outputs and `Avg per item` is its reciprocal.
 
-| Benchmark | Time | Avg per item | Items/s |
-| --- | --- | --- | --- |
-| BM_DpfEval_Uint_Aes/20 | 1078 ns | 1078 ns | 927.6M/s |
-| BM_DpfEval_Uint_Aes/14 | 751 ns | 751 ns | 1.332G/s |
-| BM_DpfEval_Uint_Aes/17 | 931 ns | 931 ns | 1.074G/s |
-| BM_DpfGen_Uint_Aes/20 | 2272 ns | 2272 ns | 440.1M/s |
-| BM_DpfEval_Bytes_Aes/20 | 1076 ns | 1076 ns | 929.4M/s |
-| BM_DpfEvalAll_Uint_Aes/20 | 78.7 ms | 74.9 ns | 13.34M/s |
-| BM_DpfEval_Uint_ChaCha/20 | 3823 ns | 3823 ns | 261.6M/s |
-| BM_DpfEval_Uint_AesSoft/20 | 4094 ns | 4094 ns | 244.3M/s |
-| BM_DpfEval_Uint_AesRaw/20 | 333 ns | 333 ns | 3.003G/s |
-| BM_DpfEval_Bytes_AesRaw/20 | 345 ns | 345 ns | 2.899G/s |
-| BM_DpfGen_Uint_AesRaw/20 | 463 ns | 463 ns | 2.160G/s |
-| BM_DpfGen_Bytes_AesRaw/20 | 428 ns | 428 ns | 2.336G/s |
-| BM_DcfEval_Uint_AesRaw/20 | 343 ns | 343 ns | 2.915G/s |
-| BM_DcfEval_Bytes_AesRaw/20 | 412 ns | 412 ns | 2.427G/s |
-| BM_DcfGen_Uint_AesRaw/20 | 645 ns | 645 ns | 1.550G/s |
-| BM_DcfGen_Bytes_AesRaw/20 | 698 ns | 698 ns | 1.433G/s |
-| BM_DcfEval_Uint_Aes/20 | 1481 ns | 1481 ns | 675.2M/s |
-| BM_DcfGen_Uint_Aes/20 | 3264 ns | 3264 ns | 306.4M/s |
-| BM_DcfEval_Bytes_Aes/20 | 1772 ns | 1772 ns | 564.3M/s |
-| BM_DcfEvalAll_Uint_Aes/20 | 97.8 ms | 93.2 ns | 10.73M/s |
-| BM_DcfEvalAll_Bytes_Aes/20 | 98.6 ms | 93.9 ns | 10.64M/s |
-| BM_VdpfEval_Uint_Aes_Sha256/20 | 2499 ns | 2499 ns | 400.2M/s |
-| BM_VdpfGen_Uint_Aes_Sha256/20 | 4146 ns | 4146 ns | 241.2M/s |
-| BM_VdpfEval_Uint_Aes_Blake3/20 | 1437 ns | 1437 ns | 695.9M/s |
-| BM_VdpfProve_Uint_ChaCha_Blake3/20 | 181 ns | 181 ns | 5.525G/s |
-| BM_VdpfEvalAll_Uint_Aes_Sha256/20 | 2138 ms | 2037 ns | 491k/s |
-| BM_HalfTreeDpfEval_Uint_Aes/20 | 1017 ns | 1017 ns | 983.3M/s |
-| BM_HalfTreeDpfGen_Uint_Aes/20 | 2236 ns | 2236 ns | 447.2M/s |
-| BM_HalfTreeDpfEvalAll_Uint_Aes/20 | 86.9 ms | 82.8 ns | 12.08M/s |
-| BM_GrottoDcfEval_Aes/20 | 17.0 ns | 17.0 ns | 58.82G/s |
-| BM_GrottoDcfPreprocess_Aes/20 | 57.7 ms | — | — |
-| BM_GrottoDcfPreprocessEvalAll_Aes/20 | 119.9 ms | 114.2 ns | 8.758M/s |
+| Benchmark                            | PRG               | Time     | Avg per item | Items/s  |
+| ------------------------------------ | ----------------- | -------- | ------------ | -------- |
+| BM_DpfEval_Uint_Aes/20               | `Aes128Mmo<2>`    | 1078 ns  | 1078 ns      | 927.6k/s |
+| BM_DpfEval_Uint_Aes/14               | `Aes128Mmo<2>`    | 751 ns   | 751 ns       | 1.332M/s |
+| BM_DpfEval_Uint_Aes/17               | `Aes128Mmo<2>`    | 931 ns   | 931 ns       | 1.074M/s |
+| BM_DpfGen_Uint_Aes/20                | `Aes128Mmo<2>`    | 2272 ns  | 2272 ns      | 440.1k/s |
+| BM_DpfEval_Bytes_Aes/20              | `Aes128Mmo<2>`    | 1076 ns  | 1076 ns      | 929.4k/s |
+| BM_DpfEvalAll_Uint_Aes/20            | `Aes128Mmo<2>`    | 78.7 ms  | 74.9 ns      | 13.34M/s |
+| BM_DpfEval_Uint_ChaCha/20            | `ChaCha<2>`       | 3823 ns  | 3823 ns      | 261.6k/s |
+| BM_DpfEval_Uint_AesSoft/20           | `Aes128Soft<2>`   | 4094 ns  | 4094 ns      | 244.3k/s |
+| BM_DpfEval_Uint_AesRaw/20            | `Aes128MmoRaw<2>` | 333 ns   | 333 ns       | 3.003M/s |
+| BM_DpfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<2>` | 345 ns   | 345 ns       | 2.899M/s |
+| BM_DpfGen_Uint_AesRaw/20             | `Aes128MmoRaw<2>` | 463 ns   | 463 ns       | 2.160M/s |
+| BM_DpfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<2>` | 428 ns   | 428 ns       | 2.336M/s |
+| BM_DcfEval_Uint_AesRaw/20            | `Aes128MmoRaw<4>` | 343 ns   | 343 ns       | 2.915M/s |
+| BM_DcfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<4>` | 412 ns   | 412 ns       | 2.427M/s |
+| BM_DcfGen_Uint_AesRaw/20             | `Aes128MmoRaw<4>` | 645 ns   | 645 ns       | 1.550M/s |
+| BM_DcfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<4>` | 698 ns   | 698 ns       | 1.433M/s |
+| BM_DcfEval_Uint_Aes/20               | `Aes128Mmo<4>`    | 1481 ns  | 1481 ns      | 675.2k/s |
+| BM_DcfGen_Uint_Aes/20                | `Aes128Mmo<4>`    | 3264 ns  | 3264 ns      | 306.4k/s |
+| BM_DcfEval_Bytes_Aes/20              | `Aes128Mmo<4>`    | 1772 ns  | 1772 ns      | 564.3k/s |
+| BM_DcfEvalAll_Uint_Aes/20            | `Aes128Mmo<4>`    | 97.8 ms  | 93.2 ns      | 10.73M/s |
+| BM_DcfEvalAll_Bytes_Aes/20           | `Aes128Mmo<4>`    | 98.6 ms  | 93.9 ns      | 10.64M/s |
+| BM_VdpfEval_Uint_Aes_Sha256/20       | `Aes128Mmo<2>`    | 2499 ns  | 2499 ns      | 400.2k/s |
+| BM_VdpfGen_Uint_Aes_Sha256/20        | `Aes128Mmo<2>`    | 4146 ns  | 4146 ns      | 241.2k/s |
+| BM_VdpfEval_Uint_Aes_Blake3/20       | `Aes128Mmo<2>`    | 1437 ns  | 1437 ns      | 695.9k/s |
+| BM_VdpfProve_Uint_ChaCha_Blake3/20   | `ChaCha<2>`       | 181 ns   | 181 ns       | 5.525M/s |
+| BM_VdpfEvalAll_Uint_Aes_Sha256/20    | `Aes128Mmo<2>`    | 2138 ms  | 2037 ns      | 491k/s   |
+| BM_HalfTreeDpfEval_Uint_Aes/20       | `Aes128Mmo<1>`    | 1017 ns  | 1017 ns      | 983.3k/s |
+| BM_HalfTreeDpfGen_Uint_Aes/20        | `Aes128Mmo<1>`    | 2236 ns  | 2236 ns      | 447.2k/s |
+| BM_HalfTreeDpfEvalAll_Uint_Aes/20    | `Aes128Mmo<1>`    | 86.9 ms  | 82.8 ns      | 12.08M/s |
+| BM_GrottoDcfEval_Aes/20              | `Aes128Mmo<2>`    | 17.0 ns  | 17.0 ns      | 58.82M/s |
+| BM_GrottoDcfPreprocess_Aes/20        | `Aes128Mmo<2>`    | 57.7 ms  | —            | —        |
+| BM_GrottoDcfPreprocessEvalAll_Aes/20 | `Aes128Mmo<2>`    | 119.9 ms | 114.2 ns     | 8.758M/s |
 
 ### GPU Results
 
 Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. The host is shared: the GPU boost clock varies with host state (observed 180-2355 MHz). Each iteration runs 1M (2^20) keys in parallel. `Time` is the whole batch. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per output for `EvalAll` rows (2^40 outputs per iteration).
 
-| Benchmark | Time | Avg per item | Items/s |
-| --- | --- | --- | --- |
-| BM_DpfEval_Uint/20 | 1398.8 µs | 1.334 ns | 749.6M/s |
-| BM_DpfEval_Uint/14 | 765.7 µs | 0.730 ns | 1.369G/s |
-| BM_DpfEval_Uint/17 | 956.8 µs | 0.912 ns | 1.096G/s |
-| BM_DpfGen_Uint/20 | 1965.4 µs | 1.874 ns | 533.5M/s |
-| BM_DpfEval_Bytes/20 | 1398.9 µs | 1.334 ns | 749.6M/s |
-| BM_DpfEval_Uint_AesSoft/20 | 3087.5 µs | 2.944 ns | 339.6M/s |
-| BM_DcfEval_Uint/20 | 1421.2 µs | 1.355 ns | 737.8M/s |
-| BM_DcfGen_Uint/20 | 1969.1 µs | 1.878 ns | 532.5M/s |
-| BM_VdpfEval_Uint/20 | 1241.3 µs | 1.184 ns | 844.7M/s |
-| BM_VdpfGen_Uint/20 | 2132.2 µs | 2.033 ns | 491.8M/s |
-| BM_HalfTreeDpfEval_Uint/20 | 1001.7 µs | 0.955 ns | 1.047G/s |
-| BM_HalfTreeDpfGen_Uint/20 | 1961.5 µs | 1.871 ns | 534.6M/s |
-| BM_DpfEvalAllGpu_Uint/20 | 71.3 s | 64.8 ps | 15.43G/s |
-| BM_HalfTreeDpfEvalAllGpu_Uint/20 | 90.9 s | 82.7 ps | 12.09G/s |
-| BM_DpfEvalPointGpu_Uint/20 | 1024.5 µs | 0.977 ns | 1.024G/s |
-| BM_DcfEvalPointGpu_Uint/20 | 1120.6 µs | 1.069 ns | 935.7M/s |
-| BM_HalfTreeDpfEvalPointGpu_Uint/20 | 1000.9 µs | 0.955 ns | 1.048G/s |
-| BM_VdpfEvalPointGpu_Uint/20 | 1109.2 µs | 1.058 ns | 945.3M/s |
+| Benchmark                          | PRG             | Time      | Avg per item | Items/s  |
+| ---------------------------------- | --------------- | --------- | ------------ | -------- |
+| BM_DpfEval_Uint/20                 | `ChaCha<2>`     | 1398.8 µs | 1.334 ns     | 749.6M/s |
+| BM_DpfEval_Uint/14                 | `ChaCha<2>`     | 765.7 µs  | 0.730 ns     | 1.369G/s |
+| BM_DpfEval_Uint/17                 | `ChaCha<2>`     | 956.8 µs  | 0.912 ns     | 1.096G/s |
+| BM_DpfGen_Uint/20                  | `ChaCha<2>`     | 1965.4 µs | 1.874 ns     | 533.5M/s |
+| BM_DpfEval_Bytes/20                | `ChaCha<2>`     | 1398.9 µs | 1.334 ns     | 749.6M/s |
+| BM_DpfEval_Uint_AesSoft/20         | `Aes128Soft<2>` | 3087.5 µs | 2.944 ns     | 339.6M/s |
+| BM_DcfEval_Uint/20                 | `ChaCha<4>`     | 1421.2 µs | 1.355 ns     | 737.8M/s |
+| BM_DcfGen_Uint/20                  | `ChaCha<4>`     | 1969.1 µs | 1.878 ns     | 532.5M/s |
+| BM_VdpfEval_Uint/20                | `ChaCha<2>`     | 1241.3 µs | 1.184 ns     | 844.7M/s |
+| BM_VdpfGen_Uint/20                 | `ChaCha<2>`     | 2132.2 µs | 2.033 ns     | 491.8M/s |
+| BM_HalfTreeDpfEval_Uint/20         | `ChaCha<1>`     | 1001.7 µs | 0.955 ns     | 1.047G/s |
+| BM_HalfTreeDpfGen_Uint/20          | `ChaCha<1>`     | 1961.5 µs | 1.871 ns     | 534.6M/s |
+| BM_DpfEvalAllGpu_Uint/20           | `ChaCha<2>`     | 71.3 s    | 64.8 ps      | 15.43G/s |
+| BM_HalfTreeDpfEvalAllGpu_Uint/20   | `ChaCha<1>`     | 90.9 s    | 82.7 ps      | 12.09G/s |
+| BM_DpfEvalPointGpu_Uint/20         | `ChaCha<2>`     | 1024.5 µs | 0.977 ns     | 1.024G/s |
+| BM_DcfEvalPointGpu_Uint/20         | `ChaCha<4>`     | 1120.6 µs | 1.069 ns     | 935.7M/s |
+| BM_HalfTreeDpfEvalPointGpu_Uint/20 | `ChaCha<1>`     | 1000.9 µs | 0.955 ns     | 1.048G/s |
+| BM_VdpfEvalPointGpu_Uint/20        | `ChaCha<2>`     | 1109.2 µs | 1.058 ns     | 945.3M/s |
 
 GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 
@@ -445,6 +481,14 @@ Generate a CPU flamegraph with `perf` and [FlameGraph](https://github.com/brenda
 ```bash
 perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20
 perf script | /path/to/FlameGraph/stackcollapse-perf.pl | /path/to/FlameGraph/flamegraph.pl > build/flamegraph.svg
+```
+
+`make flamegraph` runs the same steps, taking the FlameGraph checkout from
+`FLAMEGRAPH_DIR` (default `../FlameGraph`) and the benchmark from
+`FLAMEGRAPH_BENCH`:
+
+```bash
+FLAMEGRAPH_DIR=/path/to/FlameGraph FLAMEGRAPH_BENCH=BM_DcfGen_Uint_Aes/20 make flamegraph
 ```
 
 Open `build/flamegraph.svg` in a browser. The graph is interactive: click a frame to zoom in.
