@@ -6,6 +6,7 @@
 - In GPU device code, registers are limited and memory access is expensive.
   Avoid use of `memcpy`, `memset`, and `reinterpret_cast`.
   Prefer plain assignments. Prefer `int4` for types larger than 8B.
+- Write commit messages as [Scoped Commits](https://scopedcommits.com/)
 
 ## Repo Architecture
 
@@ -27,6 +28,11 @@
   - `include/fss/grotto_dcf.cuh`: Grotto DCF variant.
   - `include/fss/vdpf.cuh`: verifiable DPF.
   - `include/fss/vdmpf.cuh`: verifiable distributed multi-point function.
+- GPU-only entry points live outside the scheme headers:
+  - `include/fss/eval_all_gpu.cuh`: batched full-domain eval for DPF and
+    Half-Tree DPF.
+  - `include/fss/point_eval_gpu.cuh`: level-major point eval and the relayout
+    helpers that pack correction words for it.
 - Core extension points are concepts:
   - `Groupable` in `include/fss/group.cuh`, with built-ins in
     `include/fss/group/`.
@@ -45,33 +51,6 @@
 - Python wheels install the public C++ headers as data files. Keep
   `pyproject.toml` and `fss_crypto/_jit.py` in sync if the header layout moves.
 
-## File Index
-
-- `CMakeLists.txt`: library target, tests, benchmarks, install rules, and
-  external dependencies fetched for test or benchmark builds.
-- `Makefile`: formatting, CPU/GPU benchmark, flamegraph, and PTX helper
-  commands. Keep generated outputs under `build`.
-- `Doxyfile`: generated API documentation config. Public docs should focus on
-  `README.md`, `include/fss`, and examples instead of benchmark internals.
-- `doc/doxygen_input_filter.py`: Doxygen math filter for `$...$` comments and
-  Markdown.
-- `include/fss/*.cuh`: public scheme and concept headers.
-- `include/fss/group/*.cuh`: built-in output groups.
-- `include/fss/prg/*.cuh`: PRG backends for CPU and GPU paths.
-- `include/fss/hash/*.cuh`: hash and xor-hash backends for verifiable schemes.
-- `include/fss/prp/*.cuh`: PRP backends used by Cuckoo hashing in VDMPF.
-- `src/*_test.cu`: C++/CUDA tests registered through CTest and GTest.
-- `src/bench_cpu.cu`: Google Benchmark CPU microbenchmarks.
-- `src/bench_gpu.cu`: Google Benchmark GPU microbenchmarks. Use
-  `CUDA_VISIBLE_DEVICES` to pin a run to a free GPU.
-- `samples/dpf_dcf_cpu.cu` and `samples/dpf_dcf_gpu.cu`: small integration
-  examples for users.
-- `fss_crypto/*.py`: public Python wrappers and validation.
-- `fss_crypto/_csrc/*.cuh`: CUDA binding implementation compiled by PyTorch JIT.
-- `test/*.py`: Python integration and validation tests.
-- `third_party/`: comparison benchmark ports. Read it for benchmark context, not
-  for core library architecture.
-
 ## Build And Test
 
 - Configure regular tests with `cmake -B build`.
@@ -83,13 +62,10 @@
 - Capture a GPU Nsight Systems profile with
   `GPU_ID=1 GPU_PROFILE_BENCH=BM_DpfEval_Uint/20 make profile_gpu`.
 - Run Python tests with `uv run --extra dev pytest`.
-- Keep all build output, perf data, and flamegraphs under `./build`.
-
-## Updating This File
-
-- Update this file in the same change when repo architecture changes, including:
-  new public scheme headers, new concept interfaces, changed source/test/sample
-  ownership, changed Python binding layout, changed build targets, or changed
-  benchmark layout.
-- Keep this file short and navigational. Put API tutorials in `README.md` or
-  generated docs, not here.
+- CPU benchmark names carry a PRG suffix and GPU names do not, so
+  `BM_DpfEval_Uint_Aes/20` and `BM_DpfEval_Uint/20` name the same benchmark on
+  the two binaries. A filter copied from one matches nothing in the other.
+- Only the `EvalAll` benchmarks call `SetItemsProcessed`. Google Benchmark
+  prints no throughput for every other row, so the `Items/s` column of the
+  README tables is 1/Time there and counts keys, not outputs. Check the unit
+  when refreshing those tables.
