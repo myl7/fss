@@ -30,7 +30,6 @@ bench_cpu: bench_build
 	taskset -c $(CPU_ID) ./build/bench_cpu | tee build/bench_cpu.log
 	cat /tmp/cpu_sg | sudo tee $(CPU_SG)
 bench_gpu: bench_build
-	CUDA_VISIBLE_DEVICES=$(GPU_ID) timeout 10 ./build/bench_gpu || true
 	CUDA_VISIBLE_DEVICES=$(GPU_ID) ./build/bench_gpu | tee build/bench_gpu.log
 bench_build:
 	cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCH=ON $(CMAKE_CUDA_ARCH_FLAGS)
