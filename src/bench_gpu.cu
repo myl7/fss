@@ -742,36 +742,38 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
   cudaFree(d_ocws);
 }
 
-// --- Register all 14 benchmarks ---
+// --- Register all 18 benchmarks ---
 
 // DPF (ChaCha<2>)
-BENCHMARK(BM_DpfEval<20, UintGroup>)->Name("BM_DpfEval_Uint/20")->UseManualTime();
-BENCHMARK(BM_DpfEval<14, UintGroup>)->Name("BM_DpfEval_Uint/14")->UseManualTime();
-BENCHMARK(BM_DpfEval<17, UintGroup>)->Name("BM_DpfEval_Uint/17")->UseManualTime();
-BENCHMARK(BM_DpfGen<20, UintGroup>)->Name("BM_DpfGen_Uint/20")->UseManualTime();
-BENCHMARK(BM_DpfEval<20, BytesGroup>)->Name("BM_DpfEval_Bytes/20")->UseManualTime();
+BENCHMARK(BM_DpfEval<20, UintGroup>)->Name("BM_DpfEval_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_DpfEval<14, UintGroup>)->Name("BM_DpfEval_Uint_ChaCha/14")->UseManualTime();
+BENCHMARK(BM_DpfEval<17, UintGroup>)->Name("BM_DpfEval_Uint_ChaCha/17")->UseManualTime();
+BENCHMARK(BM_DpfGen<20, UintGroup>)->Name("BM_DpfGen_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_DpfEval<20, BytesGroup>)->Name("BM_DpfEval_Bytes_ChaCha/20")->UseManualTime();
 
 // DPF other PRG
 BENCHMARK(BM_DpfEvalAes<20, UintGroup>)->Name("BM_DpfEval_Uint_AesSoft/20")->UseManualTime();
 
 // DCF (ChaCha<4>)
-BENCHMARK(BM_DcfEval<20, UintGroup>)->Name("BM_DcfEval_Uint/20")->UseManualTime();
-BENCHMARK(BM_DcfGen<20, UintGroup>)->Name("BM_DcfGen_Uint/20")->UseManualTime();
+BENCHMARK(BM_DcfEval<20, UintGroup>)->Name("BM_DcfEval_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_DcfGen<20, UintGroup>)->Name("BM_DcfGen_Uint_ChaCha/20")->UseManualTime();
 
 // VDPF (ChaCha<2> + Blake3)
-BENCHMARK(BM_VdpfEval<20, UintGroup>)->Name("BM_VdpfEval_Uint/20")->UseManualTime();
-BENCHMARK(BM_VdpfGen<20, UintGroup>)->Name("BM_VdpfGen_Uint/20")->UseManualTime();
+BENCHMARK(BM_VdpfEval<20, UintGroup>)->Name("BM_VdpfEval_Uint_ChaCha_Blake3/20")->UseManualTime();
+BENCHMARK(BM_VdpfGen<20, UintGroup>)->Name("BM_VdpfGen_Uint_ChaCha_Blake3/20")->UseManualTime();
 
 // HalfTreeDpf (ChaCha<1>)
-BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup>)->Name("BM_HalfTreeDpfEval_Uint/20")->UseManualTime();
-BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup>)->Name("BM_HalfTreeDpfGen_Uint/20")->UseManualTime();
+BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup>)->Name("BM_HalfTreeDpfEval_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup>)->Name("BM_HalfTreeDpfGen_Uint_ChaCha/20")->UseManualTime();
 
 // GPU full-domain eval
-BENCHMARK(BM_HalfTreeDpfEvalAllGpu<20, UintGroup>)->Name("BM_HalfTreeDpfEvalAllGpu_Uint/20")->UseManualTime();
-BENCHMARK(BM_DpfEvalAllGpu<20, UintGroup>)->Name("BM_DpfEvalAllGpu_Uint/20")->UseManualTime();
+BENCHMARK(BM_HalfTreeDpfEvalAllGpu<20, UintGroup>)->Name("BM_HalfTreeDpfEvalAllGpu_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_DpfEvalAllGpu<20, UintGroup>)->Name("BM_DpfEvalAllGpu_Uint_ChaCha/20")->UseManualTime();
 
 // GPU point eval (level-major layout)
-BENCHMARK(BM_DpfEvalPointGpu<20, UintGroup>)->Name("BM_DpfEvalPointGpu_Uint/20")->UseManualTime();
-BENCHMARK(BM_DcfEvalPointGpu<20, UintGroup>)->Name("BM_DcfEvalPointGpu_Uint/20")->UseManualTime();
-BENCHMARK(BM_HalfTreeDpfEvalPointGpu<20, UintGroup>)->Name("BM_HalfTreeDpfEvalPointGpu_Uint/20")->UseManualTime();
-BENCHMARK(BM_VdpfEvalPointGpu<20, UintGroup>)->Name("BM_VdpfEvalPointGpu_Uint/20")->UseManualTime();
+BENCHMARK(BM_DpfEvalPointGpu<20, UintGroup>)->Name("BM_DpfEvalPointGpu_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_DcfEvalPointGpu<20, UintGroup>)->Name("BM_DcfEvalPointGpu_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_HalfTreeDpfEvalPointGpu<20, UintGroup>)
+    ->Name("BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20")
+    ->UseManualTime();
+BENCHMARK(BM_VdpfEvalPointGpu<20, UintGroup>)->Name("BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20")->UseManualTime();

@@ -60,11 +60,8 @@
 - Run GPU benchmarks with `GPU_ID=1 CUDA_ARCH=86 make bench_gpu` when CMake
   cannot infer the CUDA arch or when a specific GPU is free.
 - Capture a GPU Nsight Systems profile with
-  `GPU_ID=1 GPU_PROFILE_BENCH=BM_DpfEval_Uint/20 make profile_gpu`.
+  `GPU_ID=1 GPU_PROFILE_BENCH=BM_DpfEval_Uint_ChaCha/20 make profile_gpu`.
 - Run Python tests with `uv run --extra dev pytest`.
-- CPU benchmark names carry a PRG suffix and GPU names do not, so
-  `BM_DpfEval_Uint_Aes/20` and `BM_DpfEval_Uint/20` name the same benchmark on
-  the two binaries. A filter copied from one matches nothing in the other.
 - Only the `EvalAll` benchmarks call `SetItemsProcessed`. Google Benchmark
   prints no throughput for every other row, so the `Items/s` column of the
   README tables is 1/Time there and counts keys, not outputs. Check the unit

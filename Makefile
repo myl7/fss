@@ -5,7 +5,7 @@ CUDA_ARCH ?=
 CPU_SG := /sys/devices/system/cpu/cpu$(CPU_ID)/cpufreq/scaling_governor
 FLAMEGRAPH_DIR ?= ../FlameGraph
 FLAMEGRAPH_BENCH ?= BM_DpfEval_Uint_Aes/20
-GPU_PROFILE_BENCH ?= BM_DpfEval_Uint/20
+GPU_PROFILE_BENCH ?= BM_DpfEval_Uint_ChaCha/20
 GPU_PROFILE_OUT ?= build/nsys_gpu
 CMAKE_CUDA_ARCH_FLAGS := $(if $(strip $(CUDA_ARCH)),-DCMAKE_CUDA_ARCHITECTURES=$(CUDA_ARCH))
 export OMP_NUM_THREADS = 1

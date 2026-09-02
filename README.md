@@ -428,26 +428,26 @@ Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, pinned with 
 
 Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. The host is shared: the GPU boost clock varies with host state (observed 180-2355 MHz). Each iteration runs 1M (2^20) keys in parallel. `Time` is the whole batch. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per output for `EvalAll` rows (2^40 outputs per iteration).
 
-| Benchmark                          | PRG             | Time      | Avg per item | Items/s  |
-| ---------------------------------- | --------------- | --------- | ------------ | -------- |
-| BM_DpfEval_Uint/20                 | `ChaCha<2>`     | 1398.8 µs | 1.334 ns     | 749.6M/s |
-| BM_DpfEval_Uint/14                 | `ChaCha<2>`     | 765.7 µs  | 0.730 ns     | 1.369G/s |
-| BM_DpfEval_Uint/17                 | `ChaCha<2>`     | 956.8 µs  | 0.912 ns     | 1.096G/s |
-| BM_DpfGen_Uint/20                  | `ChaCha<2>`     | 1965.4 µs | 1.874 ns     | 533.5M/s |
-| BM_DpfEval_Bytes/20                | `ChaCha<2>`     | 1398.9 µs | 1.334 ns     | 749.6M/s |
-| BM_DpfEval_Uint_AesSoft/20         | `Aes128Soft<2>` | 3087.5 µs | 2.944 ns     | 339.6M/s |
-| BM_DcfEval_Uint/20                 | `ChaCha<4>`     | 1421.2 µs | 1.355 ns     | 737.8M/s |
-| BM_DcfGen_Uint/20                  | `ChaCha<4>`     | 1969.1 µs | 1.878 ns     | 532.5M/s |
-| BM_VdpfEval_Uint/20                | `ChaCha<2>`     | 1241.3 µs | 1.184 ns     | 844.7M/s |
-| BM_VdpfGen_Uint/20                 | `ChaCha<2>`     | 2132.2 µs | 2.033 ns     | 491.8M/s |
-| BM_HalfTreeDpfEval_Uint/20         | `ChaCha<1>`     | 1001.7 µs | 0.955 ns     | 1.047G/s |
-| BM_HalfTreeDpfGen_Uint/20          | `ChaCha<1>`     | 1961.5 µs | 1.871 ns     | 534.6M/s |
-| BM_DpfEvalAllGpu_Uint/20           | `ChaCha<2>`     | 71.3 s    | 64.8 ps      | 15.43G/s |
-| BM_HalfTreeDpfEvalAllGpu_Uint/20   | `ChaCha<1>`     | 90.9 s    | 82.7 ps      | 12.09G/s |
-| BM_DpfEvalPointGpu_Uint/20         | `ChaCha<2>`     | 1024.5 µs | 0.977 ns     | 1.024G/s |
-| BM_DcfEvalPointGpu_Uint/20         | `ChaCha<4>`     | 1120.6 µs | 1.069 ns     | 935.7M/s |
-| BM_HalfTreeDpfEvalPointGpu_Uint/20 | `ChaCha<1>`     | 1000.9 µs | 0.955 ns     | 1.048G/s |
-| BM_VdpfEvalPointGpu_Uint/20        | `ChaCha<2>`     | 1109.2 µs | 1.058 ns     | 945.3M/s |
+| Benchmark                                 | PRG             | Time      | Avg per item | Items/s  |
+| ----------------------------------------- | --------------- | --------- | ------------ | -------- |
+| BM_DpfEval_Uint_ChaCha/20                 | `ChaCha<2>`     | 1398.8 µs | 1.334 ns     | 749.6M/s |
+| BM_DpfEval_Uint_ChaCha/14                 | `ChaCha<2>`     | 765.7 µs  | 0.730 ns     | 1.369G/s |
+| BM_DpfEval_Uint_ChaCha/17                 | `ChaCha<2>`     | 956.8 µs  | 0.912 ns     | 1.096G/s |
+| BM_DpfGen_Uint_ChaCha/20                  | `ChaCha<2>`     | 1965.4 µs | 1.874 ns     | 533.5M/s |
+| BM_DpfEval_Bytes_ChaCha/20                | `ChaCha<2>`     | 1398.9 µs | 1.334 ns     | 749.6M/s |
+| BM_DpfEval_Uint_AesSoft/20                | `Aes128Soft<2>` | 3087.5 µs | 2.944 ns     | 339.6M/s |
+| BM_DcfEval_Uint_ChaCha/20                 | `ChaCha<4>`     | 1421.2 µs | 1.355 ns     | 737.8M/s |
+| BM_DcfGen_Uint_ChaCha/20                  | `ChaCha<4>`     | 1969.1 µs | 1.878 ns     | 532.5M/s |
+| BM_VdpfEval_Uint_ChaCha_Blake3/20         | `ChaCha<2>`     | 1241.3 µs | 1.184 ns     | 844.7M/s |
+| BM_VdpfGen_Uint_ChaCha_Blake3/20          | `ChaCha<2>`     | 2132.2 µs | 2.033 ns     | 491.8M/s |
+| BM_HalfTreeDpfEval_Uint_ChaCha/20         | `ChaCha<1>`     | 1001.7 µs | 0.955 ns     | 1.047G/s |
+| BM_HalfTreeDpfGen_Uint_ChaCha/20          | `ChaCha<1>`     | 1961.5 µs | 1.871 ns     | 534.6M/s |
+| BM_DpfEvalAllGpu_Uint_ChaCha/20           | `ChaCha<2>`     | 71.3 s    | 64.8 ps      | 15.43G/s |
+| BM_HalfTreeDpfEvalAllGpu_Uint_ChaCha/20   | `ChaCha<1>`     | 90.9 s    | 82.7 ps      | 12.09G/s |
+| BM_DpfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<2>`     | 1024.5 µs | 0.977 ns     | 1.024G/s |
+| BM_DcfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<4>`     | 1120.6 µs | 1.069 ns     | 935.7M/s |
+| BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20 | `ChaCha<1>`     | 1000.9 µs | 0.955 ns     | 1.048G/s |
+| BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20 | `ChaCha<2>`     | 1109.2 µs | 1.058 ns     | 945.3M/s |
 
 GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 
