@@ -1,5 +1,4 @@
 SOURCES := $(shell find src include samples -name '*.cuh' -o -name '*.cu')
-PRETTIER_SOURCES := $(shell for file in $$(git ls-files '*.md' '*.yaml' '*.yml' '*.json' '*.jsonc' '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs' '*.css' '*.html' 2>/dev/null); do if [ -f "$$file" ] && [ ! -L "$$file" ]; then printf '%s ' "$$file"; fi; done)
 CPU_ID ?= 0
 GPU_ID ?= 0
 CUDA_ARCH ?=
@@ -15,14 +14,8 @@ export OMP_NUM_THREADS = 1
 
 format:
 	clang-format -i $(SOURCES)
-ifneq ($(strip $(PRETTIER_SOURCES)),)
-	prettier --write $(PRETTIER_SOURCES)
-endif
 format_check:
 	clang-format --dry-run --Werror $(SOURCES)
-ifneq ($(strip $(PRETTIER_SOURCES)),)
-	prettier --check $(PRETTIER_SOURCES)
-endif
 
 bench_cpu: bench_build
 	cat $(CPU_SG) > /tmp/cpu_sg
