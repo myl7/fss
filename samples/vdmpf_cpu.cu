@@ -19,13 +19,13 @@
 constexpr int kInBits = 8;
 constexpr int kMaxPoints = 32;
 constexpr int kBucketBits = 8;
-constexpr int kT = 8;  // number of points to pack
+constexpr int kT = 30;  // number of points to pack
 using In = uint8_t;
 using Group = fss::group::Bytes;
 
 using VdmpfPrg = fss::prg::Aes128Mmo<2>;
-using Vdmpf = fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, Group, VdmpfPrg, fss::hash::Sha256,
-    fss::hash::Sha256, fss::prp::Aes128Feistel, In>;
+using Vdmpf = fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, Group, VdmpfPrg, fss::hash::Sha256, fss::hash::Sha256,
+    fss::prp::Aes128Feistel, In>;
 
 // Compare two int4 values
 static bool Equal(int4 a, int4 b) {
@@ -48,16 +48,15 @@ int main() {
   auto ctxs = VdmpfPrg::CreateCtxs(keys);
 
   VdmpfPrg prg(ctxs);
-  fss::hash::Sha256 xor_hash(
-      {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, static_cast<int>(0x2468ace0u)});
+  fss::hash::Sha256 xor_hash({0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, static_cast<int>(0x2468ace0u)});
   fss::hash::Sha256 hash_(
-      {static_cast<int>(0x0fedcba9u), static_cast<int>(0x87654321u), static_cast<int>(0x2468ace0u),
-          0x13572468});
+      {static_cast<int>(0x0fedcba9u), static_cast<int>(0x87654321u), static_cast<int>(0x2468ace0u), 0x13572468});
   fss::prp::Aes128Feistel prp;
   Vdmpf vdmpf{prg, xor_hash, hash_, prp};
 
   // Secret inputs: t points alpha_i with payloads beta_i
-  In alphas[kT] = {10, 20, 30, 40, 50, 60, 70, 80};
+  In alphas[kT] = {10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58,
+      60, 62, 64, 66, 68};
   int4 betas[kT];
   for (int i = 0; i < kT; ++i) {
     betas[i] = {(i + 1) * 11, 0, 0, 0};
@@ -99,7 +98,8 @@ int main() {
   printf("  BatchEval at points: mismatches: %d\n", mismatches);
 
   // Batch evaluation away from the points: y0+y1 == 0
-  In non_alphas[kT] = {5, 15, 25, 35, 45, 55, 65, 75};
+  In non_alphas[kT] = {11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57,
+      59, 61, 63, 65, 67, 69};
   xs.assign(non_alphas, non_alphas + kT);
   vdmpf.BatchEval(false, k0, std::span<const In>(xs), std::span<int4>(ys0), pi0);
   vdmpf.BatchEval(true, k1, std::span<const In>(xs), std::span<int4>(ys1), pi1);

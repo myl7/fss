@@ -21,7 +21,7 @@
 constexpr int kInBits = 8;
 constexpr int kMaxPoints = 32;
 constexpr int kBucketBits = 8;
-constexpr int kT = 8;  // number of points to pack
+constexpr int kT = 30;  // number of points to pack
 using In = uint8_t;
 using Group = fss::group::Bytes;
 
@@ -59,7 +59,8 @@ int main() {
   Dmpf dmpf{prg, prp};
 
   // Secret inputs: t points alpha_i with payloads beta_i
-  In alphas[kT] = {10, 20, 30, 40, 50, 60, 70, 80};
+  In alphas[kT] = {10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58,
+      60, 62, 64, 66, 68};
   int4 betas[kT];
   for (int i = 0; i < kT; ++i) {
     betas[i] = {(i + 1) * 11, 0, 0, 0};
@@ -95,6 +96,23 @@ int main() {
   for (int i = 0; i < kT; ++i) {
     int4 sum = (Group::From(ys0[i]) + Group::From(ys1[i])).Into();
     if (!Equal(sum, betas[i])) {
+      ++mismatches;
+    }
+  }
+  printf("  BatchEval off points: mismatches: %d\n", mismatches);
+
+  // Batch evaluation away from the points: y0+y1 == 0
+  In non_alphas[kT] = {11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57,
+      59, 61, 63, 65, 67, 69};
+  xs.assign(non_alphas, non_alphas + kT);
+  dmpf.BatchEval(false, k0, std::span<const In>(xs), std::span<int4>(ys0));
+  dmpf.BatchEval(true, k1, std::span<const In>(xs), std::span<int4>(ys1));
+
+  int4 zero = {0, 0, 0, 0};
+  mismatches = 0;
+  for (int i = 0; i < kT; ++i) {
+    int4 sum = (Group::From(ys0[i]) + Group::From(ys1[i])).Into();
+    if (!Equal(sum, zero)) {
       ++mismatches;
     }
   }
