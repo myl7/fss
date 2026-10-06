@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+* Distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.
+
 ## [1.2.0] - 2026-08-17
 
 ### Added

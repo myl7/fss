@@ -31,3 +31,6 @@ target_link_libraries(vdpf_cpu PRIVATE fss OpenSSL::Crypto)
 
 add_executable(vdmpf_cpu vdmpf_cpu.cu)
 target_link_libraries(vdmpf_cpu PRIVATE fss OpenSSL::Crypto)
+
+add_executable(dmpf_cpu dmpf_cpu.cu)
+target_link_libraries(dmpf_cpu PRIVATE fss OpenSSL::Crypto)
