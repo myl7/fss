@@ -82,6 +82,10 @@ if(BUILD_TESTING)
     add_executable(vdmpf_test src/vdmpf_test.cu)
     target_link_libraries(vdmpf_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(vdmpf_test)
+
+    add_executable(dmpf_test src/dmpf_test.cu)
+    target_link_libraries(dmpf_test GTest::gtest_main fss OpenSSL::Crypto)
+    gtest_discover_tests(dmpf_test)
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
