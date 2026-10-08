@@ -52,9 +52,6 @@ int main() {
   auto ctxs = DmpfPrg::CreateCtxs(keys);
 
   DmpfPrg prg(ctxs);
-  fss::hash::Sha256 xor_hash({0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, static_cast<int>(0x2468ace0u)});
-  fss::hash::Sha256 hash_(
-      {static_cast<int>(0x0fedcba9u), static_cast<int>(0x87654321u), static_cast<int>(0x2468ace0u), 0x13572468});
   fss::prp::Aes128Feistel prp;
   Dmpf dmpf{prg, prp};
 

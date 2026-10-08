@@ -239,6 +239,72 @@ public:
       }
     }
   }
-};
 
+  /**
+   * Evaluate the DMPF on all input points.
+   *
+   * @param b Party index. False for 0 and true for 1.
+   * @param key This party's key.
+   * @param ys Output shares (pre-allocated, size == n). Will be zero-initialized.
+   */
+  void EvalAll(bool b, const Key &key, std::span<int4> ys) {
+    assert(ys.size() == n);
+
+    int bucket_count = key.m_rt;
+    int b_rt = key.b_size_rt;
+
+    // build per-bucket input lists.
+    // inputs[i] = vector of (within_bucket_index, original_input_index).
+    std::vector<std::vector<std::pair<uint, size_t>>> inputs(bucket_count);
+    cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
+
+    for (size_t omega = 0; omega < n; ++omega) {
+      In x = static_cast<In>(omega);
+
+      // store for easier deduplication for this omega
+      std::array<std::pair<int, uint>, kappa> seen{};
+      int num_seen = 0;
+
+      for (int k = 0; k < kappa; ++k) {
+        auto [bucket, index] = prp_hash.Locate(key.sigma, x, k, n, b_rt);
+        if (bucket >= bucket_count) continue;
+
+        uint j = static_cast<uint>(index);
+        assert(j < (1u << bucket_bits));
+
+        // Deduplicate within each bucket (linear scan, fine for small kappa).
+        bool dup = false;
+
+        for (int s = 0; s < num_seen; ++s) {
+          if (seen[s].first == bucket && seen[s].second == j) {
+            dup = true;
+            break;
+          }
+        }
+
+        if (!dup) {
+          inputs[bucket].push_back({j, omega});
+          seen[num_seen++] = {bucket, j};
+        }
+      }
+    }
+
+    // initialize outputs.
+    for (size_t i = 0; i < n; ++i) {
+      ys[i] = {0, 0, 0, 0};
+    }
+
+    // evaluate per bucket and merge.
+    InnerDpf inner_dpf{prg};
+    std::vector<int4> bucket_ys(1ULL << bucket_bits, {0, 0, 0, 0});
+    for (int i = 0; i < bucket_count; ++i) {
+      inner_dpf.EvalAll(b, key.bks[i].s0, key.bks[i].cws, bucket_ys.data());
+
+      // merge
+      for (auto &[j, omega] : inputs[i]) {
+        ys[omega] = (Group::From(ys[omega]) + Group::From(bucket_ys[j])).Into();
+      }
+    }
+  }
+};
 }  // namespace fss
