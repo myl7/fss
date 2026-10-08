@@ -126,6 +126,35 @@ protected:
       EXPECT_EQ(memcmp(&r, &zero, sizeof(int4)), 0) << "Failed at x=" << xs[i];
     }
   }
+
+  void TestEvalAll() {
+    typename DmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+
+    DmpfType dmpf{prg, prp_};
+
+    constexpr size_t domain_size = 1ULL << kInBits;
+
+    std::vector<int4> expected_results(domain_size, int4{0, 0, 0, 0});
+
+    for (size_t i = 0; i < kT; ++i) {
+      expected_results[alphas[i]] = betas[i];
+    }
+
+    std::vector<int4> ys0(domain_size);
+    std::vector<int4> ys1(domain_size);
+
+    dmpf.EvalAll(false, k0, ys0);
+    dmpf.EvalAll(true, k1, ys1);
+
+    for (size_t i = 0; i < domain_size; ++i) {
+      auto result = (Group::From(ys0[i]) + Group::From(ys1[i]));
+      int4 r = result.Into();
+      int4 e = expected_results[i];
+      e.w &= ~1;
+      EXPECT_EQ(memcmp(&r, &e, sizeof(int4)), 0) << "Failed at i=" << i;
+    }
+  }
 };
 
 using DmpfBytesChaChaTest = DmpfChaChaTest<BytesGroup>;
@@ -137,12 +166,18 @@ TEST_F(DmpfBytesChaChaTest, EvalAtAlpha) {
 TEST_F(DmpfBytesChaChaTest, EvalAtNonAlpha) {
   TestEvalAtNonAlpha();
 }
+TEST_F(DmpfBytesChaChaTest, EvalAll) {
+  TestEvalAll();
+}
 
 TEST_F(DmpfUint128ChaChaTest, EvalAtAlpha) {
   TestEvalAtAlpha();
 }
 TEST_F(DmpfUint128ChaChaTest, EvalAtNonAlpha) {
   TestEvalAtNonAlpha();
+}
+TEST_F(DmpfUint128ChaChaTest, EvalAll) {
+  TestEvalAll();
 }
 
 TEST(CuckooHashTest, Compact) {
