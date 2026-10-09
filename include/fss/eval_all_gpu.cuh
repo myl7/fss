@@ -83,8 +83,12 @@ __global__ void HalfTreeDpfEvalAllKernel(bool b, int4 s0,
   // Phase 1: breadth-parallel expansion of the block's subtree, levels b1..z.
 #pragma unroll
   for (int i = 0; i < kSub; ++i) {
-    if (threadIdx.x < (1 << (i + 1))) {
-      int4 n = s_front[threadIdx.x >> 1];
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
       int4 left, right;
       HtExpandNode(n, cws[b1 + i].s, hash_key, prg, left, right);
       s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
@@ -228,8 +232,12 @@ __global__ void DpfEvalAllKernel(
   // Phase 1: breadth-parallel expansion of the block's subtree, levels b1..z.
 #pragma unroll
   for (int i = 0; i < kSub; ++i) {
-    if (threadIdx.x < (1 << (i + 1))) {
-      int4 n = s_front[threadIdx.x >> 1];
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
       int4 left, right;
       DpfExpandNode(n, cws[b1 + i], prg, left, right);
       s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
@@ -300,8 +308,12 @@ __global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s,
 
 #pragma unroll
   for (int i = 0; i < kSub; ++i) {
-    if (threadIdx.x < (1 << (i + 1))) {
-      int4 n = s_front[threadIdx.x >> 1];
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
       int4 left, right;
       DpfExpandNode(n, kcws[b1 + i], prg, left, right);
       s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
@@ -366,8 +378,12 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
 
 #pragma unroll
   for (int i = 0; i < kSub; ++i) {
-    if (threadIdx.x < (1 << (i + 1))) {
-      int4 n = s_front[threadIdx.x >> 1];
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
       int4 left, right;
       HtExpandNode(n, kcws[b1 + i].s, hash_key, prg, left, right);
       s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
@@ -436,7 +452,7 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
  * GPU full-domain evaluation of a HalfTree DPF key: ys[x] = Eval(b, s0, cws, ocw, x) for all x.
  *
  * @tparam z Frontier depth. 2^z threads each expand a subtree of 2^(in_bits - z) leaves.
- *   Defaults to min(in_bits, 16).
+ *   Defaults to min(in_bits - 1, 16).
  * @tparam b1 Block-root depth. Each block walks b1 levels to its own subtree root,
  *   then expands levels b1..z breadth-parallel. Must satisfy 2^(z - b1) == bs.
  *   Defaults to 8.
@@ -451,9 +467,9 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
 template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
 void HalfTreeDpfEvalAllGpu(bool b, int4 s0, const typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw *cws, int4 ocw,
     int4 *ys, const HalfTreeDpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
-  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int Z = (z < 0 ? (in_bits - 1 <= 16 ? in_bits - 1 : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
-  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(Z < in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   constexpr int kBlocks = (1 << Z) / bs;
   detail::HalfTreeDpfEvalAllKernel<in_bits, Z, B1, Group, Prg>
@@ -526,9 +542,9 @@ void DpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dpf<in_bits, Gro
 template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
 void HalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw *cws,
     const int4 *ocws, int nkeys, int4 *ys, const HalfTreeDpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
-  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int Z = (z < 0 ? (in_bits - 1 <= 16 ? in_bits - 1 : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
-  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(Z < in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   detail::HalfTreeDpfEvalAllBatchKernel<in_bits, Z, B1, Group, Prg>
       <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, ocws, ys, nkeys, dpf.hash_key, dpf.prg);

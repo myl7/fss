@@ -71,6 +71,10 @@ if(BUILD_TESTING)
     target_link_libraries(vdpf_test GTest::gtest_main fss)
     gtest_discover_tests(vdpf_test)
 
+    add_executable(eval_all_gpu_test src/eval_all_gpu_test.cu)
+    target_link_libraries(eval_all_gpu_test GTest::gtest_main fss)
+    gtest_discover_tests(eval_all_gpu_test)
+
     add_executable(half_tree_dpf_test src/half_tree_dpf_test.cu)
     target_link_libraries(half_tree_dpf_test GTest::gtest_main fss)
     gtest_discover_tests(half_tree_dpf_test)
