@@ -383,15 +383,30 @@ Run a subset using `--benchmark_filter` (regex):
 ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20
 ```
 
-The `Makefile` has shortcuts for the same runs. `make bench_cpu` pins the run to
-one core and switches that core to the performance governor, which needs
-`sudo`. `make bench_gpu` pins the run to one GPU. Both write their log under
-`build/`.
+The `Makefile` runs these sources through `third_party/bench.py`. Both CPU and
+GPU runs pin the host process to `CPU_ID`, verify the performance governor, and
+restore its previous value on exit. A governor change may require noninteractive
+`sudo`. `make bench_gpu` also selects `GPU_ID`. Builds, raw measurements,
+environment metadata, and reports are saved under `build/third_party/`.
 
 ```bash
 CPU_ID=0 make bench_cpu
 GPU_ID=1 CUDA_ARCH=120 make bench_gpu
 ```
+
+The [third-party comparison guide](doc/bench_third_parties.md#running) covers
+fixed dependency versions, selecting libraries, and generating reports. The
+`main` selection runs the benchmarks in this README:
+
+```bash
+python3 third_party/bench.py run --libraries main --platform cpu --cpu 24 \
+  --repetitions 5 --min-time 1 --run-id readme-cpu
+python3 third_party/bench.py run --libraries main --platform gpu --cpu 8 --gpu 1 \
+  --cuda-arch 120 --repetitions 5 --min-time 1 --run-id readme-gpu
+```
+
+Choose idle, allowed CPU and GPU indices on your host. Direct binary invocations
+above leave affinity and the governor to the caller.
 
 `CUDA_ARCH` is only needed when CMake cannot infer the architecture. Two more
 targets support the sections below: `make ptx_info` rebuilds with
@@ -401,92 +416,92 @@ selected by `GPU_PROFILE_BENCH`.
 
 ### CPU Results
 
-Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, pinned with `taskset -c 0`. The host is shared and runs the schedutil cpufreq governor, so the effective single-core clock varies with host load (observed 0.8-3.5 GHz). Per-key rows run one op per iteration, so `Avg per item` equals `Time` and `Items/s` counts keys. `EvalAll` rows process 2^20 outputs per iteration, so their `Items/s` counts outputs and `Avg per item` is its reciprocal.
+Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance governor verified before timing. The host is shared. These are medians of five repetitions with a one-second minimum measurement window per repetition, built in Release with GCC 13.3 and CUDA 13.2. Per-key rows run one operation per iteration, so `Avg per item` equals `Time` and `Items/s` is its reciprocal. `EvalAll` rows process 2^20 domain outputs per iteration. Their native throughput counter uses CPU time, while `Time` is wall time, and `Avg per item` is the reciprocal of that counter.
 
 | Benchmark                            | PRG               | Time     | Avg per item | Items/s  |
 | ------------------------------------ | ----------------- | -------- | ------------ | -------- |
-| BM_DpfEval_Uint_Aes/20               | `Aes128Mmo<2>`    | 1078 ns  | 1078 ns      | 927.6k/s |
-| BM_DpfEval_Uint_Aes/14               | `Aes128Mmo<2>`    | 751 ns   | 751 ns       | 1.332M/s |
-| BM_DpfEval_Uint_Aes/17               | `Aes128Mmo<2>`    | 931 ns   | 931 ns       | 1.074M/s |
-| BM_DpfGen_Uint_Aes/20                | `Aes128Mmo<2>`    | 2272 ns  | 2272 ns      | 440.1k/s |
-| BM_DpfEval_Bytes_Aes/20              | `Aes128Mmo<2>`    | 1076 ns  | 1076 ns      | 929.4k/s |
-| BM_DpfEvalAll_Uint_Aes/20            | `Aes128Mmo<2>`    | 78.7 ms  | 74.9 ns      | 13.34M/s |
-| BM_DpfEval_Uint_ChaCha/20            | `ChaCha<2>`       | 3823 ns  | 3823 ns      | 261.6k/s |
-| BM_DpfEval_Uint_AesSoft/20           | `Aes128Soft<2>`   | 4094 ns  | 4094 ns      | 244.3k/s |
-| BM_DpfEval_Uint_AesRaw/20            | `Aes128MmoRaw<2>` | 333 ns   | 333 ns       | 3.003M/s |
-| BM_DpfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<2>` | 345 ns   | 345 ns       | 2.899M/s |
-| BM_DpfGen_Uint_AesRaw/20             | `Aes128MmoRaw<2>` | 463 ns   | 463 ns       | 2.160M/s |
-| BM_DpfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<2>` | 428 ns   | 428 ns       | 2.336M/s |
-| BM_DcfEval_Uint_AesRaw/20            | `Aes128MmoRaw<4>` | 343 ns   | 343 ns       | 2.915M/s |
-| BM_DcfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<4>` | 412 ns   | 412 ns       | 2.427M/s |
-| BM_DcfGen_Uint_AesRaw/20             | `Aes128MmoRaw<4>` | 645 ns   | 645 ns       | 1.550M/s |
-| BM_DcfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<4>` | 698 ns   | 698 ns       | 1.433M/s |
-| BM_DcfEval_Uint_Aes/20               | `Aes128Mmo<4>`    | 1481 ns  | 1481 ns      | 675.2k/s |
-| BM_DcfGen_Uint_Aes/20                | `Aes128Mmo<4>`    | 3264 ns  | 3264 ns      | 306.4k/s |
-| BM_DcfEval_Bytes_Aes/20              | `Aes128Mmo<4>`    | 1772 ns  | 1772 ns      | 564.3k/s |
-| BM_DcfEvalAll_Uint_Aes/20            | `Aes128Mmo<4>`    | 97.8 ms  | 93.2 ns      | 10.73M/s |
-| BM_DcfEvalAll_Bytes_Aes/20           | `Aes128Mmo<4>`    | 98.6 ms  | 93.9 ns      | 10.64M/s |
-| BM_VdpfEval_Uint_Aes_Sha256/20       | `Aes128Mmo<2>`    | 2499 ns  | 2499 ns      | 400.2k/s |
-| BM_VdpfGen_Uint_Aes_Sha256/20        | `Aes128Mmo<2>`    | 4146 ns  | 4146 ns      | 241.2k/s |
-| BM_VdpfEval_Uint_Aes_Blake3/20       | `Aes128Mmo<2>`    | 1437 ns  | 1437 ns      | 695.9k/s |
-| BM_VdpfProve_Uint_ChaCha_Blake3/20   | `ChaCha<2>`       | 181 ns   | 181 ns       | 5.525M/s |
-| BM_VdpfEvalAll_Uint_Aes_Sha256/20    | `Aes128Mmo<2>`    | 2138 ms  | 2037 ns      | 491k/s   |
-| BM_HalfTreeDpfEval_Uint_Aes/20       | `Aes128Mmo<1>`    | 1017 ns  | 1017 ns      | 983.3k/s |
-| BM_HalfTreeDpfGen_Uint_Aes/20        | `Aes128Mmo<1>`    | 2236 ns  | 2236 ns      | 447.2k/s |
-| BM_HalfTreeDpfEvalAll_Uint_Aes/20    | `Aes128Mmo<1>`    | 86.9 ms  | 82.8 ns      | 12.08M/s |
-| BM_GrottoDcfEval_Aes/20              | `Aes128Mmo<2>`    | 17.0 ns  | 17.0 ns      | 58.82M/s |
-| BM_GrottoDcfPreprocess_Aes/20        | `Aes128Mmo<2>`    | 57.7 ms  | —            | —        |
-| BM_GrottoDcfPreprocessEvalAll_Aes/20 | `Aes128Mmo<2>`    | 119.9 ms | 114.2 ns     | 8.758M/s |
+| BM_DpfEval_Uint_Aes/20               | `Aes128Mmo<2>`    | 781.1 ns | 781.1 ns | 1.28M/s  |
+| BM_DpfEval_Uint_Aes/14               | `Aes128Mmo<2>`    | 526.1 ns | 526.1 ns | 1.901M/s |
+| BM_DpfEval_Uint_Aes/17               | `Aes128Mmo<2>`    | 371.8 ns | 371.8 ns | 2.689M/s |
+| BM_DpfGen_Uint_Aes/20                | `Aes128Mmo<2>`    | 954.1 ns | 954.1 ns | 1.048M/s |
+| BM_DpfEval_Bytes_Aes/20              | `Aes128Mmo<2>`    | 445.6 ns | 445.6 ns | 2.244M/s |
+| BM_DpfEvalAll_Uint_Aes/20            | `Aes128Mmo<2>`    | 31.08 ms | 29.63 ns | 33.75M/s |
+| BM_DpfEval_Uint_ChaCha/20            | `ChaCha<2>`       | 1.376 us | 1.376 us | 726.5k/s |
+| BM_DpfEval_Uint_AesSoft/20           | `Aes128Soft<2>`   | 1.641 us | 1.641 us | 609.4k/s |
+| BM_DpfEval_Uint_AesRaw/20            | `Aes128MmoRaw<2>` | 280.8 ns | 280.8 ns | 3.561M/s |
+| BM_DpfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<2>` | 281 ns   | 281 ns   | 3.559M/s |
+| BM_DpfGen_Uint_AesRaw/20             | `Aes128MmoRaw<2>` | 338.7 ns | 338.7 ns | 2.952M/s |
+| BM_DpfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<2>` | 338.9 ns | 338.9 ns | 2.951M/s |
+| BM_DcfEval_Uint_AesRaw/20            | `Aes128MmoRaw<4>` | 316.3 ns | 316.3 ns | 3.162M/s |
+| BM_DcfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<4>` | 314.8 ns | 314.8 ns | 3.177M/s |
+| BM_DcfGen_Uint_AesRaw/20             | `Aes128MmoRaw<4>` | 400.4 ns | 400.4 ns | 2.497M/s |
+| BM_DcfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<4>` | 410.4 ns | 410.4 ns | 2.436M/s |
+| BM_DcfEval_Uint_Aes/20               | `Aes128Mmo<4>`    | 841.9 ns | 841.9 ns | 1.188M/s |
+| BM_DcfGen_Uint_Aes/20                | `Aes128Mmo<4>`    | 1.71 us  | 1.71 us  | 584.8k/s |
+| BM_DcfEval_Bytes_Aes/20              | `Aes128Mmo<4>`    | 907.3 ns | 907.3 ns | 1.102M/s |
+| BM_DcfEvalAll_Uint_Aes/20            | `Aes128Mmo<4>`    | 55 ms    | 52.43 ns | 19.07M/s |
+| BM_DcfEvalAll_Bytes_Aes/20           | `Aes128Mmo<4>`    | 62.79 ms | 59.86 ns | 16.71M/s |
+| BM_VdpfEval_Uint_Aes_Sha256/20       | `Aes128Mmo<2>`    | 1.396 us | 1.396 us | 716.5k/s |
+| BM_VdpfGen_Uint_Aes_Sha256/20        | `Aes128Mmo<2>`    | 2.169 us | 2.169 us | 460.9k/s |
+| BM_VdpfEval_Uint_Aes_Blake3/20       | `Aes128Mmo<2>`    | 672.3 ns | 672.3 ns | 1.487M/s |
+| BM_VdpfProve_Uint_ChaCha_Blake3/20   | `ChaCha<2>`       | 66.01 ns | 66.01 ns | 15.15M/s |
+| BM_VdpfEvalAll_Uint_Aes_Sha256/20    | `Aes128Mmo<2>`    | 991.5 ms | 945.1 ns | 1.058M/s |
+| BM_HalfTreeDpfEval_Uint_Aes/20       | `Aes128Mmo<1>`    | 370.6 ns | 370.6 ns | 2.698M/s |
+| BM_HalfTreeDpfGen_Uint_Aes/20        | `Aes128Mmo<1>`    | 496.9 ns | 496.9 ns | 2.012M/s |
+| BM_HalfTreeDpfEvalAll_Uint_Aes/20    | `Aes128Mmo<1>`    | 28.12 ms | 26.8 ns  | 37.31M/s |
+| BM_GrottoDcfEval_Aes/20              | `Aes128Mmo<2>`    | 6.981 ns | 6.981 ns | 143.3M/s |
+| BM_GrottoDcfPreprocess_Aes/20        | `Aes128Mmo<2>`    | 30.93 ms | 30.93 ms | 32.33/s  |
+| BM_GrottoDcfPreprocessEvalAll_Aes/20 | `Aes128Mmo<2>`    | 62.24 ms | 59.32 ns | 16.86M/s |
 
 ### GPU Results
 
-Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. The host is shared: the GPU boost clock varies with host state (observed 180-2355 MHz). Each iteration runs 1M (2^20) keys in parallel. `Time` is the whole batch. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per output for `EvalAll` rows (2^40 outputs per iteration).
+Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. GPU 1 was idle before the run. The host process was pinned to CPU 8 with the performance governor verified. These are medians of five repetitions with a one-second minimum measurement window, built in Release. GPU clocks can vary on this shared host. Each iteration runs 1M (2^20) keys in parallel. `Time` is the whole batch measured with CUDA events. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per domain output for `EvalAll` rows (2^40 outputs per iteration).
 
 | Benchmark                                 | PRG             | Time      | Avg per item | Items/s  |
 | ----------------------------------------- | --------------- | --------- | ------------ | -------- |
-| BM_DpfEval_Uint_ChaCha/20                 | `ChaCha<2>`     | 1398.8 µs | 1.334 ns     | 749.6M/s |
-| BM_DpfEval_Uint_ChaCha/14                 | `ChaCha<2>`     | 765.7 µs  | 0.730 ns     | 1.369G/s |
-| BM_DpfEval_Uint_ChaCha/17                 | `ChaCha<2>`     | 956.8 µs  | 0.912 ns     | 1.096G/s |
-| BM_DpfGen_Uint_ChaCha/20                  | `ChaCha<2>`     | 1965.4 µs | 1.874 ns     | 533.5M/s |
-| BM_DpfEval_Bytes_ChaCha/20                | `ChaCha<2>`     | 1398.9 µs | 1.334 ns     | 749.6M/s |
-| BM_DpfEval_Uint_AesSoft/20                | `Aes128Soft<2>` | 3087.5 µs | 2.944 ns     | 339.6M/s |
-| BM_DcfEval_Uint_ChaCha/20                 | `ChaCha<4>`     | 1421.2 µs | 1.355 ns     | 737.8M/s |
-| BM_DcfGen_Uint_ChaCha/20                  | `ChaCha<4>`     | 1969.1 µs | 1.878 ns     | 532.5M/s |
-| BM_VdpfEval_Uint_ChaCha_Blake3/20         | `ChaCha<2>`     | 1241.3 µs | 1.184 ns     | 844.7M/s |
-| BM_VdpfGen_Uint_ChaCha_Blake3/20          | `ChaCha<2>`     | 2132.2 µs | 2.033 ns     | 491.8M/s |
-| BM_HalfTreeDpfEval_Uint_ChaCha/20         | `ChaCha<1>`     | 1001.7 µs | 0.955 ns     | 1.047G/s |
-| BM_HalfTreeDpfGen_Uint_ChaCha/20          | `ChaCha<1>`     | 1961.5 µs | 1.871 ns     | 534.6M/s |
-| BM_DpfEvalAllGpu_Uint_ChaCha/20           | `ChaCha<2>`     | 71.3 s    | 64.8 ps      | 15.43G/s |
-| BM_HalfTreeDpfEvalAllGpu_Uint_ChaCha/20   | `ChaCha<1>`     | 90.9 s    | 82.7 ps      | 12.09G/s |
-| BM_DpfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<2>`     | 1024.5 µs | 0.977 ns     | 1.024G/s |
-| BM_DcfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<4>`     | 1120.6 µs | 1.069 ns     | 935.7M/s |
-| BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20 | `ChaCha<1>`     | 1000.9 µs | 0.955 ns     | 1.048G/s |
-| BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20 | `ChaCha<2>`     | 1109.2 µs | 1.058 ns     | 945.3M/s |
+| BM_DpfEval_Uint_ChaCha/20                 | `ChaCha<2>`     | 1.399 ms | 1.334 ns | 749.6M/s |
+| BM_DpfEval_Uint_ChaCha/14                 | `ChaCha<2>`     | 752.7 us | 717.8 ps | 1.393G/s |
+| BM_DpfEval_Uint_ChaCha/17                 | `ChaCha<2>`     | 939.3 us | 895.8 ps | 1.116G/s |
+| BM_DpfGen_Uint_ChaCha/20                  | `ChaCha<2>`     | 2.007 ms | 1.914 ns | 522.5M/s |
+| BM_DpfEval_Bytes_ChaCha/20                | `ChaCha<2>`     | 1.4 ms   | 1.335 ns | 749.2M/s |
+| BM_DpfEval_Uint_AesSoft/20                | `Aes128Soft<2>` | 3.134 ms | 2.988 ns | 334.6M/s |
+| BM_DcfEval_Uint_ChaCha/20                 | `ChaCha<4>`     | 1.421 ms | 1.355 ns | 737.8M/s |
+| BM_DcfGen_Uint_ChaCha/20                  | `ChaCha<4>`     | 2.026 ms | 1.932 ns | 517.6M/s |
+| BM_VdpfEval_Uint_ChaCha_Blake3/20         | `ChaCha<2>`     | 1.248 ms | 1.19 ns  | 840.5M/s |
+| BM_VdpfGen_Uint_ChaCha_Blake3/20          | `ChaCha<2>`     | 2.204 ms | 2.102 ns | 475.7M/s |
+| BM_HalfTreeDpfEval_Uint_ChaCha/20         | `ChaCha<1>`     | 1.022 ms | 974.7 ps | 1.026G/s |
+| BM_HalfTreeDpfGen_Uint_ChaCha/20          | `ChaCha<1>`     | 2.029 ms | 1.935 ns | 516.9M/s |
+| BM_DpfEvalAllGpu_Uint_ChaCha/20           | `ChaCha<2>`     | 70.6 s   | 64.21 ps | 15.57G/s |
+| BM_HalfTreeDpfEvalAllGpu_Uint_ChaCha/20   | `ChaCha<1>`     | 91.41 s  | 83.13 ps | 12.03G/s |
+| BM_DpfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<2>`     | 1.012 ms | 965.4 ps | 1.036G/s |
+| BM_DcfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<4>`     | 1.114 ms | 1.062 ns | 941.2M/s |
+| BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20 | `ChaCha<1>`     | 993.8 us | 947.8 ps | 1.055G/s |
+| BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20 | `ChaCha<2>`     | 1.097 ms | 1.046 ns | 955.9M/s |
 
 GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 
 | Kernel               | Group | PRG             | Registers | Stack | Smem  |
 | -------------------- | ----- | --------------- | --------- | ----- | ----- |
-| DpfEval              | Uint  | `ChaCha<2>`     | 39        |       |       |
-| DpfEval              | Bytes | `ChaCha<2>`     | 40        |       |       |
-| DpfGen               | Uint  | `ChaCha<2>`     | 43        |       |       |
-| DpfGen               | Bytes | `ChaCha<2>`     | 48        |       |       |
-| DpfEval              | Uint  | `Aes128Soft<2>` | 80        | 624B  | 2304B |
-| DpfGen               | Uint  | `Aes128Soft<2>` | 80        | 624B  | 2304B |
-| HalfTreeDpfEval      | Uint  | `ChaCha<1>`     | 40        |       |       |
-| HalfTreeDpfGen       | Uint  | `ChaCha<1>`     | 46        |       |       |
-| VdpfEval             | Uint  | `ChaCha<2>`     | 40        |       |       |
-| VdpfGen              | Uint  | `ChaCha<2>`     | 79        |       |       |
-| DcfEval              | Uint  | `ChaCha<4>`     | 42        |       |       |
-| DcfGen               | Uint  | `ChaCha<4>`     | 50        |       |       |
-| DpfEvalAll           | Uint  | `ChaCha<2>`     | 55        |       | 5120B |
-| HalfTreeDpfEvalAll   | Uint  | `ChaCha<1>`     | 55        |       | 5120B |
-| DpfEvalPoint         | Uint  | `ChaCha<2>`     | 39        |       |       |
-| DcfEvalPoint         | Uint  | `ChaCha<4>`     | 46        |       |       |
-| VdpfEvalPoint        | Uint  | `ChaCha<2>`     | 40        |       |       |
-| HalfTreeDpfEvalPoint | Uint  | `ChaCha<1>`     | 38        |       |       |
+| DpfEval              | Uint  | `ChaCha<2>`     | 39 |      |       |
+| DpfEval              | Bytes | `ChaCha<2>`     | 40 |      |       |
+| DpfGen               | Uint  | `ChaCha<2>`     | 43 |      |       |
+| DpfGen               | Bytes | `ChaCha<2>`     | 48 |      |       |
+| DpfEval              | Uint  | `Aes128Soft<2>` | 80 | 624B | 1280B |
+| DpfGen               | Uint  | `Aes128Soft<2>` | 80 | 624B | 1280B |
+| HalfTreeDpfEval      | Uint  | `ChaCha<1>`     | 40 |      |       |
+| HalfTreeDpfGen       | Uint  | `ChaCha<1>`     | 46 |      |       |
+| VdpfEval             | Uint  | `ChaCha<2>`     | 40 |      |       |
+| VdpfGen              | Uint  | `ChaCha<2>`     | 79 |      |       |
+| DcfEval              | Uint  | `ChaCha<4>`     | 42 |      |       |
+| DcfGen               | Uint  | `ChaCha<4>`     | 50 |      |       |
+| DpfEvalAll           | Uint  | `ChaCha<2>`     | 55 |      | 4096B |
+| HalfTreeDpfEvalAll   | Uint  | `ChaCha<1>`     | 55 |      | 4096B |
+| DpfEvalPoint         | Uint  | `ChaCha<2>`     | 40 |      |       |
+| DcfEvalPoint         | Uint  | `ChaCha<4>`     | 46 |      |       |
+| VdpfEvalPoint        | Uint  | `ChaCha<2>`     | 40 |      |       |
+| HalfTreeDpfEvalPoint | Uint  | `ChaCha<1>`     | 38 |      |       |
 
-The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here that spills to stack and holds a T-table in shared memory. The `mul` parameter is part of the PRG type because it sets how many 16B blocks one `Gen` call produces. The `EvalAll` kernels use shared memory for per-block staging. Every kernel other than the two software-AES ones has zero spills.
+The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here with a nonzero stack frame and a T-table in shared memory. The `mul` parameter is part of the PRG type because it sets how many 16B blocks one `Gen` call produces. The `EvalAll` kernels use shared memory for per-block staging. All kernels shown have zero spill stores and zero spill loads.
 
 ### Flamegraph
 

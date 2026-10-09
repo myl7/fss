@@ -2,7 +2,7 @@ SOURCES := $(shell find src include samples -name '*.cuh' -o -name '*.cu')
 CPU_ID ?= 0
 GPU_ID ?= 0
 CUDA_ARCH ?=
-CPU_SG := /sys/devices/system/cpu/cpu$(CPU_ID)/cpufreq/scaling_governor
+JOBS ?= 4
 FLAMEGRAPH_DIR ?= ../FlameGraph
 FLAMEGRAPH_BENCH ?= BM_DpfEval_Uint_Aes/20
 GPU_PROFILE_BENCH ?= BM_DpfEval_Uint_ChaCha/20
@@ -17,20 +17,17 @@ format:
 format_check:
 	clang-format --dry-run --Werror $(SOURCES)
 
-bench_cpu: bench_build
-	cat $(CPU_SG) > /tmp/cpu_sg
-	echo performance | sudo tee $(CPU_SG)
-	taskset -c $(CPU_ID) ./build/bench_cpu | tee build/bench_cpu.log
-	cat /tmp/cpu_sg | sudo tee $(CPU_SG)
-bench_gpu: bench_build
-	CUDA_VISIBLE_DEVICES=$(GPU_ID) ./build/bench_gpu | tee build/bench_gpu.log
+bench_cpu:
+	python3 third_party/bench.py run --libraries main --platform cpu --cpu $(CPU_ID) --jobs $(JOBS) $(if $(strip $(CUDA_ARCH)),--cuda-arch $(CUDA_ARCH))
+bench_gpu:
+	python3 third_party/bench.py run --libraries main --platform gpu --cpu $(CPU_ID) --jobs $(JOBS) --gpu $(GPU_ID) $(if $(strip $(CUDA_ARCH)),--cuda-arch $(CUDA_ARCH))
 bench_build:
 	cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCH=ON $(CMAKE_CUDA_ARCH_FLAGS)
-	cmake --build build -j
+	cmake --build build --parallel $(JOBS)
 
 flamegraph:
 	cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF -DBUILD_BENCH=ON
-	cmake --build build -j
+	cmake --build build --parallel $(JOBS)
 	perf record -g -o build/perf.data ./build/bench_cpu --benchmark_filter=$(FLAMEGRAPH_BENCH)
 	perf script -i build/perf.data | "$(FLAMEGRAPH_DIR)/stackcollapse-perf.pl" | "$(FLAMEGRAPH_DIR)/flamegraph.pl" > build/flamegraph.svg
 
@@ -39,4 +36,4 @@ profile_gpu: bench_build
 
 ptx_info:
 	cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCH=ON $(CMAKE_CUDA_ARCH_FLAGS) -DCMAKE_CUDA_FLAGS="--ptxas-options=-v"
-	cmake --build build -j --clean-first 2>&1 | grep "ptxas info" | tee build/ptx_info.log || true
+	cmake --build build --parallel $(JOBS) --clean-first 2>&1 | grep "ptxas info" | tee build/ptx_info.log || true
