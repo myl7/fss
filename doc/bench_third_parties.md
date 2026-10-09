@@ -2,6 +2,12 @@
 
 All benchmarks use in_bits=20 (domain size 2^20 = 1,048,576).
 
+`N` is the domain size, `T` is the CUDA threads per block, and `K` is the
+number of keys processed per benchmark iteration or call. Keys per launch is
+an additional count. In `kernel<<<grid_dim, block_dim>>>`, `block_dim` sets the
+threads per block. The key count and domain size do not specify this launch
+parameter.
+
 ## Libraries
 
 | Library      | Source                                                                                      | Language        | Platform | Script                                           |
@@ -54,7 +60,7 @@ separate operation.
 | Tree depth           | 13 (n-7; packs 128 points per block)                                                           |
 | PRG                  | AES-128 MMO                                                                                    |
 | PRG acceleration     | AES-NI (`aes` crate 0.8, auto-detected)                                                        |
-| AES batch pipelining | Yes (~8 blocks per AES-NI fill)                                                                |
+| AES block pipelining | Yes (~8 blocks per AES-NI fill)                                                                |
 | Output group         | 1-bit XOR (packed 128-bit blocks)                                                              |
 | Threading            | Single-thread (`RAYON_NUM_THREADS=1`); rayon multi-thread available (threshold >= 512 parents) |
 | Build                | Cargo, release profile: opt-level=3, LTO, codegen-units=1                                      |
@@ -82,7 +88,7 @@ separate operation.
 | in_bits          | 20                                                                 |
 | out_bits         | 128 (XorWrapper<uint128>)                                          |
 | PRG              | AES-128 MMO (Matyas-Meyer-Oseas), 3 instances (left, right, value) |
-| PRG acceleration | AES-NI (BoringSSL) + SIMD (Highway library), batch size 64         |
+| PRG acceleration | AES-NI (BoringSSL) + SIMD (Highway library), up to 64 AES blocks per fill         |
 | Output group     | XOR<uint128>                                                       |
 | Threading        | Single-thread (no rayon/OpenMP); SIMD parallelism via Highway      |
 | Build            | Bazel, `-c opt`                                                    |
@@ -113,10 +119,10 @@ separate operation.
 | PRG              | ChaCha20                                                                                 |
 | PRG acceleration | GPU ChaCha20 (12 rounds)                                                                 |
 | Output group     | Modular integer (uint128_t)                                                              |
-| Batch size       | 512 (BATCH_SIZE)                                                                         |
+| Keys/call        | 512 (`BATCH_SIZE`)                                                                         |
 | GPU strategy     | Hybrid (dpf_hybrid.cu, Z=128)                                                            |
 | Entry size       | 16 x 32-bit values per DPF entry                                                         |
-| Threading        | CUDA (128 threads/block)                                                                 |
+| Threading        | CUDA (128 threads/block, `DPF_HYBRID_THREADS_PER_BLOCK`)                                                                 |
 | Build            | PyTorch CUDA extension (`uv pip install torch && CC=g++ uv run python setup.py install`) |
 | Toolchain        | nvcc + PyTorch (managed via uv)                                                          |
 | Bench framework  | Python `perf_counter_ns`, median and raw samples, synchronized end-to-end GPU reduction |
@@ -130,7 +136,7 @@ separate operation.
 | PRG              | AES-128                                                                         |
 | PRG acceleration | Software AES (GPU shared memory S-box lookup, `gpu_aes_shm.cu`)                 |
 | Output group     | u64 (modular integer)                                                           |
-| Batch size       | 1024 (original); 2^18 (262144) for tuned run                                    |
+| Keys/call        | 1024 (original); 2^18 (262144) for tuned run                                    |
 | GPU memory pool  | 512 MiB prefill by default, capped at half the free memory. Configure `FSS_EZPC_POOL_MIB`. |
 | Threading        | CUDA (256 threads/block)                                                        |
 | Build            | CMake, Release; an out-of-source wrapper builds the pinned benchmark dependencies |
@@ -175,7 +181,7 @@ separate operation.
 | PRG              | Salsa20 (12 rounds)                                 |
 | PRG acceleration | GPU Salsa20 kernel                                  |
 | BLOCK_NUM        | DPF: 1 (32-byte output, 8-byte nonce); DCF: 2 (64-byte output, 16-byte nonce) |
-| GPU instances    | 2^20 parallel gen/eval instances (1 thread each)    |
+| Keys/iteration   | 2^20 parallel gen/eval instances (1 thread each)    |
 | Output group     | u128_le (wrapping add) and bytes (XOR)              |
 | Threading        | CUDA (256 threads/block, 2^20 total threads)        |
 | Build            | CMake, Release                                      |
@@ -207,7 +213,7 @@ separate operation.
 | PRG (DCF)       | ChaCha<4> (ChaCha20, 12 rounds)                                        |
 | PRG (AesSoft)   | `Aes128Soft<2>` (shared-mem Te0+sbox) — see `doc/bench_aes128_soft.md` |
 | Output groups   | BytesGroup (XOR, 128-bit), UintGroup (Z\_{2^127})                      |
-| GPU instances   | 2^20 parallel gen/eval instances (1 thread each)                       |
+| Keys/iteration  | 2^20 parallel gen/eval instances (1 thread each)                       |
 | Threading       | CUDA (256 threads/block, 2^20 total threads)                           |
 | Build           | CMake, Release; requires OpenSSL                                       |
 | Toolchain       | nvcc + g++ (C++20)                                                     |
@@ -321,8 +327,12 @@ Each run creates a new `build/third_party/results/<run-id>/` containing:
   governor, device selection, timing parameters, commands, and process status.
 - Per-library logs and raw Google Benchmark JSON, Criterion estimates and
   samples, or Python timings and validation results.
-- `summary.csv` and `summary.md`: normalized times, batch size, throughput,
+- `summary.csv` and `summary.md`: normalized times, keys per iteration or call, throughput,
   measurement boundaries, and any failed processes.
+
+The raw JSON and normalized CSV/JSON retain the field name `batch` for
+compatibility. It records keys per timed iteration or call, or PRG calls for
+raw AES rows. It does not record CUDA threads per block.
 
 Rebuild a report from copied results with:
 
@@ -386,17 +396,18 @@ Groups, output widths, and PRGs differ as listed in Settings: libdpf packs
 
 ### GPU
 
-Times below are the median batch duration divided by the batch size, except
-GPU-DPF generation, which is a separately measured CPU call with batch 1.
+Times below are the median call duration divided by the number of keys in
+that call, except GPU-DPF generation, which is a separately measured CPU call
+processing one key.
 CUDA events time the native GPU kernels. GPU-DPF uses synchronized Python
 wall time including key conversion, host/device transfers, table reduction,
 and CPU result construction.
 
-| Library | Batch | DPF Gen/key | DPF Eval/key | Materialized DPF EvalAll/key | DPF full-domain reduction/key | DCF Gen/key | DCF Eval/key |
+| Library | Keys/call | DPF Gen/key | DPF Eval/key | Materialized DPF EvalAll/key | DPF full-domain reduction/key | DCF Gen/key | DCF Eval/key |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| GPU-DPF | 512 | 86.2 µs (CPU, batch 1) | — | — | 115 µs | — | — |
+| GPU-DPF | 512 | 86.2 µs (CPU, one key) | — | — | 115 µs | — | — |
 | EzPC | 1024 | 142 ns | 64.9 ns | — | 31.3 µs | 219 ns | 72.2 ns |
-| EzPC (large batch) | 262144 | 11.4 ns | 7.94 ns | — | — | 14.2 ns | 8.22 ns |
+| EzPC (262144 keys/call) | 262144 | 11.4 ns | 7.94 ns | — | — | 14.2 ns | 8.22 ns |
 | fss 0.7.0 (bytes) | 1048576 | 54.6 ns | 19.1 ns | — | — | 140 ns | 45.5 ns |
 | fss 0.7.0 (uint) | 1048576 | 54.4 ns | 19 ns | — | — | NA[^legacy-dcf] | NA[^legacy-dcf] |
 | fss (bytes) | 1048576 | 1.86 ns | 1.34 ns | — | — | 1.96 ns | 1.35 ns |

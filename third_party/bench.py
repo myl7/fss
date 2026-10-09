@@ -465,7 +465,7 @@ def result_rows(entry, data):
                 if name == "ezpc":
                     match = re.search(r"/(\d+)(?:/|$)", benchmark)
                     if not match:
-                        raise ValueError("missing EzPC batch size")
+                        raise ValueError("missing EzPC key count")
                     batch = int(match.group(1))
             total = value["real_time"] * units[value["time_unit"]]
             domain = 1 << 20
@@ -531,10 +531,12 @@ def summarize(directory):
     lines = ["# Benchmark results", "", "See `run.json` for hardware, versions, governor, and commands.",
              "Times are nanoseconds. EvalAll throughput counts domain outputs. Other rows count keys",
              "or raw PRG calls. EzPC EvalAll and GPU-DPF GPU rows count keys for table reductions.",
-             "Items/iteration comes from the operation and batch size. Native Google Benchmark throughput",
+             "Items/iteration comes from the operation and key count. The JSON/CSV field `batch`",
+             "records keys per iteration or call, or PRG calls for raw AES rows. It is retained",
+             "for compatibility and does not record CUDA threads per block. Native Google Benchmark throughput",
              "uses CPU time on CPU and manual CUDA time on GPU. The CSV/JSON records its time basis",
              "and preserves the native counter. Rows without counters use real time.", "",
-             "| Library | Platform | Benchmark | Batch | Time (ns) | ns/key | Items/s |",
+             "| Library | Platform | Benchmark | Keys/iteration | Time (ns) | ns/key | Items/s |",
              "| --- | --- | --- | ---: | ---: | ---: | ---: |"]
     for row in rows:
         lines.append(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]:.3f} | {row[5]:.3f} | {row[7]:.3f} |")

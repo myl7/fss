@@ -455,7 +455,7 @@ Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance g
 
 ### GPU Results
 
-Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. GPU 1 was idle before the run. The host process was pinned to CPU 8 with the performance governor verified. These are medians of five repetitions with a one-second minimum measurement window, built in Release. GPU clocks can vary on this shared host. Each iteration runs 1M (2^20) keys in parallel. `Time` is the whole batch measured with CUDA events. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per domain output for `EvalAll` rows (2^40 outputs per iteration).
+Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. GPU 1 was idle before the run. The host process was pinned to CPU 8 with the performance governor verified. These are medians of five repetitions with a one-second minimum measurement window, built in Release. GPU clocks can vary on this shared host. Each iteration processes 1M (2^20) keys. Gen, Eval, and point-eval kernels use 256 threads per CUDA block. EvalAll processes 1024 keys per launch with 256 threads per block. `Time` is the complete iteration measured with CUDA events. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per domain output for `EvalAll` rows (2^40 outputs per iteration).
 
 | Benchmark                                 | PRG             | Time      | Avg per item | Items/s  |
 | ----------------------------------------- | --------------- | --------- | ------------ | -------- |
