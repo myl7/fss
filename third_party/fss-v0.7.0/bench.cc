@@ -2,8 +2,8 @@
 // DPF/DCF gen/eval with in_bits=20, uint (u128_le) and bytes (XOR) groups.
 //
 // group_add/group_neg/group_zero are link-time pluggable symbols, so we build
-// separate executables per group type: bench_cpu_uint, bench_cpu_bytes.
-// Both DPF and DCF are compiled with BLOCK_NUM=4 (DCF's requirement).
+// separate executables per scheme and group type.
+// AES DPF uses BLOCK_NUM=2 and AES DCF uses BLOCK_NUM=4.
 
 #include <benchmark/benchmark.h>
 
@@ -19,6 +19,8 @@ extern "C" {
 void prg_init(const uint8_t *state, int state_len);
 }
 
+#include "check.h"
+
 static constexpr int kInBits = 20;
 static constexpr int kInBytes = (kInBits + 7) / 8;
 static constexpr int kDomainSize = 1 << kInBits;
@@ -27,6 +29,7 @@ static constexpr uint32_t kAlphaVal = 12345;
 
 namespace {
 
+#ifdef FSS070_BENCH_DPF
 // RAII wrapper for DPF key buffers.
 struct DpfKeyBuf {
   DpfKey key;
@@ -42,6 +45,7 @@ struct DpfKeyBuf {
   DpfKeyBuf &operator=(const DpfKeyBuf &) = delete;
 };
 
+#else
 // RAII wrapper for DCF key buffers.
 struct DcfKeyBuf {
   DcfKey key;
@@ -57,21 +61,65 @@ struct DcfKeyBuf {
   DcfKeyBuf &operator=(const DcfKeyBuf &) = delete;
 };
 
+#endif
+
+void CheckCorrectness() {
+  static bool checked = false;
+  if (checked) return;
+  uint8_t seeds[kLambda * 2];
+  for (int i = 0; i < kLambda * 2; ++i) seeds[i] = i * 17 + 3;
+  seeds[15] &= 0x7f;
+  seeds[31] &= 0x7f;
+  uint8_t beta[kLambda];
+  for (auto &value : beta) value = 0xff;
+  beta[15] &= 0x7f;
+  for (int test = 0; test < 10; ++test) {
+    uint8_t alpha_bytes[kInBytes];
+    uint8_t query_bytes[kInBytes];
+    for (int i = 0; i < kInBytes; ++i) {
+      alpha_bytes[i] = kCheckedAlpha[test] >> (8 * i);
+      query_bytes[i] = kCheckedQuery[test] >> (8 * i);
+    }
+    CheckedBuffer cws(kCheckedCwLen * kInBits);
+    CheckedBuffer last(kLambda);
+    CheckedBuffer gen(kCheckedGenBytes);
+    CheckedBuffer eval(kCheckedEvalBytes);
+    CheckedKey key{cws.data(), last.data()};
+    memcpy(gen.data(), seeds, sizeof(seeds));
+    CheckedGen(key, Bits{alpha_bytes, kInBits}, beta, gen.data());
+    uint8_t outputs[2][kLambda];
+    for (int party = 0; party < 2; ++party) {
+      memcpy(eval.data(), seeds + party * kLambda, kLambda);
+      CheckedEval(eval.data(), party, key, Bits{query_bytes, kInBits});
+      memcpy(outputs[party], eval.data(), kLambda);
+      eval.Check();
+    }
+    CheckShares(kCheckedAlpha[test], kCheckedQuery[test], outputs[0],
+                outputs[1], beta);
+    cws.Check();
+    last.Check();
+    gen.Check();
+  }
+  checked = true;
+  fprintf(stderr, "historical CPU reconstruction, MSB, and canary checks passed\n");
+}
+
 void InitPrg() {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<uint8_t> dis;
   // prg_init expects BLOCK_NUM * 16 bytes of key material.
   // DPF uses BLOCK_NUM=2 (32 bytes), DCF uses BLOCK_NUM=4 (64 bytes).
-  // We always pass 64 bytes; the PRG only reads the first BLOCK_NUM*16.
-  uint8_t keys[64];
+  uint8_t keys[FSS070_PRG_BLOCK_NUM * 16];
   for (auto &k : keys) k = dis(gen);
-  // Use 64 bytes (BLOCK_NUM=4) to cover both DPF and DCF.
-  prg_init(keys, 64);
+  prg_init(keys, sizeof(keys));
+  CheckCorrectness();
+  if (getenv("FSS070_CHECK_ONLY")) exit(EXIT_SUCCESS);
 }
 
 }  // namespace
 
+#ifdef FSS070_BENCH_DPF
 // --- DPF benchmarks ---
 
 static void BM_DpfGen(benchmark::State &state) {
@@ -144,6 +192,7 @@ static void BM_DpfEval(benchmark::State &state) {
 BENCHMARK(BM_DpfEval)->Name(BENCH_NAME_PREFIX "/DPF/Eval");
 
 
+#else
 // --- DCF benchmarks ---
 
 static void BM_DcfGen(benchmark::State &state) {
@@ -218,3 +267,5 @@ static void BM_DcfEval(benchmark::State &state) {
 }
 BENCHMARK(BM_DcfEval)->Name(BENCH_NAME_PREFIX "/DCF/Eval");
 
+
+#endif

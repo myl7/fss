@@ -1,11 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
 project(bench_fss_v070 LANGUAGES CXX C)
 
-include(CheckLanguage)
-check_language(CUDA)
-if(CMAKE_CUDA_COMPILER)
+option(FSS070_BUILD_GPU "build historical fss GPU benchmarks" ON)
+if(FSS070_BUILD_GPU)
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(NOT CMAKE_CUDA_COMPILER)
+        message(FATAL_ERROR "CUDA compiler not found; use -DFSS070_BUILD_GPU=OFF for CPU benchmarks")
+    endif()
     enable_language(CUDA)
-    find_package(CUDAToolkit)
+    find_package(CUDAToolkit REQUIRED)
 endif()
 
 if(NOT TARGET benchmark::benchmark_main)
@@ -18,114 +22,107 @@ if(NOT TARGET benchmark::benchmark_main)
     FetchContent_MakeAvailable(benchmark)
 endif()
 
-set(FSS_SRC ${CMAKE_CURRENT_SOURCE_DIR}/fss-v0.7.0)
+set(FSS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/fss-v0.7.0")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+option(FSS070_SANITIZE_CPU "instrument historical CPU benchmarks with AddressSanitizer" OFF)
 
-# --- CPU object libraries (compiled as C, BLOCK_NUM=4 for DCF compat) ---
-
-add_library(fss070_prg OBJECT ${FSS_SRC}/src/prg/aes_mmo_ni.c)
-target_include_directories(fss070_prg PUBLIC ${FSS_SRC}/include ${FSS_SRC}/src/prg)
-target_compile_definitions(fss070_prg PRIVATE BLOCK_NUM=4)
-target_compile_options(fss070_prg PRIVATE -msse2 -maes)
-
-add_library(fss070_dpf OBJECT ${FSS_SRC}/src/dpf.c)
-target_include_directories(fss070_dpf PUBLIC ${FSS_SRC}/include)
-target_compile_definitions(fss070_dpf PRIVATE BLOCK_NUM=4)
-
-add_library(fss070_dcf OBJECT ${FSS_SRC}/src/dcf.c)
-target_include_directories(fss070_dcf PUBLIC ${FSS_SRC}/include)
-target_compile_definitions(fss070_dcf PRIVATE BLOCK_NUM=4)
-
-add_library(fss070_group_uint OBJECT ${FSS_SRC}/src/group/u128_le.c)
-target_include_directories(fss070_group_uint PUBLIC ${FSS_SRC}/include)
-
-add_library(fss070_group_bytes OBJECT ${FSS_SRC}/src/group/bytes.c)
-target_include_directories(fss070_group_bytes PUBLIC ${FSS_SRC}/include)
-
-# --- CPU bench targets (one per group type, both DPF and DCF) ---
-
-function(add_fss070_cpu_bench name group_type)
-    add_executable(${name} bench.cc)
-    target_include_directories(${name} PRIVATE ${FSS_SRC}/include)
-    target_compile_definitions(${name} PRIVATE BLOCK_NUM=4)
-    target_compile_definitions(${name} PRIVATE
-        "BENCH_NAME_PREFIX=\"fss-v0.7.0/CPU/${group_type}\"")
-    target_link_libraries(${name} PRIVATE
-        $<TARGET_OBJECTS:fss070_dpf>
-        $<TARGET_OBJECTS:fss070_dcf>
-        $<TARGET_OBJECTS:fss070_prg>)
-    if(group_type STREQUAL "uint")
-        target_link_libraries(${name} PRIVATE $<TARGET_OBJECTS:fss070_group_uint>)
+foreach(group uint bytes)
+    if(group STREQUAL "uint")
+        set(group_source u128_le)
     else()
-        target_link_libraries(${name} PRIVATE $<TARGET_OBJECTS:fss070_group_bytes>)
+        set(group_source bytes)
     endif()
-    target_link_libraries(${name} PRIVATE benchmark::benchmark_main)
-endfunction()
+    add_library(fss070_group_${group} OBJECT ${FSS_SRC}/src/group/${group_source}.c)
+    target_include_directories(fss070_group_${group} PUBLIC ${FSS_SRC}/include)
+endforeach()
 
-add_fss070_cpu_bench(bench_cpu_uint uint)
-add_fss070_cpu_bench(bench_cpu_bytes bytes)
+foreach(scheme dpf dcf)
+    if(scheme STREQUAL "dpf")
+        set(cpu_blocks 2)
+        set(gpu_blocks 1)
+        set(scheme_define FSS070_BENCH_DPF)
+    else()
+        set(cpu_blocks 4)
+        set(gpu_blocks 2)
+        set(scheme_define FSS070_BENCH_DCF)
+    endif()
+    add_library(fss070_${scheme} OBJECT ${FSS_SRC}/src/${scheme}.c)
+    target_include_directories(fss070_${scheme} PUBLIC ${FSS_SRC}/include)
+    add_library(fss070_${scheme}_aes OBJECT ${FSS_SRC}/src/prg/aes_mmo_ni.c)
+    target_include_directories(fss070_${scheme}_aes PUBLIC ${FSS_SRC}/include ${FSS_SRC}/src/prg)
+    target_compile_definitions(fss070_${scheme}_aes PRIVATE BLOCK_NUM=${cpu_blocks})
+    target_compile_options(fss070_${scheme}_aes PRIVATE -msse2 -maes)
 
-# --- GPU bench targets (Salsa20 PRG, BLOCK_NUM=2 for DCF compat) ---
-# To compile .c sources as CUDA without directory-scoped LANGUAGE leaking to CPU
-# targets, we copy them to .cu in the build directory.
-
-if(CMAKE_CUDA_COMPILER AND CUDAToolkit_FOUND)
-    set(GPU_C_SOURCES
-        dpf:${FSS_SRC}/src/dpf.c
-        dcf:${FSS_SRC}/src/dcf.c
-        u128_le:${FSS_SRC}/src/group/u128_le.c
-        bytes:${FSS_SRC}/src/group/bytes.c)
-
-    foreach(entry ${GPU_C_SOURCES})
-        string(REPLACE ":" ";" parts ${entry})
-        list(GET parts 0 name)
-        list(GET parts 1 src)
-        configure_file(${src} ${CMAKE_CURRENT_BINARY_DIR}/gpu_${name}.cu COPYONLY)
-    endforeach()
-    # Copy utils.h so ../utils.h resolves correctly from the build dir
-    configure_file(${FSS_SRC}/src/utils.h ${CMAKE_CURRENT_SOURCE_DIR}/utils.h COPYONLY)
-
-    add_library(fss070_salsa20 OBJECT ${FSS_SRC}/src/prg/salsa20.cu)
-    target_include_directories(fss070_salsa20 PUBLIC ${FSS_SRC}/include)
-    target_compile_definitions(fss070_salsa20 PRIVATE BLOCK_NUM=2)
-    set_target_properties(fss070_salsa20 PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-    add_library(fss070_dpf_cuda OBJECT ${CMAKE_CURRENT_BINARY_DIR}/gpu_dpf.cu)
-    target_include_directories(fss070_dpf_cuda PUBLIC ${FSS_SRC}/include ${FSS_SRC}/src)
-    target_compile_definitions(fss070_dpf_cuda PRIVATE BLOCK_NUM=2)
-    set_target_properties(fss070_dpf_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-    add_library(fss070_dcf_cuda OBJECT ${CMAKE_CURRENT_BINARY_DIR}/gpu_dcf.cu)
-    target_include_directories(fss070_dcf_cuda PUBLIC ${FSS_SRC}/include ${FSS_SRC}/src)
-    target_compile_definitions(fss070_dcf_cuda PRIVATE BLOCK_NUM=2)
-    set_target_properties(fss070_dcf_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-    add_library(fss070_group_uint_cuda OBJECT ${CMAKE_CURRENT_BINARY_DIR}/gpu_u128_le.cu)
-    target_include_directories(fss070_group_uint_cuda PUBLIC ${FSS_SRC}/include ${FSS_SRC}/src)
-    set_target_properties(fss070_group_uint_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-    add_library(fss070_group_bytes_cuda OBJECT ${CMAKE_CURRENT_BINARY_DIR}/gpu_bytes.cu)
-    target_include_directories(fss070_group_bytes_cuda PUBLIC ${FSS_SRC}/include ${FSS_SRC}/src)
-    set_target_properties(fss070_group_bytes_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-    function(add_fss070_gpu_bench name group_type)
-        add_executable(${name} bench_gpu.cu)
+    foreach(group uint bytes)
+        set(name bench_cpu_${group}_${scheme})
+        add_executable(${name} bench.cc)
+        target_compile_features(${name} PRIVATE cxx_std_17)
         target_include_directories(${name} PRIVATE ${FSS_SRC}/include)
-        target_compile_definitions(${name} PRIVATE BLOCK_NUM=2)
-        target_compile_definitions(${name} PRIVATE
-            "BENCH_NAME_PREFIX=\"fss-v0.7.0/GPU/${group_type}\"")
-        set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-        target_link_libraries(${name} PRIVATE
-            $<TARGET_OBJECTS:fss070_dpf_cuda>
-            $<TARGET_OBJECTS:fss070_dcf_cuda>
-            $<TARGET_OBJECTS:fss070_salsa20>)
-        if(group_type STREQUAL "uint")
-            target_link_libraries(${name} PRIVATE $<TARGET_OBJECTS:fss070_group_uint_cuda>)
-        else()
-            target_link_libraries(${name} PRIVATE $<TARGET_OBJECTS:fss070_group_bytes_cuda>)
+        target_compile_definitions(${name} PRIVATE ${scheme_define}
+            FSS070_PRG_BLOCK_NUM=${cpu_blocks}
+            "BENCH_NAME_PREFIX=\"fss-v0.7.0/CPU/${group}\"")
+        if(group STREQUAL "uint")
+            target_compile_definitions(${name} PRIVATE FSS070_UINT_GROUP)
         endif()
-        target_link_libraries(${name} PRIVATE benchmark::benchmark_main CUDA::cudart)
-    endfunction()
+        target_link_libraries(${name} PRIVATE benchmark::benchmark_main
+            $<TARGET_OBJECTS:fss070_${scheme}>
+            $<TARGET_OBJECTS:fss070_${scheme}_aes>
+            $<TARGET_OBJECTS:fss070_group_${group}>)
+        target_link_options(${name} PRIVATE "LINKER:-Map,${CMAKE_CURRENT_BINARY_DIR}/${name}.link.map")
+        if(FSS070_SANITIZE_CPU)
+            target_compile_options(${name} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+            target_link_options(${name} PRIVATE -fsanitize=address)
+        endif()
+    endforeach()
 
-    add_fss070_gpu_bench(bench_gpu_uint uint)
-    add_fss070_gpu_bench(bench_gpu_bytes bytes)
+    if(FSS070_BUILD_GPU)
+        configure_file(${FSS_SRC}/src/${scheme}.c ${CMAKE_CURRENT_BINARY_DIR}/gpu/${scheme}.cu COPYONLY)
+        configure_file(${FSS_SRC}/src/utils.h ${CMAKE_CURRENT_BINARY_DIR}/gpu/utils.h COPYONLY)
+        add_library(fss070_${scheme}_cuda OBJECT ${CMAKE_CURRENT_BINARY_DIR}/gpu/${scheme}.cu)
+        target_include_directories(fss070_${scheme}_cuda PUBLIC ${FSS_SRC}/include)
+        set_target_properties(fss070_${scheme}_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+        add_library(fss070_${scheme}_salsa OBJECT ${FSS_SRC}/src/prg/salsa20.cu)
+        target_include_directories(fss070_${scheme}_salsa PUBLIC ${FSS_SRC}/include)
+        target_compile_definitions(fss070_${scheme}_salsa PRIVATE BLOCK_NUM=${gpu_blocks})
+        set_target_properties(fss070_${scheme}_salsa PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+        foreach(group uint bytes)
+            if(group STREQUAL "uint")
+                set(group_source u128_le)
+            else()
+                set(group_source bytes)
+            endif()
+            if(NOT TARGET fss070_group_${group}_cuda)
+                configure_file(${FSS_SRC}/src/group/${group_source}.c
+                    ${CMAKE_CURRENT_BINARY_DIR}/gpu/group/${group_source}.cu COPYONLY)
+                add_library(fss070_group_${group}_cuda OBJECT
+                    ${CMAKE_CURRENT_BINARY_DIR}/gpu/group/${group_source}.cu)
+                target_include_directories(fss070_group_${group}_cuda PUBLIC ${FSS_SRC}/include)
+                set_target_properties(fss070_group_${group}_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+            endif()
+            set(name bench_gpu_${group}_${scheme})
+            add_executable(${name} bench_gpu.cu)
+            target_compile_features(${name} PRIVATE cxx_std_17 cuda_std_17)
+            target_include_directories(${name} PRIVATE ${FSS_SRC}/include)
+            target_compile_definitions(${name} PRIVATE ${scheme_define}
+                FSS070_PRG_BLOCK_NUM=${gpu_blocks}
+                "BENCH_NAME_PREFIX=\"fss-v0.7.0/GPU/${group}\"")
+            if(group STREQUAL "uint")
+                target_compile_definitions(${name} PRIVATE FSS070_UINT_GROUP)
+            endif()
+            set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+            target_link_libraries(${name} PRIVATE benchmark::benchmark_main CUDA::cudart
+                $<TARGET_OBJECTS:fss070_${scheme}_cuda>
+                $<TARGET_OBJECTS:fss070_${scheme}_salsa>
+                $<TARGET_OBJECTS:fss070_group_${group}_cuda>)
+            target_link_options(${name} PRIVATE "LINKER:-Map,${CMAKE_CURRENT_BINARY_DIR}/${name}.link.map")
+        endforeach()
+    endif()
+endforeach()
+
+if(FSS070_SANITIZE_CPU)
+    foreach(target fss070_dpf fss070_dcf fss070_dpf_aes fss070_dcf_aes
+                   fss070_group_uint fss070_group_bytes)
+        target_compile_options(${target} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+    endforeach()
 endif()

@@ -27,34 +27,54 @@
 #include "helper_cuda.h"
 #include "gpu_stats.h"
 #include <cassert>
+#include <cerrno>
+#include <cstdlib>
+#include <limits>
 
 // #include <sys/types.h>
 
 cudaMemPool_t mempool;
 
-extern "C" void initGPUMemPool()
-{
-    int isMemPoolSupported = 0;
-    int device = 0;
-    // is it okay to use device=0?
-    checkCudaErrors(cudaDeviceGetAttribute(&isMemPoolSupported,
-                                           cudaDevAttrMemoryPoolsSupported, device));
-    // printf("%d\n", isMemPoolSupported);
-    assert(isMemPoolSupported);
-    /* implicitly assumes that the device is 0 */
+extern "C" void initGPUMemPool() {
+  int device = 0;
+  checkCudaErrors(cudaGetDevice(&device));
+  int supported = 0;
+  checkCudaErrors(cudaDeviceGetAttribute(
+      &supported, cudaDevAttrMemoryPoolsSupported, device));
+  if (!supported) {
+    fprintf(stderr, "memory pools are not supported on CUDA device %d\n", device);
+    exit(EXIT_FAILURE);
+  }
+  checkCudaErrors(cudaDeviceGetDefaultMemPool(&mempool, device));
+  uint64_t threshold = UINT64_MAX;
+  checkCudaErrors(cudaMemPoolSetAttribute(
+      mempool, cudaMemPoolAttrReleaseThreshold, &threshold));
 
-    checkCudaErrors(cudaDeviceGetDefaultMemPool(&mempool, device));
-    uint64_t threshold = UINT64_MAX;
-    checkCudaErrors(cudaMemPoolSetAttribute(mempool, cudaMemPoolAttrReleaseThreshold, &threshold));
-    uint64_t *d_dummy_ptr;
-    // Clamp to 20 GB so it fits when other jobs occupy the GPU.
-    uint64_t bytes = 20 * (1ULL << 30);
-    checkCudaErrors(cudaMallocAsync(&d_dummy_ptr, bytes, 0));
-    checkCudaErrors(cudaFreeAsync(d_dummy_ptr, 0));
-    uint64_t reserved_read, threshold_read;
-    checkCudaErrors(cudaMemPoolGetAttribute(mempool, cudaMemPoolAttrReservedMemCurrent, &reserved_read));
-    checkCudaErrors(cudaMemPoolGetAttribute(mempool, cudaMemPoolAttrReleaseThreshold, &threshold_read));
-    printf("reserved memory: %lu %lu\n", reserved_read, threshold_read);
+  // Prefill is setup work. Leave at least half the currently free device memory
+  // available for benchmark keys and scratch buffers.
+  size_t pool_mib = 512;
+  if (const char *value = getenv("FSS_EZPC_POOL_MIB")) {
+    char *end = nullptr;
+    errno = 0;
+    unsigned long long requested = strtoull(value, &end, 10);
+    if (errno || value == end || *end != '\0' || *value == '-' ||
+        requested > std::numeric_limits<size_t>::max() / (1ULL << 20)) {
+      fprintf(stderr, "invalid FSS_EZPC_POOL_MIB: %s\n", value);
+      exit(EXIT_FAILURE);
+    }
+    pool_mib = requested;
+  }
+  size_t free_bytes = 0;
+  size_t total_bytes = 0;
+  checkCudaErrors(cudaMemGetInfo(&free_bytes, &total_bytes));
+  size_t bytes = pool_mib * (1ULL << 20);
+  if (bytes > free_bytes / 2) bytes = free_bytes / 2;
+  if (bytes > 0) {
+    void *dummy = nullptr;
+    checkCudaErrors(cudaMallocAsync(&dummy, bytes, 0));
+    checkCudaErrors(cudaFreeAsync(dummy, 0));
+    checkCudaErrors(cudaStreamSynchronize(0));
+  }
 }
 
 extern "C" uint8_t *gpuMalloc(size_t size_in_bytes)
@@ -69,7 +89,11 @@ extern "C" uint8_t *cpuMalloc(size_t size_in_bytes, bool pin)
 {
     uint8_t *h_a;
     int err = posix_memalign((void **)&h_a, 32, size_in_bytes);
-    assert(err == 0 && "posix memalign");
+    if (err != 0) {
+        fprintf(stderr, "could not allocate host buffer of %zu bytes: error %d\n",
+                size_in_bytes, err);
+        exit(EXIT_FAILURE);
+    }
     if (pin)
         checkCudaErrors(cudaHostRegister(h_a, size_in_bytes, cudaHostRegisterDefault));
     return h_a;
