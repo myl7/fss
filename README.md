@@ -31,6 +31,10 @@ FSS consists of 2 methods: `Gen` for generating function shares as keys and `Eva
 FSS's workflow is shown below:
 
 ```mermaid
+---
+config:
+  htmlLabels: false
+---
 flowchart LR
     A("f0, f1 = FSS.Gen(f)")
     B0("y0 = FSS.Eval(f0, x)")
