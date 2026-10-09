@@ -124,7 +124,11 @@ Introduction</h1>
 <p><b>Multi-party computation (MPC)</b> is a subfield of cryptography that aims to enable a group of parties (e.g., servers) to jointly compute a function over their inputs while keeping the inputs private.</p>
 <p><b>Secret sharing</b> is a method that distributes a secret among a group of parties, such that no individual party holds any information about the secret. For example, a number \(x\) can be secret-shared into \(x_0, x_1\) via \(x = x_0 + x_1\).</p>
 <p><b>FSS</b> is a scheme to secret-share a function into a group of function shares. Each function share, called as a <b>key</b>, can be individually evaluated on a party. The outputs of the keys are the shares of the original function output. FSS consists of 2 methods: <code>Gen</code> for generating function shares as keys and <code>Eval</code> for evaluating a key to get an output share. FSS's workflow is shown below:</p>
-<div class="fragment"><div class="line">flowchart LR</div>
+<div class="fragment"><div class="line">---</div>
+<div class="line">config:</div>
+<div class="line">  htmlLabels: false</div>
+<div class="line">---</div>
+<div class="line">flowchart LR</div>
 <div class="line">    A(&quot;f0, f1 = FSS.Gen(f)&quot;)</div>
 <div class="line">    B0(&quot;y0 = FSS.Eval(f0, x)&quot;)</div>
 <div class="line">    B1(&quot;y1 = FSS.Eval(f1, x)&quot;)</div>
