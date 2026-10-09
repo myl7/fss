@@ -1,6 +1,8 @@
 # Third-party DPF/DCF Library Benchmarks
 
-All benchmarks use in_bits=20 (domain size 2^20 = 1,048,576).
+The historical tables below use in_bits=20 (domain size 2^20 = 1,048,576).
+See [benchmark methodology and comparison curves](bench_figures.md) for the
+current adapters, additive uint128 DCF measurements, and domain sweeps.
 
 `N` is the domain size, `T` is the CUDA threads per block, and `K` is the
 number of keys processed per benchmark iteration or call. Keys per launch is
@@ -209,8 +211,8 @@ separate operation.
 | --------------- | ---------------------------------------------------------------------- |
 | in_bits         | 20                                                                     |
 | out_bits        | 128 (BytesGroup XOR, UintGroup Z\_{2^127})                             |
-| PRG (DPF)       | ChaCha<2> (ChaCha20, 12 rounds)                                        |
-| PRG (DCF)       | ChaCha<4> (ChaCha20, 12 rounds)                                        |
+| PRG (DPF)       | ChaCha<2> (ChaCha20, 20 rounds)                                        |
+| PRG (DCF)       | ChaCha<4> (ChaCha20, 20 rounds)                                        |
 | PRG (AesSoft)   | `Aes128Soft<2>` (shared-mem Te0+sbox) — see `doc/bench_aes128_soft.md` |
 | Output groups   | BytesGroup (XOR, 128-bit), UintGroup (Z\_{2^127})                      |
 | Keys/iteration  | 2^20 parallel gen/eval instances (1 thread each)                       |
@@ -385,10 +387,10 @@ Groups, output widths, and PRGs differ as listed in Settings: libdpf packs
 | --- | --- | --- | --- | --- | --- | --- |
 | libdpf | 1.12 µs | 437 ns | 92.2 µs | — | — | — |
 | libfss | 59.1 µs | 5.54 µs | 5.8 s | — | — | — |
-| google_dpf | 3.15 µs | 857 ns | 37.5 ms | 8.28 µs | 4 µs | — |
+| google_dpf | 3.15 µs | 857 ns | 37.5 ms | invalid[^google-dcf] | invalid[^google-dcf] | — |
 | GPU-DPF (software AES) | 454 µs | 19.7 µs | 20.6 s | — | — | — |
 | fss-rs 0.6.0 (bytes) | 573 ns | 431 ns | 45.9 ms | 684 ns | 507 ns | 57 ms |
-| fss-rs 0.6.0 (uint) | 580 ns | 430 ns | 45.2 ms | 698 ns | 499 ns | 51.3 ms |
+| fss-rs 0.6.0 (uint) | 580 ns | 430 ns | 45.2 ms | invalid[^rust-dcf] | invalid[^rust-dcf] | invalid[^rust-dcf] |
 | fss 0.7.0 (bytes) | 1 µs | 1.09 µs | — | 1.43 µs | 926 ns | — |
 | fss 0.7.0 (uint) | 990 ns | 1.1 µs | — | 1.91 µs | 996 ns | — |
 | fss (bytes) | 1.68 µs | 501 ns | 38.2 ms | 1.71 µs | 928 ns | — |
@@ -417,7 +419,9 @@ GPU-DPF's ChaCha12 Python generation takes 86.2 µs per key on
 host CPU 16. Its reduction reads a nonzero 2^20 × 1 int32 table, padded to 16
 columns by upstream. EzPC's `EvalAll` returns a packed reduction bit per key.
 Their reduction throughput counts keys, while materialized `EvalAll`
-throughput can count domain outputs. These columns describe different work.
+throughput can count domain outputs. The [new full-output adapters](bench_figures.md)
+materialize each domain output and report that work separately from these
+historical native reductions.
 GPU-DPF has 128-bit internal arithmetic and int32 table results. EzPC has
 1-bit outputs. fss 0.7.0 and fss retain their respective groups and PRGs from
 Settings.
@@ -438,3 +442,12 @@ algorithms are unchanged.
     a `__uint128_t` access at byte offset 16 that can be unaligned. These cases
     have no timings or fallback results. The run records exactly two failed
     processes. The valid DPF and bytes DCF cases use separate processes.
+
+[^google-dcf]: The historical Google DCF XOR adapter was an unsupported
+    configuration. Its old Gen (8.28 µs) and Eval (4 µs) timings are invalid
+    and superseded by the [additive uint128 curves](bench_figures.md).
+
+[^rust-dcf]: The fss-rs 0.6.0 additive uint DCF has a native reconstruction
+    failure. Its old Gen (698 ns), Eval (499 ns), and FullEval (51.3 ms)
+    timings are invalid. The [current comparison](bench_figures.md) records
+    that failure without fallback measurements.

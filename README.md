@@ -353,6 +353,8 @@ Workaround: wrap the type in a plain aggregate struct that satisfies `Groupable`
 
 ## Benchmarks
 
+See [benchmark methodology and comparison curves](doc/bench_figures.md) for the current full-output adapters and domain sweeps.
+
 Microbenchmarks built on [Google Benchmark](https://github.com/google/benchmark), covering:
 
 - Schemes: DPF, DCF, VDPF, Half-Tree DPF, and Grotto DCF.
@@ -360,7 +362,7 @@ Microbenchmarks built on [Google Benchmark](https://github.com/google/benchmark)
 - PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics, software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on device.
 - Output groups: `Uint` and `Bytes`.
 - VDPF hashes: SHA-256 and BLAKE3.
-- Input domain sizes: 2^20 everywhere, plus 2^14 and 2^17 for DPF `Eval`.
+- Input domain sizes in the microbenchmark tables: 2^20, plus 2^14 and 2^17 for DPF `Eval`.
 
 Configure with `BUILD_BENCH=ON` and build the targets:
 
@@ -414,6 +416,38 @@ targets support the sections below: `make ptx_info` rebuilds with
 and `make profile_gpu` records an Nsight Systems profile of one benchmark
 selected by `GPU_PROFILE_BENCH`.
 
+### Comparison Curves
+
+The domain sweep measures `N = 2^8, 2^10, ..., 2^20`. Time axes are
+logarithmic. Legends show each library's native output width, storage, group,
+and PRG. Hardware, sampling, timing boundaries, and reproduction commands are
+in the [curve methodology](doc/bench_figures.md).
+
+![CPU DPF and DCF key generation and point evaluation](doc/figures/cpu-point.svg)
+
+CPU point operations use one key and one thread. Times are in µs/key.
+
+![GPU DPF and DCF key generation and point evaluation](doc/figures/gpu-point.svg)
+
+GPU point times are amortized over `K = 262,144` keys, in ns/key.
+
+![CPU full-domain DPF and DCF evaluation](doc/figures/cpu-eval-all.svg)
+
+CPU full-domain evaluation produces all N outputs for one key, in ms/key.
+The slow materialized point-loop cases use five domain sizes.
+
+![GPU full-domain DPF evaluation](doc/figures/gpu-eval-all.svg)
+
+GPU full-domain evaluation uses one key and reports ms/key. The native
+GPU-DPF and packed EzPC adapters retain their native output configurations.
+
+![GPU time by actual threads per block](doc/figures/gpu-block-size.svg)
+
+The block sweep fixes `N = 2^20` and varies actual threads per block T.
+Software AES point evaluation uses `K = 262,144`. Full DPF and HalfTreeDPF
+evaluation use `K = 1`. Software AES at T=1024 exceeds the kernel's resource
+limit and has no timing point.
+
 ### CPU Results
 
 Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance governor verified before timing. The host is shared. These are medians of five repetitions with a one-second minimum measurement window per repetition, built in Release with GCC 13.3 and CUDA 13.2. Per-key rows run one operation per iteration, so `Avg per item` equals `Time` and `Items/s` is its reciprocal. `EvalAll` rows process 2^20 domain outputs per iteration. Their native throughput counter uses CPU time, while `Time` is wall time, and `Avg per item` is the reciprocal of that counter.
@@ -455,7 +489,7 @@ Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance g
 
 ### GPU Results
 
-Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. GPU 1 was idle before the run. The host process was pinned to CPU 8 with the performance governor verified. These are medians of five repetitions with a one-second minimum measurement window, built in Release. GPU clocks can vary on this shared host. Each iteration processes 1M (2^20) keys. Gen, Eval, and point-eval kernels use 256 threads per CUDA block. EvalAll processes 1024 keys per launch with 256 threads per block. `Time` is the complete iteration measured with CUDA events. `Avg per item` is the reciprocal of `Items/s`: per key for `Eval`/`Gen`/point-eval rows, per domain output for `EvalAll` rows (2^40 outputs per iteration).
+Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. GPU 1 was idle before the run. The host process was pinned to CPU 8 with the performance governor verified. These are medians of five repetitions with a one-second minimum measurement window, built in Release. GPU clocks can vary on this shared host. Each listed iteration processes 1M (2^20) keys. Gen, Eval, and point-eval kernels use 256 threads per CUDA block. `Time` is the complete iteration measured with CUDA events. `Avg per item` is the reciprocal of `Items/s`, measured per key.
 
 | Benchmark                                 | PRG             | Time      | Avg per item | Items/s  |
 | ----------------------------------------- | --------------- | --------- | ------------ | -------- |
@@ -471,12 +505,12 @@ Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CU
 | BM_VdpfGen_Uint_ChaCha_Blake3/20          | `ChaCha<2>`     | 2.204 ms | 2.102 ns | 475.7M/s |
 | BM_HalfTreeDpfEval_Uint_ChaCha/20         | `ChaCha<1>`     | 1.022 ms | 974.7 ps | 1.026G/s |
 | BM_HalfTreeDpfGen_Uint_ChaCha/20          | `ChaCha<1>`     | 2.029 ms | 1.935 ns | 516.9M/s |
-| BM_DpfEvalAllGpu_Uint_ChaCha/20           | `ChaCha<2>`     | 70.6 s   | 64.21 ps | 15.57G/s |
-| BM_HalfTreeDpfEvalAllGpu_Uint_ChaCha/20   | `ChaCha<1>`     | 91.41 s  | 83.13 ps | 12.03G/s |
 | BM_DpfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<2>`     | 1.012 ms | 965.4 ps | 1.036G/s |
 | BM_DcfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<4>`     | 1.114 ms | 1.062 ns | 941.2M/s |
 | BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20 | `ChaCha<1>`     | 993.8 us | 947.8 ps | 1.055G/s |
 | BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20 | `ChaCha<2>`     | 1.097 ms | 1.046 ns | 955.9M/s |
+
+Corrected full-domain GPU `EvalAll` measurements with `K=1` are in [the comparison curves](doc/bench_figures.md).
 
 GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 
@@ -494,14 +528,12 @@ GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 | VdpfGen              | Uint  | `ChaCha<2>`     | 79 |      |       |
 | DcfEval              | Uint  | `ChaCha<4>`     | 42 |      |       |
 | DcfGen               | Uint  | `ChaCha<4>`     | 50 |      |       |
-| DpfEvalAll           | Uint  | `ChaCha<2>`     | 55 |      | 4096B |
-| HalfTreeDpfEvalAll   | Uint  | `ChaCha<1>`     | 55 |      | 4096B |
 | DpfEvalPoint         | Uint  | `ChaCha<2>`     | 40 |      |       |
 | DcfEvalPoint         | Uint  | `ChaCha<4>`     | 46 |      |       |
 | VdpfEvalPoint        | Uint  | `ChaCha<2>`     | 40 |      |       |
 | HalfTreeDpfEvalPoint | Uint  | `ChaCha<1>`     | 38 |      |       |
 
-The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here with a nonzero stack frame and a T-table in shared memory. The `mul` parameter is part of the PRG type because it sets how many 16B blocks one `Gen` call produces. The `EvalAll` kernels use shared memory for per-block staging. All kernels shown have zero spill stores and zero spill loads.
+The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here with a nonzero stack frame and a T-table in shared memory. The `mul` parameter is part of the PRG type because it sets how many 16B blocks one `Gen` call produces. All kernels shown have zero spill stores and zero spill loads.
 
 ### Flamegraph
 
