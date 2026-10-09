@@ -91,3 +91,9 @@ target_compile_options(bench_dpf_ezpc PRIVATE
 
 target_link_options(bench_dpf_ezpc PRIVATE
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/bench.link.map")
+
+set(FSS_BENCH_DOMAIN_BITS 20 CACHE STRING "benchmark domain bit count")
+set(FSS_BENCH_NUM_KEYS 262144 CACHE STRING "point evaluation and generation batch size")
+target_compile_definitions(bench_dpf_ezpc PRIVATE
+    FSS_BENCH_DOMAIN_BITS=${FSS_BENCH_DOMAIN_BITS}
+    FSS_BENCH_NUM_KEYS=${FSS_BENCH_NUM_KEYS})

@@ -22,14 +22,23 @@ extern void prg_init(const uint8_t *state, int state_len);
 
 #include "check.h"
 
-static constexpr int kInBits = 20;
+#ifndef FSS_BENCH_DOMAIN_BITS
+#define FSS_BENCH_DOMAIN_BITS 20
+#endif
+#ifndef FSS_BENCH_NUM_KEYS
+#define FSS_BENCH_NUM_KEYS (1 << 20)
+#endif
+#ifndef FSS_BENCH_THREADS_PER_BLOCK
+#define FSS_BENCH_THREADS_PER_BLOCK 256
+#endif
+static constexpr int kInBits = FSS_BENCH_DOMAIN_BITS;
 static constexpr int kInBytes = (kInBits + 7) / 8;
 static constexpr int kAlphaVal = 12345;
 
-static constexpr int kThreadsPerBlock = 256;
+static constexpr int kThreadsPerBlock = FSS_BENCH_THREADS_PER_BLOCK;
 
 // Number of independent gen/eval instances for Gen and Eval benchmarks.
-static constexpr int kN = 1 << 20;
+static constexpr int kN = FSS_BENCH_NUM_KEYS;
 static constexpr int kNumBlocks = (kN + kThreadsPerBlock - 1) / kThreadsPerBlock;
 
 #define CUDA_CHECK(x)                                                      \

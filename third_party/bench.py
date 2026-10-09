@@ -236,7 +236,8 @@ def governor(cpu, mode):
 
 def benchmark_source_hashes(args):
     """Identify local benchmark inputs independently of Git dirty-state summaries."""
-    paths = {ROOT / "CMakeLists.txt", ROOT / "third_party" / "CMakeLists.txt"}
+    paths = {ROOT / "CMakeLists.txt", ROOT / "third_party" / "CMakeLists.txt",
+             ROOT / "third_party" / "bench.py", ROOT / "third_party" / "figure_bench.py"}
     for name in dict.fromkeys(n for n, _ in selection(args)):
         directory = source(name)
         for pattern in ("*.cu", "*.cc", "*.cpp", "*.cuh", "*.h", "*.py", "CMakeLists.txt",
@@ -461,19 +462,21 @@ def result_rows(entry, data):
                 continue
             batch = 1
             if device == "gpu":
-                batch = 1 << 20
-                if name == "ezpc":
+                batch = entry.get("num_keys", 1 << 20)
+                if "EvalAllFull" in benchmark or (name == "fss" and "EvalAll" in benchmark):
+                    batch = 1
+                if name == "ezpc" and "EvalAllFull" not in benchmark:
                     match = re.search(r"/(\d+)(?:/|$)", benchmark)
                     if not match:
                         raise ValueError("missing EzPC key count")
                     batch = int(match.group(1))
             total = value["real_time"] * units[value["time_unit"]]
-            domain = 1 << 20
+            domain = 1 << entry.get("domain_bits", 20)
             if name == "main" and "EvalAll" in benchmark:
                 match = re.search(r"/(\d+)(?:/|$)", benchmark)
                 if match:
                     domain = 1 << int(match.group(1))
-            work = batch * domain if "EvalAll" in benchmark and name != "ezpc" else batch
+            work = batch * domain if "EvalAll" in benchmark and (name != "ezpc" or "EvalAllFull" in benchmark) else batch
             row(benchmark, total, batch, work, "median" if aggregate else "single")
             rows[-1][14] = (value["cpu_time"] * units[value["time_unit"]]
                             if "cpu_time" in value else "")
@@ -491,7 +494,7 @@ def result_rows(entry, data):
             estimates = json.loads(path.read_text())
             benchmark = definition["full_id"]
             row(benchmark, estimates["median"]["point_estimate"],
-                work=(1 << 20) if "EvalAll" in benchmark else 1)
+                work=(1 << entry.get("domain_bits", 20)) if "EvalAll" in benchmark or "FullEval" in benchmark else 1)
     elif framework == "python":
         for value in json.loads((data / "python.json").read_text())["benchmarks"]:
             row(value["name"], value["time_ns"], value["batch"])

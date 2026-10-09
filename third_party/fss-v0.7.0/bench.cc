@@ -21,11 +21,17 @@ void prg_init(const uint8_t *state, int state_len);
 
 #include "check.h"
 
-static constexpr int kInBits = 20;
+#ifndef FSS_BENCH_DOMAIN_BITS
+#define FSS_BENCH_DOMAIN_BITS 20
+#endif
+static_assert(FSS_BENCH_DOMAIN_BITS >= 8 && FSS_BENCH_DOMAIN_BITS <= 20,
+              "domain bits must be between 8 and 20");
+
+static constexpr int kInBits = FSS_BENCH_DOMAIN_BITS;
 static constexpr int kInBytes = (kInBits + 7) / 8;
 static constexpr int kDomainSize = 1 << kInBits;
 // Alpha packed as little-endian bytes (value 12345)
-static constexpr uint32_t kAlphaVal = 12345;
+static constexpr uint32_t kAlphaVal = 12345 & (kDomainSize - 1);
 
 namespace {
 
@@ -77,8 +83,8 @@ void CheckCorrectness() {
     uint8_t alpha_bytes[kInBytes];
     uint8_t query_bytes[kInBytes];
     for (int i = 0; i < kInBytes; ++i) {
-      alpha_bytes[i] = kCheckedAlpha[test] >> (8 * i);
-      query_bytes[i] = kCheckedQuery[test] >> (8 * i);
+      alpha_bytes[i] = (kCheckedAlpha[test] & (kDomainSize - 1)) >> (8 * i);
+      query_bytes[i] = (kCheckedQuery[test] & (kDomainSize - 1)) >> (8 * i);
     }
     CheckedBuffer cws(kCheckedCwLen * kInBits);
     CheckedBuffer last(kLambda);
@@ -94,7 +100,8 @@ void CheckCorrectness() {
       memcpy(outputs[party], eval.data(), kLambda);
       eval.Check();
     }
-    CheckShares(kCheckedAlpha[test], kCheckedQuery[test], outputs[0],
+    CheckShares(kCheckedAlpha[test] & (kDomainSize - 1),
+                kCheckedQuery[test] & (kDomainSize - 1), outputs[0],
                 outputs[1], beta);
     cws.Check();
     last.Check();

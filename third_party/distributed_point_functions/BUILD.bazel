@@ -1,10 +1,55 @@
 cc_binary(
     name = "bench_dpf_google",
     srcs = ["bench.cc"],
+    local_defines = select({
+        ":domain_bits_8": ["FSS_BENCH_DOMAIN_BITS=8"],
+        ":domain_bits_10": ["FSS_BENCH_DOMAIN_BITS=10"],
+        ":domain_bits_12": ["FSS_BENCH_DOMAIN_BITS=12"],
+        ":domain_bits_14": ["FSS_BENCH_DOMAIN_BITS=14"],
+        ":domain_bits_16": ["FSS_BENCH_DOMAIN_BITS=16"],
+        ":domain_bits_18": ["FSS_BENCH_DOMAIN_BITS=18"],
+        ":domain_bits_20": ["FSS_BENCH_DOMAIN_BITS=20"],
+        "//conditions:default": ["FSS_BENCH_DOMAIN_BITS=20"],
+    }),
     deps = [
         "@com_github_google_benchmark//:benchmark_main",
         "@com_google_absl//absl/numeric:int128",
         "@distributed_point_functions//dcf:distributed_comparison_function",
         "@distributed_point_functions//dpf:distributed_point_function",
     ],
+)
+
+config_setting(
+    name = "domain_bits_8",
+    define_values = {"fss_bench_domain_bits": "8"},
+)
+
+config_setting(
+    name = "domain_bits_10",
+    define_values = {"fss_bench_domain_bits": "10"},
+)
+
+config_setting(
+    name = "domain_bits_12",
+    define_values = {"fss_bench_domain_bits": "12"},
+)
+
+config_setting(
+    name = "domain_bits_14",
+    define_values = {"fss_bench_domain_bits": "14"},
+)
+
+config_setting(
+    name = "domain_bits_16",
+    define_values = {"fss_bench_domain_bits": "16"},
+)
+
+config_setting(
+    name = "domain_bits_18",
+    define_values = {"fss_bench_domain_bits": "18"},
+)
+
+config_setting(
+    name = "domain_bits_20",
+    define_values = {"fss_bench_domain_bits": "20"},
 )

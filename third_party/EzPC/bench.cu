@@ -20,7 +20,7 @@
 // SOFTWARE.
 
 // Benchmark: EzPC/GPU-MPC DPF and DCF (GPU-only)
-// DPF gen/eval/evalAll and DCF gen/eval with bin=20, AES-128 PRG.
+// DPF gen/eval/evalAll and DCF gen/eval with configurable bin, AES-128 PRG.
 
 #include <benchmark/benchmark.h>
 
@@ -33,6 +33,7 @@
 #include "fss/gpu_dpf.h"
 #include "fss/dcf/gpu_dcf.h"
 #include <sytorch/tensor.h>
+#include <vector>
 
 // OneGB is declared extern in gpu_file_utils.h but defined in sigma_comms.cpp
 // (network layer). We define it here to avoid pulling in networking code.
@@ -40,11 +41,16 @@ size_t OneGB = 1024ULL * 1024 * 1024;
 
 using T = u64;
 
-static constexpr int kBin = 20;
+#ifndef FSS_BENCH_DOMAIN_BITS
+#define FSS_BENCH_DOMAIN_BITS 20
+#endif
+static_assert(FSS_BENCH_DOMAIN_BITS >= 8 && FSS_BENCH_DOMAIN_BITS <= 20,
+              "domain bits must be between 8 and 20");
+static constexpr int kBin = FSS_BENCH_DOMAIN_BITS;
 static constexpr int kBout = 1;
 // batch size is now a benchmark parameter (state.range(0))
 
-// Upper bound for the pinned EzPC serialization at bin=20, bout=1 and B=1.
+// Upper bound for the pinned tree-key serialization at bout=1 and B=1.
 // Both tree keys have two AES leaf blocks per input. Reserve both control-bit
 // layouts so the same buffer also supports evalAll=true.
 static size_t KeyBufferBytes(int n) {
@@ -180,8 +186,8 @@ static void ValidateCorrectness() {
   T alpha[n];
   T query[n];
   for (int i = 0; i < n; ++i) {
-    alpha[i] = 512 + i * 7919;
-    query[i] = alpha[i] + (i % 3 - 1);
+    alpha[i] = (512 + i * 7919) & ((T(1) << kBin) - 1);
+    query[i] = (alpha[i] + (i % 3 - 1)) & ((T(1) << kBin) - 1);
   }
   auto *d_alpha = (T *)gpuMalloc(sizeof(alpha));
   auto *d_query = (T *)gpuMalloc(sizeof(query));
@@ -208,19 +214,21 @@ static void ValidateCorrectness() {
     delete[] dpf_key.dpfTreeKey;
     cpuFree(buffer);
 
-    getKeyBuf(&buffer, &cursor, KeyBufferBytes(n));
-    initGPURandomness();
-    dcf::gpuKeyGenDCF(&cursor, party, kBin, kBout, n, d_alpha, T(1), g_aes);
-    destroyGPURandomness();
-    cursor = buffer;
-    auto dcf_key = dcf::readGPUDCFKey(&cursor);
-    d_output = dcf::gpuDcf<T, 1, dcf::idPrologue, dcf::idEpilogue>(
-        dcf_key, party, d_query, g_aes, &stats);
-    checkCudaErrors(cudaMemcpy(&dcf_result[party], d_output, sizeof(u32),
-                               cudaMemcpyDeviceToHost));
-    gpuFree(d_output);
-    delete[] dcf_key.dcfTreeKey;
-    cpuFree(buffer);
+    if (kBin > 8) {
+      getKeyBuf(&buffer, &cursor, KeyBufferBytes(n));
+      initGPURandomness();
+      dcf::gpuKeyGenDCF(&cursor, party, kBin, kBout, n, d_alpha, T(1), g_aes);
+      destroyGPURandomness();
+      cursor = buffer;
+      auto dcf_key = dcf::readGPUDCFKey(&cursor);
+      d_output = dcf::gpuDcf<T, 1, dcf::idPrologue, dcf::idEpilogue>(
+          dcf_key, party, d_query, g_aes, &stats);
+      checkCudaErrors(cudaMemcpy(&dcf_result[party], d_output, sizeof(u32),
+                                 cudaMemcpyDeviceToHost));
+      gpuFree(d_output);
+      delete[] dcf_key.dcfTreeKey;
+      cpuFree(buffer);
+    }
 
     getKeyBuf(&buffer, &cursor, KeyBufferBytes(n));
     initGPURandomness();
@@ -244,14 +252,15 @@ static void ValidateCorrectness() {
   const u32 all = all_result[0] ^ all_result[1];
   for (int i = 0; i < n; ++i) {
     if (((dpf >> i) & 1) != (query[i] == alpha[i]) ||
-        ((dcf >> i) & 1) != (query[i] < alpha[i]) ||
+        (kBin > 8 && ((dcf >> i) & 1) != (query[i] < alpha[i])) ||
         ((all >> i) & 1) != 1) {
       fprintf(stderr, "EzPC correctness check failed at input %d\n", i);
       exit(EXIT_FAILURE);
     }
   }
-  fprintf(stderr, "EzPC correctness checks passed: DPF hit/miss, DCF boundaries, "
-                  "both parties, EvalAll packed summaries\n");
+  fprintf(stderr, "EzPC correctness checks passed: DPF hit/miss, %s"
+                  "both parties, EvalAll packed summaries\n",
+          kBin > 8 ? "DCF boundaries, " : "");
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +386,130 @@ static void BM_DpfEvalAll(benchmark::State &state) {
   destroyGPURandomness();
 }
 
+// Materialize one complete packed output using the upstream DFS expansion.
+// Each AESBlock stores 128 consecutive domain bits in least-significant-bit order.
+__global__ void dpfEvalAllFull(int party, int bin, AESBlock *scw,
+                             AESBlock *stack, AESBlock *l0, AESBlock *l1,
+                             u32 *tR, AESBlock *output, AESGlobalContext gaes) {
+  AESSharedContext saes;
+  loadSbox(&gaes, &saes);
+  if (threadIdx.x != 0) return;
+  stack[0] = scw[0];
+  u32 path_stack = 0;
+  int depth = 1;
+  int leaf = 0;
+  while (depth > 0) {
+    const auto seed = stack[depth - 1];
+    const auto bit = uint8_t(path_stack & 1);
+    if (depth == bin - LOG_AES_BLOCK_LEN) {
+      output[leaf++] = expandDPFTreeNode(
+          bin, party, seed, 0, l0[0], l1[0], 0, bit, depth - 1, &saes);
+      while (path_stack & 1) {
+        path_stack >>= 1;
+        --depth;
+      }
+      path_stack ^= 1;
+    } else {
+      stack[depth] = expandDPFTreeNode(
+          bin, party, seed, scw[depth], 0, 0,
+          (tR[0] >> (depth - 1)) & 1, bit, depth - 1, &saes);
+      ++depth;
+      path_stack <<= 1;
+    }
+  }
+}
+
+static void BM_DpfEvalAllFull(benchmark::State &state) {
+  EnsureInit();
+  constexpr int domain = 1 << kBin;
+  constexpr int alpha = 12345 & (domain - 1);
+  constexpr int blocks = domain / AES_BLOCK_LEN_IN_BITS;
+  T input = alpha;
+  auto *d_input = (T *)gpuMalloc(sizeof(input));
+  checkCudaErrors(cudaMemcpy(d_input, &input, sizeof(input), cudaMemcpyHostToDevice));
+  auto *d_output = (AESBlock *)gpuMalloc(blocks * sizeof(AESBlock));
+  AESBlock *d_scw = nullptr, *d_stack = nullptr, *d_l0 = nullptr, *d_l1 = nullptr;
+  u32 *d_tR = nullptr;
+  std::vector<AESBlock> result[2];
+  // evalAll keys use one u32 per key, so K=1 needs no packed-key padding.
+  for (int party = 1; party >= 0; --party) {
+    u8 *buffer, *cursor;
+    getKeyBuf(&buffer, &cursor, KeyBufferBytes(1));
+    initGPURandomness();
+    gpuKeyGenDPF(&cursor, party, kBin, 1, d_input, g_aes, true);
+    destroyGPURandomness();
+    cursor = buffer;
+    auto key = readGPUDPFKey(&cursor);
+    if (key.B != 1 || key.dpfTreeKey[0].N != 1) {
+      fprintf(stderr, "single-key full-domain key layout check failed\n");
+      exit(EXIT_FAILURE);
+    }
+    const auto tree = key.dpfTreeKey[0];
+    Stats stats{};
+    d_scw = (AESBlock *)moveToGPU((u8 *)tree.scw, tree.memSzScw, &stats);
+    d_stack = (AESBlock *)gpuMalloc(tree.memSzScw);
+    d_l0 = (AESBlock *)moveToGPU((u8 *)tree.l0, tree.memSzL, &stats);
+    d_l1 = (AESBlock *)moveToGPU((u8 *)tree.l1, tree.memSzL, &stats);
+    d_tR = (u32 *)moveToGPU((u8 *)tree.tR, tree.memSzT, &stats);
+    delete[] key.dpfTreeKey;
+    cpuFree(buffer);
+    dpfEvalAllFull<<<1, 256>>>(party, kBin, d_scw, d_stack, d_l0, d_l1,
+                              d_tR, d_output, *g_aes);
+    checkCudaErrors(cudaGetLastError());
+    checkCudaErrors(cudaDeviceSynchronize());
+    result[party].resize(blocks);
+    checkCudaErrors(cudaMemcpy(result[party].data(), d_output,
+                               blocks * sizeof(AESBlock), cudaMemcpyDeviceToHost));
+    if (party == 1) {
+      gpuFree(d_scw);
+      gpuFree(d_stack);
+      gpuFree(d_l0);
+      gpuFree(d_l1);
+      gpuFree(d_tR);
+    }
+  }
+  for (int x = 0; x < domain; ++x) {
+    const auto value = (result[0][x / AES_BLOCK_LEN_IN_BITS] ^
+                        result[1][x / AES_BLOCK_LEN_IN_BITS]) >>
+                       (x % AES_BLOCK_LEN_IN_BITS);
+    if (unsigned(value & 1) != unsigned(x == alpha)) {
+      fprintf(stderr, "full-domain correctness check failed at input %d\n", x);
+      exit(EXIT_FAILURE);
+    }
+  }
+  cudaEvent_t start, stop;
+  checkCudaErrors(cudaEventCreate(&start));
+  checkCudaErrors(cudaEventCreate(&stop));
+  for (auto _ : state) {
+    checkCudaErrors(cudaEventRecord(start));
+    dpfEvalAllFull<<<1, 256>>>(0, kBin, d_scw, d_stack, d_l0, d_l1,
+                              d_tR, d_output, *g_aes);
+    checkCudaErrors(cudaGetLastError());
+    checkCudaErrors(cudaEventRecord(stop));
+    checkCudaErrors(cudaEventSynchronize(stop));
+    float ms;
+    checkCudaErrors(cudaEventElapsedTime(&ms, start, stop));
+    state.SetIterationTime(ms / 1000.0);
+  }
+  state.SetItemsProcessed(state.iterations() * domain);
+  state.counters["domain_bits"] = kBin;
+  state.counters["domain_outputs"] = domain;
+  state.counters["keys"] = 1;
+  state.counters["threads_per_block"] = 256;
+  state.counters["output_bits"] = 1;
+  state.SetLabel("packed full-domain adapter; AES128; kernel only; one active DFS thread");
+  checkCudaErrors(cudaEventDestroy(start));
+  checkCudaErrors(cudaEventDestroy(stop));
+  gpuFree(d_scw);
+  gpuFree(d_stack);
+  gpuFree(d_l0);
+  gpuFree(d_l1);
+  gpuFree(d_tR);
+  gpuFree(d_output);
+  gpuFree(d_input);
+}
+BENCHMARK(BM_DpfEvalAllFull)->Name("EzPC/GPU/DPF/EvalAllFull")->UseManualTime();
+
 // ---------------------------------------------------------------------------
 // DCF Benchmarks
 // ---------------------------------------------------------------------------
@@ -384,6 +517,10 @@ static void BM_DpfEvalAll(benchmark::State &state) {
 // --- DCF Gen ---
 
 static void BM_DcfGen(benchmark::State &state) {
+  if (kBin <= 8) {
+    state.SkipWithError("native strict DCF requires domain bits greater than 8");
+    return;
+  }
   const int N = state.range(0);
   EnsureInit();
   initGPURandomness();
@@ -419,6 +556,10 @@ static void BM_DcfGen(benchmark::State &state) {
 // --- DCF Eval ---
 
 static void BM_DcfEval(benchmark::State &state) {
+  if (kBin <= 8) {
+    state.SkipWithError("native strict DCF requires domain bits greater than 8");
+    return;
+  }
   const int N = state.range(0);
   EnsureInit();
   initGPURandomness();
@@ -461,7 +602,10 @@ static void BM_DcfEval(benchmark::State &state) {
 }
 
 static constexpr int kOriginalBatch = 1024;
-static constexpr int kTunedBatch = 1 << 18;
+#ifndef FSS_BENCH_NUM_KEYS
+#define FSS_BENCH_NUM_KEYS (1 << 18)
+#endif
+static constexpr int kTunedBatch = FSS_BENCH_NUM_KEYS;
 
 BENCHMARK(BM_DpfGen)->Name("EzPC/GPU/DPF/Gen")
     ->Arg(kOriginalBatch)->Arg(kTunedBatch)->UseManualTime();

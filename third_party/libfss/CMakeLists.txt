@@ -36,3 +36,7 @@ target_link_libraries(libfss_static PUBLIC OpenSSL::Crypto ${GMPXX_LIBRARY} ${GM
 add_executable(bench_dpf_libfss bench.cc)
 set_target_properties(bench_dpf_libfss PROPERTIES OUTPUT_NAME bench)
 target_link_libraries(bench_dpf_libfss PRIVATE benchmark::benchmark_main libfss_static)
+
+set(FSS_BENCH_DOMAIN_BITS 20 CACHE STRING "benchmark domain bit count")
+target_compile_definitions(bench_dpf_libfss PRIVATE
+    FSS_BENCH_DOMAIN_BITS=${FSS_BENCH_DOMAIN_BITS})

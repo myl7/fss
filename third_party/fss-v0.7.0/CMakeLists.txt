@@ -22,6 +22,10 @@ if(NOT TARGET benchmark::benchmark_main)
     FetchContent_MakeAvailable(benchmark)
 endif()
 
+set(FSS_BENCH_DOMAIN_BITS 20 CACHE STRING "input domain bit count")
+set(FSS_BENCH_NUM_KEYS 1048576 CACHE STRING "independent point/gen keys")
+set(FSS_BENCH_THREADS_PER_BLOCK 256 CACHE STRING "GPU threads per block")
+
 set(FSS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/fss-v0.7.0")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(FSS070_SANITIZE_CPU "instrument historical CPU benchmarks with AddressSanitizer" OFF)
@@ -60,6 +64,9 @@ foreach(scheme dpf dcf)
         target_include_directories(${name} PRIVATE ${FSS_SRC}/include)
         target_compile_definitions(${name} PRIVATE ${scheme_define}
             FSS070_PRG_BLOCK_NUM=${cpu_blocks}
+            FSS_BENCH_DOMAIN_BITS=${FSS_BENCH_DOMAIN_BITS}
+            FSS_BENCH_NUM_KEYS=${FSS_BENCH_NUM_KEYS}
+            FSS_BENCH_THREADS_PER_BLOCK=${FSS_BENCH_THREADS_PER_BLOCK}
             "BENCH_NAME_PREFIX=\"fss-v0.7.0/CPU/${group}\"")
         if(group STREQUAL "uint")
             target_compile_definitions(${name} PRIVATE FSS070_UINT_GROUP)
@@ -106,6 +113,9 @@ foreach(scheme dpf dcf)
             target_include_directories(${name} PRIVATE ${FSS_SRC}/include)
             target_compile_definitions(${name} PRIVATE ${scheme_define}
                 FSS070_PRG_BLOCK_NUM=${gpu_blocks}
+                FSS_BENCH_DOMAIN_BITS=${FSS_BENCH_DOMAIN_BITS}
+                FSS_BENCH_NUM_KEYS=${FSS_BENCH_NUM_KEYS}
+                FSS_BENCH_THREADS_PER_BLOCK=${FSS_BENCH_THREADS_PER_BLOCK}
                 "BENCH_NAME_PREFIX=\"fss-v0.7.0/GPU/${group}\"")
             if(group STREQUAL "uint")
                 target_compile_definitions(${name} PRIVATE FSS070_UINT_GROUP)

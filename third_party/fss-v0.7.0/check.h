@@ -36,10 +36,17 @@ HOST_DEVICE static void CheckedEval(uint8_t *scratch, uint8_t party,
 #endif
 }
 
-constexpr uint32_t kCheckedAlpha[] = {0, 0, 1, 1, 1, 12345, 12345, 12345,
-                                    (1 << 20) - 1, (1 << 20) - 1};
-constexpr uint32_t kCheckedQuery[] = {0, 1, 0, 1, 2, 12344, 12345, 12346,
-                                    (1 << 20) - 2, (1 << 20) - 1};
+#ifndef FSS_BENCH_DOMAIN_BITS
+#define FSS_BENCH_DOMAIN_BITS 20
+#endif
+constexpr uint32_t kCheckedDomainMask = (1u << FSS_BENCH_DOMAIN_BITS) - 1;
+constexpr uint32_t kCheckedMiddle = 12345 & kCheckedDomainMask;
+constexpr uint32_t kCheckedAlpha[] = {0, 0, 1, 1, 1, kCheckedMiddle,
+                                    kCheckedMiddle, kCheckedMiddle,
+                                    kCheckedDomainMask, kCheckedDomainMask};
+constexpr uint32_t kCheckedQuery[] = {0, 1, 0, 1, 2, kCheckedMiddle - 1,
+                                    kCheckedMiddle, kCheckedMiddle + 1,
+                                    kCheckedDomainMask - 1, kCheckedDomainMask};
 
 inline void CheckShares(uint32_t alpha, uint32_t query, const uint8_t *first,
                         const uint8_t *second, const uint8_t *beta) {
