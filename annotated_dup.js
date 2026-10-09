@@ -23,6 +23,7 @@ var annotated_dup =
         [ "Aes128Feistel", "classfss_1_1prp_1_1Aes128Feistel.html", "classfss_1_1prp_1_1Aes128Feistel" ]
       ] ],
       [ "Dcf", "classfss_1_1Dcf.html", "classfss_1_1Dcf" ],
+      [ "Dmpf", "classfss_1_1Dmpf.html", "classfss_1_1Dmpf" ],
       [ "Dpf", "classfss_1_1Dpf.html", "classfss_1_1Dpf" ],
       [ "GrottoDcf", "classfss_1_1GrottoDcf.html", "classfss_1_1GrottoDcf" ],
       [ "HalfTreeDpf", "classfss_1_1HalfTreeDpf.html", "classfss_1_1HalfTreeDpf" ],

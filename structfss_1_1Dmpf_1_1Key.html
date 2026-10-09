@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw Struct Reference</title>
+<title>myl7/fss: fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;::Key Struct Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -74,7 +74,7 @@ $(function() {
 </div>
 <script type="text/javascript">
 /* @license magnet:?xt=urn:btih:d3d9a9a6595521f9666a5e94cc830dab83b65699&amp;dn=expat.txt MIT */
-$(document).ready(function(){initNavTree('structfss_1_1Dpf_1_1Cw.html',''); initResizable(); });
+$(document).ready(function(){initNavTree('structfss_1_1Dmpf_1_1Key.html',''); initResizable(); });
 /* @license-end */
 </script>
 <div id="doc-content">
@@ -101,28 +101,39 @@ $(document).ready(function(){initNavTree('structfss_1_1Dpf_1_1Cw.html',''); init
 
 <div class="header">
   <div class="summary">
-<a href="structfss_1_1Dpf_1_1Cw-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw Struct Reference</div></div>
+<a href="#pub-attribs">Public Attributes</a> &#124;
+<a href="structfss_1_1Dmpf_1_1Key-members.html">List of all members</a>  </div>
+  <div class="headertitle"><div class="title">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;::Key Struct Reference</div></div>
 </div><!--header-->
 <div class="contents">
 
-<p>Correction word.  
- <a href="structfss_1_1Dpf_1_1Cw.html#details">More...</a></p>
+<p>DMPF key for one party.  
+ <a href="structfss_1_1Dmpf_1_1Key.html#details">More...</a></p>
+<table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
+Public Attributes</h2></td></tr>
+<tr class="memitem:aa7887d41f1e46dcca59a6b43e8484f05" id="r_aa7887d41f1e46dcca59a6b43e8484f05"><td class="memItemLeft" align="right" valign="top"><a id="aa7887d41f1e46dcca59a6b43e8484f05" name="aa7887d41f1e46dcca59a6b43e8484f05"></a>
+int&#160;</td><td class="memItemRight" valign="bottom"><b>m_rt</b></td></tr>
+<tr class="memdesc:aa7887d41f1e46dcca59a6b43e8484f05"><td class="mdescLeft">&#160;</td><td class="mdescRight">Runtime bucket count used during Gen. <br /></td></tr>
+<tr class="separator:aa7887d41f1e46dcca59a6b43e8484f05"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa2b446566bfdfaecbc6a39600e394eb3" id="r_aa2b446566bfdfaecbc6a39600e394eb3"><td class="memItemLeft" align="right" valign="top"><a id="aa2b446566bfdfaecbc6a39600e394eb3" name="aa2b446566bfdfaecbc6a39600e394eb3"></a>
+int&#160;</td><td class="memItemRight" valign="bottom"><b>b_size_rt</b></td></tr>
+<tr class="memdesc:aa2b446566bfdfaecbc6a39600e394eb3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Runtime bucket size used during Gen. <br /></td></tr>
+<tr class="separator:aa2b446566bfdfaecbc6a39600e394eb3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
-struct fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw</div><p>Correction word. </p>
-<h2><a class="anchor" id="autotoc_md27"></a>
-Layout</h2>
-<p>According to the paper, there are s, tl, tr to be stored. tl is stored at the clamped bit of s. </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In = uint, int kappa = 3, int ch_lambda = 80&gt;<br />
+struct fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;::Key</div><p>DMPF key for one party. </p>
+<p>Stores the PRP seed, runtime parameters from Gen, and per-bucket inner DPF keys. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="dpf_8cuh_source.html">dpf.cuh</a></li>
+<li>include/fss/<a class="el" href="dmpf_8cuh.html">dmpf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->
 <div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->
   <ul>
-    <li class="navelem"><b>fss</b></li><li class="navelem"><a class="el" href="classfss_1_1Dpf.html">Dpf</a></li><li class="navelem"><a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a></li>
+    <li class="navelem"><b>fss</b></li><li class="navelem"><a class="el" href="classfss_1_1Dmpf.html">Dmpf</a></li><li class="navelem"><a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a></li>
     <li class="footer">Generated by <a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8 </li>
   </ul>
 </div>

@@ -109,6 +109,7 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 <li>2-party distributed comparison function (DCF), based on <a href="https://doi.org/10.1007/978-3-030-77886-6_30">Boyle et al. (EUROCRYPT '21)</a> or <a href="https://doi.org/10.1145/3576915.3623147">Grotto (CCS '23)</a>.</li>
 <li>2-party verifiable distributed point function (VDPF), based on <a href="https://doi.org/10.1007/978-3-031-06944-4_6">Castro &amp; Polychroniadou (EUROCRYPT '22)</a>.</li>
 <li>2-party verifiable distributed multi-point function (VDMPF), based on <a href="https://doi.org/10.1007/978-3-031-06944-4_6">Castro &amp; Polychroniadou (EUROCRYPT '22)</a>.</li>
+<li>2-pary distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.</li>
 </ul>
 <p><a href="https://myl7.github.io/fss/">Documentation</a></p>
 <p>Features:</p>
@@ -309,7 +310,9 @@ Samples</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><code>vdpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">VDPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>Eval</code> plus the <code>Prove</code>/<code>Verify</code> check    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><code>vdmpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">VDMPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>BatchEval</code> over cuckoo-hash packed points   </td></tr>
+<td class="markdownTableBodyNone"><code>vdmpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">VDMPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>BatchEval</code> over cuckoo-hash packed points    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><code>dmpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">DMPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>BatchEval</code> over cuckoo-hash packed points, without verification   </td></tr>
 </table>
 <p>The CPU samples link OpenSSL, and <code>EvalAll</code> uses OpenMP when it is found.</p>
 <h2><a class="anchor" id="autotoc_md8"></a>
