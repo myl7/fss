@@ -142,7 +142,7 @@ Functions</h2></td></tr>
 <li>Phase 2: each thread DFS-expands its own depth-z subtree and converts the last level into leaf outputs.</li>
 </ul>
 <p>This keeps the total PRG work at ~2^(n+1) calls (the tree size) instead of the ~n * N of point evals, and avoids the redundant per-thread path re-expansion of a naive breadth-to-z / DFS split.</p>
-<h2><a class="anchor" id="autotoc_md28"></a>
+<h2><a class="anchor" id="autotoc_md29"></a>
 References</h2>
 <ol type="1">
 <li>Facebookresearch GPU-DPF: <a href="https://github.com/facebookresearch/GPU-DPF">https://github.com/facebookresearch/GPU-DPF</a></li>
@@ -368,7 +368,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
 <p>GPU full-domain evaluation of a HalfTree DPF key: ys[x] = Eval(b, s0, cws, ocw, x) for all x. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">z</td><td>Frontier depth. 2^z threads each expand a subtree of 2^(in_bits - z) leaves. Defaults to min(in_bits, 16). </td></tr>
+    <tr><td class="paramname">z</td><td>Frontier depth. 2^z threads each expand a subtree of 2^(in_bits - z) leaves. Defaults to min(in_bits - 1, 16). </td></tr>
     <tr><td class="paramname">b1</td><td>Block-root depth. Each block walks b1 levels to its own subtree root, then expands levels b1..z breadth-parallel. Must satisfy 2^(z - b1) == bs. Defaults to 8. </td></tr>
   </table>
   </dd>

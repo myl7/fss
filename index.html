@@ -365,6 +365,7 @@ nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel
 <p>Workaround: wrap the type in a plain aggregate struct that satisfies <code>Groupable</code> but has no <code>__uint128_t</code> non-type template parameter in its name. The struct must have no user-declared constructors to remain an aggregate. See <code>third_party/fss/bench.cu</code> for an example.</p>
 <h1><a class="anchor" id="autotoc_md11"></a>
 Benchmarks</h1>
+<p>See benchmark methodology and comparison curves for the current full-output adapters and domain sweeps.</p>
 <p>Microbenchmarks built on <a href="https://github.com/google/benchmark">Google Benchmark</a>, covering:</p>
 <ul>
 <li>Schemes: DPF, DCF, VDPF, Half-Tree DPF, and Grotto DCF.</li>
@@ -372,7 +373,7 @@ Benchmarks</h1>
 <li>PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics, software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on device.</li>
 <li>Output groups: <code>Uint</code> and <code>Bytes</code>.</li>
 <li>VDPF hashes: SHA-256 and BLAKE3.</li>
-<li>Input domain sizes: 2^20 everywhere, plus 2^14 and 2^17 for DPF <code>Eval</code>.</li>
+<li>Input domain sizes in the microbenchmark tables: 2^20, plus 2^14 and 2^17 for DPF <code>Eval</code>.</li>
 </ul>
 <p>Configure with <code>BUILD_BENCH=ON</code> and build the targets:</p>
 <div class="fragment"><div class="line">cmake -B build -DBUILD_BENCH=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo</div>
@@ -383,124 +384,140 @@ Benchmarks</h1>
 </div><!-- fragment --><p>Run a subset using <code>--benchmark_filter</code> (regex):</p>
 <div class="fragment"><div class="line">./build/bench_cpu --benchmark_filter=BM_DcfGen</div>
 <div class="line">./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20</div>
-</div><!-- fragment --><p>The <code>Makefile</code> has shortcuts for the same runs. <code>make bench_cpu</code> pins the run to one core and switches that core to the performance governor, which needs <code>sudo</code>. <code>make bench_gpu</code> pins the run to one GPU. Both write their log under <code>build/</code>.</p>
+</div><!-- fragment --><p>The <code>Makefile</code> runs these sources through <code>third_party/bench.py</code>. Both CPU and GPU runs pin the host process to <code>CPU_ID</code>, verify the performance governor, and restore its previous value on exit. A governor change may require noninteractive <code>sudo</code>. <code>make bench_gpu</code> also selects <code>GPU_ID</code>. Builds, raw measurements, environment metadata, and reports are saved under <code>build/third_party/</code>.</p>
 <div class="fragment"><div class="line">CPU_ID=0 make bench_cpu</div>
 <div class="line">GPU_ID=1 CUDA_ARCH=120 make bench_gpu</div>
-</div><!-- fragment --><p><code>CUDA_ARCH</code> is only needed when CMake cannot infer the architecture. Two more targets support the sections below: <code>make ptx_info</code> rebuilds with <code>--ptxas-options=-v</code> and collects the register usage into <code>build/ptx_info.log</code>, and <code>make profile_gpu</code> records an Nsight Systems profile of one benchmark selected by <code>GPU_PROFILE_BENCH</code>.</p>
+</div><!-- fragment --><p>The <a href="doc/bench_third_parties.md#running">third-party comparison guide</a> covers fixed dependency versions, selecting libraries, and generating reports. The <code>main</code> selection runs the benchmarks in this README:</p>
+<div class="fragment"><div class="line">python3 third_party/bench.py run --libraries main --platform cpu --cpu 24 \</div>
+<div class="line">  --repetitions 5 --min-time 1 --run-id readme-cpu</div>
+<div class="line">python3 third_party/bench.py run --libraries main --platform gpu --cpu 8 --gpu 1 \</div>
+<div class="line">  --cuda-arch 120 --repetitions 5 --min-time 1 --run-id readme-gpu</div>
+</div><!-- fragment --><p>Choose idle, allowed CPU and GPU indices on your host. Direct binary invocations above leave affinity and the governor to the caller.</p>
+<p><code>CUDA_ARCH</code> is only needed when CMake cannot infer the architecture. Two more targets support the sections below: <code>make ptx_info</code> rebuilds with <code>--ptxas-options=-v</code> and collects the register usage into <code>build/ptx_info.log</code>, and <code>make profile_gpu</code> records an Nsight Systems profile of one benchmark selected by <code>GPU_PROFILE_BENCH</code>.</p>
 <h2><a class="anchor" id="autotoc_md12"></a>
-CPU Results</h2>
-<p>Run on Intel Xeon Platinum 8352V @ 2.10GHz (Ice Lake), single core, pinned with <code>taskset -c 0</code>. The host is shared and runs the schedutil cpufreq governor, so the effective single-core clock varies with host load (observed 0.8-3.5 GHz). Per-key rows run one op per iteration, so <code>Avg per item</code> equals <code>Time</code> and <code>Items/s</code> counts keys. <code>EvalAll</code> rows process 2^20 outputs per iteration, so their <code>Items/s</code> counts outputs and <code>Avg per item</code> is its reciprocal.</p>
-<table class="markdownTable">
-<tr class="markdownTableHead">
-<th class="markdownTableHeadNone">Benchmark   </th><th class="markdownTableHeadNone">PRG   </th><th class="markdownTableHeadNone">Time   </th><th class="markdownTableHeadNone">Avg per item   </th><th class="markdownTableHeadNone">Items/s    </th></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1078 ns   </td><td class="markdownTableBodyNone">1078 ns   </td><td class="markdownTableBodyNone">927.6k/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_Aes/14   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">751 ns   </td><td class="markdownTableBodyNone">751 ns   </td><td class="markdownTableBodyNone">1.332M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_Aes/17   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">931 ns   </td><td class="markdownTableBodyNone">931 ns   </td><td class="markdownTableBodyNone">1.074M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfGen_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">2272 ns   </td><td class="markdownTableBodyNone">2272 ns   </td><td class="markdownTableBodyNone">440.1k/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Bytes_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1076 ns   </td><td class="markdownTableBodyNone">1076 ns   </td><td class="markdownTableBodyNone">929.4k/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfEvalAll_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">78.7 ms   </td><td class="markdownTableBodyNone">74.9 ns   </td><td class="markdownTableBodyNone">13.34M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">3823 ns   </td><td class="markdownTableBodyNone">3823 ns   </td><td class="markdownTableBodyNone">261.6k/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_AesSoft/20   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">4094 ns   </td><td class="markdownTableBodyNone">4094 ns   </td><td class="markdownTableBodyNone">244.3k/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">333 ns   </td><td class="markdownTableBodyNone">333 ns   </td><td class="markdownTableBodyNone">3.003M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfEval_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">345 ns   </td><td class="markdownTableBodyNone">345 ns   </td><td class="markdownTableBodyNone">2.899M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfGen_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">463 ns   </td><td class="markdownTableBodyNone">463 ns   </td><td class="markdownTableBodyNone">2.160M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfGen_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">428 ns   </td><td class="markdownTableBodyNone">428 ns   </td><td class="markdownTableBodyNone">2.336M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DcfEval_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">343 ns   </td><td class="markdownTableBodyNone">343 ns   </td><td class="markdownTableBodyNone">2.915M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DcfEval_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">412 ns   </td><td class="markdownTableBodyNone">412 ns   </td><td class="markdownTableBodyNone">2.427M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DcfGen_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">645 ns   </td><td class="markdownTableBodyNone">645 ns   </td><td class="markdownTableBodyNone">1.550M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DcfGen_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">698 ns   </td><td class="markdownTableBodyNone">698 ns   </td><td class="markdownTableBodyNone">1.433M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DcfEval_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1481 ns   </td><td class="markdownTableBodyNone">1481 ns   </td><td class="markdownTableBodyNone">675.2k/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DcfGen_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">3264 ns   </td><td class="markdownTableBodyNone">3264 ns   </td><td class="markdownTableBodyNone">306.4k/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DcfEval_Bytes_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1772 ns   </td><td class="markdownTableBodyNone">1772 ns   </td><td class="markdownTableBodyNone">564.3k/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DcfEvalAll_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">97.8 ms   </td><td class="markdownTableBodyNone">93.2 ns   </td><td class="markdownTableBodyNone">10.73M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DcfEvalAll_Bytes_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">98.6 ms   </td><td class="markdownTableBodyNone">93.9 ns   </td><td class="markdownTableBodyNone">10.64M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_VdpfEval_Uint_Aes_Sha256/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">2499 ns   </td><td class="markdownTableBodyNone">2499 ns   </td><td class="markdownTableBodyNone">400.2k/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_VdpfGen_Uint_Aes_Sha256/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">4146 ns   </td><td class="markdownTableBodyNone">4146 ns   </td><td class="markdownTableBodyNone">241.2k/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_VdpfEval_Uint_Aes_Blake3/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1437 ns   </td><td class="markdownTableBodyNone">1437 ns   </td><td class="markdownTableBodyNone">695.9k/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_VdpfProve_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">181 ns   </td><td class="markdownTableBodyNone">181 ns   </td><td class="markdownTableBodyNone">5.525M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_VdpfEvalAll_Uint_Aes_Sha256/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">2138 ms   </td><td class="markdownTableBodyNone">2037 ns   </td><td class="markdownTableBodyNone">491k/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_HalfTreeDpfEval_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">1017 ns   </td><td class="markdownTableBodyNone">1017 ns   </td><td class="markdownTableBodyNone">983.3k/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_HalfTreeDpfGen_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">2236 ns   </td><td class="markdownTableBodyNone">2236 ns   </td><td class="markdownTableBodyNone">447.2k/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_HalfTreeDpfEvalAll_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">86.9 ms   </td><td class="markdownTableBodyNone">82.8 ns   </td><td class="markdownTableBodyNone">12.08M/s    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_GrottoDcfEval_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">17.0 ns   </td><td class="markdownTableBodyNone">17.0 ns   </td><td class="markdownTableBodyNone">58.82M/s    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_GrottoDcfPreprocess_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">57.7 ms   </td><td class="markdownTableBodyNone">—   </td><td class="markdownTableBodyNone">—    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_GrottoDcfPreprocessEvalAll_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">119.9 ms   </td><td class="markdownTableBodyNone">114.2 ns   </td><td class="markdownTableBodyNone">8.758M/s   </td></tr>
-</table>
+Comparison Curves</h2>
+<p>The domain sweep measures <code>N = 2^8, 2^10, ..., 2^20</code>. Time axes are logarithmic. Legends show each library's native output width, storage, group, and PRG. Hardware, sampling, timing boundaries, and reproduction commands are in the curve methodology.</p>
+<p><img src="doc/figures/cpu-point.svg" alt="CPU DPF and DCF key generation and point evaluation" style="pointer-events: none;" class="inline"/></p>
+<p>CPU point operations use one key and one thread. Times are in µs/key.</p>
+<p><img src="doc/figures/gpu-point.svg" alt="GPU DPF and DCF key generation and point evaluation" style="pointer-events: none;" class="inline"/></p>
+<p>GPU point times are amortized over <code>K = 262,144</code> keys, in ns/key.</p>
+<p><img src="doc/figures/cpu-eval-all.svg" alt="CPU full-domain DPF and DCF evaluation" style="pointer-events: none;" class="inline"/></p>
+<p>CPU full-domain evaluation produces all N outputs for one key, in ms/key. The slow materialized point-loop cases use five domain sizes.</p>
+<p><img src="doc/figures/gpu-eval-all.svg" alt="GPU full-domain DPF evaluation" style="pointer-events: none;" class="inline"/></p>
+<p>GPU full-domain evaluation uses one key and reports ms/key. The native GPU-DPF and packed EzPC adapters retain their native output configurations.</p>
+<p><img src="doc/figures/gpu-block-size.svg" alt="GPU time by actual threads per block" style="pointer-events: none;" class="inline"/></p>
+<p>The block sweep fixes <code>N = 2^20</code> and varies actual threads per block T. Software AES point evaluation uses <code>K = 262,144</code>. Full DPF and HalfTreeDPF evaluation use <code>K = 1</code>. Software AES at T=1024 exceeds the kernel's resource limit and has no timing point.</p>
 <h2><a class="anchor" id="autotoc_md13"></a>
-GPU Results</h2>
-<p>Run on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. The host is shared: the GPU boost clock varies with host state (observed 180-2355 MHz). Each iteration runs 1M (2^20) keys in parallel. <code>Time</code> is the whole batch. <code>Avg per item</code> is the reciprocal of <code>Items/s</code>: per key for <code>Eval</code>/<code>Gen</code>/point-eval rows, per output for <code>EvalAll</code> rows (2^40 outputs per iteration).</p>
+CPU Results</h2>
+<p>Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance governor verified before timing. The host is shared. These are medians of five repetitions with a one-second minimum measurement window per repetition, built in Release with GCC 13.3 and CUDA 13.2. Per-key rows run one operation per iteration, so <code>Avg per item</code> equals <code>Time</code> and <code>Items/s</code> is its reciprocal. <code>EvalAll</code> rows process 2^20 domain outputs per iteration. Their native throughput counter uses CPU time, while <code>Time</code> is wall time, and <code>Avg per item</code> is the reciprocal of that counter.</p>
 <table class="markdownTable">
 <tr class="markdownTableHead">
 <th class="markdownTableHeadNone">Benchmark   </th><th class="markdownTableHeadNone">PRG   </th><th class="markdownTableHeadNone">Time   </th><th class="markdownTableHeadNone">Avg per item   </th><th class="markdownTableHeadNone">Items/s    </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1398.8 µs   </td><td class="markdownTableBodyNone">1.334 ns   </td><td class="markdownTableBodyNone">749.6M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">781.1 ns   </td><td class="markdownTableBodyNone">781.1 ns   </td><td class="markdownTableBodyNone">1.28M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/14   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">765.7 µs   </td><td class="markdownTableBodyNone">0.730 ns   </td><td class="markdownTableBodyNone">1.369G/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_Aes/14   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">526.1 ns   </td><td class="markdownTableBodyNone">526.1 ns   </td><td class="markdownTableBodyNone">1.901M/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/17   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">956.8 µs   </td><td class="markdownTableBodyNone">0.912 ns   </td><td class="markdownTableBodyNone">1.096G/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_Aes/17   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">371.8 ns   </td><td class="markdownTableBodyNone">371.8 ns   </td><td class="markdownTableBodyNone">2.689M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfGen_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1965.4 µs   </td><td class="markdownTableBodyNone">1.874 ns   </td><td class="markdownTableBodyNone">533.5M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfGen_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">954.1 ns   </td><td class="markdownTableBodyNone">954.1 ns   </td><td class="markdownTableBodyNone">1.048M/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEval_Bytes_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1398.9 µs   </td><td class="markdownTableBodyNone">1.334 ns   </td><td class="markdownTableBodyNone">749.6M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Bytes_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">445.6 ns   </td><td class="markdownTableBodyNone">445.6 ns   </td><td class="markdownTableBodyNone">2.244M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DpfEval_Uint_AesSoft/20   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">3087.5 µs   </td><td class="markdownTableBodyNone">2.944 ns   </td><td class="markdownTableBodyNone">339.6M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEvalAll_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">31.08 ms   </td><td class="markdownTableBodyNone">29.63 ns   </td><td class="markdownTableBodyNone">33.75M/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DcfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1421.2 µs   </td><td class="markdownTableBodyNone">1.355 ns   </td><td class="markdownTableBodyNone">737.8M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.376 us   </td><td class="markdownTableBodyNone">1.376 us   </td><td class="markdownTableBodyNone">726.5k/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DcfGen_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1969.1 µs   </td><td class="markdownTableBodyNone">1.878 ns   </td><td class="markdownTableBodyNone">532.5M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_AesSoft/20   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.641 us   </td><td class="markdownTableBodyNone">1.641 us   </td><td class="markdownTableBodyNone">609.4k/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_VdpfEval_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1241.3 µs   </td><td class="markdownTableBodyNone">1.184 ns   </td><td class="markdownTableBodyNone">844.7M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">280.8 ns   </td><td class="markdownTableBodyNone">280.8 ns   </td><td class="markdownTableBodyNone">3.561M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_VdpfGen_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">2132.2 µs   </td><td class="markdownTableBodyNone">2.033 ns   </td><td class="markdownTableBodyNone">491.8M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfEval_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">281 ns   </td><td class="markdownTableBodyNone">281 ns   </td><td class="markdownTableBodyNone">3.559M/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_HalfTreeDpfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">1001.7 µs   </td><td class="markdownTableBodyNone">0.955 ns   </td><td class="markdownTableBodyNone">1.047G/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfGen_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">338.7 ns   </td><td class="markdownTableBodyNone">338.7 ns   </td><td class="markdownTableBodyNone">2.952M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_HalfTreeDpfGen_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">1961.5 µs   </td><td class="markdownTableBodyNone">1.871 ns   </td><td class="markdownTableBodyNone">534.6M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DpfGen_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">338.9 ns   </td><td class="markdownTableBodyNone">338.9 ns   </td><td class="markdownTableBodyNone">2.951M/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEvalAllGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">71.3 s   </td><td class="markdownTableBodyNone">64.8 ps   </td><td class="markdownTableBodyNone">15.43G/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DcfEval_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">316.3 ns   </td><td class="markdownTableBodyNone">316.3 ns   </td><td class="markdownTableBodyNone">3.162M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_HalfTreeDpfEvalAllGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">90.9 s   </td><td class="markdownTableBodyNone">82.7 ps   </td><td class="markdownTableBodyNone">12.09G/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DcfEval_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">314.8 ns   </td><td class="markdownTableBodyNone">314.8 ns   </td><td class="markdownTableBodyNone">3.177M/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_DpfEvalPointGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1024.5 µs   </td><td class="markdownTableBodyNone">0.977 ns   </td><td class="markdownTableBodyNone">1.024G/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DcfGen_Uint_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">400.4 ns   </td><td class="markdownTableBodyNone">400.4 ns   </td><td class="markdownTableBodyNone">2.497M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_DcfEvalPointGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1120.6 µs   </td><td class="markdownTableBodyNone">1.069 ns   </td><td class="markdownTableBodyNone">935.7M/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DcfGen_Bytes_AesRaw/20   </td><td class="markdownTableBodyNone"><code>Aes128MmoRaw&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">410.4 ns   </td><td class="markdownTableBodyNone">410.4 ns   </td><td class="markdownTableBodyNone">2.436M/s    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">1000.9 µs   </td><td class="markdownTableBodyNone">0.955 ns   </td><td class="markdownTableBodyNone">1.048G/s    </td></tr>
+<td class="markdownTableBodyNone">BM_DcfEval_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">841.9 ns   </td><td class="markdownTableBodyNone">841.9 ns   </td><td class="markdownTableBodyNone">1.188M/s    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1109.2 µs   </td><td class="markdownTableBodyNone">1.058 ns   </td><td class="markdownTableBodyNone">945.3M/s   </td></tr>
+<td class="markdownTableBodyNone">BM_DcfGen_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1.71 us   </td><td class="markdownTableBodyNone">1.71 us   </td><td class="markdownTableBodyNone">584.8k/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_DcfEval_Bytes_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">907.3 ns   </td><td class="markdownTableBodyNone">907.3 ns   </td><td class="markdownTableBodyNone">1.102M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_DcfEvalAll_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">55 ms   </td><td class="markdownTableBodyNone">52.43 ns   </td><td class="markdownTableBodyNone">19.07M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_DcfEvalAll_Bytes_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">62.79 ms   </td><td class="markdownTableBodyNone">59.86 ns   </td><td class="markdownTableBodyNone">16.71M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_VdpfEval_Uint_Aes_Sha256/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.396 us   </td><td class="markdownTableBodyNone">1.396 us   </td><td class="markdownTableBodyNone">716.5k/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_VdpfGen_Uint_Aes_Sha256/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">2.169 us   </td><td class="markdownTableBodyNone">2.169 us   </td><td class="markdownTableBodyNone">460.9k/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_VdpfEval_Uint_Aes_Blake3/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">672.3 ns   </td><td class="markdownTableBodyNone">672.3 ns   </td><td class="markdownTableBodyNone">1.487M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_VdpfProve_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">66.01 ns   </td><td class="markdownTableBodyNone">66.01 ns   </td><td class="markdownTableBodyNone">15.15M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_VdpfEvalAll_Uint_Aes_Sha256/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">991.5 ms   </td><td class="markdownTableBodyNone">945.1 ns   </td><td class="markdownTableBodyNone">1.058M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_HalfTreeDpfEval_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">370.6 ns   </td><td class="markdownTableBodyNone">370.6 ns   </td><td class="markdownTableBodyNone">2.698M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_HalfTreeDpfGen_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">496.9 ns   </td><td class="markdownTableBodyNone">496.9 ns   </td><td class="markdownTableBodyNone">2.012M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_HalfTreeDpfEvalAll_Uint_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">28.12 ms   </td><td class="markdownTableBodyNone">26.8 ns   </td><td class="markdownTableBodyNone">37.31M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_GrottoDcfEval_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">6.981 ns   </td><td class="markdownTableBodyNone">6.981 ns   </td><td class="markdownTableBodyNone">143.3M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_GrottoDcfPreprocess_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">30.93 ms   </td><td class="markdownTableBodyNone">30.93 ms   </td><td class="markdownTableBodyNone">32.33/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_GrottoDcfPreprocessEvalAll_Aes/20   </td><td class="markdownTableBodyNone"><code>Aes128Mmo&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">62.24 ms   </td><td class="markdownTableBodyNone">59.32 ns   </td><td class="markdownTableBodyNone">16.86M/s   </td></tr>
 </table>
+<h2><a class="anchor" id="autotoc_md14"></a>
+GPU Results</h2>
+<p>Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. GPU 1 was idle before the run. The host process was pinned to CPU 8 with the performance governor verified. These are medians of five repetitions with a one-second minimum measurement window, built in Release. GPU clocks can vary on this shared host. Each listed iteration processes 1M (2^20) keys. Gen, Eval, and point-eval kernels use 256 threads per CUDA block. <code>Time</code> is the complete iteration measured with CUDA events. <code>Avg per item</code> is the reciprocal of <code>Items/s</code>, measured per key.</p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Benchmark   </th><th class="markdownTableHeadNone">PRG   </th><th class="markdownTableHeadNone">Time   </th><th class="markdownTableHeadNone">Avg per item   </th><th class="markdownTableHeadNone">Items/s    </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.399 ms   </td><td class="markdownTableBodyNone">1.334 ns   </td><td class="markdownTableBodyNone">749.6M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/14   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">752.7 us   </td><td class="markdownTableBodyNone">717.8 ps   </td><td class="markdownTableBodyNone">1.393G/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_ChaCha/17   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">939.3 us   </td><td class="markdownTableBodyNone">895.8 ps   </td><td class="markdownTableBodyNone">1.116G/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_DpfGen_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">2.007 ms   </td><td class="markdownTableBodyNone">1.914 ns   </td><td class="markdownTableBodyNone">522.5M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_DpfEval_Bytes_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.4 ms   </td><td class="markdownTableBodyNone">1.335 ns   </td><td class="markdownTableBodyNone">749.2M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_DpfEval_Uint_AesSoft/20   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">3.134 ms   </td><td class="markdownTableBodyNone">2.988 ns   </td><td class="markdownTableBodyNone">334.6M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_DcfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1.421 ms   </td><td class="markdownTableBodyNone">1.355 ns   </td><td class="markdownTableBodyNone">737.8M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_DcfGen_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">2.026 ms   </td><td class="markdownTableBodyNone">1.932 ns   </td><td class="markdownTableBodyNone">517.6M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_VdpfEval_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.248 ms   </td><td class="markdownTableBodyNone">1.19 ns   </td><td class="markdownTableBodyNone">840.5M/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_VdpfGen_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">2.204 ms   </td><td class="markdownTableBodyNone">2.102 ns   </td><td class="markdownTableBodyNone">475.7M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_HalfTreeDpfEval_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">1.022 ms   </td><td class="markdownTableBodyNone">974.7 ps   </td><td class="markdownTableBodyNone">1.026G/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_HalfTreeDpfGen_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">2.029 ms   </td><td class="markdownTableBodyNone">1.935 ns   </td><td class="markdownTableBodyNone">516.9M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_DpfEvalPointGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.012 ms   </td><td class="markdownTableBodyNone">965.4 ps   </td><td class="markdownTableBodyNone">1.036G/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_DcfEvalPointGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">1.114 ms   </td><td class="markdownTableBodyNone">1.062 ns   </td><td class="markdownTableBodyNone">941.2M/s    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">993.8 us   </td><td class="markdownTableBodyNone">947.8 ps   </td><td class="markdownTableBodyNone">1.055G/s    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">1.097 ms   </td><td class="markdownTableBodyNone">1.046 ns   </td><td class="markdownTableBodyNone">955.9M/s   </td></tr>
+</table>
+<p>Corrected full-domain GPU <code>EvalAll</code> measurements with <code>K=1</code> are in the comparison curves.</p>
 <p>GPU kernel register usage (compiled for sm_120, <code>--ptxas-options=-v</code>):</p>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -514,9 +531,9 @@ GPU Results</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">DpfGen   </td><td class="markdownTableBodyNone">Bytes   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">48   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">DpfEval   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">80   </td><td class="markdownTableBodyNone">624B   </td><td class="markdownTableBodyNone">2304B    </td></tr>
+<td class="markdownTableBodyNone">DpfEval   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">80   </td><td class="markdownTableBodyNone">624B   </td><td class="markdownTableBodyNone">1280B    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">DpfGen   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">80   </td><td class="markdownTableBodyNone">624B   </td><td class="markdownTableBodyNone">2304B    </td></tr>
+<td class="markdownTableBodyNone">DpfGen   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>Aes128Soft&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">80   </td><td class="markdownTableBodyNone">624B   </td><td class="markdownTableBodyNone">1280B    </td></tr>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">HalfTreeDpfEval   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">40   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowEven">
@@ -530,11 +547,7 @@ GPU Results</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">DcfGen   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">50   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">DpfEvalAll   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">55   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">5120B    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">HalfTreeDpfEvalAll   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">55   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">5120B    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">DpfEvalPoint   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">39   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
+<td class="markdownTableBodyNone">DpfEvalPoint   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;2&gt;</code>   </td><td class="markdownTableBodyNone">40   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">DcfEvalPoint   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;4&gt;</code>   </td><td class="markdownTableBodyNone">46   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowOdd">
@@ -542,8 +555,8 @@ GPU Results</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">HalfTreeDpfEvalPoint   </td><td class="markdownTableBodyNone">Uint   </td><td class="markdownTableBodyNone"><code>ChaCha&lt;1&gt;</code>   </td><td class="markdownTableBodyNone">38   </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 </table>
-<p>The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here that spills to stack and holds a T-table in shared memory. The <code>mul</code> parameter is part of the PRG type because it sets how many 16B blocks one <code>Gen</code> call produces. The <code>EvalAll</code> kernels use shared memory for per-block staging. Every kernel other than the two software-AES ones has zero spills.</p>
-<h2><a class="anchor" id="autotoc_md14"></a>
+<p>The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here with a nonzero stack frame and a T-table in shared memory. The <code>mul</code> parameter is part of the PRG type because it sets how many 16B blocks one <code>Gen</code> call produces. All kernels shown have zero spill stores and zero spill loads.</p>
+<h2><a class="anchor" id="autotoc_md15"></a>
 Flamegraph</h2>
 <p>Generate a CPU flamegraph with <code>perf</code> and <a href="https://github.com/brendangregg/FlameGraph">FlameGraph</a>:</p>
 <div class="fragment"><div class="line">perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20</div>
@@ -551,7 +564,7 @@ Flamegraph</h2>
 </div><!-- fragment --><p><code>make flamegraph</code> runs the same steps, taking the FlameGraph checkout from <code>FLAMEGRAPH_DIR</code> (default <code>../FlameGraph</code>) and the benchmark from <code>FLAMEGRAPH_BENCH</code>:</p>
 <div class="fragment"><div class="line">FLAMEGRAPH_DIR=/path/to/FlameGraph FLAMEGRAPH_BENCH=BM_DcfGen_Uint_Aes/20 make flamegraph</div>
 </div><!-- fragment --><p>Open <code>build/flamegraph.svg</code> in a browser. The graph is interactive: click a frame to zoom in.</p>
-<h1><a class="anchor" id="autotoc_md15"></a>
+<h1><a class="anchor" id="autotoc_md16"></a>
 License</h1>
 <p>Apache License, Version 2.0</p>
 <p>Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a> </p>

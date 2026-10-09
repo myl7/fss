@@ -37,11 +37,12 @@ var NAVTREE =
       [ "nvcc 12.8: <tt>Uint</tt> as a <tt>__global__</tt> kernel template argument", "index.html#autotoc_md10", null ]
     ] ],
     [ "Benchmarks", "index.html#autotoc_md11", [
-      [ "CPU Results", "index.html#autotoc_md12", null ],
-      [ "GPU Results", "index.html#autotoc_md13", null ],
-      [ "Flamegraph", "index.html#autotoc_md14", null ]
+      [ "Comparison Curves", "index.html#autotoc_md12", null ],
+      [ "CPU Results", "index.html#autotoc_md13", null ],
+      [ "GPU Results", "index.html#autotoc_md14", null ],
+      [ "Flamegraph", "index.html#autotoc_md15", null ]
     ] ],
-    [ "License", "index.html#autotoc_md15", null ],
+    [ "License", "index.html#autotoc_md16", null ],
     [ "Concepts", "concepts.html", "concepts" ],
     [ "Classes", "annotated.html", [
       [ "Class List", "annotated.html", "annotated_dup" ],
