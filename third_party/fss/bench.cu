@@ -744,6 +744,156 @@ BENCHMARK(BM_CpuVdmpfEval)->Name("fss/CPU/VDMPF-bytes/Eval");
 BENCHMARK(BM_CpuVdmpfEvalAll)->Name("fss/CPU/VDMPF-bytes/EvalAll");
 
 // ============================================================
+// CPU VDPF benchmarks (eprint 2021/580 point baseline)
+// ============================================================
+
+using VdpfT = fss::Vdpf<kInBits, BytesGroup, CpuPrg<2>, fss::hash::Blake3, fss::hash::Blake3, uint32_t, 0>;
+
+static int4 GroupFromBeta(bool selected) {
+  return BytesGroup::From(selected ? kBeta : int4{0, 0, 0, 0}).Into();
+}
+
+static void CheckCpuVdpfScheme(const typename VdpfT::Cw *cws, const cuda::std::array<int4, 4> &cs, int4 ocw) {
+  AesCtx<2> ctx;
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  VdpfT vdpf{ctx.prg, xor_hash, hash};
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  const uint32_t points[] = {0, kAlpha - 1, kAlpha, kAlpha + 1, (1u << kInBits) - 1};
+  for (uint32_t x : points) {
+    int4 y0, y1;
+    auto pi_tilde0 = vdpf.Eval(false, seeds[0], cuda::std::span<const typename VdpfT::Cw>(cws, kInBits),
+        cuda::std::span<const int4, 4>(cs), ocw, x, y0);
+    auto pi_tilde1 = vdpf.Eval(true, seeds[1], cuda::std::span<const typename VdpfT::Cw>(cws, kInBits),
+        cuda::std::span<const int4, 4>(cs), ocw, x, y1);
+    int4 actual = (BytesGroup::From(y0) + BytesGroup::From(y1)).Into();
+    int4 expected = GroupFromBeta(x == kAlpha);
+    if (actual.x != expected.x || actual.y != expected.y || actual.z != expected.z || actual.w != expected.w) {
+      fprintf(stderr, "vdpf correctness mismatch at input %u\n", x);
+      exit(1);
+    }
+    cuda::std::array<int4, 4> pi0, pi1;
+    vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(&pi_tilde0, 1),
+        cuda::std::span<const int4, 4>(cs), pi0);
+    vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(&pi_tilde1, 1),
+        cuda::std::span<const int4, 4>(cs), pi1);
+    if (!VdpfT::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1))) {
+      fprintf(stderr, "vdpf proof rejected on honest shares at input %u\n", x);
+      exit(1);
+    }
+  }
+}
+
+static void CheckCpuVdpfFull(const typename VdpfT::Cw *cws, const cuda::std::array<int4, 4> &cs, int4 ocw) {
+  constexpr size_t n = size_t{1} << kInBits;
+  AesCtx<2> ctx;
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  VdpfT vdpf{ctx.prg, xor_hash, hash};
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  std::vector<int4> first(n), second(n);
+  cuda::std::array<int4, 4> pi0, pi1;
+  vdpf.EvalAll(false, seeds[0], cuda::std::span<const typename VdpfT::Cw>(cws, kInBits),
+      cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(first), pi0);
+  vdpf.EvalAll(true, seeds[1], cuda::std::span<const typename VdpfT::Cw>(cws, kInBits),
+      cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(second), pi1);
+  if (!VdpfT::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1))) {
+    fprintf(stderr, "vdpf full-domain proof rejected on honest shares\n");
+    exit(1);
+  }
+  for (size_t x = 0; x < n; ++x) {
+    int4 actual = (BytesGroup::From(first[x]) + BytesGroup::From(second[x])).Into();
+    int4 expected = GroupFromBeta(x == kAlpha);
+    if (actual.x != expected.x || actual.y != expected.y || actual.z != expected.z || actual.w != expected.w) {
+      fprintf(stderr, "vdpf full reconstruction mismatch at input %zu\n", x);
+      exit(1);
+    }
+  }
+}
+
+static void BM_CpuVdpfGen(benchmark::State &state) {
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename VdpfT::Cw cws[kInBits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+  AesCtx<2> ctx;
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  VdpfT vdpf{ctx.prg, xor_hash, hash};
+  int ret;
+  do {
+    ret = vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
+  } while (ret != 0);
+  CheckCpuVdpfScheme(cws, cs, ocw);
+  for (auto _ : state) {
+    do {
+      ret = vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
+    } while (ret != 0);
+    benchmark::DoNotOptimize(cws);
+    benchmark::DoNotOptimize(cs);
+  }
+}
+
+static void BM_CpuVdpfEval(benchmark::State &state) {
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename VdpfT::Cw cws[kInBits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+  AesCtx<2> ctx;
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  VdpfT vdpf{ctx.prg, xor_hash, hash};
+  int ret;
+  do {
+    ret = vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
+  } while (ret != 0);
+  CheckCpuVdpfScheme(cws, cs, ocw);
+  uint32_t x = 0;
+  for (auto _ : state) {
+    int4 y;
+    auto pi_tilde = vdpf.Eval(false, seeds[0], cuda::std::span<const typename VdpfT::Cw>(cws, kInBits),
+        cuda::std::span<const int4, 4>(cs), ocw, x, y);
+    cuda::std::array<int4, 4> pi;
+    vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(&pi_tilde, 1),
+        cuda::std::span<const int4, 4>(cs), pi);
+    benchmark::DoNotOptimize(y);
+    benchmark::DoNotOptimize(pi);
+    x = (x + 1) & ((1u << kInBits) - 1);
+  }
+}
+
+static void BM_CpuVdpfEvalAll(benchmark::State &state) {
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename VdpfT::Cw cws[kInBits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+  constexpr size_t n = size_t{1} << kInBits;
+  std::vector<int4> ys(n);
+  AesCtx<2> ctx;
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  VdpfT vdpf{ctx.prg, xor_hash, hash};
+  int ret;
+  do {
+    ret = vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
+  } while (ret != 0);
+  CheckCpuVdpfScheme(cws, cs, ocw);
+  CheckCpuVdpfFull(cws, cs, ocw);
+  cuda::std::array<int4, 4> pi;
+  for (auto _ : state) {
+    vdpf.EvalAll(false, seeds[0], cuda::std::span<const typename VdpfT::Cw>(cws, kInBits),
+        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys), pi);
+    benchmark::DoNotOptimize(ys.data());
+    benchmark::DoNotOptimize(pi);
+  }
+  state.SetItemsProcessed(state.iterations() * n);
+}
+
+BENCHMARK(BM_CpuVdpfGen)->Name("fss/CPU/VDPF-bytes/Gen");
+BENCHMARK(BM_CpuVdpfEval)->Name("fss/CPU/VDPF-bytes/Eval");
+BENCHMARK(BM_CpuVdpfEvalAll)->Name("fss/CPU/VDPF-bytes/EvalAll");
+
+// ============================================================
 // GPU DPF/DCF kernels (ChaCha PRG)
 // ============================================================
 

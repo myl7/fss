@@ -88,7 +88,7 @@ def pattern(case):
         operation = "EvalAllFull"
     if case["library"] == "fss" and case["platform"] == "cpu":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
-        return f"^fss/CPU/((DPF|DCF|HalfTreeDPF|DMPF|VDMPF)-{groups}|PackedHalfTreeDPF-bits1|GrottoDCF)/{operation}(/|$)"
+        return f"^fss/CPU/((DPF|DCF|HalfTreeDPF|DMPF|VDMPF|VDPF)-{groups}|PackedHalfTreeDPF-bits1|GrottoDCF)/{operation}(/|$)"
     if case["library"] == "ezpc" and case["operation"] != "EvalAll":
         return f"^EzPC/GPU/(DPF|DCF)/{operation}/{case['num_keys']}(/|$)"
     prefix = "fss" if case["library"] == "fss" else ".*"
@@ -227,7 +227,7 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
                    output_storage="packed_lanes", lanes=128 // width)
     elif scheme == "GrottoDCF":
         row.update(logical_output_bits=1, storage_output_bits=8, output_storage="bool_scalar")
-    elif scheme == "VDPF":
+    elif scheme == "VDPF" and case["library"] == "servan_vdpf":
         # Single-point VDPF reference implementation (sachaservan/vdpf).
         row.update(logical_output_bits=1, storage_output_bits=128, output_storage="uint128_scalar", num_points=1)
     elif scheme in ("DMPF", "VDMPF"):

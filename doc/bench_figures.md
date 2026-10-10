@@ -121,12 +121,15 @@ unsupported, failed, and unmeasured points absent. Captions must follow the
 collected raw data.
 
 Every current-FSS curve carries its scheme in the legend (FSS DPF, FSS DCF,
-FSS HalfTreeDPF, FSS PackedHalfTreeDPF with an experimental marker, and the
-specialty schemes below), so readers constrained to one scheme can read its
-own curve. Grotto DCF and the DMPF family have no like-for-like third-party
-counterpart on the comparison axes, so they render on dedicated figures
-rather than the main comparison figures: `cpu-grotto` for Grotto DCF with its
-one-bit comparison output, and `cpu-dmpf` for DMPF and VDMPF together, since
+FSS HalfTreeDPF, FSS PackedHalfTreeDPF with an experimental marker, FSS VDPF,
+and the specialty schemes below), so readers constrained to one scheme can
+read its own curve. The comparison axes also carry the verifiable
+point-function curves: FSS VDPF and the Servan-Schreiber VDPF reference
+(eprint 2021/580, single point) render beside the DPF curves, with proof
+generation inside the timed evaluation and verification outside; their times
+buy malicious security that the plain DPF curves do not. Grotto DCF and the
+DMPF family keep dedicated figures, `cpu-grotto` for Grotto DCF with its
+one-bit comparison output and `cpu-dmpf` for DMPF and VDMPF together, since
 adding verifiability changes functionality but little time. VDMPF BatchEval
 timings include proof generation; verification itself is a comparison
 outside timing.

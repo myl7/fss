@@ -89,8 +89,9 @@ class FigureSweepTest(unittest.TestCase):
     def test_cpu_pattern_covers_specialty_schemes(self):
         case = self.case(platform="cpu", operation="EvalAll")
         for name in ("fss/CPU/DPF-bytes/EvalAll", "fss/CPU/HalfTreeDPF-bytes/EvalAll",
-                     "fss/CPU/PackedHalfTreeDPF-bits1/EvalAll", "fss/CPU/GrottoDCF/EvalAll",
-                     "fss/CPU/DMPF-bytes/EvalAll", "fss/CPU/VDMPF-bytes/EvalAll"):
+                     "fss/CPU/VDPF-bytes/EvalAll", "fss/CPU/PackedHalfTreeDPF-bits1/EvalAll",
+                     "fss/CPU/GrottoDCF/EvalAll", "fss/CPU/DMPF-bytes/EvalAll",
+                     "fss/CPU/VDMPF-bytes/EvalAll"):
             self.assertRegex(name, sweep.pattern(case))
 
     def test_specialty_scheme_normalize_metadata(self):
@@ -112,6 +113,11 @@ class FigureSweepTest(unittest.TestCase):
                                  "servan_vdpf/CPU/VDPF/EvalAll", 1000, "raw", {})
         self.assertEqual((servan["scheme"], servan["num_points"], servan["output_storage"], servan["prg"]),
                          ("VDPF", 1, "uint128_scalar", "AES128/OpenSSL"))
+        ours = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                               "fss/CPU/VDPF-bytes/EvalAll", 1000, "raw", {})
+        self.assertEqual((ours["scheme"], ours["group"], ours["logical_output_bits"]), ("VDPF", "bytes", 127))
+        self.assertNotIn("num_points", ours)
+        self.assertEqual(ours["output_storage"], "materialized")
 
     def test_kernel_resource_failure_preserves_incomplete_raw_as_unsupported(self):
         case = self.case(operation="Eval", sweep="block", threads_per_block=1024)

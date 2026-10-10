@@ -426,7 +426,10 @@ in the [curve methodology](doc/bench_figures.md).
 
 ![CPU DPF and DCF key generation and point evaluation](doc/figures/cpu-point.svg)
 
-CPU point operations use one key and one thread. Times are in µs/key.
+CPU point operations use one key and one thread. Times are in µs/key. The
+verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference,
+eprint 2021/580, single point) include proof generation in the timed
+evaluation; verification stays outside timing.
 
 ![GPU DPF and DCF key generation and point evaluation](doc/figures/gpu-point.svg)
 
@@ -435,7 +438,8 @@ GPU point times are amortized over `K = 262,144` keys, in ns/key.
 ![CPU full-domain DPF and DCF evaluation](doc/figures/cpu-eval-all.svg)
 
 CPU full-domain evaluation produces all N outputs for one key, in ms/key.
-The slow materialized point-loop cases use five domain sizes.
+The slow materialized point-loop cases use five domain sizes. VDPF curves
+carry the same proof-generation timing boundary as on the point figure.
 
 ![GPU full-domain DPF evaluation](doc/figures/gpu-eval-all.svg)
 
@@ -462,9 +466,8 @@ DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets. DMPF
 EvalAll evaluates every padded bucket domain. VDMPF materializes through
 BatchEval over all N inputs, including proof generation; verification itself
 is a comparison outside timing. Verifiability changes functionality but adds
-little evaluation time, so both schemes share one figure with the
-Servan-Schreiber VDPF reference implementation (eprint 2021/580, single
-point, `t=1`) as the third-party anchor.
+little evaluation time, so both schemes share one figure. The single-point
+verifiable counterparts render on the DPF comparison figures instead.
 
 ### CPU Results
 

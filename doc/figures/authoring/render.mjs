@@ -95,7 +95,7 @@ export function renderFigures(d3, figures, metadata) {
           .attr('d', d3.symbol().type(symbol(method)).size(45)).attr('fill', color(method)).attr('stroke', '#fff').attr('stroke-width', 0.6);
       }
       const operation = {gen: 'Gen', eval: 'Eval', eval_all: 'EvalAll'}[panel.operation];
-      const primitiveLabel = {dmpf: 'DMPF / VDMPF / VDPF'}[panel.primitive] ?? panel.primitive.toUpperCase();
+      const primitiveLabel = {dmpf: 'DMPF / VDMPF'}[panel.primitive] ?? panel.primitive.toUpperCase();
       g.append('text').attr('data-name', 'panel-label').attr('x', panelW / 2).attr('y', plotH + 69)
         .attr('text-anchor', 'middle').attr('font-size', 15).attr('font-weight', 600)
         .text(`(${String.fromCharCode(97 + index)}) ${primitiveLabel} ${operation}`);
