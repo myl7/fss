@@ -4,6 +4,7 @@
 #include <fss/dcf.cuh>
 #include <fss/vdpf.cuh>
 #include <fss/half_tree_dpf.cuh>
+#include <fss/packed_half_tree_dpf.cuh>
 #include <fss/grotto_dcf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
@@ -540,6 +541,35 @@ static void BM_HalfTreeDpfEvalAll(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * n);
 }
 
+// --- Packed HalfTree DPF benchmarks (experimental, 1-bit outputs) ---
+
+template <int in_bits, typename Prg>
+static void BM_PackedHalfTreeDpfEvalAll(benchmark::State &state) {
+  using DpfType = fss::PackedHalfTreeDpf<in_bits, 1, Prg, uint>;
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  uint64_t beta = 1;
+  typename DpfType::Cw cws[DpfType::kDepth];
+  int4 fcw;
+
+  constexpr size_t n = size_t{1} << in_bits;
+  constexpr size_t blocks = n / DpfType::kLanes;
+  std::vector<int4> ys(blocks);
+
+  AesCtx<1> ctx;
+  DpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+  dpf.Gen(cws, fcw, s0s, alpha, beta);
+  for (auto _ : state) {
+    dpf.EvalAll(false, s0s[0], cws, fcw, ys.data());
+    benchmark::DoNotOptimize(ys.data());
+  }
+  state.SetItemsProcessed(state.iterations() * n);
+}
+
 // --- GrottoDcf benchmarks ---
 
 template <int in_bits, typename Prg>
@@ -695,6 +725,8 @@ BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEval
 BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfGen_Uint_Aes/20");
 // 21. BM_HalfTreeDpfEvalAll_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfEvalAll<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEvalAll_Uint_Aes/20");
+// 25. BM_PackedHalfTreeDpfEvalAll_Aes/20
+BENCHMARK(BM_PackedHalfTreeDpfEvalAll<20, HtDpfAes>)->Name("BM_PackedHalfTreeDpfEvalAll_Aes/20");
 
 // 22. BM_GrottoDcfEval_Aes/20
 BENCHMARK(BM_GrottoDcfEval<20, GdcfAes>)->Name("BM_GrottoDcfEval_Aes/20");
