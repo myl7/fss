@@ -278,6 +278,7 @@ cmake --build build/samples
 | `dpf_dcf_cpu.cu`       | DPF, DCF      | Host `Gen`/`Eval` with AES-128 MMO PRG                               |
 | `dpf_dcf_gpu.cu`       | DPF, DCF      | `Gen`/`Eval` inside CUDA kernels with ChaCha PRG                     |
 | `half_tree_dpf_cpu.cu` | Half-Tree DPF | `Gen`/`Eval`/`EvalAll` with a mul=1 PRG and a separate hash key      |
+| `packed_half_tree_dpf_cpu.cu` | Packed Half-Tree DPF (experimental) | Sub-128-bit packed outputs: `Gen`/`Eval`/`EvalAll`/`Extract` over packed blocks |
 | `grotto_dcf_cpu.cu`    | Grotto DCF    | `Gen`/`Preprocess`/`Eval` over a parity segment tree, plus `EvalAll` |
 | `vdpf_cpu.cu`          | VDPF          | `Gen`/`Eval` plus the `Prove`/`Verify` check                         |
 | `vdmpf_cpu.cu`         | VDMPF         | `Gen`/`BatchEval` over cuckoo-hash packed points                     |
@@ -447,6 +448,21 @@ The block sweep fixes `N = 2^20` and varies actual threads per block T.
 Software AES point evaluation uses `K = 262,144`. Full DPF and HalfTreeDPF
 evaluation use `K = 1`. Software AES at T=1024 exceeds the kernel's resource
 limit and has no timing point.
+
+![CPU Grotto DCF operations](doc/figures/cpu-grotto.svg)
+
+Grotto DCF shares one logical comparison bit per output and has no
+like-for-like third-party curve, so it renders on a dedicated figure. Point
+Eval times the parity-tree query with Preprocess outside timing; EvalAll
+times Preprocess plus the scan as one full-domain operation.
+
+![CPU DMPF and VDMPF operations](doc/figures/cpu-dmpf.svg)
+
+DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets. DMPF
+EvalAll evaluates every padded bucket domain. VDMPF materializes through
+BatchEval over all N inputs, including proof generation; verification itself
+is a comparison outside timing. Verifiability changes functionality but adds
+little evaluation time, so both schemes share one figure.
 
 ### CPU Results
 

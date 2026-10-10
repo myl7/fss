@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 * Distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.
+* Packed-output DPF (`PackedHalfTreeDpf`, experimental): based on Half-Tree expansion with a
+  domain-separated leaf conversion, `EvalAll` returns `2^(in_bits-log2(128/out_bits))` blocks that
+  each pack `128/out_bits` consecutive XOR-shared outputs of `out_bits` bits,
+  `out_bits ∈ {1, 2, 4, 8, 16, 32, 64}`. No published paper describes the composition.
+* CPU benchmark curves for HalfTree DPF, packed HalfTree DPF (one-bit), Grotto DCF, DMPF, and
+  VDMPF (`t = 64` points). The comparison figures now label each FSS curve with its scheme, the
+  packed curve joins the libdpf axis on the CPU full-domain figure, and Grotto DCF and the
+  DMPF/VDMPF pair render on dedicated figures without like-for-like third-party counterparts.
 
 ## [1.2.0] - 2026-08-17
 
