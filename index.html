@@ -400,11 +400,11 @@ Benchmarks</h1>
 Comparison Curves</h2>
 <p>The domain sweep measures <code>N = 2^8, 2^10, ..., 2^20</code>. Time axes are logarithmic. Legends show each library's native output width, storage, group, and PRG. Hardware, sampling, timing boundaries, and reproduction commands are in the curve methodology.</p>
 <p><img src="doc/figures/cpu-point.svg" alt="CPU DPF and DCF key generation and point evaluation" style="pointer-events: none;" class="inline"/></p>
-<p>CPU point operations use one key and one thread. Times are in µs/key.</p>
+<p>CPU point operations use one key and one thread. Times are in µs/key. The verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference, eprint 2021/580, single point) include proof generation in the timed evaluation; verification stays outside timing.</p>
 <p><img src="doc/figures/gpu-point.svg" alt="GPU DPF and DCF key generation and point evaluation" style="pointer-events: none;" class="inline"/></p>
 <p>GPU point times are amortized over <code>K = 262,144</code> keys, in ns/key.</p>
 <p><img src="doc/figures/cpu-eval-all.svg" alt="CPU full-domain DPF and DCF evaluation" style="pointer-events: none;" class="inline"/></p>
-<p>CPU full-domain evaluation produces all N outputs for one key, in ms/key. The slow materialized point-loop cases use five domain sizes.</p>
+<p>CPU full-domain evaluation produces all N outputs for one key, in ms/key. The slow materialized point-loop cases use five domain sizes. VDPF curves carry the same proof-generation timing boundary as on the point figure.</p>
 <p><img src="doc/figures/gpu-eval-all.svg" alt="GPU full-domain DPF evaluation" style="pointer-events: none;" class="inline"/></p>
 <p>GPU full-domain evaluation uses one key and reports ms/key. The native GPU-DPF and packed EzPC adapters retain their native output configurations.</p>
 <p><img src="doc/figures/gpu-block-size.svg" alt="GPU time by actual threads per block" style="pointer-events: none;" class="inline"/></p>
@@ -412,7 +412,7 @@ Comparison Curves</h2>
 <p><img src="doc/figures/cpu-grotto.svg" alt="CPU Grotto DCF operations" style="pointer-events: none;" class="inline"/></p>
 <p>Grotto DCF shares one logical comparison bit per output and has no like-for-like third-party curve, so it renders on a dedicated figure. Point Eval times the parity-tree query with Preprocess outside timing; EvalAll times Preprocess plus the scan as one full-domain operation.</p>
 <p><img src="doc/figures/cpu-dmpf.svg" alt="CPU DMPF and VDMPF operations" style="pointer-events: none;" class="inline"/></p>
-<p>DMPF and VDMPF use <code>t = 64</code> points over <code>m = 112</code> Cuckoo buckets. DMPF EvalAll evaluates every padded bucket domain. VDMPF materializes through BatchEval over all N inputs, including proof generation; verification itself is a comparison outside timing. Verifiability changes functionality but adds little evaluation time, so both schemes share one figure with the Servan-Schreiber VDPF reference implementation (eprint 2021/580, single point, <code>t=1</code>) as the third-party anchor.</p>
+<p>DMPF and VDMPF use <code>t = 64</code> points over <code>m = 112</code> Cuckoo buckets. DMPF EvalAll evaluates every padded bucket domain. VDMPF materializes through BatchEval over all N inputs, including proof generation; verification itself is a comparison outside timing. Verifiability changes functionality but adds little evaluation time, so both schemes share one figure. The single-point verifiable counterparts render on the DPF comparison figures instead.</p>
 <h2><a class="anchor" id="autotoc_md13"></a>
 CPU Results</h2>
 <p>Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance governor verified before timing. The host is shared. These are medians of five repetitions with a one-second minimum measurement window per repetition, built in Release with GCC 13.3 and CUDA 13.2. Per-key rows run one operation per iteration, so <code>Avg per item</code> equals <code>Time</code> and <code>Items/s</code> is its reciprocal. <code>EvalAll</code> rows process 2^20 domain outputs per iteration. Their native throughput counter uses CPU time, while <code>Time</code> is wall time, and <code>Avg per item</code> is the reciprocal of that counter.</p>
