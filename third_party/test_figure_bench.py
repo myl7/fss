@@ -86,6 +86,29 @@ class FigureSweepTest(unittest.TestCase):
         self.assertEqual(full["variant"], "HalfTreeDPF-bytes-ChaCha20-x1")
         self.assertEqual(full["logical_output_bits"], 127)
 
+    def test_cpu_pattern_covers_specialty_schemes(self):
+        case = self.case(platform="cpu", operation="EvalAll")
+        for name in ("fss/CPU/DPF-bytes/EvalAll", "fss/CPU/HalfTreeDPF-bytes/EvalAll",
+                     "fss/CPU/PackedHalfTreeDPF-bits1/EvalAll", "fss/CPU/GrottoDCF/EvalAll",
+                     "fss/CPU/DMPF-bytes/EvalAll", "fss/CPU/VDMPF-bytes/EvalAll"):
+            self.assertRegex(name, sweep.pattern(case))
+
+    def test_specialty_scheme_normalize_metadata(self):
+        packed = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                                 "fss/CPU/PackedHalfTreeDPF-bits1/EvalAll", 1000, "raw", {})
+        self.assertEqual((packed["scheme"], packed["group"], packed["logical_output_bits"], packed["lanes"]),
+                         ("PackedHalfTreeDPF", "bits1", 1, 128))
+        self.assertEqual(packed["output_storage"], "packed_lanes")
+        self.assertTrue(packed["label"].endswith("(experimental)"))
+        grotto = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                                 "fss/CPU/GrottoDCF/EvalAll", 1000, "raw", {})
+        self.assertEqual((grotto["scheme"], grotto["logical_output_bits"], grotto["output_storage"]),
+                         ("GrottoDCF", 1, "bool_scalar"))
+        for name, scheme in (("fss/CPU/DMPF-bytes/EvalAll", "DMPF"), ("fss/CPU/VDMPF-bytes/Eval", "VDMPF")):
+            row = sweep.normalize(self.case(platform="cpu", operation="Eval"), name, 1000, "raw", {})
+            self.assertEqual(row["scheme"], scheme)
+            self.assertEqual(row["num_points"], 64)
+
     def test_kernel_resource_failure_preserves_incomplete_raw_as_unsupported(self):
         case = self.case(operation="Eval", sweep="block", threads_per_block=1024)
         args = argparse.Namespace(cpu=16, repetitions=5, min_time=.1, warmup=.1)

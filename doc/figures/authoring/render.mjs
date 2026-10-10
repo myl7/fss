@@ -95,9 +95,10 @@ export function renderFigures(d3, figures, metadata) {
           .attr('d', d3.symbol().type(symbol(method)).size(45)).attr('fill', color(method)).attr('stroke', '#fff').attr('stroke-width', 0.6);
       }
       const operation = {gen: 'Gen', eval: 'Eval', eval_all: 'EvalAll'}[panel.operation];
+      const primitiveLabel = {dmpf: 'DMPF / VDMPF'}[panel.primitive] ?? panel.primitive.toUpperCase();
       g.append('text').attr('data-name', 'panel-label').attr('x', panelW / 2).attr('y', plotH + 69)
         .attr('text-anchor', 'middle').attr('font-size', 15).attr('font-weight', 600)
-        .text(`(${String.fromCharCode(97 + index)}) ${panel.primitive.toUpperCase()} ${operation}`);
+        .text(`(${String.fromCharCode(97 + index)}) ${primitiveLabel} ${operation}`);
     });
     let legendOffset = 0;
     legendEntries.forEach(({row, lines}) => {
@@ -125,21 +126,25 @@ function configuration(row) {
     row.storage_output_bits ? `${row.storage_output_bits}-bit storage` : null].filter(Boolean).join(' / ');
   if (row.output_storage === 'packed_128_binary_leaf') output = '1-bit packed / 128-bit leaves';
   else if (row.output_storage === 'packed_bits') output = `${row.logical_output_bits}-bit packed output`;
+  else if (row.output_storage === 'packed_lanes') output = `${row.logical_output_bits}-bit packed / ${row.lanes} lanes per 128-bit block`;
+  else if (row.output_storage === 'bool_scalar') output = '1-bit bool outputs';
   else if (row.library === 'gpu_dpf' && row.storage_output_bits === 128) output = '128-bit unsigned outputs';
   else if (row.output_storage === 'gmp_scalar') output = `${row.logical_output_bits}-bit prime-field / GMP scalar`;
   const group = {bytes: 'XOR', additive_mod_2_64: 'additive mod 2^64',
     'additive_mod_2^64': 'additive mod 2^64', prime_field: 'prime field',
     xor_128: 'XOR', 'additive_mod_2^128': 'additive mod 2^128'}[row.group] ?? row.group;
-  const showGroup = !['gmp_scalar', 'packed_128_binary_leaf', 'packed_bits'].includes(row.output_storage) && row.library !== 'gpu_dpf';
+  const showGroup = !['gmp_scalar', 'packed_128_binary_leaf', 'packed_bits', 'packed_lanes', 'bool_scalar'].includes(row.output_storage) && row.library !== 'gpu_dpf';
   return [output, showGroup ? group : null, row.prg,
+    row.num_points ? `t=${row.num_points} points` : null,
     row.keys > 1 ? `K=${row.keys.toLocaleString('en-US')}` : 'K=1'].filter(Boolean).join(' / ');
 }
 
 function legendName(row, figureId) {
   const library = {fss: 'FSS', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0',
     gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf', google_dpf: 'Google DPF', libfss: 'libfss'}[row.library] ?? row.library;
-  const scheme = ['gpu-eval-all', 'gpu-block-size'].includes(figureId) && row.library === 'fss' ? ` ${row.scheme}` : '';
-  return `${library}${scheme}`;
+  const scheme = row.library === 'fss' ? ` ${row.scheme}` : '';
+  const experimental = row.library === 'fss' && row.scheme === 'PackedHalfTreeDPF' ? ' (experimental)' : '';
+  return `${library}${scheme}${experimental}`;
 }
 
 function wrap(text, limit) {

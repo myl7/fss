@@ -13,6 +13,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import signal
 import statistics
@@ -87,7 +88,7 @@ def pattern(case):
         operation = "EvalAllFull"
     if case["library"] == "fss" and case["platform"] == "cpu":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
-        return f"^fss/CPU/(DPF|DCF)-{groups}/{operation}(/|$)"
+        return f"^fss/CPU/((DPF|DCF|HalfTreeDPF|DMPF|VDMPF)-{groups}|PackedHalfTreeDPF-bits1|GrottoDCF)/{operation}(/|$)"
     if case["library"] == "ezpc" and case["operation"] != "EvalAll":
         return f"^EzPC/GPU/(DPF|DCF)/{operation}/{case['num_keys']}(/|$)"
     prefix = "fss" if case["library"] == "fss" else ".*"
@@ -201,7 +202,9 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
     row = dict(case, benchmark=name, status=status, median_ns=time, time_ns=time,
                ns_per_key=time / case["num_keys"] if time is not None else None,
                raw_result=str(raw), source_sha256=sources, error=error)
-    scheme = "HalfTreeDPF" if "HalfTree" in name else "DCF" if "DCF" in name else "DPF"
+    scheme = ("PackedHalfTreeDPF" if "PackedHalfTree" in name else "GrottoDCF" if "GrottoDCF" in name else
+              "VDMPF" if "VDMPF" in name else "DMPF" if "DMPF" in name else
+              "HalfTreeDPF" if "HalfTree" in name else "DCF" if "DCF" in name else "DPF")
     group = "bytes" if "bytes" in name else "uint" if "uint" in name else "native"
     prg = "AES-software" if "AesSoft" in name else ("ChaCha12" if case["library"] == "gpu_dpf" and case["platform"] == "gpu" else
           "AES-NI" if case["platform"] == "cpu" and case["library"] == "fss" and case["cpu_prg"] == "aes-ni" else
@@ -218,6 +221,15 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
                output_storage="packed_bits" if case["library"] == "ezpc" and case["operation"] == "EvalAll" else "materialized",
                timing_boundary="cuda_event_kernel" if case["platform"] == "gpu" else "wall_time_operation",
                statistic="median", config=dict(case), storage_output_bits=128 if group in ("bytes", "uint") else bits)
+    if scheme == "PackedHalfTreeDPF":
+        width = int(next(iter(re.findall(r"-bits(\d+)", name)), 1))
+        row.update(group=f"bits{width}", logical_output_bits=width, storage_output_bits=128,
+                   output_storage="packed_lanes", lanes=128 // width)
+    elif scheme == "GrottoDCF":
+        row.update(logical_output_bits=1, storage_output_bits=8, output_storage="bool_scalar")
+    elif scheme in ("DMPF", "VDMPF"):
+        # Number of (alpha, beta) point pairs fixed by the fss CPU bench configuration.
+        row["num_points"] = 64
     if case["library"] == "libdpf":
         row.update(logical_output_bits=1, output_storage="packed_128_binary_leaf", storage_output_bits=128)
     elif case["library"] in ("gpu_dpf", "google_dpf", "fss_v060"):
@@ -232,8 +244,8 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
                    output_storage="uint64_scalar" if scheme == "DCF" else "gmp_scalar")
     if case["library"] in ("fss", "fss_v070"):
         row["prg_output_blocks"] = ((2 if scheme == "DCF" else 1) if case["library"] == "fss_v070" and case["platform"] == "gpu" else
-                                    4 if scheme == "DCF" else 1 if scheme == "HalfTreeDPF" else 2)
-    row["variant"] = scheme + "-" + row["group"] + "-" + row["prg"]
+                                    4 if scheme == "DCF" else 1 if scheme in ("HalfTreeDPF", "PackedHalfTreeDPF") else 2)
+    row["variant"] = scheme + "-" + row["group"] + "-" + prg
     row["label"] = case["library"] + "/" + row["variant"]
     return polish_metadata(row)
 
@@ -294,6 +306,8 @@ def polish_metadata(row):
         row["timing_boundary_detail"] = "Native framework wall time per operation; setup outside the benchmark iteration is excluded"
     row["variant"] = scheme + "-" + row.get("group", "native") + "-" + row.get("prg", "native")
     row["label"] = library + "/" + row["variant"]
+    if row.get("scheme") == "PackedHalfTreeDPF":
+        row["label"] += " (experimental)"
     return row
 
 

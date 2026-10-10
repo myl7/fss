@@ -27,6 +27,17 @@ evaluation where configurable. EzPC uses its fixed T=256 full adapter.
 Read each record's `num_keys`, `domain_size`, and `threads_per_block` fields
 before comparing an operation or interpreting a native items counter.
 
+Current-FSS specialty schemes extend these boundaries. Grotto DCF point Eval
+times the parity-tree query only, with Preprocess outside timing, and its
+EvalAll times Preprocess plus the scan as one full-domain operation.
+DMPF and VDMPF use `t = 64` points with `m = ChBucket(64, 80) = 112` Cuckoo
+buckets and bucket domains of `2^(n-5)`; DMPF EvalAll evaluates every padded
+bucket domain, and VDMPF EvalAll materializes through BatchEval over all N
+inputs, including proof generation, as a point loop. Packed HalfTree DPF
+EvalAll emits `N/128` packed blocks for one-bit outputs. CPU benchmarks pin
+one CPU, which also pins the OpenMP team to one thread; DMPF EvalAll would
+otherwise pay one parallel-region spawn per bucket.
+
 Current FSS GPU FullEval sets `z = min(17, n)` for DPF,
 `z = min(17, n - 1)` for HalfTreeDPF, and `b1 = z - log2(T)`.
 The T sweep therefore adjusts the block root depth to satisfy the public
@@ -66,6 +77,9 @@ can differ from those tables.
 | Implementation | Native output configuration |
 | --- | --- |
 | Current FSS and historical FSS 0.7 | 127-bit XOR byte group, 128-bit storage; optional integer group modulo 2^127 |
+| Current FSS Grotto DCF | One logical comparison bit; EvalAll returns N bool shares |
+| Current FSS packed HalfTree DPF (experimental) | One logical bit; EvalAll returns N/128 packed 128-bit blocks |
+| Current FSS DMPF / VDMPF | 127-bit XOR byte group per point; t=64 points over m=112 Cuckoo buckets |
 | Rust FSS 0.6 | 128-bit XOR bytes; optional integer group modulo 2^128 |
 | Google DPF / DCF | XOR128 / additive integers modulo 2^128 |
 | GPU-DPF CPU and GPU | uint128 scalar output |
@@ -98,6 +112,17 @@ evaluation in milliseconds. The block-size figure shows actual T and a
 logarithmic time axis. Render only successful positive measurements; leave
 unsupported, failed, and unmeasured points absent. Captions must follow the
 collected raw data.
+
+Every current-FSS curve carries its scheme in the legend (FSS DPF, FSS DCF,
+FSS HalfTreeDPF, FSS PackedHalfTreeDPF with an experimental marker, and the
+specialty schemes below), so readers constrained to one scheme can read its
+own curve. Grotto DCF and the DMPF family have no like-for-like third-party
+counterpart on the comparison axes, so they render on dedicated figures
+rather than the main comparison figures: `cpu-grotto` for Grotto DCF with its
+one-bit comparison output, and `cpu-dmpf` for DMPF and VDMPF together, since
+adding verifiability changes functionality but little time. VDMPF BatchEval
+timings include proof generation; verification itself is a comparison
+outside timing.
 
 ## Run and export
 

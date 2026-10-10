@@ -9,4 +9,17 @@ assert.throws(() => normalizeRecords({records: [{...measured, ns_per_key: undefi
 assert.deepEqual(figureGroups([]), []);
 assert.equal(figureGroups(normalizeRecords({records: [measured]}))[0].panels.length, 1);
 assert.equal(figureGroups(normalizeRecords({records: [{...measured, scan: 'threads', threads_per_block: 32}]}))[0].id, 'gpu-block-size');
+
+const cpuRow = (scheme, operation) => ({...measured, platform: 'cpu', scheme, operation});
+const records = normalizeRecords({records: [
+  cpuRow('DPF', 'EvalAll'), cpuRow('HalfTreeDPF', 'EvalAll'), cpuRow('PackedHalfTreeDPF', 'EvalAll'),
+  cpuRow('GrottoDCF', 'EvalAll'), cpuRow('DMPF', 'EvalAll'), cpuRow('VDMPF', 'Gen')]});
+const figures = Object.fromEntries(figureGroups(records).map(figure => [figure.id, figure]));
+// Specialty schemes stay off the comparison figure and get dedicated figures.
+assert.deepEqual(figures['cpu-eval-all'].panels.flatMap(panel => panel.rows).map(row => row.scheme).sort(),
+  ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF']);
+const grotto = figures['cpu-grotto'].panels.flatMap(panel => panel.rows);
+assert.deepEqual(grotto.map(row => row.primitive), ['dcf']);
+const dmpf = figures['cpu-dmpf'].panels.flatMap(panel => panel.rows).map(row => `${row.primitive}:${row.scheme}`);
+assert.deepEqual(dmpf, ['dmpf:VDMPF', 'dmpf:DMPF']);
 console.log('figure model checks passed');

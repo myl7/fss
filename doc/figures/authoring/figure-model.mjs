@@ -1,4 +1,10 @@
 // Normalize measured timing records without interpolating missing measurements.
+const SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'GrottoDCF', 'DMPF', 'VDMPF'];
+// Schemes shown on the library-comparison figures; specialty schemes get
+// dedicated single-library figures because their functionality has no
+// like-for-like third-party counterpart on the same axes.
+const MAIN_SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF'];
+
 export function normalizeRecords(input) {
   const records = Array.isArray(input) ? input : input.records;
   if (!Array.isArray(records)) throw new Error('missing benchmark records');
@@ -9,15 +15,20 @@ export function normalizeRecords(input) {
       throw new Error(`invalid timing for ${row.label ?? row.method}`);
     }
     const device = row.platform;
-    const primitive = row.scheme === 'DCF' ? 'dcf' : 'dpf';
+    const primitive = ['DCF', 'GrottoDCF'].includes(row.scheme) ? 'dcf' : ['DMPF', 'VDMPF'].includes(row.scheme) ? 'dmpf' : 'dpf';
     const operation = {Gen: 'gen', Eval: 'eval', EvalAll: 'eval_all'}[row.operation];
     if (!['cpu', 'gpu'].includes(device)) throw new Error('invalid platform');
-    if (!['DPF', 'DCF', 'HalfTreeDPF'].includes(row.scheme)) throw new Error('invalid scheme');
+    if (!SCHEMES.includes(row.scheme)) throw new Error('invalid scheme');
     if (!operation) throw new Error('invalid operation');
     const exponent = Number(row.domain_bits);
     if (!Number.isInteger(exponent) || exponent < 1) throw new Error('invalid log_n');
-    const variant = (row.variant ?? '').replace(/^(HalfTreeDPF|DPF|DCF)[-_]?/, '');
-    const method = `${row.library}:${variant}${row.scheme === 'HalfTreeDPF' ? ':half-tree' : ''}`;
+    const variant = (row.variant ?? '').replace(/^(PackedHalfTreeDPF|HalfTreeDPF|GrottoDCF|VDMPF|DMPF|DPF|DCF)[-_]?/, '');
+    // The scheme suffix keeps series apart when two schemes share a variant
+    // (DPF/DCF bytes-AES-NI on comparison figures, DMPF/VDMPF on the shared
+    // specialty figure); otherwise the renderer groups them into one polyline.
+    const suffix = {HalfTreeDPF: ':half-tree', PackedHalfTreeDPF: ':packed', DCF: ':dcf', GrottoDCF: ':grotto',
+      DMPF: ':dmpf', VDMPF: ':vdmpf'}[row.scheme] ?? '';
+    const method = `${row.library}:${variant}${suffix}`;
     const label = row.label ?? `${row.library}${row.scheme === 'HalfTreeDPF' ? ' HalfTree' : ''}${row.variant ? ` (${row.variant})` : ''}`;
     return {...row, method, label, device, primitive, operation, log_n: exponent, keys, ms_per_key: time};
   });
@@ -25,18 +36,20 @@ export function normalizeRecords(input) {
 
 export function figureGroups(records) {
   const specs = [
-    ['cpu-point', 'CPU point operations', 'cpu', ['gen', 'eval']],
-    ['gpu-point', 'GPU point operations', 'gpu', ['gen', 'eval']],
-    ['cpu-eval-all', 'CPU full-domain evaluation', 'cpu', ['eval_all']],
-    ['gpu-eval-all', 'GPU full-domain evaluation', 'gpu', ['eval_all']],
-    ['gpu-block-size', 'GPU block-size sensitivity', 'gpu', ['eval', 'eval_all']],
+    ['cpu-point', 'CPU point operations', 'cpu', ['gen', 'eval'], MAIN_SCHEMES],
+    ['gpu-point', 'GPU point operations', 'gpu', ['gen', 'eval'], MAIN_SCHEMES],
+    ['cpu-eval-all', 'CPU full-domain evaluation', 'cpu', ['eval_all'], MAIN_SCHEMES],
+    ['gpu-eval-all', 'GPU full-domain evaluation', 'gpu', ['eval_all'], MAIN_SCHEMES],
+    ['gpu-block-size', 'GPU block-size sensitivity', 'gpu', ['eval', 'eval_all'], MAIN_SCHEMES],
+    ['cpu-grotto', 'CPU Grotto DCF (1-bit comparison output)', 'cpu', ['gen', 'eval', 'eval_all'], ['GrottoDCF']],
+    ['cpu-dmpf', 'CPU DMPF and VDMPF (t=64 points)', 'cpu', ['gen', 'eval', 'eval_all'], ['DMPF', 'VDMPF']],
   ];
-  return specs.map(([id, title, device, operations]) => {
+  return specs.map(([id, title, device, operations, schemes]) => {
     const isThreads = id === 'gpu-block-size';
     const selected = records.filter(row => row.device === device && operations.includes(row.operation) &&
-      (isThreads ? row.scan === 'threads' : row.scan !== 'threads'));
+      schemes.includes(row.scheme) && (isThreads ? row.scan === 'threads' : row.scan !== 'threads'));
     const panels = [];
-    for (const primitive of ['dpf', 'dcf']) for (const operation of operations) {
+    for (const primitive of ['dpf', 'dcf', 'dmpf']) for (const operation of operations) {
       const rows = selected.filter(row => row.primitive === primitive && row.operation === operation);
       if (rows.length) panels.push({primitive, operation, rows});
     }
