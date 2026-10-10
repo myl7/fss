@@ -108,6 +108,10 @@ class FigureSweepTest(unittest.TestCase):
             row = sweep.normalize(self.case(platform="cpu", operation="Eval"), name, 1000, "raw", {})
             self.assertEqual(row["scheme"], scheme)
             self.assertEqual(row["num_points"], 64)
+        servan = sweep.normalize(self.case(library="servan_vdpf", platform="cpu", operation="EvalAll"),
+                                 "servan_vdpf/CPU/VDPF/EvalAll", 1000, "raw", {})
+        self.assertEqual((servan["scheme"], servan["num_points"], servan["output_storage"], servan["prg"]),
+                         ("VDPF", 1, "uint128_scalar", "AES128/OpenSSL"))
 
     def test_kernel_resource_failure_preserves_incomplete_raw_as_unsupported(self):
         case = self.case(operation="Eval", sweep="block", threads_per_block=1024)

@@ -16,3 +16,6 @@
 [submodule "fss-v0.7.0"]
 	path = third_party/fss-v0.7.0/fss-v0.7.0
 	url = https://github.com/myl7/fss.git
+[submodule "third_party/vdpf/vdpf"]
+	path = third_party/vdpf/vdpf
+	url = https://github.com/sachaservan/vdpf.git

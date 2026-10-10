@@ -10,7 +10,7 @@ export function renderFigures(d3, figures, metadata) {
   const methodIndex = method => methods.indexOf(method);
   const ownMethods = methods.filter(method => /^fss:/.test(method));
   const baselineColors = {fss_v060: '#7d8796', fss_v070: '#a685b4', ezpc: '#c07852',
-    gpu_dpf: '#729875', libdpf: '#ac9861', libfss: '#688e99', google_dpf: '#877a67'};
+    gpu_dpf: '#729875', libdpf: '#ac9861', libfss: '#688e99', google_dpf: '#877a67', servan_vdpf: '#c2564a'};
   const color = method => /^fss:/.test(method) ? fssColors[ownMethods.indexOf(method) % fssColors.length] :
     method.startsWith('libfss:additive') ? '#9b657d' : baselineColors[method.split(':')[0]] ?? colors[methodIndex(method) % colors.length];
   const symbol = method => symbols[methodIndex(method) % symbols.length];
@@ -95,7 +95,7 @@ export function renderFigures(d3, figures, metadata) {
           .attr('d', d3.symbol().type(symbol(method)).size(45)).attr('fill', color(method)).attr('stroke', '#fff').attr('stroke-width', 0.6);
       }
       const operation = {gen: 'Gen', eval: 'Eval', eval_all: 'EvalAll'}[panel.operation];
-      const primitiveLabel = {dmpf: 'DMPF / VDMPF'}[panel.primitive] ?? panel.primitive.toUpperCase();
+      const primitiveLabel = {dmpf: 'DMPF / VDMPF / VDPF'}[panel.primitive] ?? panel.primitive.toUpperCase();
       g.append('text').attr('data-name', 'panel-label').attr('x', panelW / 2).attr('y', plotH + 69)
         .attr('text-anchor', 'middle').attr('font-size', 15).attr('font-weight', 600)
         .text(`(${String.fromCharCode(97 + index)}) ${primitiveLabel} ${operation}`);
@@ -133,7 +133,7 @@ function configuration(row) {
   const group = {bytes: 'XOR', additive_mod_2_64: 'additive mod 2^64',
     'additive_mod_2^64': 'additive mod 2^64', prime_field: 'prime field',
     xor_128: 'XOR', 'additive_mod_2^128': 'additive mod 2^128'}[row.group] ?? row.group;
-  const showGroup = !['gmp_scalar', 'packed_128_binary_leaf', 'packed_bits', 'packed_lanes', 'bool_scalar'].includes(row.output_storage) && row.library !== 'gpu_dpf';
+  const showGroup = !['gmp_scalar', 'packed_128_binary_leaf', 'packed_bits', 'packed_lanes', 'bool_scalar', 'uint128_scalar'].includes(row.output_storage) && row.library !== 'gpu_dpf';
   return [output, showGroup ? group : null, row.prg,
     row.num_points ? `t=${row.num_points} points` : null,
     row.keys > 1 ? `K=${row.keys.toLocaleString('en-US')}` : 'K=1'].filter(Boolean).join(' / ');
@@ -141,7 +141,8 @@ function configuration(row) {
 
 function legendName(row, figureId) {
   const library = {fss: 'FSS', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0',
-    gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf', google_dpf: 'Google DPF', libfss: 'libfss'}[row.library] ?? row.library;
+    gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf', google_dpf: 'Google DPF', libfss: 'libfss',
+    servan_vdpf: 'Servan-Schreiber VDPF'}[row.library] ?? row.library;
   const scheme = row.library === 'fss' ? ` ${row.scheme}` : '';
   const experimental = row.library === 'fss' && row.scheme === 'PackedHalfTreeDPF' ? ' (experimental)' : '';
   return `${library}${scheme}${experimental}`;

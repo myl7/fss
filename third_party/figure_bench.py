@@ -28,9 +28,9 @@ BUILD = bench.BUILD / "sweep"
 DOMAINS = (8, 10, 12, 14, 16, 18, 20)
 SLOW_DOMAINS = (8, 12, 14, 18, 20)
 BLOCKS = (16, 32, 64, 128, 256, 512, 1024)
-CPU_LIBRARIES = ("fss", "libdpf", "libfss", "google_dpf", "gpu_dpf", "fss_v060", "fss_v070")
+CPU_LIBRARIES = ("fss", "libdpf", "libfss", "google_dpf", "gpu_dpf", "fss_v060", "fss_v070", "servan_vdpf")
 TARGETS = {"fss": "bench_fss", "libfss": "bench_dpf_libfss", "gpu_dpf": "bench_dpf_gpu_dpf",
-           "ezpc": "bench_dpf_ezpc", "torchcsprng": "bench_aes128_soft"}
+           "ezpc": "bench_dpf_ezpc", "torchcsprng": "bench_aes128_soft", "servan_vdpf": "bench_vdpf_servan"}
 
 
 def cases(args):
@@ -203,7 +203,7 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
                ns_per_key=time / case["num_keys"] if time is not None else None,
                raw_result=str(raw), source_sha256=sources, error=error)
     scheme = ("PackedHalfTreeDPF" if "PackedHalfTree" in name else "GrottoDCF" if "GrottoDCF" in name else
-              "VDMPF" if "VDMPF" in name else "DMPF" if "DMPF" in name else
+              "VDPF" if "VDPF" in name else "VDMPF" if "VDMPF" in name else "DMPF" if "DMPF" in name else
               "HalfTreeDPF" if "HalfTree" in name else "DCF" if "DCF" in name else "DPF")
     group = "bytes" if "bytes" in name else "uint" if "uint" in name else "native"
     prg = "AES-software" if "AesSoft" in name else ("ChaCha12" if case["library"] == "gpu_dpf" and case["platform"] == "gpu" else
@@ -227,6 +227,9 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
                    output_storage="packed_lanes", lanes=128 // width)
     elif scheme == "GrottoDCF":
         row.update(logical_output_bits=1, storage_output_bits=8, output_storage="bool_scalar")
+    elif scheme == "VDPF":
+        # Single-point VDPF reference implementation (sachaservan/vdpf).
+        row.update(logical_output_bits=1, storage_output_bits=128, output_storage="uint128_scalar", num_points=1)
     elif scheme in ("DMPF", "VDMPF"):
         # Number of (alpha, beta) point pairs fixed by the fss CPU bench configuration.
         row["num_points"] = 64
@@ -268,6 +271,10 @@ def polish_metadata(row):
                                      "OpenSSL low-level AES_encrypt; no AES-NI implementation claim")
         if library == "libfss":
             row["prg_output_blocks"] = 4 if scheme == "DCF" else 3
+    if library == "servan_vdpf" and row.get("prg", "native") == "native":
+        row.update(prg="AES128/OpenSSL",
+                   prg_backend_detail="OpenSSL EVP AES-128: ECB for the PRG expansion and CTR for the MMO hash; "
+                                      "research-purposes-only upstream code")
     if library == "fss" and device == "gpu" and "AesSoft" not in row.get("benchmark", ""):
         blocks = 4 if scheme == "DCF" else 1 if scheme == "HalfTreeDPF" else 2
         row.update(prg=f"ChaCha20-x{blocks}", prg_output_blocks=blocks)

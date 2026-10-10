@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   VDMPF (`t = 64` points). The comparison figures now label each FSS curve with its scheme, the
   packed curve joins the libdpf axis on the CPU full-domain figure, and Grotto DCF and the
   DMPF/VDMPF pair render on dedicated figures without like-for-like third-party counterparts.
+* The Servan-Schreiber VDPF reference implementation (sachaservan/vdpf, eprint 2021/580) as a
+  pinned submodule with a benchmark adapter; its single-point VDPF curves anchor the DMPF/VDMPF
+  family figure.
 
 ## [1.2.0] - 2026-08-17
 

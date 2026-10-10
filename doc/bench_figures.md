@@ -36,7 +36,11 @@ bucket domain, and VDMPF EvalAll materializes through BatchEval over all N
 inputs, including proof generation, as a point loop. Packed HalfTree DPF
 EvalAll emits `N/128` packed blocks for one-bit outputs. CPU benchmarks pin
 one CPU, which also pins the OpenMP team to one thread; DMPF EvalAll would
-otherwise pay one parallel-region spawn per bucket.
+otherwise pay one parallel-region spawn per bucket. The Servan-Schreiber VDPF
+reference adapter follows upstream test usage: its MMO hash objects are
+stateful (AES-CTR), so each timed Gen, Eval, or EvalAll re-initializes them
+inside the timing region, and proof verification is an equality check
+outside timing.
 
 Current FSS GPU FullEval sets `z = min(17, n)` for DPF,
 `z = min(17, n - 1)` for HalfTreeDPF, and `b1 = z - log2(T)`.
@@ -80,6 +84,7 @@ can differ from those tables.
 | Current FSS Grotto DCF | One logical comparison bit; EvalAll returns N bool shares |
 | Current FSS packed HalfTree DPF (experimental) | One logical bit; EvalAll returns N/128 packed 128-bit blocks |
 | Current FSS DMPF / VDMPF | 127-bit XOR byte group per point; t=64 points over m=112 Cuckoo buckets |
+| Servan-Schreiber VDPF (reference) | One logical bit; uint128 shares materialized per point; single point (t=1) |
 | Rust FSS 0.6 | 128-bit XOR bytes; optional integer group modulo 2^128 |
 | Google DPF / DCF | XOR128 / additive integers modulo 2^128 |
 | GPU-DPF CPU and GPU | uint128 scalar output |
@@ -92,7 +97,9 @@ ChaCha variants and software-AES point variant, GPU-DPF GPU ChaCha12, EzPC
 and Google AES128, and historical FSS CPU AES-MMO-NI and GPU Salsa12.
 libdpf uses `AES128-MMO/RustCrypto`, with runtime AES-NI dispatch from the
 pinned `aes 0.8.4` crate. libfss uses `AES128-MMO/OpenSSL` through the low-level
-`AES_encrypt` API. Output groups, packing, PRGs,
+`AES_encrypt` API. The Servan-Schreiber VDPF reference uses OpenSSL EVP
+AES-128 (ECB for the PRG expansion, CTR for the MMO hash). Output groups,
+packing, PRGs,
 and APIs differ across implementations. The experiment reports their native
 operation times for the configurations listed in each record.
 

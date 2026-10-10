@@ -22,3 +22,5 @@ perf.data.old
 
 # Bazel symlinks
 /third_party/distributed_point_functions/bazel-*
+
+__pycache__/

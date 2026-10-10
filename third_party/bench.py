@@ -22,6 +22,7 @@ BUILD = ROOT / "build" / "third_party"
 LIBRARIES = {
     "libdpf": ("libdpf-bench", "cargo", ("cpu",), "third_party/libdpf"),
     "libfss": ("libfss", "cmake", ("cpu",), "third_party/libfss/libfss"),
+    "servan_vdpf": ("vdpf", "cmake", ("cpu",), "third_party/vdpf/vdpf"),
     "google_dpf": ("distributed_point_functions", "bazel", ("cpu",),
                    "third_party/distributed_point_functions/distributed_point_functions"),
     "gpu_dpf": ("GPU-DPF", "cmake", ("cpu", "gpu"), "third_party/GPU-DPF/GPU-DPF"),

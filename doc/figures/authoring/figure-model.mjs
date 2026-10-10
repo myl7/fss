@@ -1,5 +1,5 @@
 // Normalize measured timing records without interpolating missing measurements.
-const SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'GrottoDCF', 'DMPF', 'VDMPF'];
+const SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'GrottoDCF', 'DMPF', 'VDMPF', 'VDPF'];
 // Schemes shown on the library-comparison figures; specialty schemes get
 // dedicated single-library figures because their functionality has no
 // like-for-like third-party counterpart on the same axes.
@@ -15,14 +15,14 @@ export function normalizeRecords(input) {
       throw new Error(`invalid timing for ${row.label ?? row.method}`);
     }
     const device = row.platform;
-    const primitive = ['DCF', 'GrottoDCF'].includes(row.scheme) ? 'dcf' : ['DMPF', 'VDMPF'].includes(row.scheme) ? 'dmpf' : 'dpf';
+    const primitive = ['DCF', 'GrottoDCF'].includes(row.scheme) ? 'dcf' : ['DMPF', 'VDMPF', 'VDPF'].includes(row.scheme) ? 'dmpf' : 'dpf';
     const operation = {Gen: 'gen', Eval: 'eval', EvalAll: 'eval_all'}[row.operation];
     if (!['cpu', 'gpu'].includes(device)) throw new Error('invalid platform');
     if (!SCHEMES.includes(row.scheme)) throw new Error('invalid scheme');
     if (!operation) throw new Error('invalid operation');
     const exponent = Number(row.domain_bits);
     if (!Number.isInteger(exponent) || exponent < 1) throw new Error('invalid log_n');
-    const variant = (row.variant ?? '').replace(/^(PackedHalfTreeDPF|HalfTreeDPF|GrottoDCF|VDMPF|DMPF|DPF|DCF)[-_]?/, '');
+    const variant = (row.variant ?? '').replace(/^(PackedHalfTreeDPF|HalfTreeDPF|GrottoDCF|VDMPF|VDPF|DMPF|DPF|DCF)[-_]?/, '');
     // The scheme suffix keeps series apart when two schemes share a variant
     // (DPF/DCF bytes-AES-NI on comparison figures, DMPF/VDMPF on the shared
     // specialty figure); otherwise the renderer groups them into one polyline.
@@ -42,7 +42,7 @@ export function figureGroups(records) {
     ['gpu-eval-all', 'GPU full-domain evaluation', 'gpu', ['eval_all'], MAIN_SCHEMES],
     ['gpu-block-size', 'GPU block-size sensitivity', 'gpu', ['eval', 'eval_all'], MAIN_SCHEMES],
     ['cpu-grotto', 'CPU Grotto DCF (1-bit comparison output)', 'cpu', ['gen', 'eval', 'eval_all'], ['GrottoDCF']],
-    ['cpu-dmpf', 'CPU DMPF and VDMPF (t=64 points)', 'cpu', ['gen', 'eval', 'eval_all'], ['DMPF', 'VDMPF']],
+    ['cpu-dmpf', 'CPU DMPF and VDMPF family', 'cpu', ['gen', 'eval', 'eval_all'], ['DMPF', 'VDMPF', 'VDPF']],
   ];
   return specs.map(([id, title, device, operations, schemes]) => {
     const isThreads = id === 'gpu-block-size';

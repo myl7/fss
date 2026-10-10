@@ -462,7 +462,9 @@ DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets. DMPF
 EvalAll evaluates every padded bucket domain. VDMPF materializes through
 BatchEval over all N inputs, including proof generation; verification itself
 is a comparison outside timing. Verifiability changes functionality but adds
-little evaluation time, so both schemes share one figure.
+little evaluation time, so both schemes share one figure with the
+Servan-Schreiber VDPF reference implementation (eprint 2021/580, single
+point, `t=1`) as the third-party anchor.
 
 ### CPU Results
 
