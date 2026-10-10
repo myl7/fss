@@ -1,8 +1,7 @@
 var searchData=
 [
-  ['vdmpf_0',['Vdmpf',['../classfss_1_1Vdmpf.html',1,'fss']]],
-  ['vdmpf_2ecuh_1',['vdmpf.cuh',['../vdmpf_8cuh.html',1,'']]],
-  ['vdpf_2',['Vdpf',['../classfss_1_1Vdpf.html',1,'fss']]],
-  ['vdpf_2ecuh_3',['vdpf.cuh',['../vdpf_8cuh.html',1,'']]],
-  ['verify_4',['verify',['../classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c',1,'fss::Vdmpf::Verify()'],['../classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8',1,'fss::Vdpf::Verify()']]]
+  ['uint_0',['Uint',['../structfss_1_1group_1_1Uint.html',1,'fss::group']]],
+  ['uint_20tt_20as_20a_20tt_20_5f_5fglobal_5f_5f_20tt_20kernel_20template_20argument_1',['nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument',['../index.html#autotoc_md10',1,'']]],
+  ['uint_2ecuh_2',['uint.cuh',['../uint_8cuh.html',1,'']]],
+  ['util_2ecuh_3',['util.cuh',['../util_8cuh.html',1,'']]]
 ];

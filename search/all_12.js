@@ -1,7 +1,6 @@
 var searchData=
 [
-  ['samples_0',['Samples',['../index.html#autotoc_md7',1,'']]],
-  ['sha256_1',['sha256',['../classfss_1_1hash_1_1Sha256.html',1,'fss::hash::Sha256'],['../classfss_1_1hash_1_1Sha256.html#a1e31d36a519e0c469aba396646a4184a',1,'fss::hash::Sha256::Sha256()']]],
-  ['sha256_2ecuh_2',['sha256.cuh',['../sha256_8cuh.html',1,'']]],
-  ['started_3',['Get Started',['../index.html#autotoc_md2',1,'']]]
+  ['references_0',['references',['../cuckoo__hash_8cuh.html#autotoc_md17',1,'References'],['../dcf_8cuh.html#autotoc_md20',1,'References'],['../dmpf_8cuh.html#autotoc_md24',1,'References'],['../dpf_8cuh.html#autotoc_md27',1,'References'],['../eval__all__gpu_8cuh.html#autotoc_md29',1,'References'],['../grotto__dcf_8cuh.html#autotoc_md30',1,'References'],['../conceptGroupable.html#autotoc_md32',1,'References'],['../half__tree__dpf_8cuh.html#autotoc_md33',1,'References'],['../packed__half__tree__dpf_8cuh.html#autotoc_md37',1,'References'],['../aes128__mmo__soft_8cuh.html#autotoc_md39',1,'References'],['../vdmpf_8cuh.html#autotoc_md42',1,'References'],['../vdpf_8cuh.html#autotoc_md45',1,'References']]],
+  ['results_1',['results',['../index.html#autotoc_md13',1,'CPU Results'],['../index.html#autotoc_md14',1,'GPU Results']]],
+  ['run_2',['Run',['../structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143',1,'fss::cuckoo_hash::Compact']]]
 ];

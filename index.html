@@ -316,12 +316,14 @@ Samples</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><code>half_tree_dpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">Half-Tree DPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>Eval</code>/<code>EvalAll</code> with a mul=1 PRG and a separate hash key    </td></tr>
 <tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><code>packed_half_tree_dpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">Packed Half-Tree DPF (experimental)   </td><td class="markdownTableBodyNone">Sub-128-bit packed outputs: <code>Gen</code>/<code>Eval</code>/<code>EvalAll</code>/<code>Extract</code> over packed blocks    </td></tr>
+<tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><code>grotto_dcf_cpu.cu</code>   </td><td class="markdownTableBodyNone">Grotto DCF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>Preprocess</code>/<code>Eval</code> over a parity segment tree, plus <code>EvalAll</code>    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><code>vdpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">VDPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>Eval</code> plus the <code>Prove</code>/<code>Verify</code> check    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><code>vdmpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">VDMPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>BatchEval</code> over cuckoo-hash packed points    </td></tr>
+<td class="markdownTableBodyNone"><code>vdpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">VDPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>Eval</code> plus the <code>Prove</code>/<code>Verify</code> check    </td></tr>
 <tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><code>vdmpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">VDMPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>BatchEval</code> over cuckoo-hash packed points    </td></tr>
+<tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><code>dmpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">DMPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>BatchEval</code> over cuckoo-hash packed points, without verification   </td></tr>
 </table>
 <p>The CPU samples link OpenSSL, and <code>EvalAll</code> uses OpenMP when it is found.</p>
@@ -407,6 +409,10 @@ Comparison Curves</h2>
 <p>GPU full-domain evaluation uses one key and reports ms/key. The native GPU-DPF and packed EzPC adapters retain their native output configurations.</p>
 <p><img src="doc/figures/gpu-block-size.svg" alt="GPU time by actual threads per block" style="pointer-events: none;" class="inline"/></p>
 <p>The block sweep fixes <code>N = 2^20</code> and varies actual threads per block T. Software AES point evaluation uses <code>K = 262,144</code>. Full DPF and HalfTreeDPF evaluation use <code>K = 1</code>. Software AES at T=1024 exceeds the kernel's resource limit and has no timing point.</p>
+<p><img src="doc/figures/cpu-grotto.svg" alt="CPU Grotto DCF operations" style="pointer-events: none;" class="inline"/></p>
+<p>Grotto DCF shares one logical comparison bit per output and has no like-for-like third-party curve, so it renders on a dedicated figure. Point Eval times the parity-tree query with Preprocess outside timing; EvalAll times Preprocess plus the scan as one full-domain operation.</p>
+<p><img src="doc/figures/cpu-dmpf.svg" alt="CPU DMPF and VDMPF operations" style="pointer-events: none;" class="inline"/></p>
+<p>DMPF and VDMPF use <code>t = 64</code> points over <code>m = 112</code> Cuckoo buckets. DMPF EvalAll evaluates every padded bucket domain. VDMPF materializes through BatchEval over all N inputs, including proof generation; verification itself is a comparison outside timing. Verifiability changes functionality but adds little evaluation time, so both schemes share one figure with the Servan-Schreiber VDPF reference implementation (eprint 2021/580, single point, <code>t=1</code>) as the third-party anchor.</p>
 <h2><a class="anchor" id="autotoc_md13"></a>
 CPU Results</h2>
 <p>Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance governor verified before timing. The host is shared. These are medians of five repetitions with a one-second minimum measurement window per repetition, built in Release with GCC 13.3 and CUDA 13.2. Per-key rows run one operation per iteration, so <code>Avg per item</code> equals <code>Time</code> and <code>Items/s</code> is its reciprocal. <code>EvalAll</code> rows process 2^20 domain outputs per iteration. Their native throughput counter uses CPU time, while <code>Time</code> is wall time, and <code>Avg per item</code> is the reciprocal of that counter.</p>

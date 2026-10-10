@@ -13,6 +13,7 @@ var dir_1ce451d8baf5c0b810a12cb720228ae9 =
     [ "group.cuh", "group_8cuh.html", "group_8cuh" ],
     [ "half_tree_dpf.cuh", "half__tree__dpf_8cuh.html", "half__tree__dpf_8cuh" ],
     [ "hash.cuh", "hash_8cuh.html", "hash_8cuh" ],
+    [ "packed_half_tree_dpf.cuh", "packed__half__tree__dpf_8cuh.html", "packed__half__tree__dpf_8cuh" ],
     [ "prg.cuh", "prg_8cuh.html", "prg_8cuh" ],
     [ "prp.cuh", "prp_8cuh.html", "prp_8cuh" ],
     [ "util.cuh", "util_8cuh.html", null ],

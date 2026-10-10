@@ -27,6 +27,7 @@ var annotated_dup =
       [ "Dpf", "classfss_1_1Dpf.html", "classfss_1_1Dpf" ],
       [ "GrottoDcf", "classfss_1_1GrottoDcf.html", "classfss_1_1GrottoDcf" ],
       [ "HalfTreeDpf", "classfss_1_1HalfTreeDpf.html", "classfss_1_1HalfTreeDpf" ],
+      [ "PackedHalfTreeDpf", "classfss_1_1PackedHalfTreeDpf.html", "classfss_1_1PackedHalfTreeDpf" ],
       [ "Vdmpf", "classfss_1_1Vdmpf.html", "classfss_1_1Vdmpf" ],
       [ "Vdpf", "classfss_1_1Vdpf.html", "classfss_1_1Vdpf" ]
     ] ]

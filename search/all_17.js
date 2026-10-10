@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['xorhashable_0',['XorHashable',['../conceptXorHashable.html',1,'']]]
+  ['warnings_0',['Compiler Warnings',['../index.html#autotoc_md9',1,'']]]
 ];
