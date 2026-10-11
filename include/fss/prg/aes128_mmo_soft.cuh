@@ -200,6 +200,7 @@ public:
      * On device, both should point to __shared__ memory initialized via
      * InitTe0() and InitSbox(). On host, call InitTe0()/InitSbox() on
      * stack arrays and pass them.
+     * The tables are borrowed and must outlive this PRG and any copies of it.
      */
   __host__ __device__ Aes128Soft(const uint8_t keys[][16], const uint32_t *te0, const uint8_t *sbox)
       : te0_(te0), sbox_(sbox) {
