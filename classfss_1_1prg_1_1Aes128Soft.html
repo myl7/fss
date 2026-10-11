@@ -178,7 +178,7 @@ template&lt;int mul&gt; </div>
   </table>
   </dd>
 </dl>
-<p>On device, both should point to <b>shared</b> memory initialized via InitTe0() and InitSbox(). On host, call InitTe0()/InitSbox() on stack arrays and pass them. </p>
+<p>On device, both should point to <b>shared</b> memory initialized via InitTe0() and InitSbox(). On host, call InitTe0()/InitSbox() on stack arrays and pass them. The tables are borrowed and must outlive this PRG and any copies of it. </p>
 
 </div>
 </div>
