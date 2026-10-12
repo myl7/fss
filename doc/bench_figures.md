@@ -31,11 +31,11 @@ Current-FSS specialty schemes extend these boundaries. Grotto DCF point Eval
 times the parity-tree query only, with Preprocess outside timing, and its
 EvalAll times Preprocess plus the scan as one full-domain operation.
 DMPF and VDMPF use `t = 64` points with `m = ChBucket(64, 80) = 112` Cuckoo
-buckets and bucket domains of `2^(n-5)`; DMPF EvalAll evaluates every padded
+buckets and bucket domains of `2^(n-5)`. DMPF EvalAll evaluates every padded
 bucket domain, and VDMPF EvalAll materializes through BatchEval over all N
 inputs, including proof generation, as a point loop. Packed HalfTree DPF
 EvalAll emits `N/128` packed blocks for one-bit outputs. CPU benchmarks pin
-one CPU, which also pins the OpenMP team to one thread; DMPF EvalAll would
+one CPU, which also pins the OpenMP team to one thread. DMPF EvalAll would
 otherwise pay one parallel-region spawn per bucket. The Servan-Schreiber VDPF
 reference adapter follows upstream test usage: its MMO hash objects are
 stateful (AES-CTR), so each timed Gen, Eval, or EvalAll re-initializes them
@@ -65,7 +65,7 @@ places events around the native `dpf_hybrid` call, with key upload and result
 download outside timing. These boundaries appear in each record.
 
 GPU-DPF full evaluation uses `FUSES_MATMUL=0`, one native block, and K=1. It
-materializes uint128 outputs in native bit-reversed domain order; the checker
+materializes uint128 outputs in native bit-reversed domain order. The checker
 maps that order to input x outside timing. The EzPC full adapter writes packed
 bits using the upstream DFS expansion, launches 256 threads, and has one
 active DFS thread. Label these implementations and their timing boundaries
@@ -80,15 +80,15 @@ can differ from those tables.
 
 | Implementation | Native output configuration |
 | --- | --- |
-| Current FSS and historical FSS 0.7 | 127-bit XOR byte group, 128-bit storage; optional integer group modulo 2^127 |
-| Current FSS Grotto DCF | One logical comparison bit; EvalAll returns N bool shares |
-| Current FSS packed HalfTree DPF (experimental) | One logical bit; EvalAll returns N/128 packed 128-bit blocks |
-| Current FSS DMPF / VDMPF | 127-bit XOR byte group per point; t=64 points over m=112 Cuckoo buckets |
-| Servan-Schreiber VDPF (reference) | One logical bit; uint128 shares materialized per point; single point (t=1) |
-| Rust FSS 0.6 | 128-bit XOR bytes; optional integer group modulo 2^128 |
+| Current FSS and historical FSS 0.7 | 127-bit XOR byte group, 128-bit storage · optional integer group modulo 2^127 |
+| Current FSS Grotto DCF | One logical comparison bit · EvalAll returns N bool shares |
+| Current FSS packed HalfTree DPF (experimental) | One logical bit · EvalAll returns N/128 packed 128-bit blocks |
+| Current FSS DMPF / VDMPF | 127-bit XOR byte group per point · t=64 points over m=112 Cuckoo buckets |
+| Servan-Schreiber VDPF (reference) | One logical bit · uint128 shares materialized per point · single point (t=1) |
+| Rust FSS 0.6 | 128-bit XOR bytes · optional integer group modulo 2^128 |
 | Google DPF / DCF | XOR128 / additive integers modulo 2^128 |
 | GPU-DPF CPU and GPU | uint128 scalar output |
-| libdpf | One logical bit; Eval returns a packed 128-bit leaf, EvalAll returns N/128 leaves |
+| libdpf | One logical bit · Eval returns a packed 128-bit leaf, EvalAll returns N/128 leaves |
 | libfss DPF / DCF | GMP scalar modulo nextprime(2^32), a 33-bit field / uint64 modulo 2^64 |
 | EzPC full adapter | Packed binary output |
 
@@ -116,7 +116,7 @@ FSS 0.7 has no native full-domain API. Keep these statuses in the dataset.
 Main figures show logarithmic N and logarithmic time per key: CPU point
 operations in microseconds, GPU point operations in nanoseconds, and full
 evaluation in milliseconds. The block-size figure shows actual T and a
-logarithmic time axis. Render only successful positive measurements; leave
+logarithmic time axis. Render only successful positive measurements. Leave
 unsupported, failed, and unmeasured points absent. Captions must follow the
 collected raw data.
 
@@ -125,14 +125,14 @@ Grotto DCF), DPF with its verifiable VDPF counterparts, and the DMPF family —
 and one operation per column, `Gen`, `Eval`, and `EvalAll`. Every legend entry
 carries its library and scheme (FSS DPF, FSS HalfTreeDPF, FSS
 PackedHalfTreeDPF with an experimental marker, FSS VDPF, and the third-party
-libraries), plus a short native output and PRG qualifier; the records keep the
+libraries), plus a short native output and PRG qualifier. The records keep the
 full configuration. The verifiable point-function curves — FSS VDPF and the
 Servan-Schreiber VDPF reference (eprint 2021/580, single point) — render in
 the DPF row with proof generation inside the timed evaluation and verification
-outside; their times buy malicious security that the plain DPF curves do not.
+outside. Their times buy malicious security that the plain DPF curves do not.
 Grotto DCF joins the DCF row with its one-bit comparison output. DMPF and
 VDMPF share their row since adding verifiability changes functionality but
-little time; VDMPF BatchEval timings include proof generation, and
+little time. VDMPF BatchEval timings include proof generation, and
 verification itself is a comparison outside timing. The threads-per-block
 sweep renders on the separate [block-size figure](#gpu-block-size-sensitivity).
 
@@ -145,12 +145,12 @@ block T: software-AES point `Eval`, amortized over `K = 262,144` keys, and
 full DPF and HalfTreeDPF `EvalAll` with `K = 1`. The sweep adjusts the block
 root depth as described above. Software AES at T=1024 exceeds the kernel's
 resource limit and has no timing point. The README keeps the domain-size
-comparison figures; this figure stays in the methodology documentation.
+comparison figures. This figure stays in the methodology documentation.
 
 ## Run and export
 
 Inspect the requested cases before starting. Each `run` directory must be
-new; use a new suffix for a repeated experiment. The examples use the defaults
+new. Use a new suffix for a repeated experiment. The examples use the defaults
 of five repetitions and the measurement settings above.
 
 ```sh
@@ -177,10 +177,10 @@ python3 third_party/figure_bench.py merge \
 ```
 
 `run` exports its `chart-data.json` and CSV. Use `export` on an individual run
-to rebuild them from saved `case.json` files; `merge` combines completed run
+to rebuild them from saved `case.json` files. `merge` combines completed run
 exports. For an explicit retry, pass its directory to `merge --retry-inputs`
 and retain the superseded attempt provenance. A nonzero exit status can
-accompany a completed dataset containing recorded failures; inspect the
+accompany a completed dataset containing recorded failures. Inspect the
 records and logs before continuing.
 
 Build caches live under `build/third_party/sweep/<library>/<platform>`.
@@ -207,5 +207,5 @@ The exporter writes authoring HTML, SVG, 2x PNG, and a source manifest under
 `doc/figures`, removes previously published figures that the export no longer
 produces, and writes `doc/site/data.json`: the trimmed domain-sweep dataset
 behind the [comparison site](https://myl7.github.io/fss/bench/) in `doc/site`.
-The site is static and dependency-free; preview it locally with
+The site is static and dependency-free. Preview it locally with
 `python3 -m http.server -d doc/site`.

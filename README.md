@@ -361,7 +361,8 @@ See `third_party/fss/bench.cu` for an example.
 ## Benchmarks
 
 See [benchmark methodology and comparison curves](doc/bench_figures.md) for the current full-output adapters and domain sweeps.
-The binaries below are built on [Google Benchmark](https://github.com/google/benchmark) and time single operations; [benchmark coverage](doc/benchmarks.md) lists what they measure and the GPU kernel register usage.
+The binaries below are built on [Google Benchmark](https://github.com/google/benchmark) and time single operations.
+The [benchmark coverage](doc/benchmarks.md) page lists what they measure and the GPU kernel register usage.
 
 Configure with `BUILD_BENCH=ON` and build the targets:
 
@@ -413,7 +414,7 @@ Two more targets support the sections below: `make ptx_info` rebuilds with `--pt
 
 ### Comparison Curves
 
-The domain sweep measures `N = 2^8, 2^10, ..., 2^20`.
+The domain sweep measures domain sizes `N = 2^8, 2^10, ..., 2^20`.
 Each figure is one platform, one scheme family per row — DCF (including Grotto DCF), DPF with its verifiable VDPF counterparts, and DMPF with VDMPF — and one operation per column: `Gen`, `Eval`, `EvalAll`.
 Time axes are logarithmic and legends show each library's native output shape and PRG backend.
 Hardware, sampling, timing boundaries, and reproduction commands are in the [curve methodology](doc/bench_figures.md).
@@ -421,15 +422,19 @@ The exact measured medians behind the curves, with per-domain values and pairwis
 
 ![CPU benchmark operations](doc/figures/cpu-operations.svg)
 
-CPU point operations use one key and one thread, in µs/key; `EvalAll` produces all N outputs for one key, in ms/key.
+CPU point operations use one key and one thread, in µs/key.
+`EvalAll` produces all N outputs for one key, in ms/key.
 The slow materialized point-loop cases use five domain sizes.
-The verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference, eprint 2021/580, single point) include proof generation in the timed evaluation; verification stays outside timing.
+The verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference, eprint 2021/580, single point) include proof generation in the timed evaluation.
+Verification stays outside timing.
 Grotto DCF point `Eval` times the parity-tree query with Preprocess outside timing.
-DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets; VDMPF `EvalAll` materializes through BatchEval including proof generation.
+DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets.
+VDMPF `EvalAll` materializes through BatchEval including proof generation.
 
 ![GPU benchmark operations](doc/figures/gpu-operations.svg)
 
-GPU `Gen` and point `Eval` are amortized over `K = 262,144` keys, in ns/key; `EvalAll` uses one key, in ms/key.
+GPU `Gen` and point `Eval` report time amortized per key, in ns/key.
+`EvalAll` uses one key, in ms/key.
 The native GPU-DPF and packed EzPC adapters keep their native output configurations.
 There is no GPU DCF `EvalAll` benchmark, so that grid cell is absent.
 The threads-per-block sweep lives in the [curve methodology](doc/bench_figures.md#gpu-block-size-sensitivity).

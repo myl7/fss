@@ -142,15 +142,15 @@ export function renderFigures(d3, figures, metadata) {
       });
     });
     if (figure.isThreads) svg.append('text').attr('data-name', 'unsupported-note').attr('x', left).attr('y', H - 51)
-      .attr('font-size', 12).attr('fill', '#555').text('N=2²⁰. Point Eval is amortized over K=262,144 keys. Software AES: T=1024 unsupported.');
+      .attr('font-size', 12).attr('fill', '#555').text('N=2²⁰. Point Eval amortizes over K=262,144. Software AES: T=1024 unsupported.');
     const defaultNote = figure.id === 'gpu-operations'
-      ? 'Logarithmic time axis. Gen and Eval are amortized over K=262,144 keys; EvalAll uses K=1. CUDA events time the operation kernels.'
+      ? 'Logarithmic time axis. Gen and Eval amortize over K=262,144. EvalAll uses K=1. CUDA events time the operation kernels.'
       : figure.id.startsWith('gpu') ? 'Logarithmic time axis. CUDA-event-timed native GPU calls.'
-        : 'Logarithmic time axis. Point operations use one key and one thread; EvalAll uses K=1.';
+        : 'Logarithmic time axis. Point operations use one key and one thread. EvalAll uses K=1.';
     svg.append('text').attr('data-name', 'timing-note').attr('x', left).attr('y', H - 31).attr('font-size', 12).attr('fill', '#555')
       .text(metadata.figure_timing_note ?? defaultNote);
     svg.append('text').attr('data-name', 'methodology-note').attr('x', left).attr('y', H - 13).attr('font-size', 12).attr('fill', '#555')
-      .text('Output groups, PRGs, storage, and timing boundaries: benchmark methodology (doc/bench_figures.md).');
+      .text('K is the keys per invocation. Output groups, PRGs, storage, and timing boundaries: benchmark methodology (doc/bench_figures.md).');
   }
 }
 

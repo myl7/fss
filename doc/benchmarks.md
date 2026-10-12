@@ -4,7 +4,7 @@ What the `bench_cpu` and `bench_gpu` binaries built by `BUILD_BENCH=ON`
 measure, and the GPU kernel resource usage behind them. Build and run
 instructions are in the README. Measurement methodology, timing boundaries,
 and the cross-library comparison curves live in
-[benchmark curve methodology](bench_figures.md); exact measured values are on
+[benchmark curve methodology](bench_figures.md). Exact measured values are on
 the comparison site.
 
 ## Coverage

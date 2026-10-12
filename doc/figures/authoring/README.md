@@ -36,15 +36,15 @@ Raw benchmark logs and normalized datasets remain under `build`.
 
 Each platform figure is a grid: one scheme family per row (DCF, DPF / VDPF,
 DMPF / VDMPF) and one operation per column (Gen, Eval, EvalAll), so operation
-columns stay aligned across rows; families without a measured panel leave
+columns stay aligned across rows. Families without a measured panel leave
 that cell absent. Each panel uses domain size N on the horizontal axis with
-power-of-two ticks; the supplementary block-size figure uses actual CUDA
+power-of-two ticks, and the supplementary block-size figure uses actual CUDA
 threads per block T in a two-panel row. The vertical axis is logarithmic time
 per key — ns for GPU point operations, µs for CPU point operations, and ms
 for full evaluation. GPU point operations use amortized timings at the
-measured K; full-domain evaluation uses K=1. Each family row carries its own
-legend under its panels, one compact native-output and PRG qualifier per
-curve; full configurations stay in the records and the methodology page.
+measured K, and full-domain evaluation uses K=1. Each family row carries its
+own legend under its panels, one compact native-output and PRG qualifier per
+curve. Full configurations stay in the records and the methodology page.
 
 `figure-model.mjs` maps the benchmark schema to figures. `render.mjs` owns
 the D3 SVG layout, stable styles, labels, and legends. `export.mjs` builds

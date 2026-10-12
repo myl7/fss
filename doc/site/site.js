@@ -22,12 +22,15 @@ const PRG_NAMES = {'AES-NI': 'AES-128 MMO, AES-NI', 'OpenSSL-AES': 'AES-128 MMO,
   'AES128/OpenSSL': 'AES-128, OpenSSL EVP', 'AES128-MMO-NI': 'AES-128 MMO, AES-NI',
   'AES-software': 'AES-128, software', 'ChaCha20-x1': 'ChaCha20 ×1 block', 'ChaCha20-x2': 'ChaCha20 ×2 blocks',
   'ChaCha20-x4': 'ChaCha20 ×4 blocks', ChaCha12: 'ChaCha12', Salsa12: 'Salsa12'};
-const TIMING_NAMES = {wall_time_operation: 'wall-clock time per operation',
+const TIMING_NAMES = {
   cuda_event_operation_kernel_launches: 'CUDA events around kernel launches',
   cuda_event_native_key_generation_api: 'CUDA events around native GPU key-generation calls',
   cuda_event_native_point_evaluation_api: 'CUDA events around native GPU point-evaluation calls',
   cuda_event_packed_eval_all_kernel: 'CUDA events around the packed full-domain kernel',
   cuda_event_native_dpf_hybrid_api: 'CUDA events around the native dpf_hybrid call'};
+// DMPF keeps its own comparison pool. DPF and DCF share one, so their curves
+// can be set against each other.
+const comparablePool = family => family === 'dmpf' ? 'dmpf' : 'point';
 const PREFERRED_B = ['libdpf', 'google_dpf', 'ezpc', 'libfss', 'servan_vdpf', 'gpu_dpf', 'fss_v070', 'fss_v060', 'fss'];
 
 let variants = new Map();
@@ -74,11 +77,11 @@ function normalizeSelection() {
       list.find(entry => entry.library === 'fss' && entry.scheme === 'DPF') ??
       list.find(entry => entry.library === 'fss') ?? list[0];
   }
-  const familyList = list.filter(entry => entry.family === state.a.family && entry.key !== state.a.key);
-  if (!state.b || state.b.platform !== state.platform || state.b.family !== state.a.family || state.b.key === state.a.key) {
-    state.b = familyList.find(entry => entry.library === state.b?.library) ??
-      PREFERRED_B.map(library => familyList.find(entry => entry.library === library)).find(Boolean) ??
-      familyList[0];
+  const poolList = list.filter(entry => comparablePool(entry.family) === comparablePool(state.a.family) && entry.key !== state.a.key);
+  if (!state.b || state.b.platform !== state.platform || comparablePool(state.b.family) !== comparablePool(state.a.family) || state.b.key === state.a.key) {
+    state.b = poolList.find(entry => entry.library === state.b?.library) ??
+      PREFERRED_B.map(library => poolList.find(entry => entry.library === library)).find(Boolean) ??
+      poolList[0];
   }
   const available = OPERATIONS.filter(operation => state.a.ops.has(operation) || state.b.ops.has(operation));
   if (!available.includes(state.op)) state.op = available[0] ?? null;
@@ -98,9 +101,10 @@ function optionMarkup(entries, selected) {
 
 function populateSelects() {
   document.getElementById('select-a').innerHTML = optionMarkup(platformVariants(state.platform), state.a);
-  const familyList = platformVariants(state.platform).filter(entry => entry.family === state.a.family);
-  document.getElementById('select-b').innerHTML = optionMarkup(familyList, state.b);
-  document.getElementById('select-b').disabled = familyList.length <= 1;
+  const poolList = platformVariants(state.platform)
+    .filter(entry => comparablePool(entry.family) === comparablePool(state.a.family));
+  document.getElementById('select-b').innerHTML = optionMarkup(poolList, state.b);
+  document.getElementById('select-b').disabled = poolList.length <= 1;
 }
 
 function variantLabel(entry) {
@@ -111,14 +115,17 @@ function variantLabel(entry) {
 function configLine(entry) {
   const row = entry.sample;
   const keysPerOperation = OPERATIONS.filter(operation => entry.ops.has(operation))
-    .map(operation => `${operation}: K=${entry.ops.get(operation)[0].keys.toLocaleString('en-US')}`);
-  const statistic = row.statistic === 'median_of_process_medians' ? 'median of 5 process medians' : 'median of 5 repetitions';
+    .map(operation => `${operation} ${entry.ops.get(operation)[0].keys.toLocaleString('en-US')}`);
   const bits = row.logical_output_bits;
   const storage = Number.isFinite(row.storage_output_bits) ? ` in ${row.storage_output_bits}-bit storage` : '';
+  // The footer states the statistic and the wall-clock CPU boundary, so the
+  // line only names a GPU implementation's specific CUDA-event region.
+  const timing = row.timing_boundary === 'wall_time_operation' ? null
+    : TIMING_NAMES[row.timing_boundary] ?? row.timing_boundary;
   return [outputQualifier(row) + (bits ? ` (${bits} logical bit${bits > 1 ? 's' : ''}${storage})` : ''),
-    `PRG: ${PRG_NAMES[row.prg] ?? row.prg}`, keysPerOperation.join(', '),
-    row.num_points > 1 ? `t=${row.num_points} points` : null,
-    TIMING_NAMES[row.timing_boundary] ?? row.timing_boundary, statistic].filter(Boolean).join(' · ');
+    `PRG: ${PRG_NAMES[row.prg] ?? row.prg}`,
+    `K: ${keysPerOperation.join(', ')}`,
+    row.num_points > 1 ? `t=${row.num_points} points` : null, timing].filter(Boolean).join(' · ');
 }
 
 function renderConfigSummary() {
@@ -264,13 +271,10 @@ function renderTable() {
 
 function renderProvenance(runs) {
   const unique = field => [...new Set(runs.map(run => run[field]).filter(Boolean))];
-  const dates = runs.map(run => run.date).filter(Boolean).sort();
-  const range = dates.length ? `${dates[0].slice(0, 10)} – ${dates[dates.length - 1].slice(0, 10)}` : null;
   document.getElementById('provenance').textContent =
-    [range ? `Measured ${range}` : null, unique('host').length ? `on host ${unique('host').join(', ')}` : null,
-      unique('cpu').length ? `(${unique('cpu').join('; ')})` : null,
-      unique('gpu').length ? `with ${unique('gpu').join('; ')}` : null,
-      unique('git_revision').length ? `at fss revisions ${unique('git_revision').map(revision => revision.slice(0, 7)).join(', ')}` : null]
+    [unique('host').length ? `Measured on host ${unique('host').join(', ')}` : null,
+      unique('cpu').length ? `(${unique('cpu').join(', ')})` : null,
+      unique('gpu').length ? `with ${unique('gpu').join(', ')}` : null]
       .filter(Boolean).join(' ') + '.';
 }
 

@@ -33,13 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   torch 2.13/cu131) in separate jobs.
 * VDPF CPU curves on the DPF comparison axes: FSS VDPF beside the Servan-Schreiber VDPF
   reference implementation (sachaservan/vdpf, eprint 2021/580, pinned submodule with a
-  benchmark adapter). Both include proof generation in the timed evaluation; verification is
+  benchmark adapter). Both include proof generation in the timed evaluation. Verification is
   an equality check outside timing.
 
 ### Changed
 
 * The `fss-crypto` package requires Python >= 3.10, the bindings' actual floor
-  (`X | Y` annotations), instead of the development interpreter's 3.13; the torch floor
+  (`X | Y` annotations), instead of the development interpreter's 3.13. The torch floor
   stays 2.6.
 
 ### Fixed
@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * README figures now render on the Doxygen GitHub Pages site: the Doxygen input filter
   rewrites figures-directory Markdown images to `\image` commands resolved through
   `IMAGE_PATH`, so the SVGs are copied into the HTML output with a responsive width.
-* Comparison figures label narrow logarithmic time ranges with minor log ticks; nearly
+* Comparison figures label narrow logarithmic time ranges with minor log ticks. Nearly
   flat curves (such as DMPF point evaluation) previously rendered with as few as two
   axis ticks, which hid the logarithmic scale.
 
