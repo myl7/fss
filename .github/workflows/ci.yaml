@@ -8,6 +8,7 @@ jobs:
     # C++/CUDA core on ubuntu-24.04 (the 12.4 toolkit is not published for
     # 24.04; 12.6 is the oldest available series). Runners have no GPU, so
     # device tests skip and the jobs verify compilation and host paths.
+    # Versions are pinned to major.minor; patches resolve on their own.
     name: cpp (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -15,12 +16,12 @@ jobs:
       matrix:
         include:
           - name: cuda 12.6
-            cuda: 12.6.85
+            cuda: 12.6
             arch: 80;86
             cc: gcc-12
             cxx: g++-12
           - name: cuda 13.4
-            cuda: 13.4.92
+            cuda: 13.4
             arch: 80;90;120
             cc: ""
             cxx: ""
@@ -63,9 +64,11 @@ jobs:
 
   python:
     # Endpoint testing on the oldest and newest supported Python/torch pairs.
-    # The nvcc version follows the torch wheel's bundled CUDA: 2.6.0+cu126 and
-    # 2.13.0 (PyPI default, CUDA 13.1). Runners have no GPU, so the JIT
-    # extension compiles against TORCH_CUDA_ARCH_LIST=8.0 and CUDA tests skip.
+    # Versions are pinned to major.minor and patches resolve on their own. The
+    # toolkit follows the cuda pin; a minor mismatch against the torch wheel's
+    # bundled CUDA (2.6 ships cu126, 2.13 ships cu131) is only a warning in
+    # torch.utils.cpp_extension. Runners have no GPU, so the JIT extension
+    # compiles against TORCH_CUDA_ARCH_LIST=8.0 and CUDA tests skip.
     name: python (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -74,16 +77,16 @@ jobs:
         include:
           - name: 3.10 + torch 2.6
             python: '3.10'
-            torch: torch==2.6.0
+            torch: torch==2.6.*
             index: --index-url https://download.pytorch.org/whl/cu126
-            cuda: 12.6.85
+            cuda: 12.6
             cc: gcc-12
             cxx: g++-12
           - name: 3.13 + torch 2.13
             python: '3.13'
-            torch: torch==2.13.0
+            torch: torch==2.13.*
             index: ''
-            cuda: 13.1.115
+            cuda: 13.4
             cc: ''
             cxx: ''
     steps:
