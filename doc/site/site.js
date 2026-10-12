@@ -142,14 +142,22 @@ function timeUnit(nsValues) {
 }
 const unitScale = {ns: 1, 'µs': 1e3, ms: 1e6};
 
-// Log-scale y ticks: decades, plus 2× and 5× steps when the span is narrow.
-function yTicks(min, max) {
+// Log-scale y ticks: decades on wide ranges, 2× and 5× steps in between, and
+// minor steps on narrow ranges so a nearly flat curve still shows a readable
+// logarithmic axis.
+function yTicks(min, max, spacingPx, position) {
   const ticks = [];
-  const wide = Math.log10(max / min) > 2.2;
+  const span = Math.log10(max / min);
+  const factors = span > 2.2 ? [1] : span < 0.9 ? [1, 2, 3, 4, 5, 6, 8, 9] : [1, 2, 5];
   for (let exponent = Math.floor(Math.log10(min)); exponent <= Math.ceil(Math.log10(max)); exponent++) {
-    for (const factor of wide ? [1] : [1, 2, 5]) {
+    for (const factor of factors) {
       const value = factor * 10 ** exponent;
-      if (value >= min && value <= max) ticks.push(value);
+      if (value >= min && value <= max && (!ticks.length || Math.abs(position(value) - position(ticks[ticks.length - 1])) >= spacingPx)) ticks.push(value);
+    }
+  }
+  if (ticks.length < 3) {
+    for (const share of [0, 1 / 3, 2 / 3, 1]) {
+      ticks.push(10 ** (Math.log10(min) + span * share));
     }
   }
   return ticks;
@@ -165,7 +173,7 @@ function panelElement(operation, series) {
   const y = value => top + (Math.log10(yMax) - Math.log10(value)) / (Math.log10(yMax) - Math.log10(yMin)) * (height - top - bottom);
   const unit = timeUnit(ys);
   const svg = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${operation} comparison">`];
-  for (const tick of yTicks(yMin, yMax)) {
+  for (const tick of yTicks(yMin, yMax, 14, y)) {
     svg.push(`<line x1="${left}" x2="${width - right}" y1="${y(tick).toFixed(1)}" y2="${y(tick).toFixed(1)}" stroke="#e5e7e9" stroke-width="1"/>`);
     svg.push(`<text x="${left - 6}" y="${(y(tick) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="#55595e">${axisTick(tick)}</text>`);
   }

@@ -74,18 +74,25 @@ export function renderFigures(d3, figures, metadata) {
       const logPadding = Math.max(logSpan * 0.025, logSpan * 7 / (plotH - 14), 0.055);
       const lower = 10 ** (logMin - logPadding), upper = 10 ** (logMax + logPadding);
       const y = d3.scaleLog().domain([lower, upper]).range([plotH, 0]);
+      // Log ticks: decade ticks on wide ranges, 1-2-5 steps in between, and
+      // minor steps on narrow ranges, where nearly flat curves (a point query
+      // that does not scale with N) would otherwise leave too few labeled
+      // levels to see that the axis is logarithmic.
+      const span = Math.log10(upper / lower);
+      const factors = span > 2.2 ? [1] : span < 0.9 ? [1, 2, 3, 4, 5, 6, 8, 9] : [1, 2, 5];
       const candidates = [];
       for (let exponent = Math.floor(Math.log10(lower)); exponent <= Math.ceil(Math.log10(upper)); exponent++) {
-        for (const factor of Math.log10(upper / lower) > 2.2 ? [1] : [1, 2, 5]) {
+        for (const factor of factors) {
           const value = factor * 10 ** exponent;
           if (value >= lower && value <= upper) candidates.push(value);
         }
       }
-      if (Math.log10(upper / lower) < 0.8) candidates.splice(0, candidates.length, ...d3.ticks(lower, upper, 6));
-      const yTicks = [];
+      const spacing = span < 0.9 ? 22 : 27;
+      let yTicks = [];
       for (const value of candidates) {
-        if (!yTicks.length || Math.abs(y(value) - y(yTicks[yTicks.length - 1])) >= 27) yTicks.push(value);
+        if (!yTicks.length || Math.abs(y(value) - y(yTicks[yTicks.length - 1])) >= spacing) yTicks.push(value);
       }
+      if (yTicks.length < 3) yTicks = d3.ticks(lower, upper, 5);
       const tickValues = figure.isThreads ? [16, 32, 64, 128, 256, 512, 1024] : [...new Set(values)].sort((a, b) => a - b);
       g.append('g').attr('data-layer', 'grid').call(d3.axisLeft(y).tickValues(yTicks).tickSize(-panelW).tickFormat(''))
         .call(gridLayer => gridLayer.select('.domain').remove()).call(gridLayer => gridLayer.selectAll('line').attr('stroke', '#e3e5e8').attr('stroke-width', 0.6));
