@@ -309,13 +309,6 @@ parameter set JIT-compiles a small CUDA extension with
 example below runs on CPU tensors. The `aes128_mmo` PRG also links OpenSSL at
 JIT time. Compiled extensions are cached under `~/.cache/fss_crypto`.
 
-To develop against a checkout instead, install the dev extra and run the tests:
-
-```bash
-uv sync --extra dev
-uv run pytest
-```
-
 ```python
 import torch
 import fss_crypto
@@ -342,6 +335,13 @@ assert torch.bitwise_xor(y0, y1).equal(beta)
 PRG when CUDA is available. The JIT path sets a default `TORCH_CUDA_ARCH_LIST`
 on machines with no visible GPU so CPU tests can still compile the extension.
 
+To develop against a checkout instead, install the dev extra and run the tests:
+
+```bash
+uv sync --extra dev
+uv run pytest
+```
+
 ### Compiler Warnings
 
 You may see warnings like "integer constant is so large that it is unsigned" during compilation. These cannot be easily suppressed but are harmless and can be safely ignored.
@@ -354,16 +354,7 @@ Workaround: wrap the type in a plain aggregate struct that satisfies `Groupable`
 
 ## Benchmarks
 
-See [benchmark methodology and comparison curves](doc/bench_figures.md) for the current full-output adapters and domain sweeps.
-
-Microbenchmarks built on [Google Benchmark](https://github.com/google/benchmark), covering:
-
-- Schemes: DPF, DCF, VDPF, Half-Tree DPF, and Grotto DCF.
-- Operations: `Gen`, `Eval`, host `EvalAll`, VDPF `Prove`, Grotto DCF `Preprocess` and `PreprocessEvalAll`, GPU point eval, and full-domain GPU `EvalAll`.
-- PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics, software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on device.
-- Output groups: `Uint` and `Bytes`.
-- VDPF hashes: SHA-256 and BLAKE3.
-- Input domain sizes: 2^20 by default, plus 2^14 and 2^17 for DPF `Eval`.
+See [benchmark methodology and comparison curves](doc/bench_figures.md) for the current full-output adapters and domain sweeps. The binaries below are built on [Google Benchmark](https://github.com/google/benchmark) and time single operations; the figures and the comparison site show what is covered.
 
 Configure with `BUILD_BENCH=ON` and build the targets:
 
