@@ -9,12 +9,18 @@ math within comment blocks:
   - Line comments: /// or //!
   - Block comments: /** ... */ or /* ... */
 
-For Markdown files (.md), converts math on all lines since the entire file
-is documentation.
+For Markdown files (.md), converts math on all lines since the entire file is
+documentation.
 
 Conversions:
   $$...$$ → \f[...\f]   (display math)
   $...$  → \f$...\f$   (inline math)
+  ![alt](.../figures/name.ext) → \image html name.ext "alt" (Markdown only)
+
+Markdown image targets such as doc/figures/x.svg resolve on GitHub but not in
+the Doxygen HTML output, which only contains the files Doxygen itself copies
+there. Rewriting them to \image commands with IMAGE_PATH = doc/figures makes
+Doxygen copy each figure and reference it with a working relative path.
 
 Already-existing \f$ sequences and escaped \$ are preserved.
 """
@@ -22,6 +28,21 @@ Already-existing \f$ sequences and escaped \$ are preserved.
 import os
 import re
 import sys
+
+
+# Markdown image whose target lives in a figures directory, for example
+# ![caption](doc/figures/cpu-point.svg) from README.md or
+# ![caption](figures/cpu-point.svg) from a doc/ page. The basename is kept;
+# IMAGE_PATH resolves it.
+IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]*figures/([^/)]+)\)")
+
+
+def convert_images(text: str) -> str:
+    """Rewrite figures-directory Markdown images to \image html commands."""
+    def replace(match: re.Match) -> str:
+        name, caption = match.group(2), match.group(1).strip().replace('"', "'")
+        return f"\\image html {name} \"{caption}\"" if caption else f"\\image html {name}"
+    return IMAGE_PATTERN.sub(replace, text)
 
 
 def convert_math(text: str) -> str:
@@ -57,7 +78,7 @@ def process(source: str, filepath: str) -> str:
     """
     _, ext = os.path.splitext(filepath)
     if ext.lower() in (".md", ".markdown"):
-        return convert_math(source)
+        return convert_math(convert_images(source))
 
     in_block_comment = False
     result = []

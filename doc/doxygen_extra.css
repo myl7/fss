@@ -1,0 +1,6 @@
+/* README figures are embedded as SVG objects; keep them inside the page. */
+.image object,
+.image img {
+  max-width: 100%;
+  height: auto;
+}
