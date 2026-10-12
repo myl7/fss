@@ -3,33 +3,137 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  test:
+  cpp:
+    # Endpoint testing: the oldest and newest CUDA toolkit that can build the
+    # C++/CUDA core on ubuntu-24.04 (the 12.4 toolkit is not published for
+    # 24.04; 12.6 is the oldest available series). Runners have no GPU, so
+    # device tests skip and the jobs verify compilation and host paths.
+    name: cpp (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: cuda 12.6
+            cuda: 12.6.85
+            arch: 80;86
+            cc: gcc-12
+            cxx: g++-12
+          - name: cuda 13.4
+            cuda: 13.4.92
+            arch: 80;90;120
+            cc: ""
+            cxx: ""
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install system deps
+      - name: Install host compiler
+        if: matrix.cxx != ''
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libssl-dev
+          sudo apt-get install -y gcc-12 g++-12
 
       - name: Install CUDA
         uses: Jimver/cuda-toolkit@v0.2.30
         with:
           method: network
+          cuda: ${{ matrix.cuda }}
           sub-packages: '["nvcc"]'
 
       - name: Configure CMake
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+          CUDAHOSTCXX: ${{ matrix.cxx }}
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_BENCH=ON
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_BENCH=ON \
+            -DCMAKE_CUDA_ARCHITECTURES="${{ matrix.arch }}"
 
       - name: Build
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+          CUDAHOSTCXX: ${{ matrix.cxx }}
         run: |
           cmake --build build -j
 
       - name: Test
         run: |
           ctest --test-dir build --output-on-failure
+
+  python:
+    # Endpoint testing on the oldest and newest supported Python/torch pairs.
+    # The nvcc version follows the torch wheel's bundled CUDA: 2.6.0+cu126 and
+    # 2.13.0 (PyPI default, CUDA 13.1). Runners have no GPU, so the JIT
+    # extension compiles against TORCH_CUDA_ARCH_LIST=8.0 and CUDA tests skip.
+    name: python (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: 3.10 + torch 2.6
+            python: '3.10'
+            torch: torch==2.6.0
+            index: --index-url https://download.pytorch.org/whl/cu126
+            cuda: 12.6.85
+            cc: gcc-12
+            cxx: g++-12
+          - name: 3.13 + torch 2.13
+            python: '3.13'
+            torch: torch==2.13.0
+            index: ''
+            cuda: 13.1.115
+            cc: ''
+            cxx: ''
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install host compiler
+        if: matrix.cxx != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-12 g++-12
+
+      - name: Install CUDA
+        uses: Jimver/cuda-toolkit@v0.2.30
+        with:
+          method: network
+          cuda: ${{ matrix.cuda }}
+          sub-packages: '["nvcc"]'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ matrix.python }}-${{ matrix.torch }}
+
+      - name: Cache JIT extensions
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/fss_crypto
+          key: jit-${{ matrix.python }}-${{ matrix.torch }}-${{ matrix.cuda }}-${{ hashFiles('fss_crypto/**', 'include/fss/**') }}
+
+      - name: Install
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install ${{ matrix.torch }} ${{ matrix.index }}
+          pip install --no-build-isolation -e '.[dev]'
+
+      - name: Test
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+          CUDAHOSTCXX: ${{ matrix.cxx }}
+        run: |
+          python -m pytest test/ -q
 
   doc:
     runs-on: ubuntu-latest
