@@ -363,7 +363,7 @@ Microbenchmarks built on [Google Benchmark](https://github.com/google/benchmark)
 - PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics, software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on device.
 - Output groups: `Uint` and `Bytes`.
 - VDPF hashes: SHA-256 and BLAKE3.
-- Input domain sizes in the microbenchmark tables: 2^20, plus 2^14 and 2^17 for DPF `Eval`.
+- Input domain sizes: 2^20 by default, plus 2^14 and 2^17 for DPF `Eval`.
 
 Configure with `BUILD_BENCH=ON` and build the targets:
 
@@ -419,119 +419,36 @@ selected by `GPU_PROFILE_BENCH`.
 
 ### Comparison Curves
 
-The domain sweep measures `N = 2^8, 2^10, ..., 2^20`. Time axes are
-logarithmic. Legends show each library's native output width, storage, group,
-and PRG. Hardware, sampling, timing boundaries, and reproduction commands are
-in the [curve methodology](doc/bench_figures.md).
+The domain sweep measures `N = 2^8, 2^10, ..., 2^20`. Each figure is one
+platform, one scheme family per row — DCF (including Grotto DCF), DPF with
+its verifiable VDPF counterparts, and DMPF with VDMPF — and one operation per
+column: `Gen`, `Eval`, `EvalAll`. Time axes are logarithmic and legends show
+each library's native output shape and PRG backend. Hardware, sampling,
+timing boundaries, and reproduction commands are in the
+[curve methodology](doc/bench_figures.md). The exact measured medians behind
+the curves, with per-domain values and pairwise library comparison, are on
+the [benchmark comparison site](https://myl7.github.io/fss/bench/).
 
-![CPU DPF and DCF key generation and point evaluation](doc/figures/cpu-point.svg)
+![CPU benchmark operations](doc/figures/cpu-operations.svg)
 
-CPU point operations use one key and one thread. Times are in µs/key. The
-verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference,
-eprint 2021/580, single point) include proof generation in the timed
-evaluation; verification stays outside timing.
+CPU point operations use one key and one thread, in µs/key; `EvalAll`
+produces all N outputs for one key, in ms/key. The slow materialized
+point-loop cases use five domain sizes. The verifiable VDPF curves (FSS VDPF
+and the Servan-Schreiber reference, eprint 2021/580, single point) include
+proof generation in the timed evaluation; verification stays outside timing.
+Grotto DCF point `Eval` times the parity-tree query with Preprocess outside
+timing. DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets;
+VDMPF `EvalAll` materializes through BatchEval including proof generation.
 
-![GPU DPF and DCF key generation and point evaluation](doc/figures/gpu-point.svg)
+![GPU benchmark operations](doc/figures/gpu-operations.svg)
 
-GPU point times are amortized over `K = 262,144` keys, in ns/key.
+GPU `Gen` and point `Eval` are amortized over `K = 262,144` keys, in ns/key;
+`EvalAll` uses one key, in ms/key. The native GPU-DPF and packed EzPC
+adapters keep their native output configurations. There is no GPU DCF
+`EvalAll` benchmark, so that grid cell is absent. The threads-per-block sweep
+lives in the [curve methodology](doc/bench_figures.md#gpu-block-size-sensitivity).
 
-![CPU full-domain DPF and DCF evaluation](doc/figures/cpu-eval-all.svg)
-
-CPU full-domain evaluation produces all N outputs for one key, in ms/key.
-The slow materialized point-loop cases use five domain sizes. VDPF curves
-carry the same proof-generation timing boundary as on the point figure.
-
-![GPU full-domain DPF evaluation](doc/figures/gpu-eval-all.svg)
-
-GPU full-domain evaluation uses one key and reports ms/key. The native
-GPU-DPF and packed EzPC adapters retain their native output configurations.
-
-![GPU time by actual threads per block](doc/figures/gpu-block-size.svg)
-
-The block sweep fixes `N = 2^20` and varies actual threads per block T.
-Software AES point evaluation uses `K = 262,144`. Full DPF and HalfTreeDPF
-evaluation use `K = 1`. Software AES at T=1024 exceeds the kernel's resource
-limit and has no timing point.
-
-![CPU Grotto DCF operations](doc/figures/cpu-grotto.svg)
-
-Grotto DCF shares one logical comparison bit per output and has no
-like-for-like third-party curve, so it renders on a dedicated figure. Point
-Eval times the parity-tree query with Preprocess outside timing; EvalAll
-times Preprocess plus the scan as one full-domain operation.
-
-![CPU DMPF and VDMPF operations](doc/figures/cpu-dmpf.svg)
-
-DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets. DMPF
-EvalAll evaluates every padded bucket domain. VDMPF materializes through
-BatchEval over all N inputs, including proof generation; verification itself
-is a comparison outside timing. Verifiability changes functionality but adds
-little evaluation time, so both schemes share one figure. The single-point
-verifiable counterparts render on the DPF comparison figures instead.
-
-### CPU Results
-
-Measured on 2026-10-10 on AMD EPYC 9115, pinned to CPU 24 with the performance governor verified before timing. The host is shared. These are medians of five repetitions with a one-second minimum measurement window per repetition, built in Release with GCC 13.3 and CUDA 13.2. Per-key rows run one operation per iteration, so `Avg per item` equals `Time` and `Items/s` is its reciprocal. `EvalAll` rows process 2^20 domain outputs per iteration. Their native throughput counter uses CPU time, while `Time` is wall time, and `Avg per item` is the reciprocal of that counter.
-
-| Benchmark                            | PRG               | Time     | Avg per item | Items/s  |
-| ------------------------------------ | ----------------- | -------- | ------------ | -------- |
-| BM_DpfEval_Uint_Aes/20               | `Aes128Mmo<2>`    | 781.1 ns | 781.1 ns | 1.28M/s  |
-| BM_DpfEval_Uint_Aes/14               | `Aes128Mmo<2>`    | 526.1 ns | 526.1 ns | 1.901M/s |
-| BM_DpfEval_Uint_Aes/17               | `Aes128Mmo<2>`    | 371.8 ns | 371.8 ns | 2.689M/s |
-| BM_DpfGen_Uint_Aes/20                | `Aes128Mmo<2>`    | 954.1 ns | 954.1 ns | 1.048M/s |
-| BM_DpfEval_Bytes_Aes/20              | `Aes128Mmo<2>`    | 445.6 ns | 445.6 ns | 2.244M/s |
-| BM_DpfEvalAll_Uint_Aes/20            | `Aes128Mmo<2>`    | 31.08 ms | 29.63 ns | 33.75M/s |
-| BM_DpfEval_Uint_ChaCha/20            | `ChaCha<2>`       | 1.376 us | 1.376 us | 726.5k/s |
-| BM_DpfEval_Uint_AesSoft/20           | `Aes128Soft<2>`   | 1.641 us | 1.641 us | 609.4k/s |
-| BM_DpfEval_Uint_AesRaw/20            | `Aes128MmoRaw<2>` | 280.8 ns | 280.8 ns | 3.561M/s |
-| BM_DpfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<2>` | 281 ns   | 281 ns   | 3.559M/s |
-| BM_DpfGen_Uint_AesRaw/20             | `Aes128MmoRaw<2>` | 338.7 ns | 338.7 ns | 2.952M/s |
-| BM_DpfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<2>` | 338.9 ns | 338.9 ns | 2.951M/s |
-| BM_DcfEval_Uint_AesRaw/20            | `Aes128MmoRaw<4>` | 316.3 ns | 316.3 ns | 3.162M/s |
-| BM_DcfEval_Bytes_AesRaw/20           | `Aes128MmoRaw<4>` | 314.8 ns | 314.8 ns | 3.177M/s |
-| BM_DcfGen_Uint_AesRaw/20             | `Aes128MmoRaw<4>` | 400.4 ns | 400.4 ns | 2.497M/s |
-| BM_DcfGen_Bytes_AesRaw/20            | `Aes128MmoRaw<4>` | 410.4 ns | 410.4 ns | 2.436M/s |
-| BM_DcfEval_Uint_Aes/20               | `Aes128Mmo<4>`    | 841.9 ns | 841.9 ns | 1.188M/s |
-| BM_DcfGen_Uint_Aes/20                | `Aes128Mmo<4>`    | 1.71 us  | 1.71 us  | 584.8k/s |
-| BM_DcfEval_Bytes_Aes/20              | `Aes128Mmo<4>`    | 907.3 ns | 907.3 ns | 1.102M/s |
-| BM_DcfEvalAll_Uint_Aes/20            | `Aes128Mmo<4>`    | 55 ms    | 52.43 ns | 19.07M/s |
-| BM_DcfEvalAll_Bytes_Aes/20           | `Aes128Mmo<4>`    | 62.79 ms | 59.86 ns | 16.71M/s |
-| BM_VdpfEval_Uint_Aes_Sha256/20       | `Aes128Mmo<2>`    | 1.396 us | 1.396 us | 716.5k/s |
-| BM_VdpfGen_Uint_Aes_Sha256/20        | `Aes128Mmo<2>`    | 2.169 us | 2.169 us | 460.9k/s |
-| BM_VdpfEval_Uint_Aes_Blake3/20       | `Aes128Mmo<2>`    | 672.3 ns | 672.3 ns | 1.487M/s |
-| BM_VdpfProve_Uint_ChaCha_Blake3/20   | `ChaCha<2>`       | 66.01 ns | 66.01 ns | 15.15M/s |
-| BM_VdpfEvalAll_Uint_Aes_Sha256/20    | `Aes128Mmo<2>`    | 991.5 ms | 945.1 ns | 1.058M/s |
-| BM_HalfTreeDpfEval_Uint_Aes/20       | `Aes128Mmo<1>`    | 370.6 ns | 370.6 ns | 2.698M/s |
-| BM_HalfTreeDpfGen_Uint_Aes/20        | `Aes128Mmo<1>`    | 496.9 ns | 496.9 ns | 2.012M/s |
-| BM_HalfTreeDpfEvalAll_Uint_Aes/20    | `Aes128Mmo<1>`    | 28.12 ms | 26.8 ns  | 37.31M/s |
-| BM_GrottoDcfEval_Aes/20              | `Aes128Mmo<2>`    | 6.981 ns | 6.981 ns | 143.3M/s |
-| BM_GrottoDcfPreprocess_Aes/20        | `Aes128Mmo<2>`    | 30.93 ms | 30.93 ms | 32.33/s  |
-| BM_GrottoDcfPreprocessEvalAll_Aes/20 | `Aes128Mmo<2>`    | 62.24 ms | 59.32 ns | 16.86M/s |
-
-### GPU Results
-
-Measured on 2026-10-10 on NVIDIA RTX PRO 5000 (72GB VRAM, Blackwell, sm_120), CUDA 13.2, driver 595.71.05. GPU 1 was idle before the run. The host process was pinned to CPU 8 with the performance governor verified. These are medians of five repetitions with a one-second minimum measurement window, built in Release. GPU clocks can vary on this shared host. Each listed iteration processes 1M (2^20) keys. Gen, Eval, and point-eval kernels use 256 threads per CUDA block. `Time` is the complete iteration measured with CUDA events. `Avg per item` is the reciprocal of `Items/s`, measured per key.
-
-| Benchmark                                 | PRG             | Time      | Avg per item | Items/s  |
-| ----------------------------------------- | --------------- | --------- | ------------ | -------- |
-| BM_DpfEval_Uint_ChaCha/20                 | `ChaCha<2>`     | 1.399 ms | 1.334 ns | 749.6M/s |
-| BM_DpfEval_Uint_ChaCha/14                 | `ChaCha<2>`     | 752.7 us | 717.8 ps | 1.393G/s |
-| BM_DpfEval_Uint_ChaCha/17                 | `ChaCha<2>`     | 939.3 us | 895.8 ps | 1.116G/s |
-| BM_DpfGen_Uint_ChaCha/20                  | `ChaCha<2>`     | 2.007 ms | 1.914 ns | 522.5M/s |
-| BM_DpfEval_Bytes_ChaCha/20                | `ChaCha<2>`     | 1.4 ms   | 1.335 ns | 749.2M/s |
-| BM_DpfEval_Uint_AesSoft/20                | `Aes128Soft<2>` | 3.134 ms | 2.988 ns | 334.6M/s |
-| BM_DcfEval_Uint_ChaCha/20                 | `ChaCha<4>`     | 1.421 ms | 1.355 ns | 737.8M/s |
-| BM_DcfGen_Uint_ChaCha/20                  | `ChaCha<4>`     | 2.026 ms | 1.932 ns | 517.6M/s |
-| BM_VdpfEval_Uint_ChaCha_Blake3/20         | `ChaCha<2>`     | 1.248 ms | 1.19 ns  | 840.5M/s |
-| BM_VdpfGen_Uint_ChaCha_Blake3/20          | `ChaCha<2>`     | 2.204 ms | 2.102 ns | 475.7M/s |
-| BM_HalfTreeDpfEval_Uint_ChaCha/20         | `ChaCha<1>`     | 1.022 ms | 974.7 ps | 1.026G/s |
-| BM_HalfTreeDpfGen_Uint_ChaCha/20          | `ChaCha<1>`     | 2.029 ms | 1.935 ns | 516.9M/s |
-| BM_DpfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<2>`     | 1.012 ms | 965.4 ps | 1.036G/s |
-| BM_DcfEvalPointGpu_Uint_ChaCha/20         | `ChaCha<4>`     | 1.114 ms | 1.062 ns | 941.2M/s |
-| BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20 | `ChaCha<1>`     | 993.8 us | 947.8 ps | 1.055G/s |
-| BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20 | `ChaCha<2>`     | 1.097 ms | 1.046 ns | 955.9M/s |
-
-Corrected full-domain GPU `EvalAll` measurements with `K=1` are in [the comparison curves](doc/bench_figures.md).
+### GPU Kernel Register Usage
 
 GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
 

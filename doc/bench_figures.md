@@ -120,19 +120,32 @@ logarithmic time axis. Render only successful positive measurements; leave
 unsupported, failed, and unmeasured points absent. Captions must follow the
 collected raw data.
 
-Every current-FSS curve carries its scheme in the legend (FSS DPF, FSS DCF,
-FSS HalfTreeDPF, FSS PackedHalfTreeDPF with an experimental marker, FSS VDPF,
-and the specialty schemes below), so readers constrained to one scheme can
-read its own curve. The comparison axes also carry the verifiable
-point-function curves: FSS VDPF and the Servan-Schreiber VDPF reference
-(eprint 2021/580, single point) render beside the DPF curves, with proof
-generation inside the timed evaluation and verification outside; their times
-buy malicious security that the plain DPF curves do not. Grotto DCF and the
-DMPF family keep dedicated figures, `cpu-grotto` for Grotto DCF with its
-one-bit comparison output and `cpu-dmpf` for DMPF and VDMPF together, since
-adding verifiability changes functionality but little time. VDMPF BatchEval
-timings include proof generation; verification itself is a comparison
-outside timing.
+Each platform renders one figure: one scheme family per row — DCF (including
+Grotto DCF), DPF with its verifiable VDPF counterparts, and the DMPF family —
+and one operation per column, `Gen`, `Eval`, and `EvalAll`. Every legend entry
+carries its library and scheme (FSS DPF, FSS HalfTreeDPF, FSS
+PackedHalfTreeDPF with an experimental marker, FSS VDPF, and the third-party
+libraries), plus a short native output and PRG qualifier; the records keep the
+full configuration. The verifiable point-function curves — FSS VDPF and the
+Servan-Schreiber VDPF reference (eprint 2021/580, single point) — render in
+the DPF row with proof generation inside the timed evaluation and verification
+outside; their times buy malicious security that the plain DPF curves do not.
+Grotto DCF joins the DCF row with its one-bit comparison output. DMPF and
+VDMPF share their row since adding verifiability changes functionality but
+little time; VDMPF BatchEval timings include proof generation, and
+verification itself is a comparison outside timing. The threads-per-block
+sweep renders on the separate [block-size figure](#gpu-block-size-sensitivity).
+
+## GPU block-size sensitivity
+
+![GPU time by actual threads per block](figures/gpu-block-size.svg)
+
+The supplementary block sweep fixes `N = 2^20` and varies actual threads per
+block T: software-AES point `Eval`, amortized over `K = 262,144` keys, and
+full DPF and HalfTreeDPF `EvalAll` with `K = 1`. The sweep adjusts the block
+root depth as described above. Software AES at T=1024 exceeds the kernel's
+resource limit and has no timing point. The README keeps the domain-size
+comparison figures; this figure stays in the methodology documentation.
 
 ## Run and export
 
@@ -191,4 +204,8 @@ node doc/figures/authoring/export.mjs \
 
 The exporter writes authoring HTML, SVG, 2x PNG, and a source manifest under
 `build/figures`. `--publish` copies the reviewed SVG and PNG assets to
-`doc/figures`.
+`doc/figures`, removes previously published figures that the export no longer
+produces, and writes `doc/site/data.json`: the trimmed domain-sweep dataset
+behind the [comparison site](https://myl7.github.io/fss/bench/) in `doc/site`.
+The site is static and dependency-free; preview it locally with
+`python3 -m http.server -d doc/site`.

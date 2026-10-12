@@ -15,13 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each pack `128/out_bits` consecutive XOR-shared outputs of `out_bits` bits,
   `out_bits ∈ {1, 2, 4, 8, 16, 32, 64}`. No published paper describes the composition.
 * CPU benchmark curves for HalfTree DPF, packed HalfTree DPF (one-bit), Grotto DCF, DMPF, and
-  VDMPF (`t = 64` points). The comparison figures now label each FSS curve with its scheme, the
-  packed curve joins the libdpf axis on the CPU full-domain figure, and Grotto DCF and the
-  DMPF/VDMPF pair render on dedicated figures without like-for-like third-party counterparts.
+  VDMPF (`t = 64` points). Each platform comparison figure is now a scheme-family grid — one
+  row each for DCF (with Grotto DCF), DPF with its verifiable VDPF counterparts, and
+  DMPF/VDMPF, one column each for `Gen`, `Eval`, and `EvalAll` — with one compact legend per
+  family row. The threads-per-block sweep moved from the README to the benchmark methodology
+  page.
+* Static benchmark comparison site (`doc/site`, deployed under `/bench/`): pick two
+  implementations and compare median per-key times over the domain sweep `N = 2^8 … 2^20`,
+  with exact per-domain values, ratios, native configurations, and provenance. It replaces
+  the per-benchmark result tables in the README.
 * VDPF CPU curves on the DPF comparison axes: FSS VDPF beside the Servan-Schreiber VDPF
   reference implementation (sachaservan/vdpf, eprint 2021/580, pinned submodule with a
   benchmark adapter). Both include proof generation in the timed evaluation; verification is
   an equality check outside timing.
+
+### Fixed
+
+* README figures now render on the Doxygen GitHub Pages site: the Doxygen input filter
+  rewrites figures-directory Markdown images to `\image` commands resolved through
+  `IMAGE_PATH`, so the SVGs are copied into the HTML output with a responsive width.
 
 ## [1.2.0] - 2026-08-17
 
