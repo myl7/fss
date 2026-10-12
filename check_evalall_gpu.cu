@@ -15,6 +15,10 @@ using HtDpf = fss::HalfTreeDpf<kInBits, Group, fss::prg::ChaCha<1>, uint>;
 using Dpf = fss::Dpf<kInBits, Group, fss::prg::ChaCha<2>, uint>;
 
 __constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
+// The host stub of kNonce reads as zeros (nvcc warns #20091), so instances
+// built on the host must read this copy instead, and kernel-facing instances
+// a device copy of the same values.
+const int kNonceHost[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
 const int4 kHalfTreeHashKey = {0x12345678, static_cast<int>(0x9abcdef0u), 0x0fedcba9, static_cast<int>(0x87654321u)};
 
 #define CHECK(x) \
@@ -36,10 +40,15 @@ int main() {
   alpha = rand();
   beta = {rand(), rand(), rand(), rand() & ~1};
 
-  fss::prg::ChaCha<1> prg1(kNonce);
+  int *d_nonce;
+  CHECK(cudaMalloc(&d_nonce, sizeof(kNonceHost)));
+  CHECK(cudaMemcpy(d_nonce, kNonceHost, sizeof(kNonceHost), cudaMemcpyHostToDevice));
+  fss::prg::ChaCha<1> prg1(kNonceHost);
   HtDpf ht{prg1, kHalfTreeHashKey};
-  fss::prg::ChaCha<2> prg2(kNonce);
+  fss::prg::ChaCha<2> prg2(kNonceHost);
   Dpf dpf{prg2};
+  HtDpf ht_gpu{fss::prg::ChaCha<1>(d_nonce), kHalfTreeHashKey};
+  Dpf dpf_gpu{fss::prg::ChaCha<2>(d_nonce)};
 
   HtDpf::Cw *h_ht_cws = new HtDpf::Cw[kInBits];
   int4 h_ht_ocw;
@@ -68,7 +77,7 @@ int main() {
 
     // HalfTree
     ht.EvalAll(b, s0s[b], h_ht_cws, h_ht_ocw, cpu);
-    fss::gpu::HalfTreeDpfEvalAllGpu<16>(b, s0s[b], d_ht_cws, h_ht_ocw, d_ht_ys, ht);
+    fss::gpu::HalfTreeDpfEvalAllGpu<16>(b, s0s[b], d_ht_cws, h_ht_ocw, d_ht_ys, ht_gpu);
     CHECK(cudaMemcpy(gpu, d_ht_ys, sizeof(int4) * kN, cudaMemcpyDeviceToHost));
     long mism = 0;
     for (int i = 0; i < kN; ++i)
@@ -78,7 +87,7 @@ int main() {
 
     // DPF
     dpf.EvalAll(b, s0s[b], h_dpf_cws, cpu);
-    fss::gpu::DpfEvalAllGpu<16>(b, s0s[b], d_dpf_cws, d_dpf_ys, dpf);
+    fss::gpu::DpfEvalAllGpu<16>(b, s0s[b], d_dpf_cws, d_dpf_ys, dpf_gpu);
     CHECK(cudaMemcpy(gpu, d_dpf_ys, sizeof(int4) * kN, cudaMemcpyDeviceToHost));
     mism = 0;
     for (int i = 0; i < kN; ++i)
@@ -94,9 +103,9 @@ int main() {
   {
     int4 *g0 = new int4[kN];
     int4 *g1 = new int4[kN];
-    fss::gpu::HalfTreeDpfEvalAllGpu<16>(false, s0s[0], d_ht_cws, h_ht_ocw, d_ht_ys, ht);
+    fss::gpu::HalfTreeDpfEvalAllGpu<16>(false, s0s[0], d_ht_cws, h_ht_ocw, d_ht_ys, ht_gpu);
     CHECK(cudaMemcpy(g0, d_ht_ys, sizeof(int4) * kN, cudaMemcpyDeviceToHost));
-    fss::gpu::HalfTreeDpfEvalAllGpu<16>(true, s0s[1], d_ht_cws, h_ht_ocw, d_ht_ys, ht);
+    fss::gpu::HalfTreeDpfEvalAllGpu<16>(true, s0s[1], d_ht_cws, h_ht_ocw, d_ht_ys, ht_gpu);
     CHECK(cudaMemcpy(g1, d_ht_ys, sizeof(int4) * kN, cudaMemcpyDeviceToHost));
     int bad = 0;
     for (int i = 0; i < kN; ++i) {

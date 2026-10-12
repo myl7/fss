@@ -7,6 +7,10 @@
 #include <fss/prg/chacha.cuh>
 
 __constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
+// The host stub of kNonce reads as zeros (nvcc warns #20091), so instances
+// built on the host must read this copy instead, and kernel-facing instances
+// a device copy of the same values.
+const int kNonceHost[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
 
 #define CHECK(x) \
   do { \
@@ -35,8 +39,11 @@ bool CheckPacked(int trials) {
   constexpr int kNumBlocks = 1 << Packed::kDepth;
   const int4 kHashKey = {0x0fedcba9, static_cast<int>(0x87654321u), 0x13579bdf, 0x2468ace0};
 
-  fss::prg::ChaCha<1> prg(kNonce);
-  Packed dpf{prg, kHashKey};
+  int *d_nonce;
+  CHECK(cudaMalloc(&d_nonce, sizeof(kNonceHost)));
+  CHECK(cudaMemcpy(d_nonce, kNonceHost, sizeof(kNonceHost), cudaMemcpyHostToDevice));
+  Packed dpf{fss::prg::ChaCha<1>(kNonceHost), kHashKey};
+  fss::prg::ChaCha<1> prg_gpu(d_nonce);
 
   typename Packed::Cw *h_cws = new typename Packed::Cw[Packed::kDepth];
   int4 h_fcw;
@@ -70,7 +77,7 @@ bool CheckPacked(int trials) {
 
       dpf.EvalAll(b, s0s[b], h_cws, h_fcw, cpu[b]);
       PackedEvalAllKernel<in_bits, out_bits>
-          <<<kBlocks, kBs>>>(b, s0s[b], d_cws, h_fcw, d_ys, prg, kHashKey, kNumBlocks);
+          <<<kBlocks, kBs>>>(b, s0s[b], d_cws, h_fcw, d_ys, prg_gpu, kHashKey, kNumBlocks);
       CHECK(cudaMemcpy(gpu[b], d_ys, sizeof(int4) * kNumBlocks, cudaMemcpyDeviceToHost));
 
       long mism = 0;
