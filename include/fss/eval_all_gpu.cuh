@@ -942,23 +942,23 @@ constexpr int ConstLog2(int val) {
 
 // --- VDPF ---
 //
-// Same frontier split as DpfEvalAllKernel: Phase 0 root walk by thread 0,
-// Phase 1 shared-mem breadth expansion, Phase 2 per-thread DFS. The VDPF Cw
-// has the same layout as the DPF Cw (s with tl_cw in the clamped bit + bool
-// tr in the 32B slot), so the walk reuses DpfPathStep/DpfExpandNode.
+// Frontier split as DpfEvalAllKernel: Phase 0 root walk by thread 0, Phase 1
+// shared-mem breadth expansion, Phase 2 per-thread DFS. The VDPF Cw has the
+// same layout as the DPF Cw (s with tl_cw in the clamped bit + bool tr in the
+// 32B slot), so the walk reuses DpfPathStep/DpfExpandNode.
 //
-// Phase 2 converts each leaf (s, t) to the output share and the corrected
-// verification hash pi_tilde_j exactly as Vdpf::EvalAll phase 2 does, but
-// stops short of the proof chain: pi = pi XOR Hash(pi XOR pi_tilde_j)[0:2]
-// over j = 0..n-1 is order-dependent and thus inherently sequential, so a
-// single GPU thread running it would be ~10x slower than CPU SIMD Blake3.
-// The kernel writes pi_tilde_j to pi_tildes and the host folds them with the
-// existing verified Vdpf::Prove(), matching the VdpfEvalPointGpu device-walk
-// + host-Prove split. cs is passed by value (64B) as a kernel param instead
-// of through global memory.
-template <int in_bits, int z, int b1, typename Group, typename Prg, typename XorHash, typename In, typename Cw>
-__global__ void VdpfEvalAllKernel(bool b, int4 s0, const Cw *cws, cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys,
-    cuda::std::array<int4, 4> *pi_tildes, Prg prg, XorHash xor_hash) {
+// Phase 2 computes each leaf's output share and corrected verification hash
+// pi_tilde_j exactly as Vdpf::EvalAllMerkle phase 2, then folds the leaves
+// into a binary Merkle tree with the same hash the chain uses. The paper's
+// chain accumulation is inherently sequential; the fold is not: each thread
+// streams its 2^D leaves into a thread-local subtree (a stack of D partial
+// nodes), the block folds its threads' subtree roots in shared memory, and
+// VdpfMerkleRootsKernel folds the block roots. No per-point data leaves the
+// device. See doc/vdpf_merkle_fold_security.md.
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename XorHash, typename Hash, typename In,
+    typename Cw>
+__global__ void VdpfEvalAllMerkleKernel(bool b, int4 s0, const Cw *cws, cuda::std::array<int4, 4> cs, int4 ocw,
+    int4 *ys, cuda::std::array<int4, 2> *roots, Prg prg, XorHash xor_hash, Hash hash) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
   const int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -993,8 +993,9 @@ __global__ void VdpfEvalAllKernel(bool b, int4 s0, const Cw *cws, cuda::std::arr
     __syncthreads();
   }
 
-  // Phase 2: expand the subtree below depth z, then convert each leaf to the
-  // output share and the corrected verification hash.
+  // Phase 2: expand the subtree below depth z, convert each leaf to the output
+  // share and the corrected verification hash, and fold the leaf hashes into
+  // the thread's Merkle subtree on the fly.
   int4 nodes[1 << D];
   nodes[0] = s_front[threadIdx.x];
   int count = 1;
@@ -1012,6 +1013,7 @@ __global__ void VdpfEvalAllKernel(bool b, int4 s0, const Cw *cws, cuda::std::arr
 
   auto ocw_group = Group::From(ocw);
   const int out_base = tid << D;
+  cuda::std::array<int4, 2> stack[D + 1];
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 st_cur = nodes[k];
@@ -1024,13 +1026,65 @@ __global__ void VdpfEvalAllKernel(bool b, int4 s0, const Cw *cws, cuda::std::arr
     if (b) g = -g;
     ys[out_base + k] = g.Into();
 
-    // Corrected verification hash for the host-side proof chain
+    // Leaf: the corrected verification hash of the point
     int4 x_buf = util::Pack(static_cast<In>(out_base + k));
     auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s_cur});
     if (t_cur) {
       pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
     }
-    pi_tildes[out_base + k] = pi_tilde;
+    int4 leaf_msg[4] = {pi_tilde[0], pi_tilde[1], pi_tilde[2], pi_tilde[3]};
+    cuda::std::array<int4, 2> node = hash.Hash(cuda::std::span<const int4, 4>(leaf_msg));
+
+    // Stream the leaf into the thread's subtree: combine with the pending
+    // sibling stack entries while the leaf index has trailing one bits.
+    int rest = k;
+    int lvl = 0;
+#pragma unroll
+    while (rest != 0 && (rest & 1) == 1) {
+      int4 fold_msg[4] = {stack[lvl][0], stack[lvl][1], node[0], node[1]};
+      node = hash.Hash(cuda::std::span<const int4, 4>(fold_msg));
+      rest >>= 1;
+      ++lvl;
+    }
+    stack[lvl] = node;
+  }
+
+  // Block fold of the threads' subtree roots, in thread order: adjacent pairs
+  // at each stride, slot idx combining with idx + stride.
+  __shared__ cuda::std::array<int4, 2> s_node[1 << kSub];
+  s_node[threadIdx.x] = stack[D];
+  __syncthreads();
+#pragma unroll
+  for (int stride = 1; stride < (1 << kSub); stride <<= 1) {
+    int idx = 2 * stride * threadIdx.x;
+    if (idx < (1 << kSub)) {
+      int4 fold_msg[4] = {s_node[idx][0], s_node[idx][1], s_node[idx + stride][0], s_node[idx + stride][1]};
+      s_node[idx] = hash.Hash(cuda::std::span<const int4, 4>(fold_msg));
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) roots[blockIdx.x] = s_node[0];
+}
+
+// Folds the per-block subtree roots into the final 64B proof. The root count
+// is (1 << z) / bs = 2^b1, at most one block wide; only the first nroots
+// shared slots participate, so the rest stay unwritten and unread.
+template <int bs, typename Hash>
+__global__ void VdpfMerkleRootsKernel(const cuda::std::array<int4, 2> *roots, int nroots, cuda::std::array<int4, 4> cs,
+    cuda::std::array<int4, 4> *pi, Hash hash) {
+  __shared__ cuda::std::array<int4, 2> s_node[bs];
+  if (threadIdx.x < nroots) s_node[threadIdx.x] = roots[threadIdx.x];
+  __syncthreads();
+  for (int stride = 1; stride < nroots; stride <<= 1) {
+    int idx = 2 * stride * threadIdx.x;
+    if (idx < nroots) {
+      int4 fold_msg[4] = {s_node[idx][0], s_node[idx][1], s_node[idx + stride][0], s_node[idx + stride][1]};
+      s_node[idx] = hash.Hash(cuda::std::span<const int4, 4>(fold_msg));
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    *pi = cuda::std::array<int4, 4>{s_node[0][0], s_node[0][1], cs[2], cs[3]};
   }
 }
 
@@ -1338,89 +1392,53 @@ void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg,
 }
 
 /**
- * GPU full-domain evaluation of a VDPF key: ys[x] = the output share of
- * Eval(b, s0, cws, cs, ocw, x) and pi_tildes[x] = its corrected per-point
- * hash, for all x. The order-dependent proof chain is NOT accumulated here;
- * fold pi_tildes with Vdpf::Prove() on the host, or use VdpfEvalAllProveGpu.
+ * GPU full-domain evaluation of a VDPF key with the Merkle-fold proof:
+ * ys[x] is the output share of Eval(b, s0, cws, cs, ocw, x) and d_pi the 64B
+ * proof, matching Vdpf::EvalAllMerkle bit for bit. One frontier kernel
+ * computes the shares and folds each thread's leaves into a Merkle subtree; a
+ * second single-block kernel folds the block roots into d_pi. The proof never
+ * leaves the device. See doc/vdpf_merkle_fold_security.md for the security
+ * analysis of the fold.
  *
  * @tparam z Frontier depth. 2^z threads each expand a subtree of 2^(in_bits - z) leaves.
  *   Defaults to min(in_bits, 16).
  * @tparam b1 Block-root depth. Each block walks b1 levels to its own subtree root,
  *   then expands levels b1..z breadth-parallel. Must satisfy 2^(z - b1) == bs.
  *   Defaults to 8.
+ * @tparam bs Block size. Defaults to 256.
  * @param b Party index. False for 0 and true for 1.
  * @param s0 Initial seed of the party.
  * @param cws Correction words returned by Gen().
  * @param cs Check seed returned by Gen(). Passed by value (64B) as a kernel param.
  * @param ocw Output correction word returned by Gen().
  * @param ys Pre-allocated device output array. Its size must be at least 2 ** in_bits.
- * @param pi_tildes Pre-allocated device output array of corrected per-point hashes.
- *   Its size must be at least 2 ** in_bits entries (64B each).
- * @param vdpf A Vdpf instance (holds the PRG and xor hash). Used on the host side.
- * @param stream CUDA stream to launch on.
- */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename XorHash,
-    typename Hash, typename In>
-void VdpfEvalAllGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws,
-    cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys, cuda::std::array<int4, 4> *pi_tildes,
-    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
-  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
-  constexpr int B1 = (b1 < 0 ? 8 : b1);
-  static_assert(Z <= in_bits && in_bits - Z <= 8);
-  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  constexpr int kBlocks = (1 << Z) / bs;
-  detail::VdpfEvalAllKernel<in_bits, Z, B1, Group, Prg, XorHash, In,
-      typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
-      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, cs, ocw, ys, pi_tildes, vdpf.prg, vdpf.xor_hash);
-}
-
-/**
- * GPU full-domain evaluation of a VDPF key with proof accumulation: runs
- * VdpfEvalAllGpu, copies pi_tildes back, and folds them into pi with
- * Vdpf::Prove().
- *
- * The proof chain runs on the host on purpose. The chain step
- * pi = pi XOR Hash(pi XOR pi_tilde_j)[0:2] over j = 0..n-1 is order-dependent
- * and inherently sequential, so a single GPU thread running it would be ~10x
- * slower than CPU SIMD Blake3. The kernel instead computes every per-leaf
- * pi_tilde_j in parallel, and the host chain does the only truly serial part
- * on already-verified code. This matches the existing VdpfEvalPointGpu
- * pattern: device walk + host Prove. The staging buffer is allocated and
- * freed per call, which is fine for this ms-scale operation.
- *
- * @tparam z Frontier depth, see VdpfEvalAllGpu.
- * @tparam b1 Block-root depth, see VdpfEvalAllGpu.
- * @tparam bs Block size, see VdpfEvalAllGpu.
- * @param b Party index. False for 0 and true for 1.
- * @param s0 Initial seed of the party.
- * @param cws Correction words returned by Gen().
- * @param cs Check seed returned by Gen().
- * @param ocw Output correction word returned by Gen().
- * @param ys Pre-allocated device output array. Its size must be at least 2 ** in_bits.
- * @param pi_tildes Pre-allocated device array of corrected per-point hashes from
- *   the kernel, 2 ** in_bits entries (64B each). Reused as the copy source.
- * @param pi Proof output, written on the host.
- * @param n Domain size, i.e. 2 ** in_bits.
+ * @param d_pi Pre-allocated device output for the 64B proof.
  * @param vdpf A Vdpf instance (holds the PRG and hashes). Used on the host side.
  * @param stream CUDA stream to launch on.
  */
 template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename XorHash,
     typename Hash, typename In>
-void VdpfEvalAllProveGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws,
-    cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys, cuda::std::array<int4, 4> *pi_tildes,
-    cuda::std::array<int4, 4> &pi, size_t n, const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf,
-    cudaStream_t stream = 0) {
-  VdpfEvalAllGpu<z, b1, bs>(b, s0, cws, cs, ocw, ys, pi_tildes, vdpf, stream);
-  cuda::std::array<int4, 4> *h_pi_tildes;
-  cudaMallocHost(&h_pi_tildes, n * sizeof(cuda::std::array<int4, 4>));
-  cudaMemcpyAsync(h_pi_tildes, pi_tildes, n * sizeof(cuda::std::array<int4, 4>), cudaMemcpyDeviceToHost, stream);
-  cudaStreamSynchronize(stream);
-  // Prove() is logically const but not declared const; copy the handle (a
-  // shallow ~88B copy: ChaCha/Blake3 state is pointers and by-value IVs) so
-  // callers can keep passing a const Vdpf &.
-  Vdpf<in_bits, Group, Prg, XorHash, Hash, In> vdpf_ = vdpf;
-  vdpf_.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(h_pi_tildes, n), cuda::std::span<const int4, 4>(cs), pi);
-  cudaFreeHost(h_pi_tildes);
+void VdpfEvalAllMerkleGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws,
+    cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys, cuda::std::array<int4, 4> *d_pi,
+    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
+  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  // VdpfMerkleRootsKernel folds the block roots in one block, so they must
+  // fit: (1 << Z) / bs <= bs.
+  static_assert((1 << Z) <= bs * bs);
+  constexpr int kBlocks = (1 << Z) / bs;
+  // The per-block root buffer is tiny (kBlocks entries), but a per-call
+  // cudaMallocAsync costs a driver round trip on some setups, so keep one
+  // allocation per host thread. Calls from one thread on different streams
+  // must not run concurrently.
+  thread_local cuda::std::array<int4, 2> *d_roots = nullptr;
+  if (d_roots == nullptr) cudaMalloc(&d_roots, sizeof(cuda::std::array<int4, 2>) * kBlocks);
+  detail::VdpfEvalAllMerkleKernel<in_bits, Z, B1, Group, Prg, XorHash, Hash, In,
+      typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
+      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, cs, ocw, ys, d_roots, vdpf.prg, vdpf.xor_hash, vdpf.hash);
+  detail::VdpfMerkleRootsKernel<bs, Hash><<<1, bs, 0, stream>>>(d_roots, kBlocks, cs, d_pi, vdpf.hash);
 }
 
 }  // namespace fss::gpu

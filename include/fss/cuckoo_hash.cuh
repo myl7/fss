@@ -7,7 +7,7 @@
  * @brief Cuckoo-hashing utility for VDMPF.
  *
  * The scheme is from the paper, [_Lightweight, Maliciously Secure Verifiable Function Secret
- * Sharing_](https://eprint.iacr.org/2024/677) (@ref cuckoo_hash "1: the published version"),
+ * Sharing_](https://eprint.iacr.org/2021/580) (@ref cuckoo_hash "1: the published version"),
  * Section 4.1 and Algorithm 4.
  *
  * ## References

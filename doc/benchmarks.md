@@ -56,7 +56,8 @@ log):
 | HalfTreeDpfEvalPoint | Uint  | `ChaCha<1>`     | 38 |      |       |
 | DcfEvalAll           | Uint  | `ChaCha<4>`     | 110 |     | 6144B |
 | PackedHalfTreeDpfEvalAll | -  | `ChaCha<1>`     | 39 |      | 4096B |
-| VdpfEvalAll          | Uint  | `ChaCha<2>`     | 128 |      | 4096B |
+| VdpfEvalAllMerkle    | Uint  | `ChaCha<2>`     | 168 |      | 12288B |
+| VdpfMerkleRoots      | -     | Blake3          | 40 |      | 8192B |
 | GrottoDcfExpandLeafBits | -  | `ChaCha<2>`     | 65 |      | 4096B |
 
 The PRG drives most of the difference. Software AES-128 MMO costs about twice

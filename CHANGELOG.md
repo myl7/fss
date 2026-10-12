@@ -9,14 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Merkle-fold proof accumulation for VDPF (`ProveMerkle`, `EvalAllMerkle`,
+  `VdpfEvalAllMerkleGpu`): an order-independent alternative to the paper's sequential Prove chain
+  that hashes the corrected per-point values into the leaves of a binary Merkle tree and folds
+  adjacent nodes level by level. `Gen`, `Eval`, and `Verify` are unchanged and the proof keeps the
+  64B shape, so both parties only need to switch accumulators jointly. The GPU path computes the
+  whole proof on device (748 us vs the sequential chain's 185 ms host-bound pipeline at n=2^20) and
+  the CPU `EvalAllMerkle` phase 2 is OpenMP-parallel, removing the chain's 8-thread scaling cap.
+  The paper-faithful chain `Prove`/`EvalAll` remain implemented as the reference. Security
+  analysis in doc/vdpf_merkle_fold_security.md (soundness reduces to pairwise collision
+  resistance of the fold hash; documents the `cs != 0` key-validation assumption that the
+  library's control-bit bookkeeping needs, with a matching Gen retry). Fixed the eprint citation
+  of the VDPF/VDMPF scheme in the vdpf/cuckoo_hash/vdmpf headers (2024/677 -> 2021/580).
 * GPU full-domain evaluation for the schemes that had no GPU `EvalAll`: `DcfEvalAllGpu` and
   `DcfEvalAllGpuBatch` (frontier kernel carrying the DCF group state), `PackedHalfTreeDpfEvalAllGpu`
   and `PackedHalfTreeDpfEvalAllGpuBatch` (frontier stops at `kDepth`, one packed block per leaf
-  node), `VdpfEvalAllGpu` and `VdpfEvalAllProveGpu` (GPU tree walk and per-leaf corrected hashes;
-  the order-dependent proof chain folds on the host with `Prove`), and `GrottoDcfPreprocessGpu` and
-  `GrottoDcfEvalAllGpu` (parity segment tree built per level plus a CUB inclusive XOR scan). All
-  bit-exact against the CPU schemes on both parties; measured 2.6x to 4693x over the same-host CPU
-  at n=2^20 on an RTX A6000 (see the README GPU results).
+  node), and `GrottoDcfPreprocessGpu` and `GrottoDcfEvalAllGpu` (parity segment tree built per
+  level plus a CUB inclusive XOR scan). All bit-exact against the CPU schemes on both parties;
+  measured 102x to 4693x over the same-host CPU at 32 threads at n=2^20 on an RTX A6000 (see the
+  README GPU results).
 * CPU `EvalAll` benchmarks with the ChaCha PRG for DCF, VDPF (with BLAKE3), packed HalfTree DPF,
   and Grotto DCF, for same-PRG comparison against the GPU benchmarks.
 * Distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.

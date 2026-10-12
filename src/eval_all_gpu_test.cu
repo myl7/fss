@@ -217,23 +217,25 @@ void CheckVdpfGpu() {
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_ys;
-  DeviceBuffer<cuda::std::array<int4, 4>> device_pi_tildes;
+  DeviceBuffer<cuda::std::array<int4, 4>> device_pi;
   ASSERT_EQ(device_cws.Allocate(stride), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), stride), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(n), cudaSuccess);
-  ASSERT_EQ(device_pi_tildes.Allocate(n), cudaSuccess);
+  ASSERT_EQ(device_pi.Allocate(1), cudaSuccess);
 
   std::vector<int4> host_ys(n), actual(n), first(n);
-  cuda::std::array<int4, 4> pi_cpu, pi_gpu, gpu_pi[2];
+  cuda::std::array<int4, 4> pi_cpu, gpu_pi[2];
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
-    cpu.EvalAll(party, seeds[party], cuda::std::span<const Cw>(cws.data(), stride),
+    cpu.EvalAllMerkle(party, seeds[party], cuda::std::span<const Cw>(cws.data(), stride),
         cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(host_ys.data(), n), pi_cpu);
-    fss::gpu::VdpfEvalAllProveGpu<z, b1, threads>(party, seeds[party], device_cws.data(), cs, ocw, device_ys.data(),
-        device_pi_tildes.data(), pi_gpu, n, gpu);
+    fss::gpu::VdpfEvalAllMerkleGpu<z, b1, threads>(
+        party, seeds[party], device_cws.data(), cs, ocw, device_ys.data(), device_pi.data(), gpu);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), n * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(&gpu_pi[party], device_pi.data(), sizeof(cuda::std::array<int4, 4>), cudaMemcpyDeviceToHost),
+        cudaSuccess);
     for (size_t x = 0; x < n; ++x) {
       ExpectOutput(actual[x], host_ys[x], x);
       if (party == 0) first[x] = actual[x];
@@ -243,12 +245,11 @@ void CheckVdpfGpu() {
       }
     }
     for (int i = 0; i < 4; ++i) {
-      EXPECT_EQ(pi_gpu[i].x, pi_cpu[i].x) << "pi word " << i;
-      EXPECT_EQ(pi_gpu[i].y, pi_cpu[i].y) << "pi word " << i;
-      EXPECT_EQ(pi_gpu[i].z, pi_cpu[i].z) << "pi word " << i;
-      EXPECT_EQ(pi_gpu[i].w, pi_cpu[i].w) << "pi word " << i;
+      EXPECT_EQ(gpu_pi[party][i].x, pi_cpu[i].x) << "pi word " << i;
+      EXPECT_EQ(gpu_pi[party][i].y, pi_cpu[i].y) << "pi word " << i;
+      EXPECT_EQ(gpu_pi[party][i].z, pi_cpu[i].z) << "pi word " << i;
+      EXPECT_EQ(gpu_pi[party][i].w, pi_cpu[i].w) << "pi word " << i;
     }
-    gpu_pi[party] = pi_gpu;
   }
   EXPECT_TRUE(Scheme::Verify(cuda::std::span<const int4, 4>(gpu_pi[0]), cuda::std::span<const int4, 4>(gpu_pi[1])));
 }

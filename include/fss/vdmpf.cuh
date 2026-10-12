@@ -7,7 +7,7 @@
  * @brief 2-party verifiable distributed multi-point function (VDMPF).
  *
  * The scheme is from the paper, [_Lightweight, Maliciously Secure Verifiable Function Secret
- * Sharing_](https://eprint.iacr.org/2024/677) (@ref vdmpf "1: the published version"),
+ * Sharing_](https://eprint.iacr.org/2021/580) (@ref vdmpf "1: the published version"),
  * Section 4.
  *
  * ## Definitions

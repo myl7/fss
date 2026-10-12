@@ -6,7 +6,7 @@
  *
  * @brief 2-party verifiable distributed point function (VDPF).
  *
- * The scheme is from the paper, [_Lightweight, Maliciously Secure Verifiable Function Secret Sharing_](https://eprint.iacr.org/2024/677) (@ref vdpf "1: the published version").
+ * The scheme is from the paper, [_Lightweight, Maliciously Secure Verifiable Function Secret Sharing_](https://eprint.iacr.org/2021/580) (@ref vdpf "1: the published version").
  *
  * ## Definitions
  *
@@ -16,7 +16,9 @@
  *
  * - Key generation: $Gen(1^\lambda, f_{a, b}) \rightarrow (k_0, k_1)$.
  * - Evaluation: $Eval(k_i, x) \rightarrow (y_{i,x}, \tilde\pi_{i,x})$.
- * - Proof accumulation: $Prove(\{\tilde\pi\}, cs) \rightarrow \pi$.
+ * - Proof accumulation: $Prove(\{\tilde\pi\}, cs) \rightarrow \pi$. An order-independent
+ *   alternative, `ProveMerkle`/`EvalAllMerkle`, replaces the sequential chain with a Merkle
+ *   fold over the corrected per-point hashes; see doc/vdpf_merkle_fold_security.md.
  * - Verification: $Verify(\pi_0, \pi_1) \rightarrow \{Accept, Reject\}$.
  *
  * ## Implementation Details
@@ -40,6 +42,7 @@
 #include <type_traits>
 #include <cstddef>
 #include <cassert>
+#include <vector>
 #include <omp.h>
 #include <fss/group.cuh>
 #include <fss/prg.cuh>
@@ -168,6 +171,13 @@ public:
     auto pi_tilde_0 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s0});
     auto pi_tilde_1 = xor_hash.Hash(cuda::std::tuple<int4, const int4>{a_buf, s1});
     cs = util::Xor(cuda::std::span<const int4, 4>(pi_tilde_0), cuda::std::span<const int4, 4>(pi_tilde_1));
+
+    // A zero cs would let adversarial keys keep both parties' per-point hashes equal while
+    // their control bits differ everywhere (see Assumption 2 of doc/vdpf_merkle_fold_security.md).
+    if ((cs[0].x | cs[0].y | cs[0].z | cs[0].w | cs[1].x | cs[1].y | cs[1].z | cs[1].w | cs[2].x | cs[2].y |
+            cs[2].z | cs[2].w | cs[3].x | cs[3].y | cs[3].z | cs[3].w) == 0) {
+      return 1;
+    }
 
     // Check retry condition
     if (t0 == t1) return 1;
@@ -347,6 +357,108 @@ public:
       pi[0] = util::Xor(pi[0], h_out[0]);
       pi[1] = util::Xor(pi[1], h_out[1]);
     }
+  }
+
+  /**
+   * Proof accumulation method (Merkle fold).
+   *
+   * Order-independent alternative to Prove(): hashes the corrected per-point hashes into the
+   * leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the
+   * same hash level by level (an odd trailing node carries to the next level unchanged). The
+   * proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so Verify() is shared.
+   * Every level is an OpenMP parallel batch. See doc/vdpf_merkle_fold_security.md.
+   *
+   * @param pi_tildes Corrected per-point hashes returned by Eval().
+   * @param cs Returned by Gen().
+   * @param pi Proof output.
+   */
+  void ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes, cuda::std::span<const int4, 4> cs,
+      cuda::std::array<int4, 4> &pi) {
+    size_t count = pi_tildes.size();
+    assert(count >= 1);
+
+    std::vector<cuda::std::array<int4, 2>> nodes(count);
+#pragma omp parallel for
+    for (size_t i = 0; i < count; ++i) {
+      nodes[i] = hash.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
+    }
+
+    while (count > 1) {
+      size_t pairs = count / 2;
+      std::vector<cuda::std::array<int4, 2>> next(pairs + count % 2);
+#pragma omp parallel for
+      for (size_t i = 0; i < pairs; ++i) {
+        int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
+        next[i] = hash.Hash(cuda::std::span<const int4, 4>(msg));
+      }
+      if (count % 2 != 0) next[pairs] = nodes[count - 1];
+      nodes = std::move(next);
+      count = nodes.size();
+    }
+
+    pi = {nodes[0][0], nodes[0][1], cs[2], cs[3]};
+  }
+
+  /**
+   * Full domain evaluation method with the Merkle-fold proof.
+   *
+   * Same output shares as EvalAll(); the proof comes from ProveMerkle() over the corrected
+   * per-point hashes. The conversion phase and every fold level are OpenMP parallel, unlike
+   * EvalAll()'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.
+   *
+   * @param b Party index. False for 0 and true for 1. $i$.
+   * @param s0 Initial seed of the party.
+   * @param cws Correction words returned by Gen(). Size must be in_bits.
+   * @param cs Returned by Gen().
+   * @param ocw Output correction word returned by Gen().
+   * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
+   * @param pi Proof output.
+   */
+  void EvalAllMerkle(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw,
+      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+    int4 st = s0;
+    bool t = b;
+    st = util::SetLsb(st, t);
+
+    assert(in_bits < sizeof(size_t) * 8);
+    size_t l = 0;
+    size_t r = 1ULL << in_bits;
+    int i = 0;
+
+    int par_depth_ = util::ResolveParDepth(par_depth);
+
+    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
+#pragma omp parallel
+#pragma omp single
+    EvalTree(st, cws, ys, l, r, i, par_depth_);
+
+    // Phase 2: parallel output conversion and leaf hashing, then the Merkle fold
+    pi = {cs[0], cs[1], cs[2], cs[3]};
+    size_t n = 1ULL << in_bits;
+    assert((ocw.w & 1) == 0);
+    auto ocw_group = Group::From(ocw);
+    std::vector<cuda::std::array<int4, 4>> leaves(n);
+#pragma omp parallel for
+    for (size_t j = 0; j < n; ++j) {
+      int4 sj = ys[j];
+      bool tj = util::GetLsb(sj);
+      sj = util::SetLsb(sj, false);
+
+      auto g = Group::From(sj);
+      if (tj) g = g + ocw_group;
+      if (b) g = -g;
+      ys[j] = g.Into();
+
+      int4 x_buf = util::Pack(static_cast<In>(j));
+
+      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
+      if (tj) {
+        leaves[j] = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
+      } else {
+        leaves[j] = pi_tilde;
+      }
+    }
+    ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(leaves), cs, pi);
   }
 
 private:

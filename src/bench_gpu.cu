@@ -730,19 +730,20 @@ static void BM_PackedHalfTreeDpfEvalAllGpu(benchmark::State &state) {
 
 // --- VDPF full-domain GPU benchmark (ChaCha<2> + Blake3) ---
 //
-// One key per iteration, matching the CPU VDPF EvalAll bench. The timed op is
-// the complete VdpfEvalAllProveGpu: GPU tree walk + pi_tilde kernel, D2H copy
-// of the pi_tildes, and the sequential host-side proof chain. The chain is
-// host-side by design: its step pi = pi ^ Hash(pi ^ pi_tilde_j) is
-// order-dependent, so one GPU thread would be ~10x slower than CPU SIMD.
+// One key per iteration, matching the CPU VDPF EvalAll benches. The timed op
+// is the complete VdpfEvalAllMerkleGpu: the frontier kernel computes the
+// shares and folds each thread's leaves into a Merkle subtree, and a second
+// kernel folds the block roots into the 64B proof. The paper's sequential
+// proof chain is replaced by the order-independent fold analyzed in
+// doc/vdpf_merkle_fold_security.md; no per-point data leaves the device.
 
 template <int in_bits, typename Group>
-static void BM_VdpfEvalAllGpu(benchmark::State &state) {
+static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
   using Vdpf = VdpfType<in_bits, Group>;
   constexpr size_t n = size_t{1} << in_bits;
 
-  // The host-side Prove chain reads the IV through the by-value Blake3 state,
-  // so only the PRG nonce needs device-readable memory.
+  // Blake3 copies the IV by value at construction, so only the PRG nonce
+  // needs device-readable memory.
   int *d_nonce;
   CUDA_CHECK(cudaMalloc(&d_nonce, sizeof(int) * 2));
   const int nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
@@ -771,19 +772,20 @@ static void BM_VdpfEvalAllGpu(benchmark::State &state) {
 
   typename Vdpf::Cw *d_cws;
   int4 *d_ys;
-  cuda::std::array<int4, 4> *d_pi_tildes;
+  cuda::std::array<int4, 4> *d_pi;
   CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename Vdpf::Cw) * in_bits));
   CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * n));
-  CUDA_CHECK(cudaMalloc(&d_pi_tildes, sizeof(cuda::std::array<int4, 4>) * n));
+  CUDA_CHECK(cudaMalloc(&d_pi, sizeof(cuda::std::array<int4, 4>)));
   CUDA_CHECK(cudaMemcpy(d_cws, cws, sizeof(typename Vdpf::Cw) * in_bits, cudaMemcpyHostToDevice));
 
   cuda::std::array<int4, 4> pi;
   // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
-  fss::gpu::VdpfEvalAllProveGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi_tildes, pi, n, gpu_vdpf);
+  fss::gpu::VdpfEvalAllMerkleGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi, gpu_vdpf);
   CUDA_CHECK(cudaDeviceSynchronize());
+  CUDA_CHECK(cudaMemcpy(&pi, d_pi, sizeof(pi), cudaMemcpyDeviceToHost));
 
   RunTimedKernel(state, [&] {
-    fss::gpu::VdpfEvalAllProveGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi_tildes, pi, n, gpu_vdpf);
+    fss::gpu::VdpfEvalAllMerkleGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi, gpu_vdpf);
   });
   state.SetItemsProcessed(state.iterations() * n);
   benchmark::DoNotOptimize(pi.data());
@@ -791,7 +793,7 @@ static void BM_VdpfEvalAllGpu(benchmark::State &state) {
   cudaFree(d_nonce);
   cudaFree(d_cws);
   cudaFree(d_ys);
-  cudaFree(d_pi_tildes);
+  cudaFree(d_pi);
 }
 
 // --- GPU point eval benchmarks (level-major layout) ---
@@ -1065,4 +1067,4 @@ BENCHMARK(BM_GrottoDcfPreprocessGpu<20>)->Name("BM_GrottoDcfPreprocessGpu_ChaCha
 BENCHMARK(BM_GrottoDcfEvalAllGpu<20>)->Name("BM_GrottoDcfEvalAllGpu_ChaCha/20")->UseManualTime();
 BENCHMARK(BM_DcfEvalAllGpu<20, UintGroup>)->Name("BM_DcfEvalAllGpu_Uint_ChaCha/20")->UseManualTime();
 BENCHMARK(BM_PackedHalfTreeDpfEvalAllGpu<20, 1>)->Name("BM_PackedHalfTreeDpfEvalAllGpu_ChaCha/20")->UseManualTime();
-BENCHMARK(BM_VdpfEvalAllGpu<20, UintGroup>)->Name("BM_VdpfEvalAllGpu_Uint_ChaCha_Blake3/20")->UseManualTime();
+BENCHMARK(BM_VdpfEvalAllMerkleGpu<20, UintGroup>)->Name("BM_VdpfEvalAllMerkleGpu_Uint_ChaCha_Blake3/20")->UseManualTime();

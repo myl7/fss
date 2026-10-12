@@ -168,6 +168,71 @@ protected:
 
     EXPECT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
   }
+
+  void TestEvalAllMerkle() {
+    GenKey();
+    VdpfType vdpf{prg, xor_hash, hash_};
+
+    constexpr size_t n = 1ULL << kAlphaBits;
+    std::vector<int4> ys0(n), ys1(n), ys0_chain(n);
+    cuda::std::array<int4, 4> pi0, pi1, pi0_chain;
+
+    vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
+        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys0_chain), pi0_chain);
+    vdpf.EvalAllMerkle(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
+        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys0), pi0);
+    vdpf.EvalAllMerkle(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
+        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys1), pi1);
+
+    // The shares are the chain-based EvalAll's shares
+    EXPECT_EQ(memcmp(ys0.data(), ys0_chain.data(), n * sizeof(int4)), 0);
+
+    auto expected = Group::From(MakeBBuf());
+    int4 expected_buf = expected.Into();
+    int4 zero = {0, 0, 0, 0};
+
+    for (size_t x = 0; x < n; ++x) {
+      auto result = Group::From(ys0[x]) + Group::From(ys1[x]);
+      int4 r = result.Into();
+
+      if (x == kAlpha) {
+        EXPECT_EQ(memcmp(&r, &expected_buf, sizeof(int4)), 0) << "Failed at alpha=" << x;
+      } else {
+        EXPECT_EQ(memcmp(&r, &zero, sizeof(int4)), 0) << "Failed at x=" << x;
+      }
+    }
+
+    EXPECT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
+  }
+
+  void TestProveMerkleOdd() {
+    GenKey();
+    VdpfType vdpf{prg, xor_hash, hash_};
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dis(0, 0xFFFF);
+
+    constexpr int L = 51;  // odd: the trailing node carries one level unchanged
+    std::vector<cuda::std::array<int4, 4>> pi_tildes_0(L), pi_tildes_1(L);
+
+    for (int i = 0; i < L; i++) {
+      uint16_t x = dis(gen);
+      int4 y0, y1;
+      pi_tildes_0[i] = vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
+          cuda::std::span<const int4, 4>(cs), ocw, x, y0);
+      pi_tildes_1[i] = vdpf.Eval(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
+          cuda::std::span<const int4, 4>(cs), ocw, x, y1);
+    }
+
+    cuda::std::array<int4, 4> pi0, pi1;
+    vdpf.ProveMerkle(
+        cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_0), cuda::std::span<const int4, 4>(cs), pi0);
+    vdpf.ProveMerkle(
+        cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_1), cuda::std::span<const int4, 4>(cs), pi1);
+
+    EXPECT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
+  }
 };
 
 using VdpfBytesChaChaTest = VdpfChaChaTest<BytesGroup>;
@@ -185,6 +250,12 @@ TEST_F(VdpfBytesChaChaTest, VerifyEval) {
 TEST_F(VdpfBytesChaChaTest, EvalAll) {
   TestEvalAll();
 }
+TEST_F(VdpfBytesChaChaTest, EvalAllMerkle) {
+  TestEvalAllMerkle();
+}
+TEST_F(VdpfBytesChaChaTest, ProveMerkleOdd) {
+  TestProveMerkleOdd();
+}
 
 TEST_F(VdpfUint128ChaChaTest, EvalAtAlpha) {
   TestEvalAtAlpha();
@@ -197,4 +268,10 @@ TEST_F(VdpfUint128ChaChaTest, VerifyEval) {
 }
 TEST_F(VdpfUint128ChaChaTest, EvalAll) {
   TestEvalAll();
+}
+TEST_F(VdpfUint128ChaChaTest, EvalAllMerkle) {
+  TestEvalAllMerkle();
+}
+TEST_F(VdpfUint128ChaChaTest, ProveMerkleOdd) {
+  TestProveMerkleOdd();
 }

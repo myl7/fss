@@ -490,6 +490,50 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * n);
 }
 
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
+static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
+  using VdpfType = fss::Vdpf<in_bits, Group, Prg, XorHash, Hash, uint>;
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename VdpfType::Cw cws[in_bits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+
+  constexpr size_t n = size_t{1} << in_bits;
+  std::vector<int4> ys(n);
+
+  auto xor_hash = MakeHash<XorHash>();
+  auto hash_ = MakeHash<Hash>();
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    VdpfType vdpf{ctx.prg, xor_hash, hash_};
+    vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    for (auto _ : state) {
+      cuda::std::array<int4, 4> pi;
+      vdpf.EvalAllMerkle(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+          cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys.data(), n), pi);
+      benchmark::DoNotOptimize(ys.data());
+      benchmark::DoNotOptimize(pi);
+    }
+  } else {
+    VdpfType vdpf{Prg(gNonce), xor_hash, hash_};
+    vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    for (auto _ : state) {
+      cuda::std::array<int4, 4> pi;
+      vdpf.EvalAllMerkle(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+          cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys.data(), n), pi);
+      benchmark::DoNotOptimize(ys.data());
+      benchmark::DoNotOptimize(pi);
+    }
+  }
+  state.SetItemsProcessed(state.iterations() * n);
+}
+
 // --- HalfTreeDpf benchmarks ---
 
 template <int in_bits, typename Group, typename Prg>
@@ -773,6 +817,9 @@ BENCHMARK((BM_VdpfProve<20, UintGroup, DpfChaCha, Blake3, Blake3>))->Name("BM_Vd
 BENCHMARK((BM_VdpfEvalAll<20, UintGroup, DpfAes, Sha256, Sha256>))->Name("BM_VdpfEvalAll_Uint_Aes_Sha256/20");
 // 30. BM_VdpfEvalAll_Uint_ChaCha_Blake3/20
 BENCHMARK((BM_VdpfEvalAll<20, UintGroup, DpfChaCha, Blake3, Blake3>))->Name("BM_VdpfEvalAll_Uint_ChaCha_Blake3/20");
+// 31. BM_VdpfEvalAllMerkle_Uint_ChaCha_Blake3/20
+BENCHMARK((BM_VdpfEvalAllMerkle<20, UintGroup, DpfChaCha, Blake3, Blake3>))
+    ->Name("BM_VdpfEvalAllMerkle_Uint_ChaCha_Blake3/20");
 
 // 19. BM_HalfTreeDpfEval_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEval_Uint_Aes/20");
