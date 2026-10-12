@@ -96,7 +96,8 @@ def pattern(case):
         return "^fss/GPU/DPF-bytes/AesSoft/Eval(/|$)"
     if case["library"] == "fss":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
-        return f"^fss/GPU/(DPF|DCF|HalfTreeDPF)-{groups}/(AesSoft/)?{operation}(/|$)"
+        return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF)-{groups}"
+                f"|PackedHalfTreeDPF-bits1|GrottoDCF)/(AesSoft/)?{operation}(/|$)")
     return f"^{prefix}/{case['platform'].upper()}/.*{operation}(/|$)"
 
 
@@ -227,6 +228,10 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
                    output_storage="packed_lanes", lanes=128 // width)
     elif scheme == "GrottoDCF":
         row.update(logical_output_bits=1, storage_output_bits=8, output_storage="bool_scalar")
+    elif scheme == "VDPF" and case["platform"] == "gpu" and case["operation"] == "EvalAll":
+        # Merkle-fold proof accumulation computed on device; the paper-faithful
+        # chain stays on the CPU curves (doc/vdpf_merkle_fold_security.md).
+        row.update(implementation="merkle_fold_proof")
     elif scheme == "VDPF" and case["library"] == "servan_vdpf":
         # Single-point VDPF reference implementation (sachaservan/vdpf).
         row.update(logical_output_bits=1, storage_output_bits=128, output_storage="uint128_scalar", num_points=1)
@@ -324,8 +329,17 @@ def validate_native_configuration(case, raw):
             continue
         for field, expected in (("domain_bits", case["domain_bits"]), ("keys", case["num_keys"]),
                                 ("threads_per_block", case["threads_per_block"])):
-            if expected is not None and field in value and value[field] != expected:
-                raise ValueError(f"benchmark {field} {value[field]} does not match configured {expected}")
+            if expected is None or field not in value or value[field] == expected:
+                continue
+            # The packed GPU EvalAll kernel shrinks its block to 2^z when the
+            # frontier is smaller than the configured block, so its reported
+            # size is a power of two at or below the configured one.
+            if field == "threads_per_block" and case["platform"] == "gpu" \
+                    and "PackedHalfTreeDPF" in value.get("name", ""):
+                reported = int(value[field])
+                if 0 < reported <= expected and reported & (reported - 1) == 0:
+                    continue
+            raise ValueError(f"benchmark {field} {value[field]} does not match configured {expected}")
 
 
 def collect(args, case, directory, sources):

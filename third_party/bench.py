@@ -466,6 +466,9 @@ def result_rows(entry, data):
                 batch = entry.get("num_keys", 1 << 20)
                 if "EvalAllFull" in benchmark or (name == "fss" and "EvalAll" in benchmark):
                     batch = 1
+                if name == "main" and "EvalAll" in benchmark and ("Grotto" in benchmark or "VdpfEvalAllMerkle" in benchmark):
+                    # Single-key-per-iteration GPU EvalAll benchmarks in bench_gpu.
+                    batch = 1
                 if name == "ezpc" and "EvalAllFull" not in benchmark:
                     match = re.search(r"/(\d+)(?:/|$)", benchmark)
                     if not match:

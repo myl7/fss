@@ -1312,6 +1312,361 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
   }
 }
 
+// ============================================================
+// GPU full-domain EvalAll for DCF, packed HalfTree DPF, VDPF
+// (Merkle-fold proof), and Grotto DCF. Same shape as above: one
+// key, one party per timed launch, every output share validated
+// against the CPU scheme for both parties before timing.
+// ============================================================
+
+template <typename Group>
+static void BM_GpuDcfEvalAll(benchmark::State &state) {
+  constexpr int z = kInBits < 17 ? kInBits : 17;
+  constexpr int b1 = z - Log2BlockSize();
+  if constexpr (b1 < 0) {
+    state.SkipWithError("unsupported: block size exceeds the frontier");
+    return;
+  } else {
+    using Prg = fss::prg::ChaCha<4>;
+    using Scheme = fss::Dcf<kInBits, Group, Prg, uint>;
+    constexpr size_t n = size_t{1} << kInBits;
+    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+    int *device_nonce;
+    CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
+    CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
+    Scheme host_scheme{Prg(host_nonce)};
+    Scheme device_scheme{Prg(device_nonce)};
+    typename Scheme::Cw cws[kInBits + 1];
+    host_scheme.Gen(cws, kSeeds, kAlpha, kBeta);
+    typename Scheme::Cw *device_cws;
+    int4 *device_outputs;
+    CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
+    CUDA_CHECK(cudaMemcpy(device_cws, cws, sizeof(cws), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc(&device_outputs, n * sizeof(int4)));
+    auto launch = [&](bool party) {
+      fss::gpu::DcfEvalAllGpu<z, b1, kThreadsPerBlock>(
+          party, kSeeds[party], device_cws, device_outputs, device_scheme);
+      CUDA_CHECK(cudaGetLastError());
+    };
+    std::vector<int4> actual(n), expected(n), first(n);
+    for (int party = 0; party < 2; ++party) {
+      launch(party);
+      CUDA_CHECK(cudaMemcpy(actual.data(), device_outputs, n * sizeof(int4), cudaMemcpyDeviceToHost));
+      host_scheme.EvalAll(party, kSeeds[party], cws, expected.data());
+      for (size_t x = 0; x < n; ++x) {
+        if (!EqualOutput(actual[x], expected[x])) {
+          fprintf(stderr, "GPU DCF full evaluation mismatch at party %d input %zu\n", party, x);
+          exit(EXIT_FAILURE);
+        }
+        if (party == 0) first[x] = actual[x];
+        else {
+          int4 sum = (Group::From(first[x]) + Group::From(actual[x])).Into();
+          int4 wanted = Group::From(x < kAlpha ? kBeta : int4{0, 0, 0, 0}).Into();
+          if (!EqualOutput(sum, wanted)) {
+            fprintf(stderr, "GPU DCF full reconstruction mismatch at input %zu\n", x);
+            exit(EXIT_FAILURE);
+          }
+        }
+      }
+    }
+    fprintf(stderr, "GPU DCF full evaluation checked all %zu outputs, both parties, T=%d\n", n, kThreadsPerBlock);
+    if (getenv("FSS_BENCH_CHECK_ONLY")) exit(EXIT_SUCCESS);
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    for (auto _ : state) {
+      CUDA_CHECK(cudaEventRecord(start));
+      launch(false);
+      CUDA_CHECK(cudaEventRecord(stop));
+      CUDA_CHECK(cudaEventSynchronize(stop));
+      float ms = 0;
+      CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+      state.SetIterationTime(ms / 1000.0);
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+    state.counters["keys_per_launch"] = 1;
+    state.counters["threads_per_block"] = kThreadsPerBlock;
+    state.counters["domain_outputs"] = n;
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+    CUDA_CHECK(cudaFree(device_outputs));
+    CUDA_CHECK(cudaFree(device_cws));
+    CUDA_CHECK(cudaFree(device_nonce));
+  }
+}
+
+static void BM_GpuPackedHalfTreeDpfEvalAll(benchmark::State &state) {
+  using Prg = fss::prg::ChaCha<1>;
+  using Scheme = fss::PackedHalfTreeDpf<kInBits, 1, Prg, uint>;
+  constexpr int kDepth = Scheme::kDepth;
+  constexpr int z = kDepth < 16 ? kDepth : 16;
+  // A kDepth below the block-size log has no b1 >= 0 with 2^(z - b1) equal to
+  // kThreadsPerBlock, so run the whole frontier breadth-parallel in one block
+  // of 2^z threads instead.
+  constexpr int b1 = z < Log2BlockSize() ? 0 : z - Log2BlockSize();
+  constexpr int bs = 1 << (z - b1);
+  if constexpr (b1 < 0) {
+    state.SkipWithError("unsupported: block size exceeds the frontier");
+    return;
+  } else {
+    constexpr size_t n = size_t{1} << kInBits;
+    constexpr size_t blocks = size_t{1} << kDepth;
+    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+    int *device_nonce;
+    CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
+    CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
+    const int4 hash_key = {11, 22, 33, 44};
+    Scheme host_scheme{Prg(host_nonce), hash_key};
+    Scheme device_scheme{Prg(device_nonce), hash_key};
+    typename Scheme::Cw cws[kDepth];
+    int4 fcw;
+    host_scheme.Gen(cws, fcw, kSeeds, kAlpha, 1);
+    typename Scheme::Cw *device_cws;
+    int4 *device_outputs;
+    CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
+    CUDA_CHECK(cudaMemcpy(device_cws, cws, sizeof(cws), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc(&device_outputs, blocks * sizeof(int4)));
+    auto launch = [&](bool party) {
+      fss::gpu::PackedHalfTreeDpfEvalAllGpu<z, b1, bs>(
+          party, kSeeds[party], device_cws, fcw, device_outputs, device_scheme);
+      CUDA_CHECK(cudaGetLastError());
+    };
+    std::vector<int4> actual(blocks), expected(blocks), first(blocks);
+    for (int party = 0; party < 2; ++party) {
+      launch(party);
+      CUDA_CHECK(cudaMemcpy(actual.data(), device_outputs, blocks * sizeof(int4), cudaMemcpyDeviceToHost));
+      host_scheme.EvalAll(party, kSeeds[party], cws, fcw, expected.data());
+      for (size_t j = 0; j < blocks; ++j) {
+        if (!EqualOutput(actual[j], expected[j])) {
+          fprintf(stderr, "GPU packed full evaluation mismatch at party %d block %zu\n", party, j);
+          exit(EXIT_FAILURE);
+        }
+        if (party == 0) first[j] = actual[j];
+      }
+      if (party == 1) {
+        for (size_t x = 0; x < n; ++x) {
+          int4 sum = fss::util::Xor(first[x / Scheme::kLanes], actual[x / Scheme::kLanes]);
+          uint64_t lane = Scheme::Extract(sum, static_cast<uint>(x));
+          if (lane != (x == kAlpha ? 1u : 0u)) {
+            fprintf(stderr, "GPU packed full reconstruction mismatch at input %zu\n", x);
+            exit(EXIT_FAILURE);
+          }
+        }
+      }
+    }
+    fprintf(stderr, "GPU packed full evaluation checked all %zu blocks, both parties, T=%d\n", blocks, bs);
+    if (getenv("FSS_BENCH_CHECK_ONLY")) exit(EXIT_SUCCESS);
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    for (auto _ : state) {
+      CUDA_CHECK(cudaEventRecord(start));
+      launch(false);
+      CUDA_CHECK(cudaEventRecord(stop));
+      CUDA_CHECK(cudaEventSynchronize(stop));
+      float ms = 0;
+      CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+      state.SetIterationTime(ms / 1000.0);
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+    state.counters["keys_per_launch"] = 1;
+    state.counters["threads_per_block"] = bs;
+    state.counters["domain_outputs"] = n;
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+    CUDA_CHECK(cudaFree(device_outputs));
+    CUDA_CHECK(cudaFree(device_cws));
+    CUDA_CHECK(cudaFree(device_nonce));
+  }
+}
+
+// VdpfEvalAllMerkleGpu keeps the frontier within 8 levels of the domain depth
+// and its single-block root fold needs 2^z <= bs^2, so a block size below
+// 2^((in_bits - 8) / 2) leaves no feasible tiling; build those configurations
+// without this benchmark instead of failing the static asserts below.
+#if FSS_BENCH_DOMAIN_BITS <= 8 || \
+    (1 << (FSS_BENCH_DOMAIN_BITS - 8)) <= FSS_BENCH_THREADS_PER_BLOCK * FSS_BENCH_THREADS_PER_BLOCK
+template <typename Group>
+static void BM_GpuVdpfEvalAllMerkle(benchmark::State &state) {
+  // VdpfMerkleRootsKernel folds the block roots inside one block, so the
+  // frontier depth is capped at twice the block-size log.
+  constexpr int z_cap = 2 * Log2BlockSize();
+  constexpr int z = kInBits < z_cap ? kInBits : z_cap;
+  constexpr int b1 = z - Log2BlockSize();
+  static_assert(b1 >= 0, "domain below one block");
+  using Prg = fss::prg::ChaCha<2>;
+  using Blake3 = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<kInBits, Group, Prg, Blake3, Blake3, uint>;
+  constexpr size_t n = size_t{1} << kInBits;
+  const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+  int *device_nonce;
+  CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
+  CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
+  Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  Scheme host_scheme{Prg(host_nonce), hash, hash};
+  Scheme device_scheme{Prg(device_nonce), hash, hash};
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename Scheme::Cw cws[kInBits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+  int ret;
+  do {
+    ret = host_scheme.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
+    if (ret != 0) {
+      seeds[0].x += 1;
+      seeds[1].y += 1;
+    }
+  } while (ret != 0);
+  typename Scheme::Cw *device_cws;
+  int4 *device_outputs;
+  cuda::std::array<int4, 4> *device_pi;
+  CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
+  CUDA_CHECK(cudaMemcpy(device_cws, cws, sizeof(cws), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMalloc(&device_outputs, n * sizeof(int4)));
+  CUDA_CHECK(cudaMalloc(&device_pi, sizeof(cuda::std::array<int4, 4>)));
+  auto launch = [&](bool party) {
+    fss::gpu::VdpfEvalAllMerkleGpu<z, b1, kThreadsPerBlock>(
+        party, seeds[party], device_cws, cs, ocw, device_outputs, device_pi, device_scheme);
+    CUDA_CHECK(cudaGetLastError());
+  };
+  std::vector<int4> actual(n), expected(n), first(n);
+  cuda::std::array<int4, 4> pi_gpu[2], pi_host[2];
+  for (int party = 0; party < 2; ++party) {
+    launch(party);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(actual.data(), device_outputs, n * sizeof(int4), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&pi_gpu[party], device_pi, sizeof(pi_gpu[party]), cudaMemcpyDeviceToHost));
+    host_scheme.EvalAllMerkle(party, seeds[party], cuda::std::span<const typename Scheme::Cw>(cws, kInBits),
+        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(expected), pi_host[party]);
+    for (size_t x = 0; x < n; ++x) {
+      if (!EqualOutput(actual[x], expected[x])) {
+        fprintf(stderr, "GPU VDPF full evaluation mismatch at party %d input %zu\n", party, x);
+        exit(EXIT_FAILURE);
+      }
+      if (party == 0) first[x] = actual[x];
+      else {
+        int4 sum = (Group::From(first[x]) + Group::From(actual[x])).Into();
+        int4 wanted = Group::From(x == kAlpha ? kBeta : int4{0, 0, 0, 0}).Into();
+        if (!EqualOutput(sum, wanted)) {
+          fprintf(stderr, "GPU VDPF full reconstruction mismatch at input %zu\n", x);
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+    for (int w = 0; w < 4; ++w) {
+      if (!EqualOutput(pi_gpu[party][w], pi_host[party][w])) {
+        fprintf(stderr, "GPU VDPF Merkle proof mismatch at party %d word %d\n", party, w);
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
+  if (!Scheme::Verify(cuda::std::span<const int4, 4>(pi_gpu[0]), cuda::std::span<const int4, 4>(pi_gpu[1]))) {
+    fprintf(stderr, "GPU VDPF Merkle proofs do not verify\n");
+    exit(EXIT_FAILURE);
+  }
+  fprintf(stderr, "GPU VDPF full evaluation checked all %zu outputs and proofs, both parties, T=%d\n", n,
+      kThreadsPerBlock);
+  if (getenv("FSS_BENCH_CHECK_ONLY")) exit(EXIT_SUCCESS);
+  cudaEvent_t start, stop;
+  CUDA_CHECK(cudaEventCreate(&start));
+  CUDA_CHECK(cudaEventCreate(&stop));
+  for (auto _ : state) {
+    CUDA_CHECK(cudaEventRecord(start));
+    launch(false);
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    float ms = 0;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+    state.SetIterationTime(ms / 1000.0);
+  }
+  state.SetItemsProcessed(state.iterations() * n);
+  state.counters["keys_per_launch"] = 1;
+  state.counters["threads_per_block"] = kThreadsPerBlock;
+  state.counters["domain_outputs"] = n;
+  CUDA_CHECK(cudaEventDestroy(start));
+  CUDA_CHECK(cudaEventDestroy(stop));
+  CUDA_CHECK(cudaFree(device_outputs));
+  CUDA_CHECK(cudaFree(device_pi));
+  CUDA_CHECK(cudaFree(device_cws));
+  CUDA_CHECK(cudaFree(device_nonce));
+}
+#endif
+
+static void BM_GpuGrottoDcfEvalAll(benchmark::State &state) {
+  constexpr int z = kInBits < 17 ? kInBits : 17;
+  constexpr int b1 = z - Log2BlockSize();
+  if constexpr (b1 < 0) {
+    state.SkipWithError("unsupported: block size exceeds the frontier");
+    return;
+  } else {
+    using Prg = fss::prg::ChaCha<2>;
+    using Scheme = fss::GrottoDcf<kInBits, Prg, uint>;
+    constexpr size_t n = size_t{1} << kInBits;
+    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+    int *device_nonce;
+    CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
+    CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
+    Scheme host_scheme{Prg(host_nonce)};
+    Scheme device_scheme{Prg(device_nonce)};
+    typename Scheme::Cw cws[kInBits + 1];
+    host_scheme.Gen(cws, kSeeds, kAlpha);
+    typename Scheme::Cw *device_cws;
+    bool *device_outputs;
+    CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
+    CUDA_CHECK(cudaMemcpy(device_cws, cws, sizeof(cws), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc(&device_outputs, n * sizeof(bool)));
+    auto launch = [&](bool party) {
+      fss::gpu::GrottoDcfEvalAllGpu<z, b1, kThreadsPerBlock>(party, kSeeds[party], device_cws, device_outputs,
+          device_scheme);
+      CUDA_CHECK(cudaGetLastError());
+    };
+    auto actual = std::make_unique<bool[]>(n);
+    auto expected = std::make_unique<bool[]>(n);
+    auto first = std::make_unique<bool[]>(n);
+    for (int party = 0; party < 2; ++party) {
+      launch(party);
+      CUDA_CHECK(cudaDeviceSynchronize());
+      CUDA_CHECK(cudaMemcpy(actual.get(), device_outputs, n * sizeof(bool), cudaMemcpyDeviceToHost));
+      host_scheme.EvalAll(party, kSeeds[party], cws, expected.get());
+      for (size_t x = 0; x < n; ++x) {
+        if (actual[x] != expected[x]) {
+          fprintf(stderr, "GPU Grotto DCF full evaluation mismatch at party %d input %zu\n", party, x);
+          exit(EXIT_FAILURE);
+        }
+        if (party == 0) first[x] = actual[x];
+        else if ((first[x] ^ actual[x]) != (x >= kAlpha)) {
+          fprintf(stderr, "GPU Grotto DCF full reconstruction mismatch at input %zu\n", x);
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+    fprintf(stderr, "GPU Grotto DCF full evaluation checked all %zu outputs, both parties, T=%d\n", n,
+        kThreadsPerBlock);
+    if (getenv("FSS_BENCH_CHECK_ONLY")) exit(EXIT_SUCCESS);
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    for (auto _ : state) {
+      CUDA_CHECK(cudaEventRecord(start));
+      launch(false);
+      CUDA_CHECK(cudaEventRecord(stop));
+      CUDA_CHECK(cudaEventSynchronize(stop));
+      float ms = 0;
+      CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+      state.SetIterationTime(ms / 1000.0);
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+    state.counters["keys_per_launch"] = 1;
+    state.counters["threads_per_block"] = kThreadsPerBlock;
+    state.counters["domain_outputs"] = n;
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+    CUDA_CHECK(cudaFree(device_outputs));
+    CUDA_CHECK(cudaFree(device_cws));
+    CUDA_CHECK(cudaFree(device_nonce));
+  }
+}
+
 
 
 
@@ -1450,6 +1805,15 @@ static void RegisterGpuBenchmarks() {
   benchmark::RegisterBenchmark("fss/GPU/HalfTreeDPF-bytes/EvalAll", BM_GpuFullEvalAll<BytesGroup, true>)->UseManualTime();
   benchmark::RegisterBenchmark("fss/GPU/DPF-uint/EvalAll", BM_GpuFullEvalAll<UintGroup, false>)->UseManualTime();
   benchmark::RegisterBenchmark("fss/GPU/HalfTreeDPF-uint/EvalAll", BM_GpuFullEvalAll<UintGroup, true>)->UseManualTime();
+  benchmark::RegisterBenchmark("fss/GPU/DCF-bytes/EvalAll", BM_GpuDcfEvalAll<BytesGroup>)->UseManualTime();
+  benchmark::RegisterBenchmark("fss/GPU/DCF-uint/EvalAll", BM_GpuDcfEvalAll<UintGroup>)->UseManualTime();
+  benchmark::RegisterBenchmark("fss/GPU/PackedHalfTreeDPF-bits1/EvalAll", BM_GpuPackedHalfTreeDpfEvalAll)->UseManualTime();
+#if FSS_BENCH_DOMAIN_BITS <= 8 || \
+    (1 << (FSS_BENCH_DOMAIN_BITS - 8)) <= FSS_BENCH_THREADS_PER_BLOCK * FSS_BENCH_THREADS_PER_BLOCK
+  benchmark::RegisterBenchmark("fss/GPU/VDPF-bytes/EvalAll", BM_GpuVdpfEvalAllMerkle<BytesGroup>)->UseManualTime();
+  benchmark::RegisterBenchmark("fss/GPU/VDPF-uint/EvalAll", BM_GpuVdpfEvalAllMerkle<UintGroup>)->UseManualTime();
+#endif
+  benchmark::RegisterBenchmark("fss/GPU/GrottoDCF/EvalAll", BM_GpuGrottoDcfEvalAll)->UseManualTime();
   // AesSoft DPF Eval
   benchmark::RegisterBenchmark("fss/GPU/DPF-bytes/AesSoft/Eval", BM_GpuAesSoftEval)->UseManualTime();
 }

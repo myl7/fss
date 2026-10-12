@@ -83,6 +83,7 @@ can differ from those tables.
 | Current FSS and historical FSS 0.7 | 127-bit XOR byte group, 128-bit storage · optional integer group modulo 2^127 |
 | Current FSS Grotto DCF | One logical comparison bit · EvalAll returns N bool shares |
 | Current FSS packed HalfTree DPF (experimental) | One logical bit · EvalAll returns N/128 packed 128-bit blocks |
+| Current FSS VDPF GPU EvalAll | Merkle-fold proof accumulated on device · CPU VDPF EvalAll keeps the paper's sequential chain · analysis in [the security doc](vdpf_merkle_fold_security.md) |
 | Current FSS DMPF / VDMPF | 127-bit XOR byte group per point · t=64 points over m=112 Cuckoo buckets |
 | Servan-Schreiber VDPF (reference) | One logical bit · uint128 shares materialized per point · single point (t=1) |
 | Rust FSS 0.6 | 128-bit XOR bytes · optional integer group modulo 2^128 |

@@ -436,7 +436,7 @@ VDMPF `EvalAll` materializes through BatchEval including proof generation.
 GPU `Gen` and point `Eval` report time amortized per key, in ns/key.
 `EvalAll` uses one key, in ms/key.
 The native GPU-DPF and packed EzPC adapters keep their native output configurations.
-There is no GPU DCF `EvalAll` benchmark, so that grid cell is absent.
+GPU `EvalAll` covers DPF, HalfTree DPF, DCF, the one-bit packed HalfTree DPF, VDPF with the Merkle-fold proof computed on device, and Grotto DCF.
 The threads-per-block sweep lives in the [curve methodology](doc/bench_figures.md#gpu-block-size-sensitivity).
 
 ### Flamegraph
