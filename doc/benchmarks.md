@@ -9,10 +9,11 @@ the comparison site.
 
 ## Coverage
 
-- Schemes: DPF, DCF, VDPF, Half-Tree DPF, and Grotto DCF.
-- Operations: `Gen`, `Eval`, host `EvalAll`, VDPF `Prove`, Grotto DCF
-  `Preprocess` and `PreprocessEvalAll`, GPU point eval, and full-domain GPU
-  `EvalAll`.
+- Schemes: DPF, DCF, VDPF, Half-Tree DPF, packed HalfTree DPF, and Grotto DCF.
+- Operations: `Gen`, `Eval`, host `EvalAll`, VDPF `Prove` and the Merkle-fold
+  `ProveMerkle`/`EvalAllMerkle`, Grotto DCF `Preprocess` and `PreprocessEvalAll`,
+  GPU point eval, and full-domain GPU `EvalAll` for DPF, HalfTree DPF, packed
+  HalfTree DPF, DCF, and VDPF, plus GPU Grotto DCF `Preprocess` and `EvalAll`.
 - PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics,
   software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The
   GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on
@@ -53,6 +54,10 @@ log):
 | DcfEvalPoint         | Uint  | `ChaCha<4>`     | 46 |      |       |
 | VdpfEvalPoint        | Uint  | `ChaCha<2>`     | 40 |      |       |
 | HalfTreeDpfEvalPoint | Uint  | `ChaCha<1>`     | 38 |      |       |
+| DcfEvalAll           | Uint  | `ChaCha<4>`     | 110 |     | 6144B |
+| PackedHalfTreeDpfEvalAll | -  | `ChaCha<1>`     | 39 |      | 4096B |
+| VdpfEvalAll          | Uint  | `ChaCha<2>`     | 128 |      | 4096B |
+| GrottoDcfExpandLeafBits | -  | `ChaCha<2>`     | 65 |      | 4096B |
 
 The PRG drives most of the difference. Software AES-128 MMO costs about twice
 the registers of ChaCha for the same scheme and group, and it is the only

@@ -4,7 +4,8 @@
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl7.org>.
  * @author Yulong Ming <i@myl7.org>
  *
- * @brief GPU full-domain evaluation (EvalAll) for DPF and HalfTree DPF.
+ * @brief GPU full-domain evaluation (EvalAll) for DPF, HalfTree DPF, packed HalfTree DPF,
+ * DCF, VDPF (with host-side Prove), and Grotto DCF (Preprocess and EvalAll).
  *
  * The tree-expansion strategy follows the hybrid approach of GPU-DPF
  * (facebookresearch/GPU-DPF, dpf_hybrid.cu, Z=128): expand the tree
@@ -32,8 +33,13 @@
 
 #pragma once
 #include <cuda_runtime.h>
+#include <cub/device/device_scan.cuh>
+#include <fss/dcf.cuh>
 #include <fss/dpf.cuh>
+#include <fss/grotto_dcf.cuh>
 #include <fss/half_tree_dpf.cuh>
+#include <fss/packed_half_tree_dpf.cuh>
+#include <fss/vdpf.cuh>
 
 namespace fss::gpu {
 
@@ -446,6 +452,588 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
   }
 }
 
+// --- PackedHalfTree DPF ---
+
+// The kernels mirror the HalfTree frontier kernels with two differences: the
+// expanded depth is kDepth = in_bits - log2(kLanes) (the last log2(kLanes)
+// levels never run, each level-kDepth node IS one packed output block), and the
+// leaf conversion is a single domain-separated hash: leaf = PRG(hash_key ^ node)
+// ^ (t ? fcw : 0), see PackedHalfTreeDpf::ConvertLeaf. There is no Group, no
+// ocw, and no party negation of outputs since packed shares XOR-reconstruct.
+
+template <int in_bits, int out_bits, int z, int b1, typename Prg>
+__global__ void PackedHalfTreeDpfEvalAllKernel(bool b, int4 s0,
+    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::Cw *cws, int4 fcw, int4 *ys, int4 hash_key,
+    Prg prg) {
+  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::kDepth;
+  constexpr int D = kDepth - z;
+  constexpr int kSub = z - b1;
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= (1 << z)) return;
+
+  // Phase 0: block root walk (top b1 levels) by thread 0.
+  __shared__ int4 s_front[1 << kSub];
+  if (threadIdx.x == 0) {
+    int4 n = util::SetLsb(s0, b);
+#pragma unroll
+    for (int i = 0; i < b1; ++i) {
+      bool x_bit = (blockIdx.x >> (b1 - 1 - i)) & 1;
+      n = HtPathStep(n, x_bit, cws[i].s, hash_key, prg);
+    }
+    s_front[0] = n;
+  }
+  __syncthreads();
+
+  // Phase 1: breadth-parallel expansion of the block's subtree, levels b1..z.
+#pragma unroll
+  for (int i = 0; i < kSub; ++i) {
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
+      int4 left, right;
+      HtExpandNode(n, cws[b1 + i].s, hash_key, prg, left, right);
+      s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
+    }
+    __syncthreads();
+  }
+
+  // Phase 2: expand the subtree below depth z (levels z..kDepth-1).
+  int4 nodes[1 << D];
+  nodes[0] = s_front[threadIdx.x];
+  int count = 1;
+#pragma unroll
+  for (int lev = z; lev < kDepth; ++lev) {
+#pragma unroll
+    for (int k = count - 1; k >= 0; --k) {
+      int4 n = nodes[k];
+      bool t = util::GetLsb(n);
+      int4 h = prg.Gen(util::Xor(hash_key, n))[0];
+      int4 left = util::Xor(h, t ? cws[lev].s : kZero4);
+      nodes[2 * k] = left;
+      nodes[2 * k + 1] = util::Xor(left, n);
+    }
+    count *= 2;
+  }
+
+  // Leaf conversion: one level-kDepth node per packed output block.
+  const int out_base = tid << D;
+#pragma unroll
+  for (int k = 0; k < count; ++k) {
+    int4 n = nodes[k];
+    int4 leaf = prg.Gen(util::Xor(hash_key, n))[0];
+    if (util::GetLsb(n)) leaf = util::Xor(leaf, fcw);
+    ys[out_base + k] = leaf;
+  }
+}
+
+template <int in_bits, int out_bits, int z, int b1, typename Prg>
+__global__ void PackedHalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
+    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::Cw *cws, const int4 *fcws, int4 *ys, int nkeys,
+    int4 hash_key, Prg prg) {
+  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::kDepth;
+  constexpr int D = kDepth - z;
+  constexpr int kSub = z - b1;
+  constexpr int kBlocks = 1 << b1;
+  const int key = blockIdx.x / kBlocks;
+  const int bid = blockIdx.x - key * kBlocks;
+  const int tid = bid * blockDim.x + threadIdx.x;
+  if (tid >= (1 << z)) return;
+  const auto *kcws = cws + key * kDepth;
+  int4 *kys = ys + key * (1 << kDepth);
+  int4 fcw = fcws[key];
+
+  // Phase 0: block root walk (top b1 levels) by thread 0.
+  __shared__ int4 s_front[1 << kSub];
+  if (threadIdx.x == 0) {
+    int4 n = util::SetLsb(s0s[key], b);
+#pragma unroll
+    for (int i = 0; i < b1; ++i) {
+      bool x_bit = (bid >> (b1 - 1 - i)) & 1;
+      n = HtPathStep(n, x_bit, kcws[i].s, hash_key, prg);
+    }
+    s_front[0] = n;
+  }
+  __syncthreads();
+
+  // Phase 1: breadth-parallel expansion of the block's subtree, levels b1..z.
+#pragma unroll
+  for (int i = 0; i < kSub; ++i) {
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
+      int4 left, right;
+      HtExpandNode(n, kcws[b1 + i].s, hash_key, prg, left, right);
+      s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
+    }
+    __syncthreads();
+  }
+
+  // Phase 2: expand the subtree below depth z (levels z..kDepth-1).
+  int4 nodes[1 << D];
+  nodes[0] = s_front[threadIdx.x];
+  int count = 1;
+#pragma unroll
+  for (int lev = z; lev < kDepth; ++lev) {
+#pragma unroll
+    for (int k = count - 1; k >= 0; --k) {
+      int4 n = nodes[k];
+      bool t = util::GetLsb(n);
+      int4 h = prg.Gen(util::Xor(hash_key, n))[0];
+      int4 left = util::Xor(h, t ? kcws[lev].s : kZero4);
+      nodes[2 * k] = left;
+      nodes[2 * k + 1] = util::Xor(left, n);
+    }
+    count *= 2;
+  }
+
+  // Leaf conversion: one level-kDepth node per packed output block.
+  const int out_base = tid << D;
+#pragma unroll
+  for (int k = 0; k < count; ++k) {
+    int4 n = nodes[k];
+    int4 leaf = prg.Gen(util::Xor(hash_key, n))[0];
+    if (util::GetLsb(n)) leaf = util::Xor(leaf, fcw);
+    kys[out_base + k] = leaf;
+  }
+}
+
+// --- DCF ---
+
+// A DCF tree node carries (st, v): st is the seed with t in the LSB, v is the
+// running group value of the path, mirroring Dcf::EvalTree.
+template <typename Cw, typename Group, typename Prg>
+__device__ __forceinline__ void DcfExpandNode(int4 st, Group v, bool b, const Cw &cw, Prg prg,
+    int4 &left, Group &v_left, int4 &right, Group &v_right) {
+  bool t = util::GetLsb(st);
+  int4 s = util::SetLsb(st, false);
+  int4 s_cw = cw.s;
+  bool tl_cw = util::GetLsb(s_cw);
+  s_cw = util::SetLsb(s_cw, false);
+  int4 v_cw_buf = cw.v;
+  bool tr_cw = util::GetLsb(v_cw_buf);
+  v_cw_buf = util::SetLsb(v_cw_buf, false);
+  auto v_cw = Group::From(v_cw_buf);
+
+  auto [sl, vl_buf, sr, vr_buf] = prg.Gen(s);
+  bool tl = util::GetLsb(sl);
+  sl = util::SetLsb(sl, false);
+  vl_buf = util::SetLsb(vl_buf, false);
+  auto vl = Group::From(vl_buf);
+  bool tr = util::GetLsb(sr);
+  sr = util::SetLsb(sr, false);
+  vr_buf = util::SetLsb(vr_buf, false);
+  auto vr = Group::From(vr_buf);
+
+  if (t) {
+    sl = util::Xor(sl, s_cw);
+    sr = util::Xor(sr, s_cw);
+    tl = tl ^ tl_cw;
+    tr = tr ^ tr_cw;
+    vl = vl + v_cw;
+    vr = vr + v_cw;
+  }
+  if (b) {
+    vl = -vl;
+    vr = -vr;
+  }
+  vl = vl + v;
+  vr = vr + v;
+
+  left = util::SetLsb(sl, tl);
+  right = util::SetLsb(sr, tr);
+  v_left = vl;
+  v_right = vr;
+}
+
+// One step of a DCF path walk: only the chosen child's (st, v) is kept.
+template <typename Cw, typename Group, typename Prg>
+__device__ __forceinline__ void DcfPathStep(int4 st, Group v, bool b, const Cw &cw, Prg prg, bool x_bit,
+    int4 &next_st, Group &next_v) {
+  int4 left, right;
+  Group v_left, v_right;
+  DcfExpandNode(st, v, b, cw, prg, left, v_left, right, v_right);
+  if (x_bit) {
+    next_st = right;
+    next_v = v_right;
+  } else {
+    next_st = left;
+    next_v = v_left;
+  }
+}
+
+template <int in_bits, int z, int b1, typename Group, typename Prg>
+__global__ void DcfEvalAllKernel(
+    bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, uint>::Cw *cws, int4 *ys, Prg prg) {
+  constexpr int D = in_bits - z;
+  constexpr int kSub = z - b1;
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= (1 << z)) return;
+
+  // Phase 0: block root walk (top b1 levels) by thread 0.
+  __shared__ int4 s_front[1 << kSub];
+  __shared__ Group v_front[1 << kSub];
+  if (threadIdx.x == 0) {
+    int4 st = util::SetLsb(s0, b);
+    Group v;
+#pragma unroll
+    for (int i = 0; i < b1; ++i) {
+      bool x_bit = (blockIdx.x >> (b1 - 1 - i)) & 1;
+      DcfPathStep(st, v, b, cws[i], prg, x_bit, st, v);
+    }
+    s_front[0] = st;
+    v_front[0] = v;
+  }
+  __syncthreads();
+
+  // Phase 1: breadth-parallel expansion of the block's subtree, levels b1..z.
+#pragma unroll
+  for (int i = 0; i < kSub; ++i) {
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    Group nv;
+    if (active) {
+      n = s_front[threadIdx.x >> 1];
+      nv = v_front[threadIdx.x >> 1];
+    }
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
+      int4 left, right;
+      Group v_left, v_right;
+      DcfExpandNode(n, nv, b, cws[b1 + i], prg, left, v_left, right, v_right);
+      s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
+      v_front[threadIdx.x] = (threadIdx.x & 1) ? v_right : v_left;
+    }
+    __syncthreads();
+  }
+
+  // Phase 2: expand the subtree below depth z, then convert to leaves.
+  int4 nodes[1 << D];
+  Group vs[1 << D];
+  nodes[0] = s_front[threadIdx.x];
+  vs[0] = v_front[threadIdx.x];
+  int count = 1;
+#pragma unroll
+  for (int lev = z; lev < in_bits; ++lev) {
+#pragma unroll
+    for (int k = count - 1; k >= 0; --k) {
+      int4 left, right;
+      Group v_left, v_right;
+      DcfExpandNode(nodes[k], vs[k], b, cws[lev], prg, left, v_left, right, v_right);
+      nodes[2 * k] = left;
+      vs[2 * k] = v_left;
+      nodes[2 * k + 1] = right;
+      vs[2 * k + 1] = v_right;
+    }
+    count *= 2;
+  }
+
+  auto v_cw_np1 = Group::From(cws[in_bits].v);
+  const int out_base = tid << D;
+#pragma unroll
+  for (int k = 0; k < count; ++k) {
+    int4 st_cur = nodes[k];
+    bool t_cur = util::GetLsb(st_cur);
+    int4 s_cur = util::SetLsb(st_cur, false);
+    auto term = Group::From(s_cur);
+    if (t_cur) term = term + v_cw_np1;
+    if (b) term = -term;
+    auto y = vs[k] + term;
+    ys[out_base + k] = y.Into();
+  }
+}
+
+// Batched variant: nkeys keys evaluated in one launch. cws is flat, key-major
+// with stride (in_bits + 1) per key (the final cw's v part is used); each
+// key's 2^in_bits outputs land at ys + k * (1 << in_bits).
+template <int in_bits, int z, int b1, typename Group, typename Prg>
+__global__ void DcfEvalAllBatchKernel(bool b, const int4 *s0s,
+    const typename Dcf<in_bits, Group, Prg, uint>::Cw *cws, int4 *ys, int nkeys, Prg prg) {
+  constexpr int D = in_bits - z;
+  constexpr int kSub = z - b1;
+  constexpr int kBlocks = 1 << b1;
+  const int key = blockIdx.x / kBlocks;
+  const int bid = blockIdx.x - key * kBlocks;
+  const int tid = bid * blockDim.x + threadIdx.x;
+  if (tid >= (1 << z)) return;
+  const auto *kcws = cws + key * (in_bits + 1);
+  int4 *kys = ys + key * (1 << in_bits);
+
+  __shared__ int4 s_front[1 << kSub];
+  __shared__ Group v_front[1 << kSub];
+  if (threadIdx.x == 0) {
+    int4 st = util::SetLsb(s0s[key], b);
+    Group v;
+#pragma unroll
+    for (int i = 0; i < b1; ++i) {
+      bool x_bit = (bid >> (b1 - 1 - i)) & 1;
+      DcfPathStep(st, v, b, kcws[i], prg, x_bit, st, v);
+    }
+    s_front[0] = st;
+    v_front[0] = v;
+  }
+  __syncthreads();
+
+#pragma unroll
+  for (int i = 0; i < kSub; ++i) {
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    Group nv;
+    if (active) {
+      n = s_front[threadIdx.x >> 1];
+      nv = v_front[threadIdx.x >> 1];
+    }
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
+      int4 left, right;
+      Group v_left, v_right;
+      DcfExpandNode(n, nv, b, kcws[b1 + i], prg, left, v_left, right, v_right);
+      s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
+      v_front[threadIdx.x] = (threadIdx.x & 1) ? v_right : v_left;
+    }
+    __syncthreads();
+  }
+
+  int4 nodes[1 << D];
+  Group vs[1 << D];
+  nodes[0] = s_front[threadIdx.x];
+  vs[0] = v_front[threadIdx.x];
+  int count = 1;
+#pragma unroll
+  for (int lev = z; lev < in_bits; ++lev) {
+#pragma unroll
+    for (int k = count - 1; k >= 0; --k) {
+      int4 left, right;
+      Group v_left, v_right;
+      DcfExpandNode(nodes[k], vs[k], b, kcws[lev], prg, left, v_left, right, v_right);
+      nodes[2 * k] = left;
+      vs[2 * k] = v_left;
+      nodes[2 * k + 1] = right;
+      vs[2 * k + 1] = v_right;
+    }
+    count *= 2;
+  }
+
+  auto v_cw_np1 = Group::From(kcws[in_bits].v);
+  const int out_base = tid << D;
+#pragma unroll
+  for (int k = 0; k < count; ++k) {
+    int4 st_cur = nodes[k];
+    bool t_cur = util::GetLsb(st_cur);
+    int4 s_cur = util::SetLsb(st_cur, false);
+    auto term = Group::From(s_cur);
+    if (t_cur) term = term + v_cw_np1;
+    if (b) term = -term;
+    auto y = vs[k] + term;
+    kys[out_base + k] = y.Into();
+  }
+}
+
+// --- Grotto DCF ---
+
+// Frontier expansion of the DPF tree that writes only the per-leaf control
+// bit: t[leaf] = GetLsb(leaf node), the rule of GrottoDcf::ExpandTreeRec.
+// Same shape as DpfEvalAllKernel: Phase 0 root walk, Phase 1 shared-mem
+// breadth expansion, Phase 2 per-thread DFS.
+template <int in_bits, int z, int b1, typename Cw, typename Prg>
+__global__ void GrottoDcfExpandLeafBitsKernel(bool b, int4 s0, const Cw *cws, bool *t, Prg prg) {
+  constexpr int D = in_bits - z;
+  constexpr int kSub = z - b1;
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= (1 << z)) return;
+
+  // Phase 0: block root walk (top b1 levels) by thread 0.
+  __shared__ int4 s_front[1 << kSub];
+  if (threadIdx.x == 0) {
+    int4 st = util::SetLsb(s0, b);
+#pragma unroll
+    for (int i = 0; i < b1; ++i) {
+      bool x_bit = (blockIdx.x >> (b1 - 1 - i)) & 1;
+      st = DpfPathStep(st, cws[i], prg, x_bit);
+    }
+    s_front[0] = st;
+  }
+  __syncthreads();
+
+  // Phase 1: breadth-parallel expansion of the block's subtree, levels b1..z.
+#pragma unroll
+  for (int i = 0; i < kSub; ++i) {
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
+      int4 left, right;
+      DpfExpandNode(n, cws[b1 + i], prg, left, right);
+      s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
+    }
+    __syncthreads();
+  }
+
+  // Phase 2: expand the subtree below depth z, then write leaf control bits.
+  int4 nodes[1 << D];
+  nodes[0] = s_front[threadIdx.x];
+  int count = 1;
+#pragma unroll
+  for (int lev = z; lev < in_bits; ++lev) {
+#pragma unroll
+    for (int k = count - 1; k >= 0; --k) {
+      int4 left, right;
+      DpfExpandNode(nodes[k], cws[lev], prg, left, right);
+      nodes[2 * k] = left;
+      nodes[2 * k + 1] = right;
+    }
+    count *= 2;
+  }
+
+  const int out_base = tid << D;
+#pragma unroll
+  for (int k = 0; k < count; ++k) {
+    t[out_base + k] = util::GetLsb(nodes[k]);
+  }
+}
+
+// One level of the bottom-up parity build of GrottoDcf::Preprocess: thread j
+// sets p[idx] = p[2*idx+1] ^ p[2*idx+2] for its node of the level.
+// nodes = 2^l is the level width; node j of level l has tree index nodes-1+j.
+__global__ void GrottoDcfParityLevelKernel(bool *p, int nodes) {
+  int j = blockIdx.x * blockDim.x + threadIdx.x;
+  if (j >= nodes) return;
+  int idx = nodes - 1 + j;
+  p[idx] = p[2 * idx + 1] ^ p[2 * idx + 2];
+}
+
+// Top of the parity tree in one block: all levels of at most bs nodes each,
+// built top-down in launch order but computed children-level-first with one
+// __syncthreads() between levels, so no cross-block dependency remains.
+template <int top_level>
+__global__ void GrottoDcfParityTopKernel(bool *p) {
+#pragma unroll
+  for (int l = top_level; l >= 0; --l) {
+    int nodes = 1 << l;
+    if (threadIdx.x < nodes) {
+      int idx = nodes - 1 + threadIdx.x;
+      p[idx] = p[2 * idx + 1] ^ p[2 * idx + 2];
+    }
+    __syncthreads();
+  }
+}
+
+// XOR scan functor for cub::DeviceScan over the 1-byte control-bit domain.
+struct GrottoXorScanOp {
+  __device__ __forceinline__ unsigned char operator()(unsigned char lhs, unsigned char rhs) const {
+    return static_cast<unsigned char>(lhs ^ rhs);
+  }
+};
+
+constexpr int ConstLog2(int val) {
+  int r = 0;
+  while ((1 << (r + 1)) <= val) ++r;
+  return r;
+}
+
+// --- VDPF ---
+//
+// Same frontier split as DpfEvalAllKernel: Phase 0 root walk by thread 0,
+// Phase 1 shared-mem breadth expansion, Phase 2 per-thread DFS. The VDPF Cw
+// has the same layout as the DPF Cw (s with tl_cw in the clamped bit + bool
+// tr in the 32B slot), so the walk reuses DpfPathStep/DpfExpandNode.
+//
+// Phase 2 converts each leaf (s, t) to the output share and the corrected
+// verification hash pi_tilde_j exactly as Vdpf::EvalAll phase 2 does, but
+// stops short of the proof chain: pi = pi XOR Hash(pi XOR pi_tilde_j)[0:2]
+// over j = 0..n-1 is order-dependent and thus inherently sequential, so a
+// single GPU thread running it would be ~10x slower than CPU SIMD Blake3.
+// The kernel writes pi_tilde_j to pi_tildes and the host folds them with the
+// existing verified Vdpf::Prove(), matching the VdpfEvalPointGpu device-walk
+// + host-Prove split. cs is passed by value (64B) as a kernel param instead
+// of through global memory.
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename XorHash, typename In, typename Cw>
+__global__ void VdpfEvalAllKernel(bool b, int4 s0, const Cw *cws, cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys,
+    cuda::std::array<int4, 4> *pi_tildes, Prg prg, XorHash xor_hash) {
+  constexpr int D = in_bits - z;
+  constexpr int kSub = z - b1;
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= (1 << z)) return;
+
+  // Phase 0: block root walk (top b1 levels) by thread 0.
+  __shared__ int4 s_front[1 << kSub];
+  if (threadIdx.x == 0) {
+    int4 st = util::SetLsb(s0, b);
+#pragma unroll
+    for (int i = 0; i < b1; ++i) {
+      bool x_bit = (blockIdx.x >> (b1 - 1 - i)) & 1;
+      st = DpfPathStep(st, cws[i], prg, x_bit);
+    }
+    s_front[0] = st;
+  }
+  __syncthreads();
+
+  // Phase 1: breadth-parallel expansion of the block's subtree, levels b1..z.
+#pragma unroll
+  for (int i = 0; i < kSub; ++i) {
+    const bool active = threadIdx.x < (1 << (i + 1));
+    int4 n = kZero4;
+    if (active) n = s_front[threadIdx.x >> 1];
+    // All parent reads must finish before any child overwrites the frontier.
+    __syncthreads();
+    if (active) {
+      int4 left, right;
+      DpfExpandNode(n, cws[b1 + i], prg, left, right);
+      s_front[threadIdx.x] = (threadIdx.x & 1) ? right : left;
+    }
+    __syncthreads();
+  }
+
+  // Phase 2: expand the subtree below depth z, then convert each leaf to the
+  // output share and the corrected verification hash.
+  int4 nodes[1 << D];
+  nodes[0] = s_front[threadIdx.x];
+  int count = 1;
+#pragma unroll
+  for (int lev = z; lev < in_bits; ++lev) {
+#pragma unroll
+    for (int k = count - 1; k >= 0; --k) {
+      int4 left, right;
+      DpfExpandNode(nodes[k], cws[lev], prg, left, right);
+      nodes[2 * k] = left;
+      nodes[2 * k + 1] = right;
+    }
+    count *= 2;
+  }
+
+  auto ocw_group = Group::From(ocw);
+  const int out_base = tid << D;
+#pragma unroll
+  for (int k = 0; k < count; ++k) {
+    int4 st_cur = nodes[k];
+    bool t_cur = util::GetLsb(st_cur);
+    int4 s_cur = util::SetLsb(st_cur, false);
+
+    // Output share
+    auto g = Group::From(s_cur);
+    if (t_cur) g = g + ocw_group;
+    if (b) g = -g;
+    ys[out_base + k] = g.Into();
+
+    // Corrected verification hash for the host-side proof chain
+    int4 x_buf = util::Pack(static_cast<In>(out_base + k));
+    auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s_cur});
+    if (t_cur) {
+      pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
+    }
+    pi_tildes[out_base + k] = pi_tilde;
+  }
+}
+
 }  // namespace detail
 
 /**
@@ -548,6 +1136,291 @@ void HalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename HalfTree
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   detail::HalfTreeDpfEvalAllBatchKernel<in_bits, Z, B1, Group, Prg>
       <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, ocws, ys, nkeys, dpf.hash_key, dpf.prg);
+}
+
+/**
+ * GPU full-domain evaluation of a PackedHalfTree DPF key: block j of ys covers inputs
+ * [j * kLanes, (j + 1) * kLanes) for all j, matching EvalAll().
+ *
+ * @tparam z Frontier depth. 2^z threads each expand a subtree of 2^(kDepth - z) output
+ *   blocks, where kDepth = in_bits - log2(kLanes). Defaults to min(kDepth, 16).
+ * @tparam b1 Block-root depth. Each block walks b1 levels to its own subtree root,
+ *   then expands levels b1..z breadth-parallel. Must satisfy 2^(z - b1) == bs.
+ *   Defaults to 8.
+ * @tparam bs Block size. Defaults to 256.
+ * @param b Party index. False for 0 and true for 1. It only sets the initial control
+ *   bit: packed outputs are XOR shares, so unlike HalfTree there is no party negation.
+ * @param s0 Initial seed of the party.
+ * @param cws Correction words returned by Gen().
+ * @param fcw Final correction word returned by Gen().
+ * @param ys Pre-allocated output array. Its size must be at least 2 ** kDepth.
+ * @param dpf A PackedHalfTreeDpf instance (holds the PRG and hash key). Used on the host side.
+ * @param stream CUDA stream to launch on.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg, typename In>
+void PackedHalfTreeDpfEvalAllGpu(bool b, int4 s0,
+    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::Cw *cws, int4 fcw, int4 *ys,
+    const PackedHalfTreeDpf<in_bits, out_bits, Prg, In> &dpf, cudaStream_t stream = 0) {
+  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::kDepth;
+  constexpr int Z = (z < 0 ? (kDepth <= 16 ? kDepth : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= kDepth && kDepth - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  constexpr int kBlocks = (1 << Z) / bs;
+  detail::PackedHalfTreeDpfEvalAllKernel<in_bits, out_bits, Z, B1, Prg>
+      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, fcw, ys, dpf.hash_key, dpf.prg);
+}
+
+/**
+ * GPU full-domain evaluation of nkeys PackedHalfTree DPF keys in one launch, see
+ * PackedHalfTreeDpfEvalAllGpu and DpfEvalAllGpuBatch. cws stride is kDepth per key;
+ * fcws has nkeys entries; ys stride is (1 << kDepth) per key.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg, typename In>
+void PackedHalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s,
+    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::Cw *cws, const int4 *fcws, int nkeys, int4 *ys,
+    const PackedHalfTreeDpf<in_bits, out_bits, Prg, In> &dpf, cudaStream_t stream = 0) {
+  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::kDepth;
+  constexpr int Z = (z < 0 ? (kDepth <= 16 ? kDepth : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= kDepth && kDepth - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  detail::PackedHalfTreeDpfEvalAllBatchKernel<in_bits, out_bits, Z, B1, Prg>
+      <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, fcws, ys, nkeys, dpf.hash_key, dpf.prg);
+}
+
+/**
+ * GPU full-domain evaluation of a DCF key: ys[x] = Eval(b, s0, cws, x) for all x.
+ *
+ * @tparam z Frontier depth. 2^z threads each expand a subtree of 2^(in_bits - z) leaves.
+ *   Defaults to min(in_bits, 16).
+ * @tparam b1 Block-root depth. Each block walks b1 levels to its own subtree root,
+ *   then expands levels b1..z breadth-parallel. Must satisfy 2^(z - b1) == bs.
+ *   Defaults to 8.
+ * @param b Party index. False for 0 and true for 1.
+ * @param s0 Initial seed of the party.
+ * @param cws Correction words returned by Gen().
+ * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
+ * @param dcf A Dcf instance (holds the PRG). Used on the host side.
+ * @param stream CUDA stream to launch on.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
+void DcfEvalAllGpu(bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int4 *ys,
+    const Dcf<in_bits, Group, Prg, In> &dcf, cudaStream_t stream = 0) {
+  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  constexpr int kBlocks = (1 << Z) / bs;
+  detail::DcfEvalAllKernel<in_bits, Z, B1, Group, Prg>
+      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, ys, dcf.prg);
+}
+
+/**
+ * GPU full-domain evaluation of nkeys DCF keys in one launch: per-key time
+ * drops toward the PRG bound as the grid fills the device (tail waves and
+ * launch overhead amortized). This matches the workload that evaluates many
+ * keys, e.g. a Gen() loop followed by EvalAll per key.
+ *
+ * Layouts: s0s has nkeys entries (party b's seed each); cws is flat, key-major,
+ * with stride (in_bits + 1) per key; ys is flat with stride (1 << in_bits) per
+ * key. All sizes must be pre-allocated by the caller.
+ *
+ * @tparam z Frontier depth, see DcfEvalAllGpu.
+ * @tparam b1 Block-root depth, see DcfEvalAllGpu.
+ * @tparam bs Block size, see DcfEvalAllGpu.
+ * @param b Party index. False for 0 and true for 1.
+ * @param s0s nkeys seeds, one per key.
+ * @param cws Flat correction words, key-major, stride (in_bits + 1).
+ * @param nkeys Number of keys to evaluate.
+ * @param ys Output array, flat, stride (1 << in_bits) per key.
+ * @param dcf A Dcf instance (holds the PRG). Used on the host side.
+ * @param stream CUDA stream to launch on.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
+void DcfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int nkeys,
+    int4 *ys, const Dcf<in_bits, Group, Prg, In> &dcf, cudaStream_t stream = 0) {
+  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  detail::DcfEvalAllBatchKernel<in_bits, Z, B1, Group, Prg>
+      <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, ys, nkeys, dcf.prg);
+}
+
+/**
+ * GPU preprocess of a Grotto DCF key: expands the DPF tree on the GPU and
+ * builds the parity segment tree of GrottoDcf::Preprocess in device memory.
+ * d_p[0..2N-2] then supports GrottoDcf::Eval directly on the GPU, with
+ * N = 2 ** in_bits and the leaf control bits at d_p[N-1 .. 2N-2].
+ *
+ * @tparam z Frontier depth. 2^z threads each expand a subtree of 2^(in_bits - z) leaves.
+ *   Defaults to min(in_bits, 16).
+ * @tparam b1 Block-root depth. Each block walks b1 levels to its own subtree root,
+ *   then expands levels b1..z breadth-parallel. Must satisfy 2^(z - b1) == bs.
+ *   Defaults to 8.
+ * @tparam bs Block size, see z and b1. Defaults to 256.
+ * @param b Party index. False for 0 and true for 1.
+ * @param s0 Initial seed of the party.
+ * @param cws Correction words returned by Gen().
+ * @param d_p Pre-allocated device output array. Its size must be at least 2 * 2 ** in_bits - 1.
+ * @param dcf A GrottoDcf instance (holds the PRG). Used on the host side.
+ * @param stream CUDA stream to launch on.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg, typename In>
+void GrottoDcfPreprocessGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg, In>::Cw *cws, bool *d_p,
+    const GrottoDcf<in_bits, Prg, In> &dcf, cudaStream_t stream = 0) {
+  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  constexpr int kBlocks = (1 << Z) / bs;
+  constexpr size_t N = size_t{1} << in_bits;
+  detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In>::Cw, Prg>
+      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, d_p + (N - 1), dcf.prg);
+  // Bottom-up parity build. Levels wider than one block get one kernel each;
+  // the levels of at most bs nodes at the top go through one single-block
+  // kernel, which keeps the small-launch count at in_bits - log2(bs) + 1.
+  constexpr int kTopL = detail::ConstLog2(bs);
+  constexpr int kTop = kTopL < in_bits - 1 ? kTopL : in_bits - 1;
+  for (int l = in_bits - 1; l > kTop; --l) {
+    int nodes = 1 << l;
+    detail::GrottoDcfParityLevelKernel<<<(nodes + bs - 1) / bs, bs, 0, stream>>>(d_p, nodes);
+  }
+  detail::GrottoDcfParityTopKernel<kTop><<<1, bs, 0, stream>>>(d_p);
+}
+
+/**
+ * GPU full-domain evaluation of a Grotto DCF key: d_ys[x] is party b's share
+ * of 1[alpha <= x] for all x, as in GrottoDcf::EvalAll. Expands the DPF tree
+ * on the GPU, then runs an inclusive prefix-XOR scan over the leaf control
+ * bits in place.
+ *
+ * @tparam z Frontier depth, see GrottoDcfPreprocessGpu.
+ * @tparam b1 Block-root depth, see GrottoDcfPreprocessGpu.
+ * @tparam bs Block size, see GrottoDcfPreprocessGpu.
+ * @param b Party index. False for 0 and true for 1.
+ * @param s0 Initial seed of the party.
+ * @param cws Correction words returned by Gen().
+ * @param d_ys Pre-allocated device output array. Its size must be at least 2 ** in_bits.
+ * @param dcf A GrottoDcf instance (holds the PRG). Used on the host side.
+ * @param stream CUDA stream to launch on.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg, typename In>
+void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg, In>::Cw *cws, bool *d_ys,
+    const GrottoDcf<in_bits, Prg, In> &dcf, cudaStream_t stream = 0) {
+  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  constexpr int kBlocks = (1 << Z) / bs;
+  constexpr size_t N = size_t{1} << in_bits;
+  detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In>::Cw, Prg>
+      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, d_ys, dcf.prg);
+  // Host-side plain C++: scan the 1-byte control bits as unsigned char. The
+  // CUB scratch is cached per host thread: a per-call cudaMallocAsync costs a
+  // driver round trip on some setups when the pool cannot serve the block
+  // from cache, which measured ~0.6ms of stream stall per call on a shared
+  // A6000. Calls from one thread on different streams are only safe when
+  // those streams are not run concurrently.
+  auto *bits = reinterpret_cast<unsigned char *>(d_ys);
+  detail::GrottoXorScanOp scan_op;
+  size_t tmp_bytes = 0;
+  cub::DeviceScan::InclusiveScan(nullptr, tmp_bytes, bits, bits, scan_op, static_cast<int>(N), stream);
+  thread_local void *d_tmp = nullptr;
+  thread_local size_t tmp_cap = 0;
+  if (tmp_cap < tmp_bytes) {
+    if (d_tmp != nullptr) cudaFree(d_tmp);
+    cudaMalloc(&d_tmp, tmp_bytes);
+    tmp_cap = tmp_bytes;
+  }
+  cub::DeviceScan::InclusiveScan(d_tmp, tmp_bytes, bits, bits, scan_op, static_cast<int>(N), stream);
+}
+
+/**
+ * GPU full-domain evaluation of a VDPF key: ys[x] = the output share of
+ * Eval(b, s0, cws, cs, ocw, x) and pi_tildes[x] = its corrected per-point
+ * hash, for all x. The order-dependent proof chain is NOT accumulated here;
+ * fold pi_tildes with Vdpf::Prove() on the host, or use VdpfEvalAllProveGpu.
+ *
+ * @tparam z Frontier depth. 2^z threads each expand a subtree of 2^(in_bits - z) leaves.
+ *   Defaults to min(in_bits, 16).
+ * @tparam b1 Block-root depth. Each block walks b1 levels to its own subtree root,
+ *   then expands levels b1..z breadth-parallel. Must satisfy 2^(z - b1) == bs.
+ *   Defaults to 8.
+ * @param b Party index. False for 0 and true for 1.
+ * @param s0 Initial seed of the party.
+ * @param cws Correction words returned by Gen().
+ * @param cs Check seed returned by Gen(). Passed by value (64B) as a kernel param.
+ * @param ocw Output correction word returned by Gen().
+ * @param ys Pre-allocated device output array. Its size must be at least 2 ** in_bits.
+ * @param pi_tildes Pre-allocated device output array of corrected per-point hashes.
+ *   Its size must be at least 2 ** in_bits entries (64B each).
+ * @param vdpf A Vdpf instance (holds the PRG and xor hash). Used on the host side.
+ * @param stream CUDA stream to launch on.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename In>
+void VdpfEvalAllGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws,
+    cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys, cuda::std::array<int4, 4> *pi_tildes,
+    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
+  constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
+  constexpr int B1 = (b1 < 0 ? 8 : b1);
+  static_assert(Z <= in_bits && in_bits - Z <= 8);
+  static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
+  constexpr int kBlocks = (1 << Z) / bs;
+  detail::VdpfEvalAllKernel<in_bits, Z, B1, Group, Prg, XorHash, In,
+      typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
+      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, cs, ocw, ys, pi_tildes, vdpf.prg, vdpf.xor_hash);
+}
+
+/**
+ * GPU full-domain evaluation of a VDPF key with proof accumulation: runs
+ * VdpfEvalAllGpu, copies pi_tildes back, and folds them into pi with
+ * Vdpf::Prove().
+ *
+ * The proof chain runs on the host on purpose. The chain step
+ * pi = pi XOR Hash(pi XOR pi_tilde_j)[0:2] over j = 0..n-1 is order-dependent
+ * and inherently sequential, so a single GPU thread running it would be ~10x
+ * slower than CPU SIMD Blake3. The kernel instead computes every per-leaf
+ * pi_tilde_j in parallel, and the host chain does the only truly serial part
+ * on already-verified code. This matches the existing VdpfEvalPointGpu
+ * pattern: device walk + host Prove. The staging buffer is allocated and
+ * freed per call, which is fine for this ms-scale operation.
+ *
+ * @tparam z Frontier depth, see VdpfEvalAllGpu.
+ * @tparam b1 Block-root depth, see VdpfEvalAllGpu.
+ * @tparam bs Block size, see VdpfEvalAllGpu.
+ * @param b Party index. False for 0 and true for 1.
+ * @param s0 Initial seed of the party.
+ * @param cws Correction words returned by Gen().
+ * @param cs Check seed returned by Gen().
+ * @param ocw Output correction word returned by Gen().
+ * @param ys Pre-allocated device output array. Its size must be at least 2 ** in_bits.
+ * @param pi_tildes Pre-allocated device array of corrected per-point hashes from
+ *   the kernel, 2 ** in_bits entries (64B each). Reused as the copy source.
+ * @param pi Proof output, written on the host.
+ * @param n Domain size, i.e. 2 ** in_bits.
+ * @param vdpf A Vdpf instance (holds the PRG and hashes). Used on the host side.
+ * @param stream CUDA stream to launch on.
+ */
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename In>
+void VdpfEvalAllProveGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws,
+    cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys, cuda::std::array<int4, 4> *pi_tildes,
+    cuda::std::array<int4, 4> &pi, size_t n, const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf,
+    cudaStream_t stream = 0) {
+  VdpfEvalAllGpu<z, b1, bs>(b, s0, cws, cs, ocw, ys, pi_tildes, vdpf, stream);
+  cuda::std::array<int4, 4> *h_pi_tildes;
+  cudaMallocHost(&h_pi_tildes, n * sizeof(cuda::std::array<int4, 4>));
+  cudaMemcpyAsync(h_pi_tildes, pi_tildes, n * sizeof(cuda::std::array<int4, 4>), cudaMemcpyDeviceToHost, stream);
+  cudaStreamSynchronize(stream);
+  // Prove() is logically const but not declared const; copy the handle (a
+  // shallow ~88B copy: ChaCha/Blake3 state is pointers and by-value IVs) so
+  // callers can keep passing a const Vdpf &.
+  Vdpf<in_bits, Group, Prg, XorHash, Hash, In> vdpf_ = vdpf;
+  vdpf_.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(h_pi_tildes, n), cuda::std::span<const int4, 4>(cs), pi);
+  cudaFreeHost(h_pi_tildes);
 }
 
 }  // namespace fss::gpu

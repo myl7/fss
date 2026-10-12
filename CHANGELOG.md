@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* GPU full-domain evaluation for the schemes that had no GPU `EvalAll`: `DcfEvalAllGpu` and
+  `DcfEvalAllGpuBatch` (frontier kernel carrying the DCF group state), `PackedHalfTreeDpfEvalAllGpu`
+  and `PackedHalfTreeDpfEvalAllGpuBatch` (frontier stops at `kDepth`, one packed block per leaf
+  node), `VdpfEvalAllGpu` and `VdpfEvalAllProveGpu` (GPU tree walk and per-leaf corrected hashes;
+  the order-dependent proof chain folds on the host with `Prove`), and `GrottoDcfPreprocessGpu` and
+  `GrottoDcfEvalAllGpu` (parity segment tree built per level plus a CUB inclusive XOR scan). All
+  bit-exact against the CPU schemes on both parties; measured 2.6x to 4693x over the same-host CPU
+  at n=2^20 on an RTX A6000 (see the README GPU results).
+* CPU `EvalAll` benchmarks with the ChaCha PRG for DCF, VDPF (with BLAKE3), packed HalfTree DPF,
+  and Grotto DCF, for same-PRG comparison against the GPU benchmarks.
 * Distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.
 * Packed-output DPF (`PackedHalfTreeDpf`, experimental): based on Half-Tree expansion with a
   domain-separated leaf conversion, `EvalAll` returns `2^(in_bits-log2(128/out_bits))` blocks that

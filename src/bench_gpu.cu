@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <utility>
+#include <vector>
 #include <cuda_runtime.h>
 #include <fss/dpf.cuh>
 #include <fss/dcf.cuh>
@@ -591,6 +592,193 @@ static void BM_DpfEvalAllGpu(benchmark::State &state) {
   cudaFree(d_ys);
 }
 
+// --- GPU full-domain eval benchmarks (ChaCha<4>) ---
+
+template <int in_bits, typename Group>
+static void BM_DcfEvalAllGpu(benchmark::State &state) {
+  using DcfType = fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>;
+  GpuData data;
+
+  // See BM_HalfTreeDpfEvalAllGpu: process several keys per launch so the grid
+  // fills the device and tail waves / launch overhead amortize.
+  constexpr int kKeysPerLaunch = 1024;
+
+  typename DcfType::Cw *d_cws;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DcfType::Cw) * (in_bits + 1) * kNumKeys));
+
+  DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  int4 *d_s0s;
+  CUDA_CHECK(cudaMalloc(&d_s0s, sizeof(int4) * kNumKeys * 2));
+  for (int b = 0; b < 2; ++b)
+    CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kNumKeys, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
+        sizeof(int4), kNumKeys, cudaMemcpyDeviceToDevice));
+
+  fss::prg::ChaCha<4> prg(kNonce);
+  DcfType dcf{prg};
+
+  int4 *d_ys;
+  CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * (1 << in_bits) * kKeysPerLaunch));
+
+  // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
+  fss::gpu::DcfEvalAllGpuBatch<16, 8, 256>(false, d_s0s, d_cws, kKeysPerLaunch, d_ys, dcf);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  RunTimedKernel(state, [&] {
+    for (int off = 0; off < kNumKeys; off += kKeysPerLaunch)
+      fss::gpu::DcfEvalAllGpuBatch<16, 8, 256>(
+          false, d_s0s + off, d_cws + off * (in_bits + 1), kKeysPerLaunch, d_ys, dcf);
+  });
+  state.SetItemsProcessed(state.iterations() * kNumKeys * (1 << in_bits));
+
+  cudaFree(d_cws);
+  cudaFree(d_s0s);
+  cudaFree(d_ys);
+}
+
+// --- PackedHalfTree DPF full-domain GPU benchmarks (ChaCha<1>) ---
+
+template <int in_bits, int out_bits>
+__global__ void PackedHalfTreeDpfGenKernel(
+    typename fss::PackedHalfTreeDpf<in_bits, out_bits, fss::prg::ChaCha<1>, uint>::Cw *cws, int4 *fcws,
+    const int4 *seeds, const uint *alphas, const uint64_t *betas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  fss::prg::ChaCha<1> prg(kNonce);
+  fss::PackedHalfTreeDpf<in_bits, out_bits, fss::prg::ChaCha<1>, uint> dpf{prg, kHalfTreeHashKeyHost};
+
+  int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  dpf.Gen(cws + tid * fss::PackedHalfTreeDpf<in_bits, out_bits, fss::prg::ChaCha<1>, uint>::kDepth, fcws[tid], s0s,
+      alphas[tid], betas[tid]);
+}
+
+template <int in_bits, int out_bits>
+static void BM_PackedHalfTreeDpfEvalAllGpu(benchmark::State &state) {
+  using PackedType = fss::PackedHalfTreeDpf<in_bits, out_bits, fss::prg::ChaCha<1>, uint>;
+  constexpr int kDepth = PackedType::kDepth;
+  // bs=256 frontier tiling: Z=min(kDepth,16), so 2^(Z-B1)=bs gives B1=Z-8.
+  constexpr int Z = kDepth <= 16 ? kDepth : 16;
+  constexpr int B1 = Z - 8;
+  GpuData data;
+
+  // See BM_HalfTreeDpfEvalAllGpu: process several keys per launch so the grid
+  // fills the device and tail waves / launch overhead amortize.
+  constexpr int kKeysPerLaunch = 1024;
+
+  // One-bit betas like the CPU packed bench: the kLanes packing gain is the
+  // point of the scheme.
+  std::vector<uint64_t> betas(kNumKeys, 1);
+  uint64_t *d_betas_u64;
+  CUDA_CHECK(cudaMalloc(&d_betas_u64, sizeof(uint64_t) * kNumKeys));
+  CUDA_CHECK(cudaMemcpy(d_betas_u64, betas.data(), sizeof(uint64_t) * kNumKeys, cudaMemcpyHostToDevice));
+
+  typename PackedType::Cw *d_cws;
+  int4 *d_fcws;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename PackedType::Cw) * kDepth * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_fcws, sizeof(int4) * kNumKeys));
+
+  PackedHalfTreeDpfGenKernel<in_bits, out_bits>
+      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_fcws, data.d_seeds, data.d_alphas, d_betas_u64);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  int4 *d_s0s;
+  CUDA_CHECK(cudaMalloc(&d_s0s, sizeof(int4) * kNumKeys * 2));
+  for (int b = 0; b < 2; ++b)
+    CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kNumKeys, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
+        sizeof(int4), kNumKeys, cudaMemcpyDeviceToDevice));
+
+  fss::prg::ChaCha<1> prg(kNonce);
+  PackedType dpf{prg, kHalfTreeHashKeyHost};
+
+  int4 *d_ys;
+  CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * (1 << kDepth) * kKeysPerLaunch));
+
+  // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
+  fss::gpu::PackedHalfTreeDpfEvalAllGpuBatch<Z, B1, 256>(false, d_s0s, d_cws, d_fcws, kKeysPerLaunch, d_ys, dpf);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  RunTimedKernel(state, [&] {
+    for (int off = 0; off < kNumKeys; off += kKeysPerLaunch)
+      fss::gpu::PackedHalfTreeDpfEvalAllGpuBatch<Z, B1, 256>(
+          false, d_s0s + off, d_cws + off * kDepth, d_fcws + off, kKeysPerLaunch, d_ys, dpf);
+  });
+  state.SetItemsProcessed(state.iterations() * kNumKeys * (1 << in_bits));
+
+  cudaFree(d_betas_u64);
+  cudaFree(d_cws);
+  cudaFree(d_fcws);
+  cudaFree(d_s0s);
+  cudaFree(d_ys);
+}
+
+// --- VDPF full-domain GPU benchmark (ChaCha<2> + Blake3) ---
+//
+// One key per iteration, matching the CPU VDPF EvalAll bench. The timed op is
+// the complete VdpfEvalAllProveGpu: GPU tree walk + pi_tilde kernel, D2H copy
+// of the pi_tildes, and the sequential host-side proof chain. The chain is
+// host-side by design: its step pi = pi ^ Hash(pi ^ pi_tilde_j) is
+// order-dependent, so one GPU thread would be ~10x slower than CPU SIMD.
+
+template <int in_bits, typename Group>
+static void BM_VdpfEvalAllGpu(benchmark::State &state) {
+  using Vdpf = VdpfType<in_bits, Group>;
+  constexpr size_t n = size_t{1} << in_bits;
+
+  // The host-side Prove chain reads the IV through the by-value Blake3 state,
+  // so only the PRG nonce needs device-readable memory.
+  int *d_nonce;
+  CUDA_CHECK(cudaMalloc(&d_nonce, sizeof(int) * 2));
+  const int nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+  CUDA_CHECK(cudaMemcpy(d_nonce, nonce, sizeof(int) * 2, cudaMemcpyHostToDevice));
+  const int4 iv[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444444},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)},
+  };
+  fss::hash::Blake3 blake3{cuda::std::span<const int4, 2>(iv, 2)};
+  Vdpf host_vdpf{fss::prg::ChaCha<2>(nonce), blake3, blake3};
+  Vdpf gpu_vdpf{fss::prg::ChaCha<2>(d_nonce), blake3, blake3};
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename Vdpf::Cw cws[in_bits];
+  cuda::std::array<int4, 4> cs;
+  int4 ocw;
+  if (host_vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta) != 0) {
+    fprintf(stderr, "vdpf gen retry condition hit for fixed seeds\n");
+    exit(1);
+  }
+
+  typename Vdpf::Cw *d_cws;
+  int4 *d_ys;
+  cuda::std::array<int4, 4> *d_pi_tildes;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename Vdpf::Cw) * in_bits));
+  CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * n));
+  CUDA_CHECK(cudaMalloc(&d_pi_tildes, sizeof(cuda::std::array<int4, 4>) * n));
+  CUDA_CHECK(cudaMemcpy(d_cws, cws, sizeof(typename Vdpf::Cw) * in_bits, cudaMemcpyHostToDevice));
+
+  cuda::std::array<int4, 4> pi;
+  // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
+  fss::gpu::VdpfEvalAllProveGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi_tildes, pi, n, gpu_vdpf);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::VdpfEvalAllProveGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi_tildes, pi, n, gpu_vdpf);
+  });
+  state.SetItemsProcessed(state.iterations() * n);
+  benchmark::DoNotOptimize(pi.data());
+
+  cudaFree(d_nonce);
+  cudaFree(d_cws);
+  cudaFree(d_ys);
+  cudaFree(d_pi_tildes);
+}
+
 // --- GPU point eval benchmarks (level-major layout) ---
 //
 // Same workload as the per-key Eval benchmarks above (one output per key at
@@ -743,6 +931,80 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
   cudaFree(d_ocws);
 }
 
+// --- Grotto DCF full-domain GPU benchmarks (ChaCha<2>) ---
+
+template <int in_bits>
+static void BM_GrottoDcfPreprocessGpu(benchmark::State &state) {
+  using Prg = fss::prg::ChaCha<2>;
+  using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
+  constexpr size_t N = size_t{1} << in_bits;
+
+  fss::prg::ChaCha<2> prg(kNonce);
+  GdcfType dcf{prg};
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  typename GdcfType::Cw cws[in_bits + 1];
+  dcf.Gen(cws, s0s, alpha);
+
+  typename GdcfType::Cw *d_cws;
+  bool *d_p;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename GdcfType::Cw) * (in_bits + 1)));
+  CUDA_CHECK(cudaMalloc(&d_p, sizeof(bool) * (2 * N - 1)));
+  CUDA_CHECK(cudaMemcpy(d_cws, cws, sizeof(typename GdcfType::Cw) * (in_bits + 1), cudaMemcpyHostToDevice));
+
+  // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
+  fss::gpu::GrottoDcfPreprocessGpu<16, 8, 256>(false, s0s[0], d_cws, d_p, dcf);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::GrottoDcfPreprocessGpu<16, 8, 256>(false, s0s[0], d_cws, d_p, dcf);
+  });
+  state.SetItemsProcessed(state.iterations() * N);
+
+  cudaFree(d_cws);
+  cudaFree(d_p);
+}
+
+template <int in_bits>
+static void BM_GrottoDcfEvalAllGpu(benchmark::State &state) {
+  using Prg = fss::prg::ChaCha<2>;
+  using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
+  constexpr size_t N = size_t{1} << in_bits;
+
+  fss::prg::ChaCha<2> prg(kNonce);
+  GdcfType dcf{prg};
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  typename GdcfType::Cw cws[in_bits + 1];
+  dcf.Gen(cws, s0s, alpha);
+
+  typename GdcfType::Cw *d_cws;
+  bool *d_ys;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename GdcfType::Cw) * (in_bits + 1)));
+  CUDA_CHECK(cudaMalloc(&d_ys, sizeof(bool) * N));
+  CUDA_CHECK(cudaMemcpy(d_cws, cws, sizeof(typename GdcfType::Cw) * (in_bits + 1), cudaMemcpyHostToDevice));
+
+  // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
+  fss::gpu::GrottoDcfEvalAllGpu<16, 8, 256>(false, s0s[0], d_cws, d_ys, dcf);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::GrottoDcfEvalAllGpu<16, 8, 256>(false, s0s[0], d_cws, d_ys, dcf);
+  });
+  state.SetItemsProcessed(state.iterations() * N);
+
+  cudaFree(d_cws);
+  cudaFree(d_ys);
+}
+
 // --- Register all 18 benchmarks ---
 
 // DPF (ChaCha<2>)
@@ -778,3 +1040,10 @@ BENCHMARK(BM_HalfTreeDpfEvalPointGpu<20, UintGroup>)
     ->Name("BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20")
     ->UseManualTime();
 BENCHMARK(BM_VdpfEvalPointGpu<20, UintGroup>)->Name("BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20")->UseManualTime();
+
+// GPU full-domain eval (Grotto DCF)
+BENCHMARK(BM_GrottoDcfPreprocessGpu<20>)->Name("BM_GrottoDcfPreprocessGpu_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_GrottoDcfEvalAllGpu<20>)->Name("BM_GrottoDcfEvalAllGpu_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_DcfEvalAllGpu<20, UintGroup>)->Name("BM_DcfEvalAllGpu_Uint_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_PackedHalfTreeDpfEvalAllGpu<20, 1>)->Name("BM_PackedHalfTreeDpfEvalAllGpu_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_VdpfEvalAllGpu<20, UintGroup>)->Name("BM_VdpfEvalAllGpu_Uint_ChaCha_Blake3/20")->UseManualTime();

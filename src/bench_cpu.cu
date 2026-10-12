@@ -312,12 +312,21 @@ static void BM_DcfEvalAll(benchmark::State &state) {
   constexpr size_t n = size_t{1} << in_bits;
   std::vector<int4> ys(n);
 
-  AesCtx<4> ctx;
-  DcfType dcf{ctx.prg};
-  dcf.Gen(cws, seeds, alpha, beta);
-  for (auto _ : state) {
-    dcf.EvalAll(false, seeds[0], cws, ys.data());
-    benchmark::DoNotOptimize(ys.data());
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<4>>) {
+    AesCtx<4> ctx;
+    DcfType dcf{ctx.prg};
+    dcf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      dcf.EvalAll(false, seeds[0], cws, ys.data());
+      benchmark::DoNotOptimize(ys.data());
+    }
+  } else {
+    DcfType dcf{Prg(gNonce)};
+    dcf.Gen(cws, seeds, alpha, beta);
+    for (auto _ : state) {
+      dcf.EvalAll(false, seeds[0], cws, ys.data());
+      benchmark::DoNotOptimize(ys.data());
+    }
   }
   state.SetItemsProcessed(state.iterations() * n);
 }
@@ -456,15 +465,27 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
 
   auto xor_hash = MakeHash<XorHash>();
   auto hash_ = MakeHash<Hash>();
-  AesCtx<2> ctx;
-  VdpfType vdpf{ctx.prg, xor_hash, hash_};
-  vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-  for (auto _ : state) {
-    cuda::std::array<int4, 4> pi;
-    vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
-        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys.data(), n), pi);
-    benchmark::DoNotOptimize(ys.data());
-    benchmark::DoNotOptimize(pi);
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    VdpfType vdpf{ctx.prg, xor_hash, hash_};
+    vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    for (auto _ : state) {
+      cuda::std::array<int4, 4> pi;
+      vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+          cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys.data(), n), pi);
+      benchmark::DoNotOptimize(ys.data());
+      benchmark::DoNotOptimize(pi);
+    }
+  } else {
+    VdpfType vdpf{Prg(gNonce), xor_hash, hash_};
+    vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    for (auto _ : state) {
+      cuda::std::array<int4, 4> pi;
+      vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, in_bits),
+          cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys.data(), n), pi);
+      benchmark::DoNotOptimize(ys.data());
+      benchmark::DoNotOptimize(pi);
+    }
   }
   state.SetItemsProcessed(state.iterations() * n);
 }
@@ -560,12 +581,21 @@ static void BM_PackedHalfTreeDpfEvalAll(benchmark::State &state) {
   constexpr size_t blocks = n / DpfType::kLanes;
   std::vector<int4> ys(blocks);
 
-  AesCtx<1> ctx;
-  DpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
-  dpf.Gen(cws, fcw, s0s, alpha, beta);
-  for (auto _ : state) {
-    dpf.EvalAll(false, s0s[0], cws, fcw, ys.data());
-    benchmark::DoNotOptimize(ys.data());
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<1>>) {
+    AesCtx<1> ctx;
+    DpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+    dpf.Gen(cws, fcw, s0s, alpha, beta);
+    for (auto _ : state) {
+      dpf.EvalAll(false, s0s[0], cws, fcw, ys.data());
+      benchmark::DoNotOptimize(ys.data());
+    }
+  } else {
+    DpfType dpf{Prg(gNonce), {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+    dpf.Gen(cws, fcw, s0s, alpha, beta);
+    for (auto _ : state) {
+      dpf.EvalAll(false, s0s[0], cws, fcw, ys.data());
+      benchmark::DoNotOptimize(ys.data());
+    }
   }
   state.SetItemsProcessed(state.iterations() * n);
 }
@@ -613,16 +643,24 @@ static void BM_GrottoDcfPreprocess(benchmark::State &state) {
 
   constexpr size_t N = size_t{1} << in_bits;
 
-  AesCtx<2> ctx;
-  GdcfType dcf{ctx.prg};
-  dcf.Gen(cws, s0s, alpha);
-
   auto p = std::make_unique<bool[]>(2 * N - 1);
   typename GdcfType::ParityTree pt{p.get(), false};
 
-  for (auto _ : state) {
-    dcf.Preprocess(pt, s0s[0], cws);
-    benchmark::DoNotOptimize(p.get());
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    GdcfType dcf{ctx.prg};
+    dcf.Gen(cws, s0s, alpha);
+    for (auto _ : state) {
+      dcf.Preprocess(pt, s0s[0], cws);
+      benchmark::DoNotOptimize(p.get());
+    }
+  } else {
+    GdcfType dcf{Prg(gNonce)};
+    dcf.Gen(cws, s0s, alpha);
+    for (auto _ : state) {
+      dcf.Preprocess(pt, s0s[0], cws);
+      benchmark::DoNotOptimize(p.get());
+    }
   }
 }
 
@@ -639,19 +677,29 @@ static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
 
   constexpr size_t N = size_t{1} << in_bits;
 
-  AesCtx<2> ctx;
-  GdcfType dcf{ctx.prg};
-  dcf.Gen(cws, s0s, alpha);
-
   auto p = std::make_unique<bool[]>(2 * N - 1);
   typename GdcfType::ParityTree pt{p.get(), false};
   auto ys = std::make_unique<bool[]>(N);
 
-  for (auto _ : state) {
-    dcf.Preprocess(pt, s0s[0], cws);
-    dcf.EvalAll(false, s0s[0], cws, ys.get());
-    benchmark::DoNotOptimize(p.get());
-    benchmark::DoNotOptimize(ys.get());
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
+    AesCtx<2> ctx;
+    GdcfType dcf{ctx.prg};
+    dcf.Gen(cws, s0s, alpha);
+    for (auto _ : state) {
+      dcf.Preprocess(pt, s0s[0], cws);
+      dcf.EvalAll(false, s0s[0], cws, ys.get());
+      benchmark::DoNotOptimize(p.get());
+      benchmark::DoNotOptimize(ys.get());
+    }
+  } else {
+    GdcfType dcf{Prg(gNonce)};
+    dcf.Gen(cws, s0s, alpha);
+    for (auto _ : state) {
+      dcf.Preprocess(pt, s0s[0], cws);
+      dcf.EvalAll(false, s0s[0], cws, ys.get());
+      benchmark::DoNotOptimize(p.get());
+      benchmark::DoNotOptimize(ys.get());
+    }
   }
   state.SetItemsProcessed(state.iterations() * N);
 }
@@ -663,9 +711,12 @@ using DpfChaCha = fss::prg::ChaCha<2>;
 using DpfAesSoft = fss::prg::Aes128Soft<2>;
 using DpfAesRaw = fss::prg::Aes128MmoRaw<2>;
 using DcfAes = fss::prg::Aes128Mmo<4>;
+using DcfChaCha = fss::prg::ChaCha<4>;
 using DcfAesRaw = fss::prg::Aes128MmoRaw<4>;
 using HtDpfAes = fss::prg::Aes128Mmo<1>;
+using HtDpfChaCha = fss::prg::ChaCha<1>;
 using GdcfAes = fss::prg::Aes128Mmo<2>;
+using GdcfChaCha = fss::prg::ChaCha<2>;
 using Sha256 = fss::hash::Sha256;
 using Blake3 = fss::hash::Blake3;
 
@@ -707,6 +758,8 @@ BENCHMARK(BM_DcfEval<20, BytesGroup, DcfAes>)->Name("BM_DcfEval_Bytes_Aes/20");
 BENCHMARK(BM_DcfEvalAll<20, UintGroup, DcfAes>)->Name("BM_DcfEvalAll_Uint_Aes/20");
 // 13. BM_DcfEvalAll_Bytes_Aes/20
 BENCHMARK(BM_DcfEvalAll<20, BytesGroup, DcfAes>)->Name("BM_DcfEvalAll_Bytes_Aes/20");
+// 28. BM_DcfEvalAll_Uint_ChaCha/20
+BENCHMARK(BM_DcfEvalAll<20, UintGroup, DcfChaCha>)->Name("BM_DcfEvalAll_Uint_ChaCha/20");
 
 // 14. BM_VdpfEval_Uint_Aes_Sha256/20
 BENCHMARK((BM_VdpfEval<20, UintGroup, DpfAes, Sha256, Sha256>))->Name("BM_VdpfEval_Uint_Aes_Sha256/20");
@@ -718,6 +771,8 @@ BENCHMARK((BM_VdpfEval<20, UintGroup, DpfAes, Blake3, Blake3>))->Name("BM_VdpfEv
 BENCHMARK((BM_VdpfProve<20, UintGroup, DpfChaCha, Blake3, Blake3>))->Name("BM_VdpfProve_Uint_ChaCha_Blake3/20");
 // 18. BM_VdpfEvalAll_Uint_Aes_Sha256/20
 BENCHMARK((BM_VdpfEvalAll<20, UintGroup, DpfAes, Sha256, Sha256>))->Name("BM_VdpfEvalAll_Uint_Aes_Sha256/20");
+// 30. BM_VdpfEvalAll_Uint_ChaCha_Blake3/20
+BENCHMARK((BM_VdpfEvalAll<20, UintGroup, DpfChaCha, Blake3, Blake3>))->Name("BM_VdpfEvalAll_Uint_ChaCha_Blake3/20");
 
 // 19. BM_HalfTreeDpfEval_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEval_Uint_Aes/20");
@@ -727,6 +782,8 @@ BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfGen_U
 BENCHMARK(BM_HalfTreeDpfEvalAll<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEvalAll_Uint_Aes/20");
 // 25. BM_PackedHalfTreeDpfEvalAll_Aes/20
 BENCHMARK(BM_PackedHalfTreeDpfEvalAll<20, HtDpfAes>)->Name("BM_PackedHalfTreeDpfEvalAll_Aes/20");
+// 29. BM_PackedHalfTreeDpfEvalAll_ChaCha/20
+BENCHMARK(BM_PackedHalfTreeDpfEvalAll<20, HtDpfChaCha>)->Name("BM_PackedHalfTreeDpfEvalAll_ChaCha/20");
 
 // 22. BM_GrottoDcfEval_Aes/20
 BENCHMARK(BM_GrottoDcfEval<20, GdcfAes>)->Name("BM_GrottoDcfEval_Aes/20");
@@ -734,3 +791,7 @@ BENCHMARK(BM_GrottoDcfEval<20, GdcfAes>)->Name("BM_GrottoDcfEval_Aes/20");
 BENCHMARK(BM_GrottoDcfPreprocess<20, GdcfAes>)->Name("BM_GrottoDcfPreprocess_Aes/20");
 // 24. BM_GrottoDcfPreprocessEvalAll_Aes/20
 BENCHMARK(BM_GrottoDcfPreprocessEvalAll<20, GdcfAes>)->Name("BM_GrottoDcfPreprocessEvalAll_Aes/20");
+// 26. BM_GrottoDcfPreprocess_ChaCha/20
+BENCHMARK(BM_GrottoDcfPreprocess<20, GdcfChaCha>)->Name("BM_GrottoDcfPreprocess_ChaCha/20");
+// 27. BM_GrottoDcfPreprocessEvalAll_ChaCha/20
+BENCHMARK(BM_GrottoDcfPreprocessEvalAll<20, GdcfChaCha>)->Name("BM_GrottoDcfPreprocessEvalAll_ChaCha/20");
