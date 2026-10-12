@@ -234,7 +234,7 @@ This walks through using DPF and DCF on the GPU with ChaCha PRG.
    Dpf::Cw *d_cws;
    cudaMalloc(&d_cws, sizeof(Dpf::Cw) * (kInBits + 1) * N);
 
-   GenKernel<<<blocks, threads>>>(d_cws, d_seeds, d_alphas, d_betas);
+   GenKernel<<<blocks, kThreadsPerBlock>>>(d_cws, d_seeds, d_alphas, d_betas);
    ```
 
 4. Write and launch an `Eval` kernel for each party, then copy results back:
@@ -250,8 +250,8 @@ This walks through using DPF and DCF on the GPU with ChaCha PRG.
    }
 
    // Launch for party 0 and party 1, then copy d_ys back to host
-   EvalKernel<<<blocks, threads>>>(d_ys, false, d_seeds0, d_cws, d_xs);
-   EvalKernel<<<blocks, threads>>>(d_ys, true, d_seeds1, d_cws, d_xs);
+   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_seeds0, d_cws, d_xs);
+   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_seeds1, d_cws, d_xs);
    ```
 
 5. Reconstruct on the host using the group, same as the CPU case:
