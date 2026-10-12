@@ -24,16 +24,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementations and compare median per-key times over the domain sweep `N = 2^8 … 2^20`,
   with exact per-domain values, ratios, native configurations, and provenance. It replaces
   the per-benchmark result tables in the README.
+* Benchmark coverage page (`doc/benchmarks.md`): what the `bench_cpu`/`bench_gpu` binaries
+  measure, the benchmark naming scheme, and the GPU kernel register usage table moved out
+  of the README.
+* Endpoint CI matrix: the C++/CUDA core builds and tests on the oldest and newest CUDA
+  toolkits available for the runner (12.6 and 13.4), and the Python bindings test the
+  oldest and newest supported pairs (Python 3.10 with torch 2.6/cu126, Python 3.13 with
+  torch 2.13/cu131) in separate jobs.
 * VDPF CPU curves on the DPF comparison axes: FSS VDPF beside the Servan-Schreiber VDPF
   reference implementation (sachaservan/vdpf, eprint 2021/580, pinned submodule with a
   benchmark adapter). Both include proof generation in the timed evaluation; verification is
   an equality check outside timing.
+
+### Changed
+
+* The `fss-crypto` package requires Python >= 3.10, the bindings' actual floor
+  (`X | Y` annotations), instead of the development interpreter's 3.13; the torch floor
+  stays 2.6.
 
 ### Fixed
 
 * README figures now render on the Doxygen GitHub Pages site: the Doxygen input filter
   rewrites figures-directory Markdown images to `\image` commands resolved through
   `IMAGE_PATH`, so the SVGs are copied into the HTML output with a responsive width.
+* Comparison figures label narrow logarithmic time ranges with minor log ticks; nearly
+  flat curves (such as DMPF point evaluation) previously rendered with as few as two
+  axis ticks, which hid the logarithmic scale.
 
 ## [1.2.0] - 2026-08-17
 

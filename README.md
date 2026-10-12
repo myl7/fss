@@ -105,7 +105,8 @@ target_link_libraries(your_target fss)
 
 ### CPU
 
-This walks through using DPF and DCF on the CPU with AES-128 MMO PRG. This PRG requires OpenSSL.
+This walks through using DPF and DCF on the CPU with AES-128 MMO PRG.
+This PRG requires OpenSSL.
 
 1. Include the headers and set up type aliases:
 
@@ -174,7 +175,8 @@ This walks through using DPF and DCF on the CPU with AES-128 MMO PRG. This PRG r
    DpfPrg::FreeCtxs(ctxs);
    ```
 
-DCF follows the same pattern — use `DcfPrg` (mul=4, needs 4 AES keys), `Dcf`, and `Dcf::Cw`. The reconstructed output equals `beta` when `x < alpha` and `0` otherwise.
+DCF follows the same pattern — use `DcfPrg` (mul=4, needs 4 AES keys), `Dcf`, and `Dcf::Cw`.
+The reconstructed output equals `beta` when `x < alpha` and `0` otherwise.
 
 Link with OpenSSL in your `CMakeLists.txt`:
 
@@ -266,7 +268,8 @@ See `samples/dpf_dcf_gpu.cu` for the complete working example.
 
 ### Samples
 
-`samples/` holds a standalone program per scheme. They form their own CMake project:
+`samples/` holds a standalone program per scheme.
+They form their own CMake project:
 
 ```bash
 cmake -B build/samples -S samples
@@ -288,8 +291,8 @@ The CPU samples link OpenSSL, and `EvalAll` uses OpenMP when it is found.
 
 ### Python
 
-The `fss_crypto` package exposes PyTorch wrappers for DPF and DCF. It is
-published on PyPI as `fss-crypto`.
+The `fss_crypto` package exposes PyTorch wrappers for DPF and DCF.
+It is published on PyPI as `fss-crypto`.
 
 Install it with pip:
 
@@ -303,11 +306,10 @@ Or add it to a uv project:
 uv add fss-crypto
 ```
 
-The package requires Python >= 3.13 and PyTorch >= 2.6. The first use of each
-parameter set JIT-compiles a small CUDA extension with
-`torch.utils.cpp_extension.load`, so the CUDA toolkit is required even when the
-example below runs on CPU tensors. The `aes128_mmo` PRG also links OpenSSL at
-JIT time. Compiled extensions are cached under `~/.cache/fss_crypto`.
+The package requires Python >= 3.10 and PyTorch >= 2.6.
+The first use of each parameter set JIT-compiles a small CUDA extension with `torch.utils.cpp_extension.load`, so the CUDA toolkit is required even when the example below runs on CPU tensors.
+The `aes128_mmo` PRG also links OpenSSL at JIT time.
+Compiled extensions are cached under `~/.cache/fss_crypto`.
 
 ```python
 import torch
@@ -331,9 +333,9 @@ y1 = dpf.eval(party=1, s0=s0s[1], cws=cws, x=42)
 assert torch.bitwise_xor(y0, y1).equal(beta)
 ```
 
-`gen` and `eval_all` are CPU-only. `eval` can run on CUDA tensors for ChaCha
-PRG when CUDA is available. The JIT path sets a default `TORCH_CUDA_ARCH_LIST`
-on machines with no visible GPU so CPU tests can still compile the extension.
+`gen` and `eval_all` are CPU-only.
+`eval` can run on CUDA tensors for ChaCha PRG when CUDA is available.
+The JIT path sets a default `TORCH_CUDA_ARCH_LIST` on machines with no visible GPU so CPU tests can still compile the extension.
 
 To develop against a checkout instead, install the dev extra and run the tests:
 
@@ -344,17 +346,22 @@ uv run pytest
 
 ### Compiler Warnings
 
-You may see warnings like "integer constant is so large that it is unsigned" during compilation. These cannot be easily suppressed but are harmless and can be safely ignored.
+You may see warnings like "integer constant is so large that it is unsigned" during compilation.
+These cannot be easily suppressed but are harmless and can be safely ignored.
 
 ### nvcc 12.8: `Uint` as a `__global__` kernel template argument
 
-nvcc 12.8 fails to compile the stub file when `fss::group::Uint<__uint128_t, ...>` is used as a template argument to a `__global__` kernel — it emits a 128-bit integer literal that g++ cannot parse. `__device__` functions are not affected (no stub is generated for them).
+nvcc 12.8 fails to compile the stub file when `fss::group::Uint<__uint128_t, ...>` is used as a template argument to a `__global__` kernel — it emits a 128-bit integer literal that g++ cannot parse.
+`__device__` functions are not affected (no stub is generated for them).
 
-Workaround: wrap the type in a plain aggregate struct that satisfies `Groupable` but has no `__uint128_t` non-type template parameter in its name. The struct must have no user-declared constructors to remain an aggregate. See `third_party/fss/bench.cu` for an example.
+Workaround: wrap the type in a plain aggregate struct that satisfies `Groupable` but has no `__uint128_t` non-type template parameter in its name.
+The struct must have no user-declared constructors to remain an aggregate.
+See `third_party/fss/bench.cu` for an example.
 
 ## Benchmarks
 
-See [benchmark methodology and comparison curves](doc/bench_figures.md) for the current full-output adapters and domain sweeps. The binaries below are built on [Google Benchmark](https://github.com/google/benchmark) and time single operations; the figures and the comparison site show what is covered.
+See [benchmark methodology and comparison curves](doc/bench_figures.md) for the current full-output adapters and domain sweeps.
+The binaries below are built on [Google Benchmark](https://github.com/google/benchmark) and time single operations; [benchmark coverage](doc/benchmarks.md) lists what they measure and the GPU kernel register usage.
 
 Configure with `BUILD_BENCH=ON` and build the targets:
 
@@ -377,20 +384,19 @@ Run a subset using `--benchmark_filter` (regex):
 ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20
 ```
 
-The `Makefile` runs these sources through `third_party/bench.py`. Both CPU and
-GPU runs pin the host process to `CPU_ID`, verify the performance governor, and
-restore its previous value on exit. A governor change may require noninteractive
-`sudo`. `make bench_gpu` also selects `GPU_ID`. Builds, raw measurements,
-environment metadata, and reports are saved under `build/third_party/`.
+The `Makefile` runs these sources through `third_party/bench.py`.
+Both CPU and GPU runs pin the host process to `CPU_ID`, verify the performance governor, and restore its previous value on exit.
+A governor change may require noninteractive `sudo`.
+`make bench_gpu` also selects `GPU_ID`.
+Builds, raw measurements, environment metadata, and reports are saved under `build/third_party/`.
 
 ```bash
 CPU_ID=0 make bench_cpu
 GPU_ID=1 CUDA_ARCH=120 make bench_gpu
 ```
 
-The [third-party comparison guide](doc/bench_third_parties.md#running) covers
-fixed dependency versions, selecting libraries, and generating reports. The
-`main` selection runs the benchmarks in this README:
+The [third-party comparison guide](doc/bench_third_parties.md#running) covers fixed dependency versions, selecting libraries, and generating reports.
+The `main` selection runs the benchmarks in this README:
 
 ```bash
 python3 third_party/bench.py run --libraries main --platform cpu --cpu 24 \
@@ -399,70 +405,34 @@ python3 third_party/bench.py run --libraries main --platform gpu --cpu 8 --gpu 1
   --cuda-arch 120 --repetitions 5 --min-time 1 --run-id readme-gpu
 ```
 
-Choose idle, allowed CPU and GPU indices on your host. Direct binary invocations
-above leave affinity and the governor to the caller.
+Choose idle, allowed CPU and GPU indices on your host.
+Direct binary invocations above leave affinity and the governor to the caller.
 
-`CUDA_ARCH` is only needed when CMake cannot infer the architecture. Two more
-targets support the sections below: `make ptx_info` rebuilds with
-`--ptxas-options=-v` and collects the register usage into `build/ptx_info.log`,
-and `make profile_gpu` records an Nsight Systems profile of one benchmark
-selected by `GPU_PROFILE_BENCH`.
+`CUDA_ARCH` is only needed when CMake cannot infer the architecture.
+Two more targets support the sections below: `make ptx_info` rebuilds with `--ptxas-options=-v` and collects the register usage into `build/ptx_info.log`, and `make profile_gpu` records an Nsight Systems profile of one benchmark selected by `GPU_PROFILE_BENCH`.
 
 ### Comparison Curves
 
-The domain sweep measures `N = 2^8, 2^10, ..., 2^20`. Each figure is one
-platform, one scheme family per row — DCF (including Grotto DCF), DPF with
-its verifiable VDPF counterparts, and DMPF with VDMPF — and one operation per
-column: `Gen`, `Eval`, `EvalAll`. Time axes are logarithmic and legends show
-each library's native output shape and PRG backend. Hardware, sampling,
-timing boundaries, and reproduction commands are in the
-[curve methodology](doc/bench_figures.md). The exact measured medians behind
-the curves, with per-domain values and pairwise library comparison, are on
-the [benchmark comparison site](https://myl7.github.io/fss/bench/).
+The domain sweep measures `N = 2^8, 2^10, ..., 2^20`.
+Each figure is one platform, one scheme family per row — DCF (including Grotto DCF), DPF with its verifiable VDPF counterparts, and DMPF with VDMPF — and one operation per column: `Gen`, `Eval`, `EvalAll`.
+Time axes are logarithmic and legends show each library's native output shape and PRG backend.
+Hardware, sampling, timing boundaries, and reproduction commands are in the [curve methodology](doc/bench_figures.md).
+The exact measured medians behind the curves, with per-domain values and pairwise library comparison, are on the [benchmark comparison site](https://myl7.github.io/fss/bench/).
 
 ![CPU benchmark operations](doc/figures/cpu-operations.svg)
 
-CPU point operations use one key and one thread, in µs/key; `EvalAll`
-produces all N outputs for one key, in ms/key. The slow materialized
-point-loop cases use five domain sizes. The verifiable VDPF curves (FSS VDPF
-and the Servan-Schreiber reference, eprint 2021/580, single point) include
-proof generation in the timed evaluation; verification stays outside timing.
-Grotto DCF point `Eval` times the parity-tree query with Preprocess outside
-timing. DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets;
-VDMPF `EvalAll` materializes through BatchEval including proof generation.
+CPU point operations use one key and one thread, in µs/key; `EvalAll` produces all N outputs for one key, in ms/key.
+The slow materialized point-loop cases use five domain sizes.
+The verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference, eprint 2021/580, single point) include proof generation in the timed evaluation; verification stays outside timing.
+Grotto DCF point `Eval` times the parity-tree query with Preprocess outside timing.
+DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets; VDMPF `EvalAll` materializes through BatchEval including proof generation.
 
 ![GPU benchmark operations](doc/figures/gpu-operations.svg)
 
-GPU `Gen` and point `Eval` are amortized over `K = 262,144` keys, in ns/key;
-`EvalAll` uses one key, in ms/key. The native GPU-DPF and packed EzPC
-adapters keep their native output configurations. There is no GPU DCF
-`EvalAll` benchmark, so that grid cell is absent. The threads-per-block sweep
-lives in the [curve methodology](doc/bench_figures.md#gpu-block-size-sensitivity).
-
-### GPU Kernel Register Usage
-
-GPU kernel register usage (compiled for sm_120, `--ptxas-options=-v`):
-
-| Kernel               | Group | PRG             | Registers | Stack | Smem  |
-| -------------------- | ----- | --------------- | --------- | ----- | ----- |
-| DpfEval              | Uint  | `ChaCha<2>`     | 39 |      |       |
-| DpfEval              | Bytes | `ChaCha<2>`     | 40 |      |       |
-| DpfGen               | Uint  | `ChaCha<2>`     | 43 |      |       |
-| DpfGen               | Bytes | `ChaCha<2>`     | 48 |      |       |
-| DpfEval              | Uint  | `Aes128Soft<2>` | 80 | 624B | 1280B |
-| DpfGen               | Uint  | `Aes128Soft<2>` | 80 | 624B | 1280B |
-| HalfTreeDpfEval      | Uint  | `ChaCha<1>`     | 40 |      |       |
-| HalfTreeDpfGen       | Uint  | `ChaCha<1>`     | 46 |      |       |
-| VdpfEval             | Uint  | `ChaCha<2>`     | 40 |      |       |
-| VdpfGen              | Uint  | `ChaCha<2>`     | 79 |      |       |
-| DcfEval              | Uint  | `ChaCha<4>`     | 42 |      |       |
-| DcfGen               | Uint  | `ChaCha<4>`     | 50 |      |       |
-| DpfEvalPoint         | Uint  | `ChaCha<2>`     | 40 |      |       |
-| DcfEvalPoint         | Uint  | `ChaCha<4>`     | 46 |      |       |
-| VdpfEvalPoint        | Uint  | `ChaCha<2>`     | 40 |      |       |
-| HalfTreeDpfEvalPoint | Uint  | `ChaCha<1>`     | 38 |      |       |
-
-The PRG drives most of the difference. Software AES-128 MMO costs about twice the registers of ChaCha for the same scheme and group, and it is the only backend here with a nonzero stack frame and a T-table in shared memory. The `mul` parameter is part of the PRG type because it sets how many 16B blocks one `Gen` call produces. All kernels shown have zero spill stores and zero spill loads.
+GPU `Gen` and point `Eval` are amortized over `K = 262,144` keys, in ns/key; `EvalAll` uses one key, in ms/key.
+The native GPU-DPF and packed EzPC adapters keep their native output configurations.
+There is no GPU DCF `EvalAll` benchmark, so that grid cell is absent.
+The threads-per-block sweep lives in the [curve methodology](doc/bench_figures.md#gpu-block-size-sensitivity).
 
 ### Flamegraph
 
@@ -473,15 +443,14 @@ perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20
 perf script | /path/to/FlameGraph/stackcollapse-perf.pl | /path/to/FlameGraph/flamegraph.pl > build/flamegraph.svg
 ```
 
-`make flamegraph` runs the same steps, taking the FlameGraph checkout from
-`FLAMEGRAPH_DIR` (default `../FlameGraph`) and the benchmark from
-`FLAMEGRAPH_BENCH`:
+`make flamegraph` runs the same steps, taking the FlameGraph checkout from `FLAMEGRAPH_DIR` (default `../FlameGraph`) and the benchmark from `FLAMEGRAPH_BENCH`:
 
 ```bash
 FLAMEGRAPH_DIR=/path/to/FlameGraph FLAMEGRAPH_BENCH=BM_DcfGen_Uint_Aes/20 make flamegraph
 ```
 
-Open `build/flamegraph.svg` in a browser. The graph is interactive: click a frame to zoom in.
+Open `build/flamegraph.svg` in a browser.
+The graph is interactive: click a frame to zoom in.
 
 ## License
 
