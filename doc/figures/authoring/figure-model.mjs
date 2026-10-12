@@ -1,10 +1,15 @@
 // Normalize measured timing records without interpolating missing measurements.
 const SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'GrottoDCF', 'DMPF', 'VDMPF', 'VDPF'];
-// Schemes shown on the library-comparison figures; specialty schemes get
-// dedicated single-library figures because their functionality has no
-// like-for-like third-party counterpart on the same axes. VDPF joins the
-// comparison axes with both an FSS and the Servan-Schreiber reference curve.
-const MAIN_SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF'];
+// Scheme families share one figure row: comparison DCFs together with Grotto
+// DCF, point-function schemes together with their verifiable VDPF
+// counterparts, and the multi-point DMPF family. Families without measured
+// panels simply leave their grid cells empty.
+const FAMILIES = [
+  ['dcf', 'DCF', ['DCF', 'GrottoDCF']],
+  ['dpf', 'DPF / VDPF', ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF']],
+  ['dmpf', 'DMPF / VDMPF', ['DMPF', 'VDMPF']],
+];
+const OPERATIONS = ['gen', 'eval', 'eval_all'];
 
 export function normalizeRecords(input) {
   const records = Array.isArray(input) ? input : input.records;
@@ -16,44 +21,50 @@ export function normalizeRecords(input) {
       throw new Error(`invalid timing for ${row.label ?? row.method}`);
     }
     const device = row.platform;
-    const primitive = ['DCF', 'GrottoDCF'].includes(row.scheme) ? 'dcf' : ['DMPF', 'VDMPF'].includes(row.scheme) ? 'dmpf' : 'dpf';
+    const family = FAMILIES.find(([, , schemes]) => schemes.includes(row.scheme))?.[0];
     const operation = {Gen: 'gen', Eval: 'eval', EvalAll: 'eval_all'}[row.operation];
     if (!['cpu', 'gpu'].includes(device)) throw new Error('invalid platform');
-    if (!SCHEMES.includes(row.scheme)) throw new Error('invalid scheme');
+    if (!family) throw new Error('invalid scheme');
     if (!operation) throw new Error('invalid operation');
     const exponent = Number(row.domain_bits);
     if (!Number.isInteger(exponent) || exponent < 1) throw new Error('invalid log_n');
     const variant = (row.variant ?? '').replace(/^(PackedHalfTreeDPF|HalfTreeDPF|GrottoDCF|VDMPF|VDPF|DMPF|DPF|DCF)[-_]?/, '');
     // The scheme suffix keeps series apart when two schemes share a variant
-    // (DPF/DCF/VDPF bytes-AES-NI on comparison figures, DMPF/VDMPF on the
-    // shared specialty figure); otherwise the renderer groups them into one
-    // polyline.
+    // (DPF/DCF/VDPF bytes-AES-NI in the DPF and DCF rows, DMPF/VDMPF in the
+    // multi-point row); otherwise the renderer groups them into one polyline.
     const suffix = {HalfTreeDPF: ':half-tree', PackedHalfTreeDPF: ':packed', DCF: ':dcf', VDPF: ':vdpf',
       GrottoDCF: ':grotto', DMPF: ':dmpf', VDMPF: ':vdmpf'}[row.scheme] ?? '';
     const method = `${row.library}:${variant}${suffix}`;
     const label = row.label ?? `${row.library}${row.scheme === 'HalfTreeDPF' ? ' HalfTree' : ''}${row.variant ? ` (${row.variant})` : ''}`;
-    return {...row, method, label, device, primitive, operation, log_n: exponent, keys, ms_per_key: time};
+    return {...row, method, label, device, family, operation, log_n: exponent, keys, ms_per_key: time};
   });
 }
 
 export function figureGroups(records) {
   const specs = [
-    ['cpu-point', 'CPU point operations', 'cpu', ['gen', 'eval'], MAIN_SCHEMES],
-    ['gpu-point', 'GPU point operations', 'gpu', ['gen', 'eval'], MAIN_SCHEMES],
-    ['cpu-eval-all', 'CPU full-domain evaluation', 'cpu', ['eval_all'], MAIN_SCHEMES],
-    ['gpu-eval-all', 'GPU full-domain evaluation', 'gpu', ['eval_all'], MAIN_SCHEMES],
-    ['gpu-block-size', 'GPU block-size sensitivity', 'gpu', ['eval', 'eval_all'], MAIN_SCHEMES],
-    ['cpu-grotto', 'CPU Grotto DCF (1-bit comparison output)', 'cpu', ['gen', 'eval', 'eval_all'], ['GrottoDCF']],
-    ['cpu-dmpf', 'CPU DMPF and VDMPF family', 'cpu', ['gen', 'eval', 'eval_all'], ['DMPF', 'VDMPF']],
+    ['cpu-operations', 'CPU benchmark operations', 'cpu', OPERATIONS],
+    ['gpu-operations', 'GPU benchmark operations', 'gpu', OPERATIONS],
+    ['gpu-block-size', 'GPU block-size sensitivity', 'gpu', ['eval', 'eval_all']],
   ];
-  return specs.map(([id, title, device, operations, schemes]) => {
+  return specs.map(([id, title, device, operations]) => {
     const isThreads = id === 'gpu-block-size';
     const selected = records.filter(row => row.device === device && operations.includes(row.operation) &&
-      schemes.includes(row.scheme) && (isThreads ? row.scan === 'threads' : row.scan !== 'threads'));
+      (isThreads ? row.scan === 'threads' : row.scan !== 'threads'));
     const panels = [];
-    for (const primitive of ['dpf', 'dcf', 'dmpf']) for (const operation of operations) {
-      const rows = selected.filter(row => row.primitive === primitive && row.operation === operation);
-      if (rows.length) panels.push({primitive, operation, rows});
+    if (isThreads) {
+      for (const family of FAMILIES) for (const operation of operations) {
+        const rows = selected.filter(row => row.family === family[0] && row.operation === operation);
+        if (rows.length) panels.push({family: family[0], familyLabel: family[1], operation, rows});
+      }
+    } else {
+      // One family per grid row and one operation per grid column, so the
+      // Gen, Eval, and EvalAll columns stay aligned across families.
+      FAMILIES.forEach(([family, familyLabel], row) => {
+        operations.forEach((operation, column) => {
+          const rows = selected.filter(row_ => row_.family === family && row_.operation === operation);
+          if (rows.length) panels.push({family, familyLabel, operation, rows, row, column});
+        });
+      });
     }
     return {id, title, isThreads, panels};
   }).filter(figure => figure.panels.length);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Deterministic, offline D3 rendering with headless Chromium.
-import {readFile, writeFile, mkdir, copyFile} from 'node:fs/promises';
+import {readFile, writeFile, mkdir, copyFile, readdir, unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
@@ -20,6 +20,34 @@ const d3Path = process.env.FSS_FIGURE_D3 ?? path.join(root, 'build/figure-tools/
 const dataSource = await readFile(path.resolve(dataPath), 'utf8');
 const input = JSON.parse(dataSource);
 const dataSha256 = createHash('sha256').update(dataSource).digest('hex');
+
+// The comparison site ships the same successful domain-sweep measurements as
+// the figures, trimmed to the fields its tables show. Block-sweep records are
+// excluded because the site's independent variable is always the domain size.
+function siteData() {
+  const fields = ['library', 'scheme', 'variant', 'label', 'platform', 'operation', 'domain_bits',
+    'domain_size', 'num_keys', 'ns_per_key', 'group', 'prg', 'logical_output_bits', 'storage_output_bits',
+    'output_storage', 'num_points', 'threads_per_block', 'timing_boundary', 'statistic'];
+  const records = input.records
+    .filter(row => row.status === 'ok' && row.scan !== 'threads')
+    .map(row => Object.fromEntries(fields.filter(field => row[field] !== undefined).map(field => [field, row[field]])));
+  // Merged inputs nest run lists, so provenance needs the leaf run manifests.
+  const leaves = [];
+  const walk = metadata => {
+    for (const run of metadata?.runs ?? []) {
+      if (run.metadata?.runs) walk(run.metadata);
+      else leaves.push(run.metadata ?? {});
+    }
+  };
+  walk(input.metadata);
+  if (!leaves.length && input.metadata?.started_utc) leaves.push(input.metadata);
+  const line = (text, pattern) => text?.match(pattern)?.[1]?.trim() ?? null;
+  const runs = leaves.map(metadata => ({date: metadata.started_utc, host: metadata.host,
+    cpu: line(metadata.cpu_model, /^Model name:\s*(.+)$/m),
+    gpu: line(metadata.gpu_model, /(NVIDIA [^|\n]+?)(?=\s*\.{3}|\s{2,}(?:On|Off)\b)/),
+    governor: metadata.governor, git_revision: metadata.git_revision}));
+  return {schema_version: 1, source_sha256: dataSha256, runs, records};
+}
 const records = normalizeRecords(input);
 const figures = figureGroups(records);
 if (!figures.length) throw new Error('no successful measurements to render');
@@ -86,6 +114,20 @@ try {
   }
   await writeFile(path.join(outDir, 'manifest.json'), JSON.stringify({source: path.resolve(dataPath),
     records: records.length, figures: figures.map(figure => figure.id)}, null, 2) + '\n');
+  const site = JSON.stringify(siteData()) + '\n';
+  await writeFile(path.join(outDir, 'site-data.json'), site);
+  if (publish) {
+    await mkdir(path.join(root, 'doc/site'), {recursive: true});
+    await writeFile(path.join(root, 'doc/site/data.json'), site);
+    // Drop published figures that this export no longer produces.
+    const keep = new Set(figures.flatMap(figure => ['svg', 'png'].map(extension => `${figure.id}.${extension}`)));
+    for (const file of await readdir(path.join(root, 'doc/figures'))) {
+      if (/\.(svg|png)$/.test(file) && !keep.has(file)) {
+        await unlink(path.join(root, 'doc/figures', file));
+      }
+    }
+    console.log(`site data: ${JSON.parse(site).records.length} domain-sweep records`);
+  }
 } finally {
   await browser.close();
 }
