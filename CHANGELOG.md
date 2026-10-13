@@ -59,11 +59,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* The GPU benchmark curves moved to a new GPU reference host: `cs11369a`
+  (Intel Xeon Platinum 8352V, NVIDIA A6000, SM 86, CUDA 12.6, GPU 0, launch pinned
+  to CPU 100, shared-host CPU governor left unchanged). CPU curves stay on `cs659b`.
+  All GPU libraries were re-collected there; the historical FSS 0.7 has no GPU curves
+  anymore because its upstream benchmark crashes on SM 86 (misaligned address), and
+  the merge records the dropped rows with that reason instead of keeping SM 120
+  measurements. The GPU register table was re-collected for sm_86 and the block-size
+  figure now covers the `EvalAll` schemes and point `Eval` of the whole GPU scheme set.
 * The `fss-crypto` package requires Python >= 3.10, the bindings' actual floor
   (`X | Y` annotations), instead of the development interpreter's 3.13. The torch floor
   stays 2.6.
 
 ### Fixed
+
+* The packed GPU `EvalAll` benchmark compiles on domains whose frontier is smaller than
+  the configured block (`n = 2^8 … 2^12`): those launches now use one block of `2^z`
+  threads instead of a negative block-root depth, and the VDPF benchmark is excluded by
+  preprocessor when the block size admits no feasible tiling, so block sweeps build
+  everywhere.
+* Curve collection accepts the shrunken packed block size instead of failing the whole
+  domain case, and chart merges can drop a library-platform combination
+  (`--drop library:platform:reason`) whose rows would otherwise survive every refresh.
 
 * README figures now render on the Doxygen GitHub Pages site: the Doxygen input filter
   rewrites figures-directory Markdown images to `\image` commands resolved through

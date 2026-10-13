@@ -3,11 +3,17 @@
 Use `third_party/figure_bench.py` to reproduce the time curves. Run from the
 repository root on Linux after following the
 [pinned dependency and toolchain setup](bench_third_parties.md#running).
-The reference host is `cs659b`: AMD EPYC 9115, NVIDIA RTX PRO 5000, SM 120,
-and CUDA 13.2. The experiment pins CPU operations to CPU 24, uses one CPU
-thread, and verifies the `performance` governor. GPU runs use GPU 1 and pin
-the launch process to CPU 16. The run manifest records the actual hardware,
-toolchain versions, affinity arguments, and governor.
+CPU curves use `cs659b`: AMD EPYC 9115, NVIDIA RTX PRO 5000, SM 120, and
+CUDA 13.2. The experiment pins CPU operations to CPU 24, uses one CPU
+thread, and verifies the `performance` governor.
+GPU curves use `cs11369a`: Intel Xeon Platinum 8352V, NVIDIA A6000, SM 86,
+and CUDA 12.6. GPU runs use GPU 0 and pin the launch process to CPU 100,
+leaving the shared host's CPU governor unchanged.
+Historical FSS 0.7 has no GPU curves: its upstream benchmarks crash on the
+A6000 with a misaligned address, so the merge drops its GPU rows instead of
+keeping measurements from the previous GPU.
+The run manifest records the actual hardware, toolchain versions, affinity
+arguments, and governor.
 
 ## Work and timing
 
@@ -142,9 +148,12 @@ sweep renders on the separate [block-size figure](#gpu-block-size-sensitivity).
 ![GPU time by actual threads per block](figures/gpu-block-size.svg)
 
 The supplementary block sweep fixes `N = 2^20` and varies actual threads per
-block T: software-AES point `Eval`, amortized over `K = 262,144` keys, and
-full DPF and HalfTreeDPF `EvalAll` with `K = 1`. The sweep adjusts the block
-root depth as described above. Software AES at T=1024 exceeds the kernel's
+block T: point `Eval` (including software AES) amortized over `K = 262,144`
+keys, and full-domain `EvalAll` with `K = 1` for the DCF, DPF, HalfTreeDPF,
+packed, VDPF, and Grotto schemes. The sweep adjusts the block
+root depth as described above. VDPF has no T=16 and T=32 points because no
+tiling satisfies its root-fold constraints at those block sizes, and
+software AES at T=1024 exceeds the kernel's
 resource limit and has no timing point. The README keeps the domain-size
 comparison figures. This figure stays in the methodology documentation.
 

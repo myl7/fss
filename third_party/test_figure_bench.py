@@ -279,6 +279,17 @@ class FigureSweepTest(unittest.TestCase):
         self.assertEqual(result["metadata"]["runs"][1]["metadata"]["host"], "host-1")
         self.assertEqual(len(result["metadata"]["runs"][0]["sha256"]), 64)
 
+    def test_merge_drop_removes_library_platform_rows(self):
+        source = self.directory / "source"
+        rows = [sweep.normalize(self.case(), "fss/GPU/DPF-bytes/EvalAll/manual_time", 10, "raw", {}),
+                sweep.normalize(self.case() | {"library": "fss_v070"}, "fss-v0.7.0/GPU/uint/DPF/Gen/manual_time", 10,
+                                "raw-v070", {})]
+        sweep.write_export(source, {}, rows)
+        self.assertEqual(sweep.merge(self.directory / "merged", [source], drops=("fss_v070:gpu:upstream crash",)), 0)
+        result = json.loads((self.directory / "merged" / "chart-data.json").read_text())
+        self.assertEqual([row["benchmark"] for row in result["records"]], ["fss/GPU/DPF-bytes/EvalAll/manual_time"])
+        self.assertEqual(result["metadata"]["dropped"], [dict(library="fss_v070", platform="gpu", reason="upstream crash", rows=1)])
+
     def test_explicit_retry_supersedes_case_but_preserves_failed_attempt(self):
         original = self.directory / "original"
         retry = self.directory / "retry"

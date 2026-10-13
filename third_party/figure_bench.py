@@ -454,7 +454,12 @@ def write_export(directory, metadata, rows):
     return 1 if not rows or any(row["status"] in ("failed", "known_failure") for row in rows) else 0
 
 
-def merge(directory, inputs, retry_inputs=()):
+def merge(directory, inputs, retry_inputs=(), drops=()):
+    drop_specs = {}
+    for item in drops:
+        parts = item.split(":", 2)
+        drop_specs[(parts[0], parts[1])] = parts[2] if len(parts) > 2 else None
+    dropped = []
     runs, rows, superseded = [], [], []
     for path, is_retry in [(path, False) for path in inputs] + [(path, True) for path in retry_inputs]:
         source = path / "chart-data.json" if path.is_dir() else path
@@ -463,15 +468,26 @@ def merge(directory, inputs, retry_inputs=()):
             raise ValueError("unsupported chart-data schema")
         runs.append(dict(source=str(source.resolve()), sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                          metadata=data["metadata"], retry=is_retry))
+        records = data["records"]
+        if drop_specs:
+            for row in records:
+                spec = (row.get("library"), row.get("platform"))
+                if spec in drop_specs:
+                    entry = next((d for d in dropped if (d["library"], d["platform"]) == spec), None)
+                    if entry is None:
+                        dropped.append(dict(library=spec[0], platform=spec[1], reason=drop_specs[spec], rows=1))
+                    else:
+                        entry["rows"] += 1
+            records = [row for row in records if (row.get("library"), row.get("platform")) not in drop_specs]
         if is_retry:
             fields = ("library", "platform", "operation", "domain_bits", "threads_per_block", "num_keys", "cpu_prg", "scan")
             def key(row):
                 return tuple(row.get(field) for field in fields)
-            replaced = {key(row) for row in data["records"]}
+            replaced = {key(row) for row in records}
             superseded.extend(dict(record=row, replaced_by=str(source.resolve())) for row in rows if key(row) in replaced)
             rows = [row for row in rows if key(row) not in replaced]
-        rows.extend(data["records"])
-    return write_export(directory, dict(runs=runs, superseded_records=superseded), rows)
+        rows.extend(records)
+    return write_export(directory, dict(runs=runs, superseded_records=superseded, dropped=dropped), rows)
 
 
 def main(argv=None):
@@ -480,6 +496,8 @@ def main(argv=None):
     parser.add_argument("--directory", type=Path)
     parser.add_argument("--inputs", type=Path, nargs="+", help="chart JSON files or result directories for merge")
     parser.add_argument("--retry-inputs", type=Path, nargs="+", default=(), help="explicit retry runs superseding matching cases while preserving attempt provenance")
+    parser.add_argument("--drop", action="append", default=(),
+                        help="drop all rows of 'library:platform[:reason]' from every input, e.g. fss_v070:gpu:'upstream crashes on the reference GPU'")
     parser.add_argument("--libraries")
     parser.add_argument("--platform", choices=("cpu", "gpu", "all"), default="all")
     parser.add_argument("--sweep", choices=("domain", "block"), default="domain")
@@ -519,7 +537,7 @@ def main(argv=None):
     if args.action == "merge":
         if not args.inputs:
             raise ValueError("merge requires --inputs")
-        return merge(directory, args.inputs, args.retry_inputs)
+        return merge(directory, args.inputs, args.retry_inputs, args.drop)
     if args.action == "build":
         for case in selected:
             build_case(args, case)

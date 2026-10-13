@@ -37,7 +37,10 @@ export function renderFigures(d3, figures, metadata) {
     let cursor = top;
     for (const rowLayout of rowLayouts) {
       const panelsTop = cursor;
-      cursor += panelH + 6;
+      // The supplementary block-size figure wraps its panels across two-column
+      // bands; the grid figures always place one band per family row.
+      const bands = grid ? 1 : Math.ceil(rowLayout.panels.length / cols);
+      cursor += panelH * bands + (bands - 1) * 18 + 6;
       legendStarts[rowLayout.rowIndex] = cursor;
       cursor += rowLayout.height + (grid ? 22 : 0);
     }
@@ -54,7 +57,7 @@ export function renderFigures(d3, figures, metadata) {
       const timeUnit = panel.operation !== 'eval_all' ? (figure.id.startsWith('gpu') ? 'ns' : 'µs') : 'ms';
       const timeMultiplier = {ns: 1e6, 'µs': 1e3, ms: 1}[timeUnit];
       const x0 = left + (grid ? panel.column : index % cols) * (panelW + colGap);
-      const y0 = grid ? legendStarts[panel.row] - panelH - 6 : top + Math.floor(index / cols) * panelH;
+      const y0 = grid ? legendStarts[panel.row] - panelH - 6 : top + Math.floor(index / cols) * (panelH + 18);
       const plotH = panelH - 96;
       const g = svg.append('g').attr('data-panel', `${panel.family}-${panel.operation}`).attr('transform', `translate(${x0},${y0})`);
       const xValue = row => figure.isThreads ? Number(row.threads_per_block) : row.log_n;

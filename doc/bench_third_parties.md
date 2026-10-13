@@ -190,6 +190,10 @@ separate operation.
 | Toolchain        | nvcc + gcc                                          |
 | Bench framework  | Google Benchmark 1.9.5 (UseManualTime, CUDA events) |
 
+The GPU binary crashes at startup on SM 86 (misaligned address in the
+upstream benchmark), so it only contributes curves on SM 120 hosts and its
+GPU rows are dropped when the GPU reference is the A6000.
+
 ### fss CPU (C++/CUDA)
 
 | Setting         | Value                                                                    |
