@@ -496,7 +496,7 @@ def main(argv=None):
     parser.add_argument("--directory", type=Path)
     parser.add_argument("--inputs", type=Path, nargs="+", help="chart JSON files or result directories for merge")
     parser.add_argument("--retry-inputs", type=Path, nargs="+", default=(), help="explicit retry runs superseding matching cases while preserving attempt provenance")
-    parser.add_argument("--drop", action="append", default=(),
+    parser.add_argument("--drop", action="append",
                         help="drop all rows of 'library:platform[:reason]' from every input, e.g. fss_v070:gpu:'upstream crashes on the reference GPU'")
     parser.add_argument("--libraries")
     parser.add_argument("--platform", choices=("cpu", "gpu", "all"), default="all")
@@ -537,7 +537,7 @@ def main(argv=None):
     if args.action == "merge":
         if not args.inputs:
             raise ValueError("merge requires --inputs")
-        return merge(directory, args.inputs, args.retry_inputs, args.drop)
+        return merge(directory, args.inputs, args.retry_inputs, args.drop or ())
     if args.action == "build":
         for case in selected:
             build_case(args, case)
