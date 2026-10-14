@@ -12,12 +12,12 @@
 // ---------------------------------------------------------------------------
 
 __global__ void dcf_eval_kernel(
-    bool party, int4 s0, const typename DcfInst::Cw *cws, int4 *out, int nonce0, int nonce1, int64_t x_lo,
+    bool party, const int4 *s0, const typename DcfInst::Cw *cws, int4 *out, int nonce0, int nonce1, int64_t x_lo,
     int64_t x_hi) {
   DcfInst dpf{PrgType(nonce0, nonce1)};
 
   typename DcfInst::Key key;
-  key.s0 = s0;
+  key.s0 = s0[0];
   for (int i = 0; i <= kInBits; ++i) key.cws[i] = cws[i];
 
   InType x = BuildInput<InType>(x_lo, x_hi);
@@ -77,9 +77,8 @@ static torch::Tensor dcf_eval(int64_t party, torch::Tensor s0, torch::Tensor cws
     auto out = torch::zeros({4}, torch::dtype(torch::kInt32).device(s0.device()));
 
     auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
-    int4 s0_val = *s0_ptr;
 
-    dcf_eval_kernel<<<1, 1, 0, CurrentStream()>>>(b, s0_val,
+    dcf_eval_kernel<<<1, 1, 0, CurrentStream()>>>(b, s0_ptr,
         reinterpret_cast<const typename DcfInst::Cw *>(cws.data_ptr<int32_t>()),
         reinterpret_cast<int4 *>(out.data_ptr<int32_t>()), g_nonce0, g_nonce1, x_lo, x_hi);
 
@@ -129,11 +128,12 @@ static torch::Tensor dcf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor
 
   DcfInst dpf{PrgType(g_nonce0, g_nonce1)};
   auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
-  int4 s0_val = s0_ptr[0];
   auto *cws_ptr = reinterpret_cast<const typename DcfInst::Cw *>(cws.data_ptr<int32_t>());
   auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
-
+  int4 s0_val{};
   if (s0.is_cuda()) {
+    auto copy_err = cudaMemcpy(&s0_val, s0_ptr, sizeof(int4), cudaMemcpyDeviceToHost);
+    TORCH_CHECK(copy_err == cudaSuccess, "s0 device-to-host copy failed: ", cudaGetErrorString(copy_err));
     if constexpr (kInBits <= 24) {
       constexpr int kZ = EvalAllZ(kInBits), kB1 = EvalAllB1(kInBits), kBS = EvalAllBS(kInBits);
       fss::gpu::DcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, dpf, CurrentStream());
