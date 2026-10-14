@@ -96,15 +96,118 @@ _PRG_MAP: dict[str, dict] = {
     },
 }
 
-# DPF uses mul=2, DCF uses mul=4 for their PRGs.
-_SCHEME_PRG_MUL: dict[str, int] = {
-    "dpf": 2,
-    "dcf": 4,
+_HASH_MAP: dict[str, dict] = {
+    "blake3": {
+        "type": "fss::hash::Blake3",
+        "include": "fss/hash/blake3.cuh",
+    },
+    "sha256": {
+        "type": "fss::hash::Sha256",
+        "include": "fss/hash/sha256.cuh",
+    },
+}
+
+_PRP_MAP: dict[str, dict] = {
+    "aes128_feistel": {
+        "type": "fss::prp::Aes128Feistel",
+        "include": "fss/prp/aes128_feistel.cuh",
+    },
+}
+
+_DCF_PRED_MAP: dict[str, str] = {
+    "lt": "fss::DcfPred::kLt",
+    "gt": "fss::DcfPred::kGt",
+}
+
+# ---------------------------------------------------------------------------
+# Scheme registry
+# ---------------------------------------------------------------------------
+# One entry per scheme: the PRG multiplier its Prgable requirement fixes,
+# whether it is templated on an output group, which extra knobs (beyond
+# in_bits/group/prg) it takes, and how the generated extension names and
+# constructs the scheme instance.
+
+_SCHEMES: dict[str, dict] = {
+    "dpf": {
+        "prg_mul": 2,
+        "has_group": True,
+        "knobs": (),
+        "header": "fss/dpf.cuh",
+        "inst": "DpfInst",
+        "inst_fmt": "fss::Dpf<kInBits, GroupType, PrgType, InType>",
+        "impl": "dpf_binding_impl.cuh",
+    },
+    "dcf": {
+        "prg_mul": 4,
+        "has_group": True,
+        "knobs": ("pred",),
+        "header": "fss/dcf.cuh",
+        "inst": "DcfInst",
+        "inst_fmt": "fss::Dcf<kInBits, GroupType, PrgType, InType, kPred>",
+        "impl": "dcf_binding_impl.cuh",
+    },
+    "half_tree_dpf": {
+        "prg_mul": 1,
+        "has_group": True,
+        "knobs": (),
+        "header": "fss/half_tree_dpf.cuh",
+        "inst": "HtDpfInst",
+        "inst_fmt": "fss::HalfTreeDpf<kInBits, GroupType, PrgType, InType>",
+        "impl": "half_tree_dpf_binding_impl.cuh",
+    },
+    "packed_half_tree_dpf": {
+        "prg_mul": 1,
+        "has_group": False,
+        "knobs": ("out_bits",),
+        "header": "fss/packed_half_tree_dpf.cuh",
+        "inst": "PackedInst",
+        "inst_fmt": "fss::PackedHalfTreeDpf<kInBits, kOutBits, PrgType, InType>",
+        "impl": "packed_half_tree_dpf_binding_impl.cuh",
+    },
+    "grotto_dcf": {
+        "prg_mul": 2,
+        "has_group": False,
+        "knobs": (),
+        "header": "fss/grotto_dcf.cuh",
+        "inst": "GrottoInst",
+        "inst_fmt": "fss::GrottoDcf<kInBits, PrgType, InType>",
+        "impl": "grotto_dcf_binding_impl.cuh",
+    },
+    "vdpf": {
+        "prg_mul": 2,
+        "has_group": True,
+        "knobs": ("xor_hash", "hash"),
+        "header": "fss/vdpf.cuh",
+        "inst": "VdpfInst",
+        "inst_fmt": "fss::Vdpf<kInBits, GroupType, PrgType, XorHashType, HashType, InType>",
+        "impl": "vdpf_binding_impl.cuh",
+    },
+    "dmpf": {
+        "prg_mul": 2,
+        "has_group": True,
+        "knobs": ("max_points", "bucket_bits", "prp"),
+        "header": "fss/dmpf.cuh",
+        "inst": "DmpfInst",
+        "inst_fmt": "fss::Dmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, PrpType, InType>",
+        "impl": "dmpf_binding_impl.cuh",
+    },
+    "vdmpf": {
+        "prg_mul": 2,
+        "has_group": True,
+        "knobs": ("max_points", "bucket_bits", "xor_hash", "hash", "prp"),
+        "header": "fss/vdmpf.cuh",
+        "inst": "VdmpfInst",
+        "inst_fmt": (
+            "fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, "
+            "XorHashType, HashType, PrpType, InType>"
+        ),
+        "impl": "vdmpf_binding_impl.cuh",
+    },
 }
 
 
 def _prg_type(prg: str, scheme: str) -> str:
-    mul = _SCHEME_PRG_MUL[scheme]
+    mul = _SCHEMES[scheme]["prg_mul"]
     if prg == "chacha":
         return f"fss::prg::ChaCha<{mul}>"
     return f"fss::prg::Aes128Mmo<{mul}>"
@@ -114,11 +217,19 @@ def _prg_type(prg: str, scheme: str) -> str:
 # Cache key
 # ---------------------------------------------------------------------------
 
-def _cache_key(scheme: str, in_bits: int, group: str, prg: str,
-               pred: str | None = None) -> str:
-    parts = [scheme, str(in_bits), group, prg, _in_type(in_bits)]
-    if pred is not None:
-        parts.append(pred)
+# Knobs that participate in the cache key, in a fixed order. All values must
+# be str()able; None knobs of schemes that do not use them are skipped.
+_KNOB_ORDER = ("group", "prg", "pred", "out_bits", "max_points", "bucket_bits", "xor_hash", "hash", "prp")
+
+
+def _cache_key(scheme: str, in_bits: int, knobs: dict) -> str:
+    parts = [scheme, str(in_bits)]
+    for knob in _KNOB_ORDER:
+        value = knobs.get(knob)
+        if value is None:
+            continue
+        parts.append(f"{knob}{value}")
+    parts.append(_in_type(in_bits).replace(" ", ""))
     return "_".join(parts)
 
 
@@ -126,89 +237,88 @@ def _cache_key(scheme: str, in_bits: int, group: str, prg: str,
 # Source generation
 # ---------------------------------------------------------------------------
 
-_DPF_TEMPLATE = """\
-#include <fss/dpf.cuh>
-#include <{group_include}>
-#include <{prg_include}>
 
-constexpr int kInBits = {in_bits};
-using InType = {in_type};
-using GroupType = {group_type};
-using PrgType = {prg_type};
-using DpfInst = fss::Dpf<kInBits, GroupType, PrgType, InType>;
+def _generate_source(scheme: str, in_bits: int, knobs: dict) -> str:
+    spec = _SCHEMES[scheme]
+    includes = [spec["header"]]
+    aliases = [
+        f"constexpr int kInBits = {in_bits};",
+        f"using InType = {_in_type(in_bits)};",
+    ]
+    inst = spec["inst_fmt"]
 
-#include "dpf_binding_impl.cuh"
-"""
+    if spec["has_group"]:
+        includes.append(_GROUP_MAP[knobs["group"]]["include"])
+        aliases.append(f"using GroupType = {_group_type(knobs['group'], in_bits)};")
+    includes.append(_PRG_MAP[knobs["prg"]]["include"])
+    aliases.append(f"using PrgType = {_prg_type(knobs['prg'], scheme)};")
 
+    if "pred" in spec["knobs"]:
+        aliases.append(f"constexpr fss::DcfPred kPred = {_DCF_PRED_MAP[knobs['pred']]};")
+    if "out_bits" in spec["knobs"]:
+        aliases.append(f"constexpr int kOutBits = {knobs['out_bits']};")
+    if "xor_hash" in spec["knobs"]:
+        includes.append(_HASH_MAP[knobs["xor_hash"]]["include"])
+        aliases.append(f"using XorHashType = {_HASH_MAP[knobs['xor_hash']]['type']};")
+    if "hash" in spec["knobs"]:
+        if knobs["hash"] != knobs["xor_hash"]:
+            includes.append(_HASH_MAP[knobs["hash"]]["include"])
+        aliases.append(f"using HashType = {_HASH_MAP[knobs['hash']]['type']};")
+    if "prp" in spec["knobs"]:
+        includes.append(_PRP_MAP[knobs["prp"]]["include"])
+        aliases.append(f"using PrpType = {_PRP_MAP[knobs['prp']]['type']};")
+    if "max_points" in spec["knobs"]:
+        aliases.append(f"constexpr int kMaxPoints = {knobs['max_points']};")
+    if "bucket_bits" in spec["knobs"]:
+        aliases.append(f"constexpr int kBucketBits = {knobs['bucket_bits']};")
 
-def _generate_dpf_source(in_bits: int, group: str, prg: str) -> str:
-    return _DPF_TEMPLATE.format(
-        group_include=_GROUP_MAP[group]["include"],
-        prg_include=_PRG_MAP[prg]["include"],
-        in_bits=in_bits,
-        in_type=_in_type(in_bits),
-        group_type=_group_type(group, in_bits),
-        prg_type=_prg_type(prg, "dpf"),
-    )
+    aliases.append(f"using {spec['inst']} = {inst};")
 
+    lines = [f"#include <{path}>" for path in includes]
+    lines.append("")
+    lines.extend(aliases)
+    lines.append("")
+    lines.append(f'#include "{spec["impl"]}"')
+    lines.append("")
+    return "\n".join(lines)
 
-_DCF_PRED_MAP: dict[str, str] = {
-    "lt": "fss::DcfPred::kLt",
-    "gt": "fss::DcfPred::kGt",
-}
-
-_DCF_TEMPLATE = """\
-#include <fss/dcf.cuh>
-#include <{group_include}>
-#include <{prg_include}>
-
-constexpr int kInBits = {in_bits};
-using InType = {in_type};
-using GroupType = {group_type};
-using PrgType = {prg_type};
-constexpr fss::DcfPred kPred = {pred};
-using DcfInst = fss::Dcf<kInBits, GroupType, PrgType, InType, kPred>;
-
-#include "dcf_binding_impl.cuh"
-"""
-
-
-def _generate_dcf_source(in_bits: int, group: str, prg: str,
-                         pred: str) -> str:
-    return _DCF_TEMPLATE.format(
-        group_include=_GROUP_MAP[group]["include"],
-        prg_include=_PRG_MAP[prg]["include"],
-        in_bits=in_bits,
-        in_type=_in_type(in_bits),
-        group_type=_group_type(group, in_bits),
-        prg_type=_prg_type(prg, "dcf"),
-        pred=_DCF_PRED_MAP[pred],
-    )
-
-
-_SOURCE_GENERATORS: dict[str, object] = {
-    "dpf": _generate_dpf_source,
-    "dcf": _generate_dcf_source,
-}
 
 # ---------------------------------------------------------------------------
 # Compilation
 # ---------------------------------------------------------------------------
 
-def load(scheme: str, in_bits: int, group: str, prg: str,
-         pred: str | None = None) -> object:
+def load(scheme: str, in_bits: int, group: str | None = None, prg: str = "chacha",
+         pred: str | None = None, *, out_bits: int | None = None,
+         max_points: int | None = None, bucket_bits: int | None = None,
+         xor_hash: str | None = None, hash: str | None = None,
+         prp: str | None = None) -> object:
     """Load (or return cached) JIT-compiled extension module."""
-    key = _cache_key(scheme, in_bits, group, prg, pred)
+    if scheme not in _SCHEMES:
+        raise ValueError(f"unsupported scheme {scheme!r}")
+
+    spec = _SCHEMES[scheme]
+    if spec["has_group"] and group is None:
+        raise ValueError(f"scheme {scheme!r} requires a group")
+    knobs = {"group": group, "prg": prg, "pred": pred, "out_bits": out_bits,
+             "max_points": max_points, "bucket_bits": bucket_bits,
+             "xor_hash": xor_hash, "hash": hash, "prp": prp}
+    for knob in spec["knobs"]:
+        if knobs.get(knob) is None:
+            if knob not in ("prp",):  # prp defaults below
+                raise ValueError(f"scheme {scheme!r} requires {knob}")
+    if "prp" in spec["knobs"] and prp is None:
+        knobs["prp"] = "aes128_feistel"
+    if "hash" in spec["knobs"] and xor_hash is not None and hash is None:
+        knobs["hash"] = xor_hash
+    # Drop knobs the scheme does not use so they cannot leak into the key.
+    knobs = {knob: value for knob, value in knobs.items()
+             if value is not None and (knob in ("group", "prg") or knob in spec["knobs"])}
+
+    key = _cache_key(scheme, in_bits, knobs)
     if key in _EXT_CACHE:
         return _EXT_CACHE[key]
 
-    generator = _SOURCE_GENERATORS[scheme]
-    if scheme == "dpf":
-        source = generator(in_bits, group, prg)
-    elif scheme == "dcf":
-        source = generator(in_bits, group, prg, pred)
-    else:
-        raise ValueError(f"unsupported scheme {scheme!r}")
+    source = _generate_source(scheme, in_bits, knobs)
 
     include_dir = _find_include_dir()
     csrc_dir = str(_CSRC_DIR)
@@ -226,9 +336,18 @@ def load(scheme: str, in_bits: int, group: str, prg: str,
     extra_cuda_cflags = ["-O3", "-std=c++20", "--extended-lambda"]
     extra_ldflags: list[str] = []
 
+    needs_crypto = (
+        prg == "aes128_mmo"
+        or knobs.get("prp") == "aes128_feistel"
+        or knobs.get("xor_hash") == "sha256"
+        or knobs.get("hash") == "sha256"
+    )
     if prg == "aes128_mmo":
         extra_cflags.append("-fopenmp")
-        extra_ldflags.extend(["-lssl", "-lcrypto", "-lgomp"])
+    if needs_crypto:
+        extra_ldflags.extend(["-lssl", "-lcrypto"])
+    if prg == "aes128_mmo":
+        extra_ldflags.append("-lgomp")
 
     # PyTorch's arch-flag detection crashes when no GPU is present and
     # TORCH_CUDA_ARCH_LIST is unset (it tries arch_list[-1] on an empty list).

@@ -99,15 +99,16 @@ class Dcf:
 
         Args:
             party: Party index, 0 or 1.
-            s0: (4,) int32 tensor on CPU.
-            cws: (in_bits+1, 8) int32 tensor on CPU.
+            s0: (4,) int32 tensor, CPU or CUDA.
+            cws: (in_bits+1, 8) int32 tensor on the same device.
 
         Returns:
-            (2^in_bits, 4) int32 tensor of output shares.
+            (2^in_bits, 4) int32 tensor of output shares on the same device.
+            CUDA tensors need in_bits <= 24.
         """
         validate_party(party)
         validate_s0(s0)
         validate_cws(cws, self.in_bits)
-        validate_cpu_only(s0, cws, fn_name="eval_all")
+        validate_device_match(s0, cws)
 
         return self._ext.eval_all(party, s0, cws)

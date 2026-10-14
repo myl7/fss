@@ -63,3 +63,24 @@ class TestDpfEvalAllShape:
         assert out.shape == (2**16, 4)
         assert out.dtype == torch.int32
         assert out.device.type == "cpu"
+
+
+class TestDpfEvalAllCuda:
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+    def test_matches_cpu_cuda(self, dpf, s0s, beta):
+        cws = dpf.gen(s0s, alpha=107, beta=beta)
+        for party in (0, 1):
+            cpu = dpf.eval_all(party=party, s0=s0s[party], cws=cws)
+            gpu = dpf.eval_all(party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda"))
+            assert gpu.device.type == "cuda"
+            assert torch.equal(cpu, gpu.cpu())
+        first = dpf.eval_all(party=0, s0=s0s[0].to("cuda"), cws=cws.to("cuda")).cpu()
+        second = dpf.eval_all(party=1, s0=s0s[1].to("cuda"), cws=cws.to("cuda")).cpu()
+        # XOR reconstruction: beta at alpha, zero everywhere else.
+        diff = torch.bitwise_xor(first, second)
+        assert torch.equal(diff[107], beta)
+        mask = torch.ones(diff.shape[0], dtype=torch.bool)
+        mask[107] = False
+        assert not torch.any(diff[mask])
+

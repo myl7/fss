@@ -1,5 +1,6 @@
 """Shared validation for FSS binding parameters and tensors."""
 
+import math
 from numbers import Integral
 
 import torch
@@ -9,8 +10,17 @@ _VALID_PRGS = ("chacha", "aes128_mmo")
 _VALID_PRGS_BY_SCHEME = {
     "dpf": _VALID_PRGS,
     "dcf": _VALID_PRGS,
+    "half_tree_dpf": _VALID_PRGS,
+    "packed_half_tree_dpf": _VALID_PRGS,
+    "grotto_dcf": _VALID_PRGS,
+    "vdpf": _VALID_PRGS,
+    "dmpf": _VALID_PRGS,
+    "vdmpf": _VALID_PRGS,
 }
 _VALID_PREDS = ("lt", "gt")
+_VALID_OUT_BITS = (1, 2, 4, 8, 16, 32, 64)
+_VALID_HASHES = ("blake3", "sha256")
+_VALID_PRPS = ("aes128_feistel",)
 
 
 def validate_in_bits(in_bits: int) -> None:
@@ -21,6 +31,55 @@ def validate_in_bits(in_bits: int) -> None:
 def validate_group(group: str) -> None:
     if group not in _VALID_GROUPS:
         raise ValueError(f"group must be one of {_VALID_GROUPS}, got {group!r}")
+
+
+def validate_out_bits(out_bits: int) -> None:
+    if out_bits not in _VALID_OUT_BITS:
+        raise ValueError(f"out_bits must be one of {_VALID_OUT_BITS}, got {out_bits}")
+
+
+def validate_hash(hash: str) -> None:
+    if hash not in _VALID_HASHES:
+        raise ValueError(f"hash must be one of {_VALID_HASHES}, got {hash!r}")
+
+
+def validate_prp(prp: str) -> None:
+    if prp not in _VALID_PRPS:
+        raise ValueError(f"prp must be one of {_VALID_PRPS}, got {prp!r}")
+
+
+def validate_retry(retry: bool) -> None:
+    if not isinstance(retry, bool):
+        raise TypeError(f"retry must be a bool, got {type(retry).__name__}")
+
+
+def validate_max_points(max_points: int) -> None:
+    if max_points < 30:
+        raise ValueError(f"max_points must be at least 30, got {max_points}")
+
+
+def validate_t(t: int, max_points: int) -> None:
+    if not (30 <= t <= max_points):
+        raise ValueError(f"t must be between 30 and max_points={max_points}, got {t}")
+
+
+def _ch_bucket(t: int, ch_lambda: int = 80) -> int:
+    """Mirror fss::cuckoo_hash::ChBucket."""
+    e = (ch_lambda + 130 + math.log2(t)) / 123.5
+    return math.ceil(t * e)
+
+
+def validate_bucket_bits(in_bits: int, max_points: int, bucket_bits: int) -> None:
+    """Check the bucket domain fits: with the smallest bucket count (t = 30)
+    the runtime bucket size must fit 2 ** bucket_bits, as the C++ assert does."""
+    if not (1 <= bucket_bits <= 64):
+        raise ValueError(f"bucket_bits must be between 1 and 64, got {bucket_bits}")
+    b_size = (2 ** in_bits * 3 + _ch_bucket(30) - 1) // _ch_bucket(30)
+    if b_size > 2 ** bucket_bits:
+        raise ValueError(
+            f"bucket_bits={bucket_bits} is too small: the worst-case bucket "
+            f"size {b_size} exceeds 2 ** bucket_bits"
+        )
 
 
 def validate_prg(prg: str, scheme: str) -> None:
