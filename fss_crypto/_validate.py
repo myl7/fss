@@ -136,6 +136,53 @@ def validate_cws(cws: torch.Tensor, in_bits: int) -> None:
         )
 
 
+def validate_vdpf_cws(cws: torch.Tensor, in_bits: int) -> None:
+    expected = (in_bits, 8)
+    if cws.shape != expected or cws.dtype != torch.int32:
+        raise TypeError(
+            f"cws must be a {expected} int32 tensor, "
+            f"got shape {tuple(cws.shape)} dtype {cws.dtype}"
+        )
+
+
+def validate_cs(cs: torch.Tensor) -> None:
+    if cs.shape != (4, 4) or cs.dtype != torch.int32:
+        raise TypeError(
+            f"cs must be a (4, 4) int32 tensor, "
+            f"got shape {tuple(cs.shape)} dtype {cs.dtype}"
+        )
+
+
+def validate_ocw(ocw: torch.Tensor) -> None:
+    if ocw.shape != (4,) or ocw.dtype != torch.int32:
+        raise TypeError(
+            f"ocw must be a (4,) int32 tensor, "
+            f"got shape {tuple(ocw.shape)} dtype {ocw.dtype}"
+        )
+
+
+def validate_pi_tildes(pi_tildes: torch.Tensor) -> None:
+    if (pi_tildes.dim() != 3 or tuple(pi_tildes.shape[1:]) != (4, 4)
+            or pi_tildes.dtype != torch.int32):
+        raise TypeError(
+            f"pi_tildes must be an (L, 4, 4) int32 tensor, "
+            f"got shape {tuple(pi_tildes.shape)} dtype {pi_tildes.dtype}"
+        )
+    if pi_tildes.shape[0] < 1:
+        raise ValueError(
+            f"pi_tildes must contain at least one per-point hash, "
+            f"got L={pi_tildes.shape[0]}"
+        )
+
+
+def validate_pi(pi: torch.Tensor, name: str) -> None:
+    if pi.shape != (4, 4) or pi.dtype != torch.int32:
+        raise TypeError(
+            f"{name} must be a (4, 4) int32 tensor, "
+            f"got shape {tuple(pi.shape)} dtype {pi.dtype}"
+        )
+
+
 def validate_domain_value(name: str, value: int, in_bits: int) -> None:
     if isinstance(value, bool) or not isinstance(value, Integral):
         raise TypeError(f"{name} must be an integer, got {type(value).__name__}")

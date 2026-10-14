@@ -29,6 +29,30 @@ void EnsureNonce() {
 constexpr int4 kHashIv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
     {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)}};
 
+// Fetch 16B/64B scalars from possibly-device memory to the host; the GPU
+// wrappers take seeds and check values by value.
+inline int4 FetchInt4(const int4 *p, bool is_cuda) {
+  int4 v{};
+  if (is_cuda) {
+    auto err = cudaMemcpy(&v, p, sizeof(int4), cudaMemcpyDeviceToHost);
+    TORCH_CHECK(err == cudaSuccess, "device-to-host scalar copy failed: ", cudaGetErrorString(err));
+  } else {
+    v = p[0];
+  }
+  return v;
+}
+
+inline cuda::std::array<int4, 4> FetchCs(const int4 *p, bool is_cuda) {
+  cuda::std::array<int4, 4> v{};
+  if (is_cuda) {
+    auto err = cudaMemcpy(v.data(), p, 4 * sizeof(int4), cudaMemcpyDeviceToHost);
+    TORCH_CHECK(err == cudaSuccess, "device-to-host cs copy failed: ", cudaGetErrorString(err));
+  } else {
+    for (int i = 0; i < 4; ++i) v[i] = p[i];
+  }
+  return v;
+}
+
 cudaStream_t CurrentStream() {
   return c10::cuda::getCurrentCUDAStream().stream();
 }
