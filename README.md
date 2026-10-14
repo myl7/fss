@@ -6,7 +6,7 @@ Function secret sharing (FSS) primitives including:
 - 2-party distributed comparison function (DCF), based on [Boyle et al. (EUROCRYPT '21)](https://doi.org/10.1007/978-3-030-77886-6_30) or [Grotto (CCS '23)](https://doi.org/10.1145/3576915.3623147).
 - 2-party verifiable distributed point function (VDPF), based on [Castro & Polychroniadou (EUROCRYPT '22)](https://doi.org/10.1007/978-3-031-06944-4_6).
 - 2-party verifiable distributed multi-point function (VDMPF), based on [Castro & Polychroniadou (EUROCRYPT '22)](https://doi.org/10.1007/978-3-031-06944-4_6).
-- 2-pary distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.
+- 2-party distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.
 
 [Documentation](https://myl7.github.io/fss/)
 
@@ -283,7 +283,7 @@ cmake --build build/samples
 | `half_tree_dpf_cpu.cu` | Half-Tree DPF | `Gen`/`Eval`/`EvalAll` with a mul=1 PRG and a separate hash key      |
 | `packed_half_tree_dpf_cpu.cu` | Packed Half-Tree DPF (experimental) | Sub-128-bit packed outputs: `Gen`/`Eval`/`EvalAll`/`Extract` over packed blocks |
 | `grotto_dcf_cpu.cu`    | Grotto DCF    | `Gen`/`Preprocess`/`Eval` over a parity segment tree, plus `EvalAll` |
-| `vdpf_cpu.cu`          | VDPF          | `Gen`/`Eval` plus the `Prove`/`Verify` check                         |
+| `vdpf_cpu.cu`          | VDPF          | `Gen`/`Eval`/`EvalAll` plus the `Prove`/`Verify` check               |
 | `vdmpf_cpu.cu`         | VDMPF         | `Gen`/`BatchEval` over cuckoo-hash packed points                     |
 | `dmpf_cpu.cu`          | DMPF          | `Gen`/`BatchEval` over cuckoo-hash packed points, without verification
 
@@ -393,7 +393,7 @@ Builds, raw measurements, environment metadata, and reports are saved under `bui
 
 ```bash
 CPU_ID=0 make bench_cpu
-GPU_ID=1 CUDA_ARCH=120 make bench_gpu
+GPU_ID=1 CUDA_ARCH=86 make bench_gpu
 ```
 
 The [third-party comparison guide](doc/bench_third_parties.md#running) covers fixed dependency versions, selecting libraries, and generating reports.

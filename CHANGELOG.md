@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node), and `GrottoDcfPreprocessGpu` and `GrottoDcfEvalAllGpu` (parity segment tree built per
   level plus a CUB inclusive XOR scan). All bit-exact against the CPU schemes on both parties;
   measured 102x to 4693x over the same-host CPU at 32 threads at n=2^20 on an RTX A6000 (see the
-  README GPU results).
+  benchmark comparison site for the collected curves).
 * CPU `EvalAll` benchmarks with the ChaCha PRG for DCF, VDPF (with BLAKE3), packed HalfTree DPF,
   and Grotto DCF, for same-PRG comparison against the GPU benchmarks.
 * Distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.
