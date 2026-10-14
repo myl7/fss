@@ -115,7 +115,7 @@ class Vdpf:
         return self._ext.eval(party, s0, cws, cs, ocw, x_lo, x_hi)
 
     def eval_all(self, party: int, s0: torch.Tensor, cws: torch.Tensor,
-                 cs: torch.Tensor, ocw: torch.Tensor) -> torch.Tensor:
+                 cs: torch.Tensor, ocw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Evaluate VDPF on the full input domain (chain proof).
 
         CPU only: the chain proof accumulation is inherently sequential.
@@ -128,7 +128,7 @@ class Vdpf:
             ocw: (4,) int32 tensor from gen().
 
         Returns:
-            (2^in_bits, 4) int32 tensor of output shares.
+            ((2^in_bits, 4) int32 output shares, (4, 4) int32 chain proof).
         """
         validate_party(party)
         validate_s0(s0)

@@ -86,10 +86,8 @@ class TestDcfEvalAllCuda:
             assert torch.equal(cpu, gpu.cpu())
         first = dcf.eval_all(party=0, s0=s0s[0].to("cuda"), cws=cws.to("cuda")).cpu()
         second = dcf.eval_all(party=1, s0=s0s[1].to("cuda"), cws=cws.to("cuda")).cpu()
-        # XOR reconstruction: beta at alpha, zero everywhere else.
+        # XOR reconstruction with the lt predicate: beta below alpha, zero elsewhere.
         diff = torch.bitwise_xor(first, second)
-        assert torch.equal(diff[107], beta)
-        mask = torch.ones(diff.shape[0], dtype=torch.bool)
-        mask[107] = False
-        assert not torch.any(diff[mask])
+        assert torch.equal(diff[:107], beta.expand(107, 4))
+        assert not torch.any(diff[107:])
 

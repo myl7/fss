@@ -130,6 +130,11 @@ class Vdmpf:
                  xor_hash: str = "blake3", hash: str | None = None,
                  prp: str = "aes128_feistel"):
         validate_in_bits(in_bits)
+        if in_bits > 63:
+            raise ValueError(
+                f"in_bits must be at most 63 in this binding release "
+                f"(alphas and xs are int64 tensors), got {in_bits}"
+            )
         validate_max_points(max_points)
         validate_bucket_bits(in_bits, max_points, bucket_bits)
         validate_group(group)
@@ -139,12 +144,6 @@ class Vdmpf:
             hash = xor_hash
         validate_hash(hash)
         validate_prp(prp)
-        if in_bits > 63:
-            raise ValueError(
-                f"in_bits must be at most 63 in this binding release "
-                f"(alphas and xs are int64 tensors), got {in_bits}"
-            )
-
         self.in_bits = in_bits
         self.max_points = max_points
         self.bucket_bits = bucket_bits
@@ -197,7 +196,12 @@ class Vdmpf:
     def _check_key(self, key: VdmpfKey) -> None:
         if not isinstance(key, VdmpfKey):
             raise TypeError(f"key must be a VdmpfKey, got {type(key).__name__}")
-        _validate_s0s(key.s0s, self.m)
+        expected_s0s = (2, self.m, 4)
+        if key.s0s.shape != expected_s0s or key.s0s.dtype != torch.int32:
+            raise TypeError(
+                f"key.s0s must be a {expected_s0s} int32 tensor, "
+                f"got shape {tuple(key.s0s.shape)} dtype {key.s0s.dtype}"
+            )
         _validate_sigma(key.sigma)
         _validate_meta(key.meta)
         cws_expected = (self.m, self.bucket_bits, 8)

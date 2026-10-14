@@ -130,10 +130,8 @@ static torch::Tensor dpf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor
   auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
   auto *cws_ptr = reinterpret_cast<const typename DpfInst::Cw *>(cws.data_ptr<int32_t>());
   auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
-  int4 s0_val{};
+  int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
   if (s0.is_cuda()) {
-    auto copy_err = cudaMemcpy(&s0_val, s0_ptr, sizeof(int4), cudaMemcpyDeviceToHost);
-    TORCH_CHECK(copy_err == cudaSuccess, "s0 device-to-host copy failed: ", cudaGetErrorString(copy_err));
     if constexpr (kInBits <= 24) {
       constexpr int kZ = EvalAllZ(kInBits), kB1 = EvalAllB1(kInBits), kBS = EvalAllBS(kInBits);
       fss::gpu::DpfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, dpf, CurrentStream());

@@ -111,6 +111,23 @@ static torch::Tensor dcf_eval(int64_t party, torch::Tensor s0, torch::Tensor cws
 // dcf_eval_all
 // ---------------------------------------------------------------------------
 
+// The GPU full-domain wrapper is not templated on the predicate (only the
+// default lt Dcf instantiates against it); the discarded branch of a template
+// is not type-checked, unlike a plain function's.
+template <int kInBits, fss::DcfPred kPred, typename Inst>
+void DcfEvalAllGpuIf(bool b, int4 s0_val, const typename Inst::Cw *cws_ptr, int4 *ys_ptr,
+    const Inst &dpf, cudaStream_t stream) {
+  if constexpr (kInBits <= 24 && kPred == fss::DcfPred::kLt) {
+    constexpr int kZ = EvalAllZ(kInBits), kB1 = EvalAllB1(kInBits), kBS = EvalAllBS(kInBits);
+    fss::gpu::DcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, dpf, stream);
+    auto err = cudaGetLastError();
+    TORCH_CHECK(err == cudaSuccess, "dcf eval_all launch failed: ", cudaGetErrorString(err));
+  } else {
+    TORCH_CHECK(false, "GPU EvalAll supports in_bits <= 24 and the lt predicate");
+  }
+}
+
+
 static torch::Tensor dcf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor cws) {
   TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
   TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
@@ -130,18 +147,9 @@ static torch::Tensor dcf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor
   auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
   auto *cws_ptr = reinterpret_cast<const typename DcfInst::Cw *>(cws.data_ptr<int32_t>());
   auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
-  int4 s0_val{};
+  int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
   if (s0.is_cuda()) {
-    auto copy_err = cudaMemcpy(&s0_val, s0_ptr, sizeof(int4), cudaMemcpyDeviceToHost);
-    TORCH_CHECK(copy_err == cudaSuccess, "s0 device-to-host copy failed: ", cudaGetErrorString(copy_err));
-    if constexpr (kInBits <= 24) {
-      constexpr int kZ = EvalAllZ(kInBits), kB1 = EvalAllB1(kInBits), kBS = EvalAllBS(kInBits);
-      fss::gpu::DcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, dpf, CurrentStream());
-      auto err = cudaGetLastError();
-      TORCH_CHECK(err == cudaSuccess, "dcf eval_all launch failed: ", cudaGetErrorString(err));
-    } else {
-      TORCH_CHECK(false, "GPU EvalAll supports in_bits <= 24, got ", kInBits);
-    }
+    DcfEvalAllGpuIf<kInBits, kPred>(b, s0_val, cws_ptr, ys_ptr, dpf, CurrentStream());
     return ys;
   }
 

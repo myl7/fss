@@ -176,8 +176,8 @@ static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval(int64_t party, torch::
 // vdpf_eval_all (chain proof, CPU only)
 // ---------------------------------------------------------------------------
 
-static torch::Tensor vdpf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor cws, torch::Tensor cs,
-    torch::Tensor ocw) {
+static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor cws,
+    torch::Tensor cs, torch::Tensor ocw) {
   TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
   TORCH_CHECK(s0.is_cpu(), "vdpf eval_all (chain proof) is CPU-only");
   TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
@@ -194,6 +194,7 @@ static torch::Tensor vdpf_eval_all(int64_t party, torch::Tensor s0, torch::Tenso
 
   int64_t n = 1LL << kInBits;
   auto ys = torch::zeros({n, 4}, torch::kInt32);
+  auto pi_tensor = torch::zeros({4, 4}, torch::kInt32);
 
   VdpfInst vdpf = MakeVdpf();
   auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
@@ -211,8 +212,10 @@ static torch::Tensor vdpf_eval_all(int64_t party, torch::Tensor s0, torch::Tenso
 
   cuda::std::array<int4, 4> pi;
   vdpf.EvalAll(b, key, cuda::std::span<int4>(ys_ptr, n), pi);
+  auto *pi_ptr = reinterpret_cast<int4 *>(pi_tensor.data_ptr<int32_t>());
+  for (int i = 0; i < 4; ++i) pi_ptr[i] = pi[i];
 
-  return ys;
+  return std::make_tuple(ys, pi_tensor);
 }
 
 // ---------------------------------------------------------------------------
