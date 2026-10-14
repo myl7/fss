@@ -24,3 +24,4 @@ perf.data.old
 /third_party/distributed_point_functions/bazel-*
 
 __pycache__/
+.zcode/
