@@ -23,8 +23,8 @@ using DcfPrg = fss::prg::ChaCha<4>;
 using Dpf = fss::Dpf<kInBits, Group, DpfPrg, In>;
 using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
 
-// Nonce in constant memory (accessible from GPU kernels)
-__constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
+// ChaCha nonce (stored by value, host and device share one instance)
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 #define CUDA_CHECK(x) \
   do { \
@@ -41,7 +41,7 @@ __global__ void DpfGenKernel(Dpf::Cw *cws, const int4 *seeds, const In *alphas, 
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  DpfPrg prg(kNonce);
+  DpfPrg prg(kNonce0, kNonce1);
   Dpf dpf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -52,7 +52,7 @@ __global__ void DpfEvalKernel(int4 *ys, bool party, const int4 *seeds, const Dpf
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  DpfPrg prg(kNonce);
+  DpfPrg prg(kNonce0, kNonce1);
   Dpf dpf{prg};
 
   ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);
@@ -64,7 +64,7 @@ __global__ void DcfGenKernel(Dcf::Cw *cws, const int4 *seeds, const In *alphas, 
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  DcfPrg prg(kNonce);
+  DcfPrg prg(kNonce0, kNonce1);
   Dcf dcf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -75,7 +75,7 @@ __global__ void DcfEvalKernel(int4 *ys, bool party, const int4 *seeds, const Dcf
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  DcfPrg prg(kNonce);
+  DcfPrg prg(kNonce0, kNonce1);
   Dcf dcf{prg};
 
   ys[tid] = dcf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);

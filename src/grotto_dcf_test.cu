@@ -10,7 +10,7 @@
 constexpr uint16_t kAlpha = 107;
 constexpr int kAlphaBits = 16;
 
-static int gChaChaDeviceNonces[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 class GrottoDcfChaChaTest : public ::testing::Test {
 protected:
@@ -20,7 +20,7 @@ protected:
   GrottoDcfType::Cw cws[kAlphaBits + 1];
   fss::prg::ChaCha<2> prg;
 
-  GrottoDcfChaChaTest() : prg(gChaChaDeviceNonces) {}
+  GrottoDcfChaChaTest() : prg(kNonce0, kNonce1) {}
 
   void SetUp() override {
     std::random_device rd;

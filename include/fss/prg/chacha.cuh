@@ -25,7 +25,7 @@ template <int mul, int rounds = 20>
   requires(rounds % 2 == 0 && (mul == 1 || mul == 2 || mul == 4))
 class ChaCha {
 private:
-  const int *nonce_;
+  int nonce_[2];
 
   template <int n>
   __host__ __device__ static int RotateLeft(int a) {
@@ -86,11 +86,11 @@ public:
   /**
      * Constructor.
      *
-     * @param nonce Can be randomly sampled by users.
-     * Read-only and can be shared by multiple instances.
-     * Users are responsible for managing their lifetime.
+     * @param nonce0, nonce1 Can be randomly sampled by users.
+     * The nonce is stored by value, so an instance built on the host works
+     * on the device too: kernels capture the owning scheme object by value.
      */
-  __host__ __device__ ChaCha(const int *nonce) : nonce_(nonce) {}
+  __host__ __device__ ChaCha(int nonce0, int nonce1) : nonce_{nonce0, nonce1} {}
 
   __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
     int4 buf[4];

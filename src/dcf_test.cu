@@ -32,7 +32,7 @@ constexpr int kAlphaBits = 16;
 constexpr __uint128_t kBeta = 604;
 
 // Random nonce for ChaCha (DCF needs mul=4)
-static int gChaChaDeviceNonces[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 // Test fixture template for DCF
 template <typename Group, typename Prg, fss::DcfPred pred = fss::DcfPred::kLt>
@@ -138,17 +138,17 @@ protected:
 // ChaCha PRG tests (mul=4 for DCF)
 class DcfBytesChaChaTest : public DcfTestBase<BytesGroup, fss::prg::ChaCha<4>> {
 public:
-  DcfBytesChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(gChaChaDeviceNonces)) {}
+  DcfBytesChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(kNonce0, kNonce1)) {}
 };
 
 class DcfUint128ChaChaTest : public DcfTestBase<Uint127Group, fss::prg::ChaCha<4>> {
 public:
-  DcfUint128ChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(gChaChaDeviceNonces)) {}
+  DcfUint128ChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(kNonce0, kNonce1)) {}
 };
 
 class DcfUint64ChaChaTest : public DcfTestBase<Uint64Group, fss::prg::ChaCha<4>> {
 public:
-  DcfUint64ChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(gChaChaDeviceNonces)) {}
+  DcfUint64ChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(kNonce0, kNonce1)) {}
 };
 
 // AES PRG tests (mul=4 for DCF)

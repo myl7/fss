@@ -11,7 +11,7 @@
 constexpr uint16_t kAlpha = 107;
 constexpr int kAlphaBits = 16;
 
-static int gChaChaDeviceNonces[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 static bool EqualInt4(int4 a, int4 b) {
   return memcmp(&a, &b, sizeof(int4)) == 0;
@@ -32,7 +32,7 @@ protected:
   Prg prg;
   int4 hash_key;
 
-  PackedHalfTreeDpfChaChaTest() : prg(gChaChaDeviceNonces) {}
+  PackedHalfTreeDpfChaChaTest() : prg(kNonce0, kNonce1) {}
 
   void SetUp() override {
     std::random_device rd;
@@ -300,7 +300,7 @@ protected:
   Prg prg;
   int4 hash_key;
 
-  PackedHalfTreeDpfOneLevelTest() : prg(gChaChaDeviceNonces) {}
+  PackedHalfTreeDpfOneLevelTest() : prg(kNonce0, kNonce1) {}
 
   void SetUp() override {
     std::random_device rd;

@@ -897,7 +897,6 @@ BENCHMARK(BM_CpuVdpfEvalAll)->Name("fss/CPU/VDPF-bytes/EvalAll");
 // GPU DPF/DCF kernels (ChaCha PRG)
 // ============================================================
 
-__constant__ int kNonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
 
 template <int in_bits, typename Group>
 __global__ void DpfGenKernel(typename fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>::Cw *cws, const int4 *seeds,
@@ -905,7 +904,7 @@ __global__ void DpfGenKernel(typename fss::Dpf<in_bits, Group, fss::prg::ChaCha<
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  fss::prg::ChaCha<2> prg(kNonce);
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint> dpf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -918,7 +917,7 @@ __global__ void DpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  fss::prg::ChaCha<2> prg(kNonce);
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint> dpf{prg};
 
   ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (in_bits + 1), xs[tid]);
@@ -930,7 +929,7 @@ __global__ void DcfGenKernel(typename fss::Dcf<in_bits, Group, fss::prg::ChaCha<
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  fss::prg::ChaCha<4> prg(kNonce);
+  fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint> dcf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -943,7 +942,7 @@ __global__ void DcfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
-  fss::prg::ChaCha<4> prg(kNonce);
+  fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint> dcf{prg};
 
   ys[tid] = dcf.Eval(party, seeds[tid], cws + tid * (in_bits + 1), xs[tid]);
@@ -1016,7 +1015,7 @@ __global__ void CheckGpuPointKernel(int4 *outputs) {
   const int4 beta = {7, 0, 0, 0};
   const uint points[] = {0, kAlpha - 1, kAlpha, kAlpha + 1, (1u << kInBits) - 1};
   if constexpr (comparison) {
-    fss::Dcf<kInBits, Group, fss::prg::ChaCha<4>, uint> scheme{fss::prg::ChaCha<4>(kNonce)};
+    fss::Dcf<kInBits, Group, fss::prg::ChaCha<4>, uint> scheme{fss::prg::ChaCha<4>(0x12345678, static_cast<int>(0x9abcdef0u))};
     typename decltype(scheme)::Cw cws[kInBits + 1];
     scheme.Gen(cws, seeds, kAlpha, beta);
     for (int i = 0; i < 5; ++i) {
@@ -1024,7 +1023,7 @@ __global__ void CheckGpuPointKernel(int4 *outputs) {
       outputs[2 * i + 1] = scheme.Eval(true, seeds[1], cws, points[i]);
     }
   } else {
-    fss::Dpf<kInBits, Group, fss::prg::ChaCha<2>, uint> scheme{fss::prg::ChaCha<2>(kNonce)};
+    fss::Dpf<kInBits, Group, fss::prg::ChaCha<2>, uint> scheme{fss::prg::ChaCha<2>(0x12345678, static_cast<int>(0x9abcdef0u))};
     typename decltype(scheme)::Cw cws[kInBits + 1];
     scheme.Gen(cws, seeds, kAlpha, beta);
     for (int i = 0; i < 5; ++i) {
@@ -1230,23 +1229,16 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
       state.SkipWithError("unsupported: insufficient kernel resources for the block size");
       return;
     }
-    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-    int *device_nonce;
-    CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
-    CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
-    Prg host_prg(host_nonce);
-    Prg device_prg(device_nonce);
     const int4 hash_key = {11, 22, 33, 44};
     auto make_scheme = [&](Prg prg) {
       if constexpr (half_tree) return Scheme{prg, hash_key};
       else return Scheme{prg};
     };
-    Scheme host_scheme = make_scheme(host_prg);
-    Scheme device_scheme = make_scheme(device_prg);
+    Scheme scheme = make_scheme(Prg(0x12345678, static_cast<int>(0x9abcdef0u)));
     typename Scheme::Cw cws[kInBits + 1];
     int4 ocw = {0, 0, 0, 0};
-    if constexpr (half_tree) host_scheme.Gen(cws, ocw, kSeeds, kAlpha, kBeta);
-    else host_scheme.Gen(cws, kSeeds, kAlpha, kBeta);
+    if constexpr (half_tree) scheme.Gen(cws, ocw, kSeeds, kAlpha, kBeta);
+    else scheme.Gen(cws, kSeeds, kAlpha, kBeta);
     typename Scheme::Cw *device_cws;
     int4 *device_outputs;
     CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
@@ -1255,10 +1247,10 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
     auto launch = [&](bool party) {
       if constexpr (half_tree) {
         fss::gpu::HalfTreeDpfEvalAllGpu<z, b1, kThreadsPerBlock>(
-            party, kSeeds[party], device_cws, ocw, device_outputs, device_scheme);
+            party, kSeeds[party], device_cws, ocw, device_outputs, scheme);
       } else {
         fss::gpu::DpfEvalAllGpu<z, b1, kThreadsPerBlock>(
-            party, kSeeds[party], device_cws, device_outputs, device_scheme);
+            party, kSeeds[party], device_cws, device_outputs, scheme);
       }
       CUDA_CHECK(cudaGetLastError());
     };
@@ -1267,8 +1259,8 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
     for (int party = 0; party < 2; ++party) {
       launch(party);
       CUDA_CHECK(cudaMemcpy(actual.data(), device_outputs, n * sizeof(int4), cudaMemcpyDeviceToHost));
-      if constexpr (half_tree) host_scheme.EvalAll(party, kSeeds[party], cws, ocw, expected.data());
-      else host_scheme.EvalAll(party, kSeeds[party], cws, expected.data());
+      if constexpr (half_tree) scheme.EvalAll(party, kSeeds[party], cws, ocw, expected.data());
+      else scheme.EvalAll(party, kSeeds[party], cws, expected.data());
       for (size_t x = 0; x < n; ++x) {
         if (!EqualOutput(actual[x], expected[x])) {
           fprintf(stderr, "GPU full evaluation mismatch at party %d input %zu\n", party, x);
@@ -1308,7 +1300,6 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
     CUDA_CHECK(cudaFree(device_outputs));
     CUDA_CHECK(cudaFree(device_cws));
-    CUDA_CHECK(cudaFree(device_nonce));
   }
 }
 
@@ -1330,14 +1321,9 @@ static void BM_GpuDcfEvalAll(benchmark::State &state) {
     using Prg = fss::prg::ChaCha<4>;
     using Scheme = fss::Dcf<kInBits, Group, Prg, uint>;
     constexpr size_t n = size_t{1} << kInBits;
-    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-    int *device_nonce;
-    CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
-    CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
-    Scheme host_scheme{Prg(host_nonce)};
-    Scheme device_scheme{Prg(device_nonce)};
+    Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
     typename Scheme::Cw cws[kInBits + 1];
-    host_scheme.Gen(cws, kSeeds, kAlpha, kBeta);
+    scheme.Gen(cws, kSeeds, kAlpha, kBeta);
     typename Scheme::Cw *device_cws;
     int4 *device_outputs;
     CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
@@ -1345,14 +1331,14 @@ static void BM_GpuDcfEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaMalloc(&device_outputs, n * sizeof(int4)));
     auto launch = [&](bool party) {
       fss::gpu::DcfEvalAllGpu<z, b1, kThreadsPerBlock>(
-          party, kSeeds[party], device_cws, device_outputs, device_scheme);
+          party, kSeeds[party], device_cws, device_outputs, scheme);
       CUDA_CHECK(cudaGetLastError());
     };
     std::vector<int4> actual(n), expected(n), first(n);
     for (int party = 0; party < 2; ++party) {
       launch(party);
       CUDA_CHECK(cudaMemcpy(actual.data(), device_outputs, n * sizeof(int4), cudaMemcpyDeviceToHost));
-      host_scheme.EvalAll(party, kSeeds[party], cws, expected.data());
+      scheme.EvalAll(party, kSeeds[party], cws, expected.data());
       for (size_t x = 0; x < n; ++x) {
         if (!EqualOutput(actual[x], expected[x])) {
           fprintf(stderr, "GPU DCF full evaluation mismatch at party %d input %zu\n", party, x);
@@ -1391,7 +1377,6 @@ static void BM_GpuDcfEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
     CUDA_CHECK(cudaFree(device_outputs));
     CUDA_CHECK(cudaFree(device_cws));
-    CUDA_CHECK(cudaFree(device_nonce));
   }
 }
 
@@ -1411,16 +1396,11 @@ static void BM_GpuPackedHalfTreeDpfEvalAll(benchmark::State &state) {
   } else {
     constexpr size_t n = size_t{1} << kInBits;
     constexpr size_t blocks = size_t{1} << kDepth;
-    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-    int *device_nonce;
-    CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
-    CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
     const int4 hash_key = {11, 22, 33, 44};
-    Scheme host_scheme{Prg(host_nonce), hash_key};
-    Scheme device_scheme{Prg(device_nonce), hash_key};
+    Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), hash_key};
     typename Scheme::Cw cws[kDepth];
     int4 fcw;
-    host_scheme.Gen(cws, fcw, kSeeds, kAlpha, 1);
+    scheme.Gen(cws, fcw, kSeeds, kAlpha, 1);
     typename Scheme::Cw *device_cws;
     int4 *device_outputs;
     CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
@@ -1428,14 +1408,14 @@ static void BM_GpuPackedHalfTreeDpfEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaMalloc(&device_outputs, blocks * sizeof(int4)));
     auto launch = [&](bool party) {
       fss::gpu::PackedHalfTreeDpfEvalAllGpu<z, b1, bs>(
-          party, kSeeds[party], device_cws, fcw, device_outputs, device_scheme);
+          party, kSeeds[party], device_cws, fcw, device_outputs, scheme);
       CUDA_CHECK(cudaGetLastError());
     };
     std::vector<int4> actual(blocks), expected(blocks), first(blocks);
     for (int party = 0; party < 2; ++party) {
       launch(party);
       CUDA_CHECK(cudaMemcpy(actual.data(), device_outputs, blocks * sizeof(int4), cudaMemcpyDeviceToHost));
-      host_scheme.EvalAll(party, kSeeds[party], cws, fcw, expected.data());
+      scheme.EvalAll(party, kSeeds[party], cws, fcw, expected.data());
       for (size_t j = 0; j < blocks; ++j) {
         if (!EqualOutput(actual[j], expected[j])) {
           fprintf(stderr, "GPU packed full evaluation mismatch at party %d block %zu\n", party, j);
@@ -1476,7 +1456,6 @@ static void BM_GpuPackedHalfTreeDpfEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
     CUDA_CHECK(cudaFree(device_outputs));
     CUDA_CHECK(cudaFree(device_cws));
-    CUDA_CHECK(cudaFree(device_nonce));
   }
 }
 
@@ -1498,20 +1477,15 @@ static void BM_GpuVdpfEvalAllMerkle(benchmark::State &state) {
   using Blake3 = fss::hash::Blake3;
   using Scheme = fss::Vdpf<kInBits, Group, Prg, Blake3, Blake3, uint>;
   constexpr size_t n = size_t{1} << kInBits;
-  const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-  int *device_nonce;
-  CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
-  CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
   Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
-  Scheme host_scheme{Prg(host_nonce), hash, hash};
-  Scheme device_scheme{Prg(device_nonce), hash, hash};
+  Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), hash, hash};
   int4 seeds[2] = {kSeeds[0], kSeeds[1]};
   typename Scheme::Cw cws[kInBits];
   cuda::std::array<int4, 4> cs;
   int4 ocw;
   int ret;
   do {
-    ret = host_scheme.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
+    ret = scheme.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
     if (ret != 0) {
       seeds[0].x += 1;
       seeds[1].y += 1;
@@ -1526,7 +1500,7 @@ static void BM_GpuVdpfEvalAllMerkle(benchmark::State &state) {
   CUDA_CHECK(cudaMalloc(&device_pi, sizeof(cuda::std::array<int4, 4>)));
   auto launch = [&](bool party) {
     fss::gpu::VdpfEvalAllMerkleGpu<z, b1, kThreadsPerBlock>(
-        party, seeds[party], device_cws, cs, ocw, device_outputs, device_pi, device_scheme);
+        party, seeds[party], device_cws, cs, ocw, device_outputs, device_pi, scheme);
     CUDA_CHECK(cudaGetLastError());
   };
   std::vector<int4> actual(n), expected(n), first(n);
@@ -1536,7 +1510,7 @@ static void BM_GpuVdpfEvalAllMerkle(benchmark::State &state) {
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(actual.data(), device_outputs, n * sizeof(int4), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(&pi_gpu[party], device_pi, sizeof(pi_gpu[party]), cudaMemcpyDeviceToHost));
-    host_scheme.EvalAllMerkle(party, seeds[party], cuda::std::span<const typename Scheme::Cw>(cws, kInBits),
+    scheme.EvalAllMerkle(party, seeds[party], cuda::std::span<const typename Scheme::Cw>(cws, kInBits),
         cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(expected), pi_host[party]);
     for (size_t x = 0; x < n; ++x) {
       if (!EqualOutput(actual[x], expected[x])) {
@@ -1588,7 +1562,6 @@ static void BM_GpuVdpfEvalAllMerkle(benchmark::State &state) {
   CUDA_CHECK(cudaFree(device_outputs));
   CUDA_CHECK(cudaFree(device_pi));
   CUDA_CHECK(cudaFree(device_cws));
-  CUDA_CHECK(cudaFree(device_nonce));
 }
 #endif
 
@@ -1602,14 +1575,9 @@ static void BM_GpuGrottoDcfEvalAll(benchmark::State &state) {
     using Prg = fss::prg::ChaCha<2>;
     using Scheme = fss::GrottoDcf<kInBits, Prg, uint>;
     constexpr size_t n = size_t{1} << kInBits;
-    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-    int *device_nonce;
-    CUDA_CHECK(cudaMalloc(&device_nonce, sizeof(host_nonce)));
-    CUDA_CHECK(cudaMemcpy(device_nonce, host_nonce, sizeof(host_nonce), cudaMemcpyHostToDevice));
-    Scheme host_scheme{Prg(host_nonce)};
-    Scheme device_scheme{Prg(device_nonce)};
+    Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
     typename Scheme::Cw cws[kInBits + 1];
-    host_scheme.Gen(cws, kSeeds, kAlpha);
+    scheme.Gen(cws, kSeeds, kAlpha);
     typename Scheme::Cw *device_cws;
     bool *device_outputs;
     CUDA_CHECK(cudaMalloc(&device_cws, sizeof(cws)));
@@ -1617,7 +1585,7 @@ static void BM_GpuGrottoDcfEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaMalloc(&device_outputs, n * sizeof(bool)));
     auto launch = [&](bool party) {
       fss::gpu::GrottoDcfEvalAllGpu<z, b1, kThreadsPerBlock>(party, kSeeds[party], device_cws, device_outputs,
-          device_scheme);
+          scheme);
       CUDA_CHECK(cudaGetLastError());
     };
     auto actual = std::make_unique<bool[]>(n);
@@ -1627,7 +1595,7 @@ static void BM_GpuGrottoDcfEvalAll(benchmark::State &state) {
       launch(party);
       CUDA_CHECK(cudaDeviceSynchronize());
       CUDA_CHECK(cudaMemcpy(actual.get(), device_outputs, n * sizeof(bool), cudaMemcpyDeviceToHost));
-      host_scheme.EvalAll(party, kSeeds[party], cws, expected.get());
+      scheme.EvalAll(party, kSeeds[party], cws, expected.get());
       for (size_t x = 0; x < n; ++x) {
         if (actual[x] != expected[x]) {
           fprintf(stderr, "GPU Grotto DCF full evaluation mismatch at party %d input %zu\n", party, x);
@@ -1663,7 +1631,6 @@ static void BM_GpuGrottoDcfEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
     CUDA_CHECK(cudaFree(device_outputs));
     CUDA_CHECK(cudaFree(device_cws));
-    CUDA_CHECK(cudaFree(device_nonce));
   }
 }
 

@@ -23,7 +23,6 @@ constexpr int kNumBlocks = (kNumKeys + kThreadsPerBlock - 1) / kThreadsPerBlock;
 using BytesGroup = fss::group::Bytes;
 using UintGroup = fss::group::Uint<uint64_t>;
 
-__constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
 
 __constant__ int4 kBlake3Iv[2] = {
     {0x11223344, 0x55667788, static_cast<int>(0x99aabbccu), static_cast<int>(0xddeeff00u)},
@@ -45,21 +44,6 @@ __constant__ uint8_t kAesSoftKeys[2][16] = {
       exit(1); \
     } \
   } while (0)
-
-// A device-readable copy of the kNonce values for PRG instances constructed
-// on the host and passed into kernels by value. An instance holding the
-// kNonce address dereferences the zero host stub in device code (nvcc warns
-// #20091); the host and kernel paths only stay consistent because both read
-// zeros. Keep the values in sync with kNonce above.
-static int *DeviceNonce() {
-  static int *d_nonce = nullptr;
-  if (d_nonce == nullptr) {
-    CUDA_CHECK(cudaMalloc(&d_nonce, sizeof(int) * 2));
-    const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-    CUDA_CHECK(cudaMemcpy(d_nonce, host_nonce, sizeof(int) * 2, cudaMemcpyHostToDevice));
-  }
-  return d_nonce;
-}
 
 template <typename Fn>
 static void RunTimedKernel(benchmark::State &state, Fn &&fn) {
@@ -91,7 +75,7 @@ __global__ void DpfGenKernel(typename fss::Dpf<in_bits, Group, fss::prg::ChaCha<
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<2> prg(kNonce);
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint> dpf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -104,7 +88,7 @@ __global__ void DpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<2> prg(kNonce);
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint> dpf{prg};
 
   ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (in_bits + 1), xs[tid]);
@@ -161,7 +145,7 @@ __global__ void DcfGenKernel(typename fss::Dcf<in_bits, Group, fss::prg::ChaCha<
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<4> prg(kNonce);
+  fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint> dcf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -174,7 +158,7 @@ __global__ void DcfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<4> prg(kNonce);
+  fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint> dcf{prg};
 
   ys[tid] = dcf.Eval(party, seeds[tid], cws + tid * (in_bits + 1), xs[tid]);
@@ -191,7 +175,7 @@ __global__ void VdpfGenKernel(typename VdpfType<in_bits, Group>::Cw *cws, cuda::
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<2> prg(kNonce);
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
   VdpfType<in_bits, Group> vdpf{prg, xor_hash, hash};
@@ -208,7 +192,7 @@ __global__ void VdpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<2> prg(kNonce);
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
   VdpfType<in_bits, Group> vdpf{prg, xor_hash, hash};
@@ -231,7 +215,7 @@ __global__ void HalfTreeDpfGenKernel(
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<1> prg(kNonce);
+  fss::prg::ChaCha<1> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
 
   int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -244,7 +228,7 @@ __global__ void HalfTreeDpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<1> prg(kNonce);
+  fss::prg::ChaCha<1> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
 
   ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * in_bits, ocws[tid], xs[tid]);
@@ -539,7 +523,7 @@ static void BM_HalfTreeDpfEvalAllGpu(benchmark::State &state) {
     CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kNumKeys, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
         sizeof(int4), kNumKeys, cudaMemcpyDeviceToDevice));
 
-  fss::prg::ChaCha<1> prg(DeviceNonce());
+  fss::prg::ChaCha<1> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
 
   int4 *d_ys;
@@ -585,7 +569,7 @@ static void BM_DpfEvalAllGpu(benchmark::State &state) {
     CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kNumKeys, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
         sizeof(int4), kNumKeys, cudaMemcpyDeviceToDevice));
 
-  fss::prg::ChaCha<2> prg(DeviceNonce());
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   DpfType dpf{prg};
 
   int4 *d_ys;
@@ -630,7 +614,7 @@ static void BM_DcfEvalAllGpu(benchmark::State &state) {
     CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kNumKeys, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
         sizeof(int4), kNumKeys, cudaMemcpyDeviceToDevice));
 
-  fss::prg::ChaCha<4> prg(DeviceNonce());
+  fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   DcfType dcf{prg};
 
   int4 *d_ys;
@@ -661,7 +645,7 @@ __global__ void PackedHalfTreeDpfGenKernel(
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kNumKeys) return;
 
-  fss::prg::ChaCha<1> prg(kNonce);
+  fss::prg::ChaCha<1> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::PackedHalfTreeDpf<in_bits, out_bits, fss::prg::ChaCha<1>, uint> dpf{prg, kHalfTreeHashKeyHost};
 
   int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
@@ -704,7 +688,7 @@ static void BM_PackedHalfTreeDpfEvalAllGpu(benchmark::State &state) {
     CUDA_CHECK(cudaMemcpy2D(d_s0s + (size_t)b * kNumKeys, sizeof(int4), data.d_seeds + b, 2 * sizeof(int4),
         sizeof(int4), kNumKeys, cudaMemcpyDeviceToDevice));
 
-  fss::prg::ChaCha<1> prg(DeviceNonce());
+  fss::prg::ChaCha<1> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   PackedType dpf{prg, kHalfTreeHashKeyHost};
 
   int4 *d_ys;
@@ -742,19 +726,13 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
   using Vdpf = VdpfType<in_bits, Group>;
   constexpr size_t n = size_t{1} << in_bits;
 
-  // Blake3 copies the IV by value at construction, so only the PRG nonce
-  // needs device-readable memory.
-  int *d_nonce;
-  CUDA_CHECK(cudaMalloc(&d_nonce, sizeof(int) * 2));
-  const int nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-  CUDA_CHECK(cudaMemcpy(d_nonce, nonce, sizeof(int) * 2, cudaMemcpyHostToDevice));
+  // Blake3 copies the IV by value at construction.
   const int4 iv[2] = {
       {0x11111111, 0x22222222, 0x33333333, 0x44444444},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)},
   };
   fss::hash::Blake3 blake3{cuda::std::span<const int4, 2>(iv, 2)};
-  Vdpf host_vdpf{fss::prg::ChaCha<2>(nonce), blake3, blake3};
-  Vdpf gpu_vdpf{fss::prg::ChaCha<2>(d_nonce), blake3, blake3};
+  Vdpf vdpf{fss::prg::ChaCha<2>(0x12345678, static_cast<int>(0x9abcdef0u)), blake3, blake3};
 
   int4 s0s[2] = {
       {0x11111111, 0x22222222, 0x33333333, 0x44444440},
@@ -765,7 +743,7 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
   typename Vdpf::Cw cws[in_bits];
   cuda::std::array<int4, 4> cs;
   int4 ocw;
-  if (host_vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta) != 0) {
+  if (vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta) != 0) {
     fprintf(stderr, "vdpf gen retry condition hit for fixed seeds\n");
     exit(1);
   }
@@ -780,17 +758,16 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
 
   cuda::std::array<int4, 4> pi;
   // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
-  fss::gpu::VdpfEvalAllMerkleGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi, gpu_vdpf);
+  fss::gpu::VdpfEvalAllMerkleGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi, vdpf);
   CUDA_CHECK(cudaDeviceSynchronize());
   CUDA_CHECK(cudaMemcpy(&pi, d_pi, sizeof(pi), cudaMemcpyDeviceToHost));
 
   RunTimedKernel(state, [&] {
-    fss::gpu::VdpfEvalAllMerkleGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi, gpu_vdpf);
+    fss::gpu::VdpfEvalAllMerkleGpu<16, 8, 256>(false, s0s[0], d_cws, cs, ocw, d_ys, d_pi, vdpf);
   });
   state.SetItemsProcessed(state.iterations() * n);
   benchmark::DoNotOptimize(pi.data());
 
-  cudaFree(d_nonce);
   cudaFree(d_cws);
   cudaFree(d_ys);
   cudaFree(d_pi);
@@ -824,7 +801,7 @@ static void BM_DpfEvalPointGpu(benchmark::State &state) {
   fss::gpu::DpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<2>, uint>(d_cws, kNumKeys, d_cw_s, d_extra, d_out_cw);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  fss::prg::ChaCha<2> prg(DeviceNonce());
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   DpfType dpf{prg};
 
   RunTimedKernel(state, [&] {
@@ -856,7 +833,7 @@ static void BM_DcfEvalPointGpu(benchmark::State &state) {
   fss::gpu::DcfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<4>, uint>(d_cws, kNumKeys, d_cw_s, d_cw_v, d_out_cw);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  fss::prg::ChaCha<4> prg(DeviceNonce());
+  fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   DcfType dcf{prg};
 
   RunTimedKernel(state, [&] {
@@ -891,7 +868,7 @@ static void BM_HalfTreeDpfEvalPointGpu(benchmark::State &state) {
   fss::gpu::HalfTreeDpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<1>, uint>(d_cws, kNumKeys, d_cw_s, d_extra);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  fss::prg::ChaCha<1> prg(DeviceNonce());
+  fss::prg::ChaCha<1> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   HtDpfType<in_bits, Group> dpf{prg, kHalfTreeHashKeyHost};
 
   RunTimedKernel(state, [&] {
@@ -930,7 +907,7 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
       d_cws, kNumKeys, d_cw_s, d_extra);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  fss::prg::ChaCha<2> prg(DeviceNonce());
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
   Vdpf vdpf{prg, xor_hash, xor_hash};
 
@@ -956,10 +933,7 @@ static void BM_GrottoDcfPreprocessGpu(benchmark::State &state) {
   using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
   constexpr size_t N = size_t{1} << in_bits;
 
-  // Host instance for Gen, device-nonce instance for the kernels.
-  const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-  GdcfType dcf{fss::prg::ChaCha<2>(host_nonce)};
-  GdcfType gpu_dcf{fss::prg::ChaCha<2>(DeviceNonce())};
+  GdcfType dcf{fss::prg::ChaCha<2>(0x12345678, static_cast<int>(0x9abcdef0u))};
 
   int4 s0s[2] = {
       {0x11111111, 0x22222222, 0x33333333, 0x44444440},
@@ -976,11 +950,11 @@ static void BM_GrottoDcfPreprocessGpu(benchmark::State &state) {
   CUDA_CHECK(cudaMemcpy(d_cws, cws, sizeof(typename GdcfType::Cw) * (in_bits + 1), cudaMemcpyHostToDevice));
 
   // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
-  fss::gpu::GrottoDcfPreprocessGpu<16, 8, 256>(false, s0s[0], d_cws, d_p, gpu_dcf);
+  fss::gpu::GrottoDcfPreprocessGpu<16, 8, 256>(false, s0s[0], d_cws, d_p, dcf);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   RunTimedKernel(state, [&] {
-    fss::gpu::GrottoDcfPreprocessGpu<16, 8, 256>(false, s0s[0], d_cws, d_p, gpu_dcf);
+    fss::gpu::GrottoDcfPreprocessGpu<16, 8, 256>(false, s0s[0], d_cws, d_p, dcf);
   });
   state.SetItemsProcessed(state.iterations() * N);
 
@@ -994,10 +968,7 @@ static void BM_GrottoDcfEvalAllGpu(benchmark::State &state) {
   using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
   constexpr size_t N = size_t{1} << in_bits;
 
-  // Host instance for Gen, device-nonce instance for the kernels.
-  const int host_nonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
-  GdcfType dcf{fss::prg::ChaCha<2>(host_nonce)};
-  GdcfType gpu_dcf{fss::prg::ChaCha<2>(DeviceNonce())};
+  GdcfType dcf{fss::prg::ChaCha<2>(0x12345678, static_cast<int>(0x9abcdef0u))};
 
   int4 s0s[2] = {
       {0x11111111, 0x22222222, 0x33333333, 0x44444440},
@@ -1014,11 +985,11 @@ static void BM_GrottoDcfEvalAllGpu(benchmark::State &state) {
   CUDA_CHECK(cudaMemcpy(d_cws, cws, sizeof(typename GdcfType::Cw) * (in_bits + 1), cudaMemcpyHostToDevice));
 
   // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
-  fss::gpu::GrottoDcfEvalAllGpu<16, 8, 256>(false, s0s[0], d_cws, d_ys, gpu_dcf);
+  fss::gpu::GrottoDcfEvalAllGpu<16, 8, 256>(false, s0s[0], d_cws, d_ys, dcf);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   RunTimedKernel(state, [&] {
-    fss::gpu::GrottoDcfEvalAllGpu<16, 8, 256>(false, s0s[0], d_cws, d_ys, gpu_dcf);
+    fss::gpu::GrottoDcfEvalAllGpu<16, 8, 256>(false, s0s[0], d_cws, d_ys, dcf);
   });
   state.SetItemsProcessed(state.iterations() * N);
 

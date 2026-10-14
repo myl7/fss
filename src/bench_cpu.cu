@@ -71,7 +71,7 @@ private:
 
 // --- ChaCha PRG helper ---
 
-static int gNonce[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 // --- AesSoft PRG helper ---
 
@@ -130,7 +130,7 @@ static void BM_DpfGen(benchmark::State &state) {
       benchmark::DoNotOptimize(cws);
     }
   } else {
-    Prg prg(gNonce);
+    Prg prg(kNonce0, kNonce1);
     DpfType dpf{prg};
     for (auto _ : state) {
       dpf.Gen(cws, seeds, alpha, beta);
@@ -181,7 +181,7 @@ static void BM_DpfEval(benchmark::State &state) {
       benchmark::DoNotOptimize(y);
     }
   } else {
-    Prg prg(gNonce);
+    Prg prg(kNonce0, kNonce1);
     DpfType dpf{prg};
     dpf.Gen(cws, seeds, alpha, beta);
     for (auto _ : state) {
@@ -223,7 +223,7 @@ static void BM_DpfEvalAll(benchmark::State &state) {
       benchmark::DoNotOptimize(ys.data());
     }
   } else {
-    Prg prg(gNonce);
+    Prg prg(kNonce0, kNonce1);
     DpfType dpf{prg};
     dpf.Gen(cws, seeds, alpha, beta);
     for (auto _ : state) {
@@ -321,7 +321,7 @@ static void BM_DcfEvalAll(benchmark::State &state) {
       benchmark::DoNotOptimize(ys.data());
     }
   } else {
-    DcfType dcf{Prg(gNonce)};
+    DcfType dcf{Prg(kNonce0, kNonce1)};
     dcf.Gen(cws, seeds, alpha, beta);
     for (auto _ : state) {
       dcf.EvalAll(false, seeds[0], cws, ys.data());
@@ -358,7 +358,7 @@ static void BM_VdpfGen(benchmark::State &state) {
       benchmark::DoNotOptimize(cws);
     }
   } else {
-    Prg prg(gNonce);
+    Prg prg(kNonce0, kNonce1);
     VdpfType vdpf{prg, xor_hash, hash_};
     for (auto _ : state) {
       vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
@@ -399,7 +399,7 @@ static void BM_VdpfEval(benchmark::State &state) {
       benchmark::DoNotOptimize(pi);
     }
   } else {
-    Prg prg(gNonce);
+    Prg prg(kNonce0, kNonce1);
     VdpfType vdpf{prg, xor_hash, hash_};
     vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
@@ -431,7 +431,7 @@ static void BM_VdpfProve(benchmark::State &state) {
 
   auto xor_hash = MakeHash<XorHash>();
   auto hash_ = MakeHash<Hash>();
-  Prg prg(gNonce);
+  Prg prg(kNonce0, kNonce1);
   VdpfType vdpf{prg, xor_hash, hash_};
   vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
 
@@ -477,7 +477,7 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
       benchmark::DoNotOptimize(pi);
     }
   } else {
-    VdpfType vdpf{Prg(gNonce), xor_hash, hash_};
+    VdpfType vdpf{Prg(kNonce0, kNonce1), xor_hash, hash_};
     vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
@@ -521,7 +521,7 @@ static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
       benchmark::DoNotOptimize(pi);
     }
   } else {
-    VdpfType vdpf{Prg(gNonce), xor_hash, hash_};
+    VdpfType vdpf{Prg(kNonce0, kNonce1), xor_hash, hash_};
     vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
@@ -634,7 +634,7 @@ static void BM_PackedHalfTreeDpfEvalAll(benchmark::State &state) {
       benchmark::DoNotOptimize(ys.data());
     }
   } else {
-    DpfType dpf{Prg(gNonce), {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+    DpfType dpf{Prg(kNonce0, kNonce1), {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
     dpf.Gen(cws, fcw, s0s, alpha, beta);
     for (auto _ : state) {
       dpf.EvalAll(false, s0s[0], cws, fcw, ys.data());
@@ -699,7 +699,7 @@ static void BM_GrottoDcfPreprocess(benchmark::State &state) {
       benchmark::DoNotOptimize(p.get());
     }
   } else {
-    GdcfType dcf{Prg(gNonce)};
+    GdcfType dcf{Prg(kNonce0, kNonce1)};
     dcf.Gen(cws, s0s, alpha);
     for (auto _ : state) {
       dcf.Preprocess(pt, s0s[0], cws);
@@ -736,7 +736,7 @@ static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
       benchmark::DoNotOptimize(ys.get());
     }
   } else {
-    GdcfType dcf{Prg(gNonce)};
+    GdcfType dcf{Prg(kNonce0, kNonce1)};
     dcf.Gen(cws, s0s, alpha);
     for (auto _ : state) {
       dcf.Preprocess(pt, s0s[0], cws);

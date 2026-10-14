@@ -14,7 +14,7 @@
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
 
-static int gChaChaDeviceNonces[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 template <typename Group>
 class VdmpfChaChaTest : public ::testing::Test {
@@ -44,7 +44,7 @@ protected:
   Prp prp_;
 
   VdmpfChaChaTest()
-      : prg(gChaChaDeviceNonces),
+      : prg(kNonce0, kNonce1),
         xor_hash(cuda::std::span<const int4, 2>(hash_iv, 2)),
         hash_(cuda::std::span<const int4, 2>(hash_iv, 2)) {}
 

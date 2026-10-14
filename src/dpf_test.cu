@@ -32,7 +32,7 @@ constexpr int kAlphaBits = 16;
 constexpr __uint128_t kBeta = 604;
 
 // Random nonce for ChaCha
-static int gChaChaDeviceNonces[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 // Test fixture template for DPF
 template <typename Group, typename Prg>
@@ -142,17 +142,17 @@ protected:
 // ChaCha PRG tests
 class DpfBytesChaChaTest : public DpfTestBase<BytesGroup, fss::prg::ChaCha<2>> {
 public:
-  DpfBytesChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(gChaChaDeviceNonces)) {}
+  DpfBytesChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(kNonce0, kNonce1)) {}
 };
 
 class DpfUint128ChaChaTest : public DpfTestBase<Uint127Group, fss::prg::ChaCha<2>> {
 public:
-  DpfUint128ChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(gChaChaDeviceNonces)) {}
+  DpfUint128ChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(kNonce0, kNonce1)) {}
 };
 
 class DpfUint64ChaChaTest : public DpfTestBase<Uint64Group, fss::prg::ChaCha<2>> {
 public:
-  DpfUint64ChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(gChaChaDeviceNonces)) {}
+  DpfUint64ChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(kNonce0, kNonce1)) {}
 };
 
 // AES PRG tests

@@ -17,7 +17,7 @@ constexpr uint16_t kAlpha = 107;
 constexpr int kAlphaBits = 16;
 constexpr __uint128_t kBeta = 604;
 
-static int gChaChaDeviceNonces[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 template <typename Group>
 class VdpfChaChaTest : public ::testing::Test {
@@ -38,7 +38,7 @@ protected:
   Hash hash_;
 
   VdpfChaChaTest()
-      : prg(gChaChaDeviceNonces),
+      : prg(kNonce0, kNonce1),
         xor_hash(cuda::std::span<const int4, 2>(hash_iv, 2)),
         hash_(cuda::std::span<const int4, 2>(hash_iv, 2)) {}
 

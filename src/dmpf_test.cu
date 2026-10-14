@@ -13,7 +13,7 @@
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
 
-static int gChaChaDeviceNonces[2] = {0x12345678, static_cast<int>(0x9abcdef0u)};
+constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 template <typename Group>
 class DmpfChaChaTest : public ::testing::Test {
@@ -36,7 +36,7 @@ protected:
   Prg prg;
   Prp prp_;
 
-  DmpfChaChaTest() : prg(gChaChaDeviceNonces) {}
+  DmpfChaChaTest() : prg(kNonce0, kNonce1) {}
 
   void SetUp() override {
     for (int i = 0; i < kT; ++i) {
