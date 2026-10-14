@@ -71,6 +71,7 @@ void CheckFullEvaluation() {
   using Scheme = typename Types::Type;
   using Prg = typename Types::Prg;
   using Cw = typename Scheme::Cw;
+  using Key = typename Scheme::Key;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = half_tree ? bits : bits + 1;
   constexpr int b1 = z - (threads == 128 ? 7 : 8);
@@ -82,15 +83,14 @@ void CheckFullEvaluation() {
   };
   Scheme scheme = make_scheme(Prg(0x12345678, static_cast<int>(0x9abcdef0u)));
   std::vector<Cw> cws(keys * stride);
+  std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), ocws(keys), party_seeds(keys);
   for (int key = 0; key < keys; ++key) {
     seeds[2 * key] = {11 + key, 22, 33, 44};
     seeds[2 * key + 1] = {55 + key, 66, 77, 88};
-    if constexpr (half_tree) {
-      scheme.Gen(cws.data() + key * stride, ocws[key], seeds.data() + 2 * key, 42 + key, beta);
-    } else {
-      scheme.Gen(cws.data() + key * stride, seeds.data() + 2 * key, 42 + key, beta);
-    }
+    scheme.Gen(keys0[key], keys1[key], cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), 42 + key, beta);
+    for (int i = 0; i < stride; ++i) cws[key * stride + i] = keys0[key].cws[i];
+    if constexpr (half_tree) ocws[key] = keys0[key].ocw;
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_ocws, device_seeds, device_outputs;
@@ -123,13 +123,9 @@ void CheckFullEvaluation() {
         cudaSuccess);
     for (int key = 0; key < keys; ++key) {
       SCOPED_TRACE(::testing::Message() << "key " << key);
+      const Key &party_key = party == 0 ? keys0[key] : keys1[key];
       for (size_t x = 0; x < n; ++x) {
-        int4 expected;
-        if constexpr (half_tree) {
-          expected = scheme.Eval(party, party_seeds[key], cws.data() + key * stride, ocws[key], x);
-        } else {
-          expected = scheme.Eval(party, party_seeds[key], cws.data() + key * stride, x);
-        }
+        int4 expected = scheme.Eval(party, party_key, x);
         ExpectOutput(actual[key * n + x], expected, x);
         if (party == 0) first[key * n + x] = actual[key * n + x];
         else {
@@ -195,20 +191,18 @@ void CheckVdpfGpu() {
   const uint alpha = 42;
   const int4 beta = {7, 19, 23, 42};
   int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
-  std::vector<Cw> cws(stride);
-  cuda::std::array<int4, 4> cs;
-  int4 ocw;
+  typename Scheme::Key k0, k1;
   for (int attempt = 0;; ++attempt) {
     seeds[0].x += attempt;
     seeds[1].y += attempt;
-    if (scheme.Gen(cws.data(), cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta) == 0) break;
+    if (scheme.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta) == 0) break;
     ASSERT_LT(attempt, 100) << "Gen retry condition never cleared";
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_ys;
   DeviceBuffer<cuda::std::array<int4, 4>> device_pi;
   ASSERT_EQ(device_cws.Allocate(stride), cudaSuccess);
-  ASSERT_EQ(device_cws.Upload(cws.data(), stride), cudaSuccess);
+  ASSERT_EQ(device_cws.Upload(k0.cws, stride), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(n), cudaSuccess);
   ASSERT_EQ(device_pi.Allocate(1), cudaSuccess);
 
@@ -216,10 +210,10 @@ void CheckVdpfGpu() {
   cuda::std::array<int4, 4> pi_cpu, gpu_pi[2];
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
-    scheme.EvalAllMerkle(party, seeds[party], cuda::std::span<const Cw>(cws.data(), stride),
-        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(host_ys.data(), n), pi_cpu);
+    const typename Scheme::Key &key = party == 0 ? k0 : k1;
+    scheme.EvalAllMerkle(party, key, cuda::std::span<int4>(host_ys.data(), n), pi_cpu);
     fss::gpu::VdpfEvalAllMerkleGpu<z, b1, threads>(
-        party, seeds[party], device_cws.data(), cs, ocw, device_ys.data(), device_pi.data(), scheme);
+        party, key.s0, device_cws.data(), key.cs, key.ocw, device_ys.data(), device_pi.data(), scheme);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), n * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
@@ -254,6 +248,7 @@ void CheckPackedGpu() {
   using Prg = fss::prg::ChaCha<1>;
   using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, Prg, uint>;
   using Cw = typename Scheme::Cw;
+  using Key = typename Scheme::Key;
   constexpr int kDepth = Scheme::kDepth;
   constexpr int kLanes = Scheme::kLanes;
   constexpr size_t n = size_t{1} << bits;
@@ -262,11 +257,14 @@ void CheckPackedGpu() {
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), hash_key};
   const uint64_t beta = 1;
   std::vector<Cw> cws(keys * kDepth);
+  std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> fcws(keys), seeds(2 * keys), party_seeds(keys);
   for (int key = 0; key < keys; ++key) {
     seeds[2 * key] = {11 + key, 22, 33, 44};
     seeds[2 * key + 1] = {55 + key, 66, 77, 88};
-    scheme.Gen(cws.data() + key * kDepth, fcws[key], seeds.data() + 2 * key, 42 + key, beta);
+    scheme.Gen(keys0[key], keys1[key], cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), 42 + key, beta);
+    for (int i = 0; i < kDepth; ++i) cws[key * kDepth + i] = keys0[key].cws[i];
+    fcws[key] = keys0[key].fcw;
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_fcws, device_seeds, device_outputs;
@@ -286,7 +284,7 @@ void CheckPackedGpu() {
           party, device_seeds.data(), device_cws.data(), device_fcws.data(), keys, device_outputs.data(), scheme);
     } else {
       fss::gpu::PackedHalfTreeDpfEvalAllGpu<z, b1, threads>(
-          party, party_seeds[0], device_cws.data(), fcws[0], device_outputs.data(), scheme);
+          party, party == 0 ? keys0[0].s0 : keys1[0].s0, device_cws.data(), keys0[0].fcw, device_outputs.data(), scheme);
     }
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -294,7 +292,8 @@ void CheckPackedGpu() {
         cudaSuccess);
     for (int key = 0; key < keys; ++key) {
       SCOPED_TRACE(::testing::Message() << "key " << key);
-      scheme.EvalAll(party, party_seeds[key], cws.data() + key * kDepth, fcws[key], host_ys.data());
+      const Key &party_key = party == 0 ? keys0[key] : keys1[key];
+      scheme.EvalAll(party, party_key, cuda::std::span<int4>(host_ys.data(), blocks));
       for (size_t j = 0; j < blocks; ++j) {
         ExpectOutput(actual[key * blocks + j], host_ys[j], j);
         if (party == 0) first[key * blocks + j] = actual[key * blocks + j];
@@ -319,17 +318,20 @@ void CheckDcfGpu() {
   ASSERT_EQ(status, cudaSuccess);
   using Scheme = fss::Dcf<bits, Group, fss::prg::ChaCha<4>, uint>;
   using Cw = typename Scheme::Cw;
+  using Key = typename Scheme::Key;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
   constexpr int b1 = z - (threads == 128 ? 7 : 8);
   Scheme scheme{fss::prg::ChaCha<4>(0x12345678, static_cast<int>(0x9abcdef0u))};
   const int4 beta = {7, 19, 23, 42};
   std::vector<Cw> cws(keys * stride);
+  std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
   for (int key = 0; key < keys; ++key) {
     seeds[2 * key] = {11 + key, 22, 33, 44};
     seeds[2 * key + 1] = {55 + key, 66, 77, 88};
-    scheme.Gen(cws.data() + key * stride, seeds.data() + 2 * key, 42 + key, beta);
+    scheme.Gen(keys0[key], keys1[key], cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), 42 + key, beta);
+    for (int i = 0; i < stride; ++i) cws[key * stride + i] = keys0[key].cws[i];
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_seeds, device_outputs;
@@ -355,8 +357,9 @@ void CheckDcfGpu() {
         cudaSuccess);
     for (int key = 0; key < keys; ++key) {
       SCOPED_TRACE(::testing::Message() << "key " << key);
+      const Key &party_key = party == 0 ? keys0[key] : keys1[key];
       for (size_t x = 0; x < n; ++x) {
-        int4 expected = scheme.Eval(party, party_seeds[key], cws.data() + key * stride, x);
+        int4 expected = scheme.Eval(party, party_key, x);
         ExpectOutput(actual[key * n + x], expected, x);
         if (party == 0) first[key * n + x] = actual[key * n + x];
         else {
@@ -385,11 +388,11 @@ void CheckGrottoGpu() {
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   const uint alpha = 42;
-  std::vector<Cw> cws(stride);
-  scheme.Gen(cws.data(), seeds, alpha);
+  typename Scheme::Key k0, k1;
+  scheme.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), alpha);
   DeviceBuffer<Cw> device_cws;
   ASSERT_EQ(device_cws.Allocate(stride), cudaSuccess);
-  ASSERT_EQ(device_cws.Upload(cws.data(), stride), cudaSuccess);
+  ASSERT_EQ(device_cws.Upload(k0.cws, stride), cudaSuccess);
 
   auto host_p = std::make_unique<bool[]>(2 * n - 1);
   auto host_ys = std::make_unique<bool[]>(n);
@@ -399,10 +402,11 @@ void CheckGrottoGpu() {
   ASSERT_EQ(device_ys.Allocate(n), cudaSuccess);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
+    const typename Scheme::Key &key = party == 0 ? k0 : k1;
     typename Scheme::ParityTree pt{host_p.get(), static_cast<bool>(party)};
-    scheme.Preprocess(pt, seeds[party], cws.data());
+    scheme.Preprocess(pt, static_cast<bool>(party), key);
     fss::gpu::GrottoDcfPreprocessGpu<z, b1, threads>(
-        static_cast<bool>(party), seeds[party], device_cws.data(), device_p.data(), scheme);
+        static_cast<bool>(party), key.s0, device_cws.data(), device_p.data(), scheme);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     auto actual_p = std::make_unique<bool[]>(2 * n - 1);
@@ -410,9 +414,9 @@ void CheckGrottoGpu() {
         cudaSuccess);
     for (size_t i = 0; i < 2 * n - 1; ++i) EXPECT_EQ(actual_p[i], host_p[i]) << "node " << i;
 
-    scheme.EvalAll(static_cast<bool>(party), seeds[party], cws.data(), host_ys.get());
+    scheme.EvalAll(static_cast<bool>(party), key, cuda::std::span<bool>(host_ys.get(), n));
     fss::gpu::GrottoDcfEvalAllGpu<z, b1, threads>(
-        static_cast<bool>(party), seeds[party], device_cws.data(), device_ys.data(), scheme);
+        static_cast<bool>(party), key.s0, device_cws.data(), device_ys.data(), scheme);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     auto actual_ys = std::make_unique<bool[]>(n);

@@ -27,8 +27,7 @@ protected:
   static constexpr uint64_t kMaxBeta = OutBits == 64 ? ~0ULL : (1ULL << OutBits) - 1;
 
   int4 s0s[2];
-  typename DpfType::Cw cws[DpfType::kDepth];
-  int4 fcw;
+  typename DpfType::Key k0, k1;
   Prg prg;
   int4 hash_key;
 
@@ -46,10 +45,10 @@ protected:
 
   void TestEvalAtAlpha() {
     DpfType dpf{prg, hash_key};
-    dpf.Gen(cws, fcw, s0s, kAlpha, kMaxBeta);
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
 
-    int4 y0 = dpf.Eval(false, s0s[0], cws, fcw, kAlpha);
-    int4 y1 = dpf.Eval(true, s0s[1], cws, fcw, kAlpha);
+    int4 y0 = dpf.Eval(false, k0, kAlpha);
+    int4 y1 = dpf.Eval(true, k1, kAlpha);
 
     int4 diff = fss::util::Xor(y0, y1);
     EXPECT_TRUE(EqualInt4(diff, DpfType::PackBeta(kAlpha, kMaxBeta)));
@@ -58,7 +57,7 @@ protected:
 
   void TestEvalAtNonAlpha() {
     DpfType dpf{prg, hash_key};
-    dpf.Gen(cws, fcw, s0s, kAlpha, kMaxBeta);
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -69,16 +68,16 @@ protected:
     // Same block as alpha, different lane: the block reconstructs to the
     // packed beta, and x's lane within it is zero.
     uint16_t x = kAlpha ^ 1;
-    int4 y0 = dpf.Eval(false, s0s[0], cws, fcw, x);
-    int4 y1 = dpf.Eval(true, s0s[1], cws, fcw, x);
+    int4 y0 = dpf.Eval(false, k0, x);
+    int4 y1 = dpf.Eval(true, k1, x);
     EXPECT_TRUE(EqualInt4(fss::util::Xor(y0, y1), DpfType::PackBeta(kAlpha, kMaxBeta))) << "Failed at x=" << x;
     EXPECT_EQ(DpfType::Extract(fss::util::Xor(y0, y1), x), 0) << "Failed at x=" << x;
 
     for (int i = 0; i < 100; i++) {
       x = dis(gen);
 
-      y0 = dpf.Eval(false, s0s[0], cws, fcw, x);
-      y1 = dpf.Eval(true, s0s[1], cws, fcw, x);
+      y0 = dpf.Eval(false, k0, x);
+      y1 = dpf.Eval(true, k1, x);
       int4 diff = fss::util::Xor(y0, y1);
       if (x / DpfType::kLanes == kAlpha / DpfType::kLanes) {
         EXPECT_TRUE(EqualInt4(diff, DpfType::PackBeta(kAlpha, kMaxBeta))) << "Failed at x=" << x;
@@ -91,13 +90,13 @@ protected:
 
   void TestEvalAll() {
     DpfType dpf{prg, hash_key};
-    dpf.Gen(cws, fcw, s0s, kAlpha, kMaxBeta);
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
 
     constexpr size_t blocks = 1ULL << DpfType::kDepth;
     std::vector<int4> ys0(blocks), ys1(blocks);
 
-    dpf.EvalAll(false, s0s[0], cws, fcw, ys0.data());
-    dpf.EvalAll(true, s0s[1], cws, fcw, ys1.data());
+    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     size_t alpha_block = kAlpha / DpfType::kLanes;
     int4 expected = DpfType::PackBeta(kAlpha, kMaxBeta);
@@ -115,11 +114,11 @@ protected:
 
   void TestEvalMatchesEvalAll() {
     DpfType dpf{prg, hash_key};
-    dpf.Gen(cws, fcw, s0s, kAlpha, kMaxBeta);
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
 
     constexpr size_t blocks = 1ULL << DpfType::kDepth;
     std::vector<int4> ys0(blocks);
-    dpf.EvalAll(false, s0s[0], cws, fcw, ys0.data());
+    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -127,7 +126,7 @@ protected:
 
     for (int i = 0; i < 50; i++) {
       uint16_t x = dis(gen);
-      int4 y0 = dpf.Eval(false, s0s[0], cws, fcw, x);
+      int4 y0 = dpf.Eval(false, k0, x);
       EXPECT_TRUE(EqualInt4(y0, ys0[x / DpfType::kLanes])) << "Failed at x=" << x;
     }
   }
@@ -156,9 +155,9 @@ protected:
     for (uint16_t alpha : alphas) {
       uint64_t beta = beta_dis(gen);
       ASSERT_TRUE(beta <= kMaxBeta);
-      dpf.Gen(cws, fcw, s0s, alpha, beta);
-      dpf.EvalAll(false, s0s[0], cws, fcw, ys0.data());
-      dpf.EvalAll(true, s0s[1], cws, fcw, ys1.data());
+      dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+      dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+      dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
       size_t alpha_block = alpha / DpfType::kLanes;
       int4 expected = DpfType::PackBeta(alpha, beta);
@@ -230,8 +229,7 @@ protected:
   static constexpr uint64_t kMaxBeta = 1;
 
   int4 s0s[2];
-  typename DpfType::Cw cws[DpfType::kDepth];
-  int4 fcw;
+  typename DpfType::Key k0, k1;
   uint8_t aes_key[1][16] = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
   int4 hash_key;
 
@@ -256,13 +254,13 @@ protected:
   void TestEvalAll() {
     Prg prg = MakePrg();
     DpfType dpf{prg, hash_key};
-    dpf.Gen(cws, fcw, s0s, kAlpha, kMaxBeta);
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
 
     constexpr size_t blocks = 1ULL << DpfType::kDepth;
     std::vector<int4> ys0(blocks), ys1(blocks);
 
-    dpf.EvalAll(false, s0s[0], cws, fcw, ys0.data());
-    dpf.EvalAll(true, s0s[1], cws, fcw, ys1.data());
+    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     size_t alpha_block = kAlpha / DpfType::kLanes;
     int4 expected = DpfType::PackBeta(kAlpha, kMaxBeta);
@@ -295,8 +293,7 @@ protected:
   static_assert(DpfType::kDepth == 1);
 
   int4 s0s[2];
-  typename DpfType::Cw cws[DpfType::kDepth];
-  int4 fcw;
+  typename DpfType::Key k0, k1;
   Prg prg;
   int4 hash_key;
 
@@ -317,11 +314,12 @@ protected:
 
     int4 zero = {0, 0, 0, 0};
     for (int alpha = 0; alpha < (1 << InBits); ++alpha) {
-      dpf.Gen(cws, fcw, s0s, static_cast<In>(alpha), kMaxBeta);
+      dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2),
+          static_cast<In>(alpha), kMaxBeta);
 
       int4 ys0[2], ys1[2];
-      dpf.EvalAll(false, s0s[0], cws, fcw, ys0);
-      dpf.EvalAll(true, s0s[1], cws, fcw, ys1);
+      dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0, 2));
+      dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1, 2));
 
       size_t alpha_block = alpha / DpfType::kLanes;
       int4 expected = DpfType::PackBeta(static_cast<In>(alpha), kMaxBeta);

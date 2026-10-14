@@ -51,28 +51,27 @@ int main() {
   };
 
   // Key generation (done by a trusted dealer)
-  HtDpf::Cw cws[kInBits];
-  int4 ocw;
-  dpf.Gen(cws, ocw, seeds, alpha, beta);
+  HtDpf::Key k0, k1;
+  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
 
   // Evaluation
   int4 zero = {0, 0, 0, 0};
-  int4 y0 = dpf.Eval(false, seeds[0], cws, ocw, alpha);
-  int4 y1 = dpf.Eval(true, seeds[1], cws, ocw, alpha);
+  int4 y0 = dpf.Eval(false, k0, alpha);
+  int4 y1 = dpf.Eval(true, k1, alpha);
   int4 sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
 
   In x = 100;
-  y0 = dpf.Eval(false, seeds[0], cws, ocw, x);
-  y1 = dpf.Eval(true, seeds[1], cws, ocw, x);
+  y0 = dpf.Eval(false, k0, x);
+  y1 = dpf.Eval(true, k1, x);
   sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, Equal(sum, zero) ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
   int4 ys1[1 << kInBits];
-  dpf.EvalAll(false, seeds[0], cws, ocw, ys0);
-  dpf.EvalAll(true, seeds[1], cws, ocw, ys1);
+  dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0, 1 << kInBits));
+  dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1, 1 << kInBits));
 
   int mismatches = 0;
   for (int i = 0; i < (1 << kInBits); ++i) {

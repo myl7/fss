@@ -72,7 +72,7 @@ protected:
         s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
       }
       ret = vdmpf.Gen(k0, k1, sigma, cuda::std::span<const cuda::std::array<int4, 2>, m>(s0s),
-          std::span<const uint16_t>(alphas, kT), std::span<const int4>(betas, kT), kT);
+          cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT);
     } while (ret != 0);
   }
 
@@ -85,8 +85,8 @@ protected:
     std::vector<int4> ys0(kT), ys1(kT);
     cuda::std::array<int4, 4> pi0, pi1;
 
-    vdmpf.BatchEval(false, k0, std::span<const uint16_t>(xs), std::span<int4>(ys0), pi0);
-    vdmpf.BatchEval(true, k1, std::span<const uint16_t>(xs), std::span<int4>(ys1), pi1);
+    vdmpf.BatchEval(false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0), pi0);
+    vdmpf.BatchEval(true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1), pi1);
 
     for (int i = 0; i < kT; ++i) {
       auto result = Group::From(ys0[i]) + Group::From(ys1[i]);
@@ -128,8 +128,8 @@ protected:
     std::vector<int4> ys0(xs.size()), ys1(xs.size());
     cuda::std::array<int4, 4> pi0, pi1;
 
-    vdmpf.BatchEval(false, k0, std::span<const uint16_t>(xs), std::span<int4>(ys0), pi0);
-    vdmpf.BatchEval(true, k1, std::span<const uint16_t>(xs), std::span<int4>(ys1), pi1);
+    vdmpf.BatchEval(false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0), pi0);
+    vdmpf.BatchEval(true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1), pi1);
 
     int4 zero = {0, 0, 0, 0};
     for (size_t i = 0; i < xs.size(); ++i) {
@@ -157,8 +157,8 @@ protected:
     std::vector<int4> ys0(xs.size()), ys1(xs.size());
     cuda::std::array<int4, 4> pi0, pi1;
 
-    vdmpf.BatchEval(false, k0, std::span<const uint16_t>(xs), std::span<int4>(ys0), pi0);
-    vdmpf.BatchEval(true, k1, std::span<const uint16_t>(xs), std::span<int4>(ys1), pi1);
+    vdmpf.BatchEval(false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0), pi0);
+    vdmpf.BatchEval(true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1), pi1);
 
     EXPECT_TRUE(VdmpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
   }

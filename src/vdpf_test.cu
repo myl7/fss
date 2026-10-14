@@ -28,9 +28,7 @@ protected:
   using VdpfType = fss::Vdpf<kAlphaBits, Group, Prg, XorHash, Hash, uint16_t>;
 
   int4 s0s[2];
-  typename VdpfType::Cw cws[kAlphaBits];
-  cuda::std::array<int4, 4> cs;
-  int4 ocw;
+  typename VdpfType::Key k0, k1;
   Prg prg;
   int4 hash_iv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)}};
@@ -65,7 +63,7 @@ protected:
       std::uniform_int_distribution<int> dis;
       s0s[0] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
       s0s[1] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
-      ret = vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, MakeBBuf());
+      ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, MakeBBuf());
     } while (ret != 0);
   }
 
@@ -73,11 +71,8 @@ protected:
     GenKey();
     VdpfType vdpf{prg, xor_hash, hash_};
 
-    int4 y0, y1;
-    vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-        cuda::std::span<const int4, 4>(cs), ocw, kAlpha, y0);
-    vdpf.Eval(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-        cuda::std::span<const int4, 4>(cs), ocw, kAlpha, y1);
+    [[maybe_unused]] auto [y0, pi0_tilde] = vdpf.Eval(false, k0, kAlpha);
+    [[maybe_unused]] auto [y1, pi1_tilde] = vdpf.Eval(true, k1, kAlpha);
 
     auto result = Group::From(y0) + Group::From(y1);
     auto expected = Group::From(MakeBBuf());
@@ -98,11 +93,8 @@ protected:
       uint16_t x = dis(gen);
       if (x == kAlpha) continue;
 
-      int4 y0, y1;
-      vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-          cuda::std::span<const int4, 4>(cs), ocw, x, y0);
-      vdpf.Eval(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-          cuda::std::span<const int4, 4>(cs), ocw, x, y1);
+      [[maybe_unused]] auto [y0, pi0_tilde] = vdpf.Eval(false, k0, x);
+      [[maybe_unused]] auto [y1, pi1_tilde] = vdpf.Eval(true, k1, x);
 
       auto result = Group::From(y0) + Group::From(y1);
       int4 r = result.Into();
@@ -124,16 +116,15 @@ protected:
 
     for (int i = 0; i < L; i++) {
       uint16_t x = dis(gen);
-      int4 y0, y1;
-      pi_tildes_0[i] = vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-          cuda::std::span<const int4, 4>(cs), ocw, x, y0);
-      pi_tildes_1[i] = vdpf.Eval(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-          cuda::std::span<const int4, 4>(cs), ocw, x, y1);
+      [[maybe_unused]] auto [y0, pi_tilde0] = vdpf.Eval(false, k0, x);
+      pi_tildes_0[i] = pi_tilde0;
+      [[maybe_unused]] auto [y1, pi_tilde1] = vdpf.Eval(true, k1, x);
+      pi_tildes_1[i] = pi_tilde1;
     }
 
     cuda::std::array<int4, 4> pi0, pi1;
-    vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_0), cuda::std::span<const int4, 4>(cs), pi0);
-    vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_1), cuda::std::span<const int4, 4>(cs), pi1);
+    vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_0), cuda::std::span<const int4, 4>(k0.cs), pi0);
+    vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_1), cuda::std::span<const int4, 4>(k0.cs), pi1);
 
     EXPECT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
   }
@@ -146,10 +137,8 @@ protected:
     std::vector<int4> ys0(n), ys1(n);
     cuda::std::array<int4, 4> pi0, pi1;
 
-    vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys0), pi0);
-    vdpf.EvalAll(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys1), pi1);
+    vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), n), pi0);
+    vdpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), n), pi1);
 
     auto expected = Group::From(MakeBBuf());
     int4 expected_buf = expected.Into();
@@ -177,12 +166,9 @@ protected:
     std::vector<int4> ys0(n), ys1(n), ys0_chain(n);
     cuda::std::array<int4, 4> pi0, pi1, pi0_chain;
 
-    vdpf.EvalAll(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys0_chain), pi0_chain);
-    vdpf.EvalAllMerkle(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys0), pi0);
-    vdpf.EvalAllMerkle(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-        cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys1), pi1);
+    vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys0_chain.data(), n), pi0_chain);
+    vdpf.EvalAllMerkle(false, k0, cuda::std::span<int4>(ys0.data(), n), pi0);
+    vdpf.EvalAllMerkle(true, k1, cuda::std::span<int4>(ys1.data(), n), pi1);
 
     // The shares are the chain-based EvalAll's shares
     EXPECT_EQ(memcmp(ys0.data(), ys0_chain.data(), n * sizeof(int4)), 0);
@@ -218,18 +204,17 @@ protected:
 
     for (int i = 0; i < L; i++) {
       uint16_t x = dis(gen);
-      int4 y0, y1;
-      pi_tildes_0[i] = vdpf.Eval(false, s0s[0], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-          cuda::std::span<const int4, 4>(cs), ocw, x, y0);
-      pi_tildes_1[i] = vdpf.Eval(true, s0s[1], cuda::std::span<const typename VdpfType::Cw>(cws, kAlphaBits),
-          cuda::std::span<const int4, 4>(cs), ocw, x, y1);
+      [[maybe_unused]] auto [y0, pi_tilde0] = vdpf.Eval(false, k0, x);
+      pi_tildes_0[i] = pi_tilde0;
+      [[maybe_unused]] auto [y1, pi_tilde1] = vdpf.Eval(true, k1, x);
+      pi_tildes_1[i] = pi_tilde1;
     }
 
     cuda::std::array<int4, 4> pi0, pi1;
     vdpf.ProveMerkle(
-        cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_0), cuda::std::span<const int4, 4>(cs), pi0);
+        cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_0), cuda::std::span<const int4, 4>(k0.cs), pi0);
     vdpf.ProveMerkle(
-        cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_1), cuda::std::span<const int4, 4>(cs), pi1);
+        cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes_1), cuda::std::span<const int4, 4>(k0.cs), pi1);
 
     EXPECT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
   }

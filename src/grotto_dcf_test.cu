@@ -17,7 +17,7 @@ protected:
   using GrottoDcfType = fss::GrottoDcf<kAlphaBits, fss::prg::ChaCha<2>, uint16_t>;
 
   int4 s0s[2];
-  GrottoDcfType::Cw cws[kAlphaBits + 1];
+  GrottoDcfType::Key k0, k1;
   fss::prg::ChaCha<2> prg;
 
   GrottoDcfChaChaTest() : prg(kNonce0, kNonce1) {}
@@ -31,7 +31,7 @@ protected:
     s0s[1] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
 
     GrottoDcfType dcf{prg};
-    dcf.Gen(cws, s0s, kAlpha);
+    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha);
   }
 };
 
@@ -42,11 +42,11 @@ TEST_F(GrottoDcfChaChaTest, PreprocessEvalAll) {
 
   auto p0 = std::make_unique<bool[]>(2 * N - 1);
   auto p1 = std::make_unique<bool[]>(2 * N - 1);
-  GrottoDcfType::ParityTree pt0{p0.get(), false};
-  GrottoDcfType::ParityTree pt1{p1.get(), true};
+  GrottoDcfType::ParityTree pt0{p0.get()};
+  GrottoDcfType::ParityTree pt1{p1.get()};
 
-  dcf.Preprocess(pt0, s0s[0], cws);
-  dcf.Preprocess(pt1, s0s[1], cws);
+  dcf.Preprocess(pt0, false, k0);
+  dcf.Preprocess(pt1, true, k1);
 
   for (size_t x = 0; x < N; ++x) {
     bool share0 = GrottoDcfType::Eval(pt0, static_cast<uint16_t>(x));
@@ -65,8 +65,8 @@ TEST_F(GrottoDcfChaChaTest, EvalAll) {
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
 
-  dcf.EvalAll(false, s0s[0], cws, ys0.get());
-  dcf.EvalAll(true, s0s[1], cws, ys1.get());
+  dcf.EvalAll(false, k0, cuda::std::span<bool>(ys0.get(), N));
+  dcf.EvalAll(true, k1, cuda::std::span<bool>(ys1.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
     bool result = ys0[x] ^ ys1[x];
@@ -82,12 +82,12 @@ TEST_F(GrottoDcfChaChaTest, PreprocessEvalMatchesEvalAll) {
 
   // Preprocess path
   auto p0 = std::make_unique<bool[]>(2 * N - 1);
-  GrottoDcfType::ParityTree pt0{p0.get(), false};
-  dcf.Preprocess(pt0, s0s[0], cws);
+  GrottoDcfType::ParityTree pt0{p0.get()};
+  dcf.Preprocess(pt0, false, k0);
 
   // EvalAll path
   auto ys0 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, s0s[0], cws, ys0.get());
+  dcf.EvalAll(false, k0, cuda::std::span<bool>(ys0.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
     bool from_preprocess = GrottoDcfType::Eval(pt0, static_cast<uint16_t>(x));
@@ -100,13 +100,14 @@ TEST_F(GrottoDcfChaChaTest, EdgeAlphaZero) {
   GrottoDcfType dcf{prg};
   constexpr size_t N = 1ULL << kAlphaBits;
 
-  GrottoDcfType::Cw edge_cws[kAlphaBits + 1];
-  dcf.Gen(edge_cws, s0s, static_cast<uint16_t>(0));
+  GrottoDcfType::Key edge_k0, edge_k1;
+  dcf.Gen(edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2),
+      static_cast<uint16_t>(0));
 
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, s0s[0], edge_cws, ys0.get());
-  dcf.EvalAll(true, s0s[1], edge_cws, ys1.get());
+  dcf.EvalAll(false, edge_k0, cuda::std::span<bool>(ys0.get(), N));
+  dcf.EvalAll(true, edge_k1, cuda::std::span<bool>(ys1.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
     bool result = ys0[x] ^ ys1[x];
@@ -120,13 +121,13 @@ TEST_F(GrottoDcfChaChaTest, EdgeAlphaMax) {
   constexpr size_t N = 1ULL << kAlphaBits;
 
   uint16_t alpha_max = static_cast<uint16_t>(N - 1);
-  GrottoDcfType::Cw edge_cws[kAlphaBits + 1];
-  dcf.Gen(edge_cws, s0s, alpha_max);
+  GrottoDcfType::Key edge_k0, edge_k1;
+  dcf.Gen(edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2), alpha_max);
 
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, s0s[0], edge_cws, ys0.get());
-  dcf.EvalAll(true, s0s[1], edge_cws, ys1.get());
+  dcf.EvalAll(false, edge_k0, cuda::std::span<bool>(ys0.get(), N));
+  dcf.EvalAll(true, edge_k1, cuda::std::span<bool>(ys1.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
     bool result = ys0[x] ^ ys1[x];

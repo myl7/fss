@@ -45,11 +45,11 @@ public:
   int4 hash_key;
 
   /**
-     * Correction word.
-     *
-     * For levels 1..n-1, s is the CW and extra is unused (false).
-     * For level n, s stores SetLsb(HCW, LCW_0) and extra stores LCW_1.
-     */
+   * Correction word.
+   *
+   * For levels 1..n-1, s is the CW and extra is unused (false).
+   * For level n, s stores SetLsb(HCW, LCW_0) and extra stores LCW_1.
+   */
   struct __align__(32) Cw {
     int4 s;
     bool extra;
@@ -57,14 +57,60 @@ public:
   static_assert(sizeof(Cw) == 32);
 
   /**
-     * Key generation method.
-     *
-     * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits.
-     * @param ocw Output correction word (for the Convert step).
-     * @param s0s 2 initial seeds. Users can randomly sample them.
-     * @param a The special point alpha.
-     * @param b_buf The nonzero output value beta. Will be clamped and converted to the group element.
-     */
+   * A party's key: the correction words, the output correction word, and the party's initial
+   * seed. Both parties share the same correction words and the output correction word, and
+   * differ in the seed.
+   */
+  struct Key {
+    Cw cws[in_bits];
+    int4 ocw;
+    int4 s0;
+  };
+
+  /**
+   * Key generation method.
+   *
+   * @param k0, k1 Returned keys of the two parties.
+   * @param s0s 2 initial seeds. Users can randomly sample them.
+   * @param a The special point alpha.
+   * @param b_buf The nonzero output value beta. Will be clamped and converted to the group element.
+   */
+  __host__ __device__ void Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+    Gen(k0.cws, k0.ocw, s0s.data(), a, b_buf);
+    for (int i = 0; i < in_bits; ++i) k1.cws[i] = k0.cws[i];
+    k1.ocw = k0.ocw;
+    k0.s0 = s0s[0];
+    k1.s0 = s0s[1];
+  }
+
+  /**
+   * Evaluation method.
+   *
+   * @param b Party index. False for 0 and true for 1.
+   * @param key The party's key returned by Gen().
+   * @param x Evaluated input.
+   * @return Output share.
+   */
+  __host__ __device__ int4 Eval(bool b, const Key &key, In x) {
+    return Eval(b, key.s0, key.cws, key.ocw, x);
+  }
+
+  /**
+   * Full domain evaluation method.
+   *
+   * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
+   *
+   * @param b Party index. False for 0 and true for 1.
+   * @param key The party's key returned by Gen().
+   * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
+   *
+   * Support parallel using OpenMP.
+   */
+  void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys) {
+    EvalAll(b, key.s0, key.cws, key.ocw, ys.data());
+  }
+
+private:
   __host__ __device__ void Gen(Cw cws[], int4 &ocw, const int4 s0s[2], In a, int4 b_buf) {
     b_buf = util::SetLsb(b_buf, false);
 
@@ -174,16 +220,7 @@ public:
     }
   }
 
-  /**
-     * Evaluation method.
-     *
-     * @param b Party index. False for 0 and true for 1.
-     * @param s0 Initial seed of the party.
-     * @param cws Returned by Gen().
-     * @param ocw Output correction word returned by Gen().
-     * @param x Evaluated input.
-     * @return Output share.
-     */
+  // Seed + correction-words form used by the internal recursion and tests.
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], int4 ocw, In x) {
     int4 node = util::SetLsb(s0, b);
 
@@ -230,19 +267,6 @@ public:
     }
   }
 
-  /**
-     * Full domain evaluation method.
-     *
-     * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
-     *
-     * @param b Party index. False for 0 and true for 1.
-     * @param s0 Initial seed of the party.
-     * @param cws Correction words returned by Gen().
-     * @param ocw Output correction word returned by Gen().
-     * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
-     *
-     * Support parallel using OpenMP.
-     */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ocw, int4 ys[]) {
     int4 node = util::SetLsb(s0, b);
 
@@ -280,7 +304,6 @@ public:
     }
   }
 
-private:
   void EvalTree(int4 node, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_) {
     // i is the level index (0-based), we traverse levels 0..in_bits-2
     // At level in_bits-1, we store the node

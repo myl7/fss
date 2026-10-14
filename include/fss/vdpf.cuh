@@ -89,7 +89,306 @@ public:
   static_assert(sizeof(Cw) == 32);
 
   /**
+     * A party's key: the correction words, the correction seeds, the output correction word,
+     * plus the party's initial seed.
+     * Both parties share the same cws, cs, and ocw and differ in the seed.
+     */
+  struct Key {
+    Cw cws[in_bits];
+    cuda::std::array<int4, 4> cs;
+    int4 ocw;
+    int4 s0;
+  };
+
+  /**
      * Key generation method.
+     *
+     * @param k0, k1 Returned keys of the two parties.
+     * @param s0s 2 initial seeds. Users can randomly sample them.
+     * @param a $a$.
+     * @param b_buf $b$. Will be clamped and converted to the group element.
+     * @return 0 on success, 1 if cs is all zeros or $t_0 = t_1$ at the end (caller should resample seeds and retry).
+     *
+     * Both parties share the returned cws, cs, and ocw and differ in s0.
+     */
+  __host__ __device__ int Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+    int ret = Gen(k0.cws, k0.cs, k0.ocw, s0s, a, b_buf);
+    k0.s0 = s0s[0];
+    for (int i = 0; i < in_bits; ++i) k1.cws[i] = k0.cws[i];
+    k1.cs = k0.cs;
+    k1.ocw = k0.ocw;
+    k1.s0 = s0s[1];
+    return ret;
+  }
+
+  /**
+     * Evaluation result.
+     */
+  struct EvalResult {
+    int4 y;  ///< Output share. $y_{i,x}$.
+    cuda::std::array<int4, 4> pi_tilde;  ///< Corrected per-point hash ($\correct(\tilde\pi, cs, t)$).
+  };
+
+  /**
+     * Evaluation method.
+     *
+     * @param b Party index. False for 0 and true for 1. $i$.
+     * @param key The party's key returned by Gen().
+     * @param x Evaluated input. $x$.
+     * @return The output share $y_{i,x}$ plus the corrected per-point hash for proof accumulation.
+     */
+  __host__ __device__ EvalResult Eval(bool b, const Key &key, In x) {
+    int4 s = key.s0;
+    s = util::SetLsb(s, false);
+    bool t = b;
+
+    for (int i = 0; i < in_bits; ++i) {
+      Cw cw = key.cws[i];
+      int4 s_cw = cw.s;
+      bool tl_cw = util::GetLsb(s_cw);
+      s_cw = util::SetLsb(s_cw, false);
+      bool tr_cw = cw.tr;
+
+      auto [sl, sr] = prg.Gen(s);
+
+      bool tl = util::GetLsb(sl);
+      sl = util::SetLsb(sl, false);
+      bool tr = util::GetLsb(sr);
+      sr = util::SetLsb(sr, false);
+
+      if (t) {
+        sl = util::Xor(sl, s_cw);
+        sr = util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
+
+      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
+
+      if (!x_bit) {
+        s = sl;
+        t = tl;
+      } else {
+        s = sr;
+        t = tr;
+      }
+    }
+
+    // Output share
+    auto g = Group::From(s);
+    assert((key.ocw.w & 1) == 0);
+    if (t) g = g + Group::From(key.ocw);
+    if (b) g = -g;
+
+    // Corrected verification hash
+    int4 x_buf = util::Pack(x);
+
+    auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
+    if (t) {
+      pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(key.cs));
+    }
+    return {g.Into(), pi_tilde};
+  }
+
+  /**
+     * Proof accumulation method.
+     *
+     * Accumulates corrected per-point hashes (from Eval()) into a single proof.
+     *
+     * @param pi_tildes Corrected per-point hashes returned by Eval().
+     * @param cs Returned by Gen().
+     * @param pi Proof output.
+     */
+  void Prove(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes, cuda::std::span<const int4, 4> cs,
+      cuda::std::array<int4, 4> &pi) {
+    pi = {cs[0], cs[1], cs[2], cs[3]};
+    for (size_t i = 0; i < pi_tildes.size(); ++i) {
+      cuda::std::array<int4, 4> h_input =
+          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tildes[i]));
+      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
+      pi[0] = util::Xor(pi[0], h_out[0]);
+      pi[1] = util::Xor(pi[1], h_out[1]);
+    }
+  }
+
+  /**
+     * Verification method.
+     *
+     * @return True if proofs match (Accept), false otherwise (Reject).
+     */
+  __host__ __device__ static bool Verify(cuda::std::span<const int4, 4> pi0, cuda::std::span<const int4, 4> pi1) {
+    for (int i = 0; i < 4; ++i) {
+      if (pi0[i].x != pi1[i].x || pi0[i].y != pi1[i].y || pi0[i].z != pi1[i].z || pi0[i].w != pi1[i].w) return false;
+    }
+    return true;
+  }
+
+  /**
+     * Full domain evaluation method.
+     *
+     * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
+     * Store the outputs sequentially and accumulate the proof.
+     *
+     * @param b Party index. False for 0 and true for 1.
+     * @param key The party's key returned by Gen().
+     * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
+     * @param pi Proof output.
+     *
+     * Support parallel using OpenMP for the tree traversal phase.
+     * The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads.
+     * par_depth = -1: use ceil(log(num of threads)).
+     * par_depth = 0: no parallelism, i.e., sequential execution.
+     */
+  void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+    int4 st = key.s0;
+    bool t = b;
+    st = util::SetLsb(st, t);
+
+    assert(in_bits < sizeof(size_t) * 8);
+    size_t l = 0;
+    size_t r = 1ULL << in_bits;
+    int i = 0;
+
+    int par_depth_ = util::ResolveParDepth(par_depth);
+
+    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
+#pragma omp parallel
+#pragma omp single
+    EvalTree(st, key.cws, ys, l, r, i, par_depth_);
+
+    // Phase 2: sequential output computation and proof accumulation
+    pi = {key.cs[0], key.cs[1], key.cs[2], key.cs[3]};
+    size_t n = 1ULL << in_bits;
+    assert((key.ocw.w & 1) == 0);
+    auto ocw_group = Group::From(key.ocw);
+    for (size_t j = 0; j < n; ++j) {
+      int4 sj = ys[j];
+      bool tj = util::GetLsb(sj);
+      sj = util::SetLsb(sj, false);
+
+      // Output share
+      auto g = Group::From(sj);
+      if (tj) g = g + ocw_group;
+      if (b) g = -g;
+      ys[j] = g.Into();
+
+      // Proof accumulation
+      int4 x_buf = util::Pack(static_cast<In>(j));
+
+      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
+      if (tj) {
+        pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(key.cs));
+      }
+
+      cuda::std::array<int4, 4> h_input =
+          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tilde));
+      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
+      pi[0] = util::Xor(pi[0], h_out[0]);
+      pi[1] = util::Xor(pi[1], h_out[1]);
+    }
+  }
+
+  /**
+   * Proof accumulation method (Merkle fold).
+   *
+   * Order-independent alternative to Prove(): hashes the corrected per-point hashes into the
+   * leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the
+   * same hash level by level (an odd trailing node carries to the next level unchanged). The
+   * proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so Verify() is shared.
+   * Every level is an OpenMP parallel batch. See doc/vdpf_merkle_fold_security.md.
+   *
+   * @param pi_tildes Corrected per-point hashes returned by Eval().
+   * @param cs Returned by Gen().
+   * @param pi Proof output.
+   */
+  void ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes, cuda::std::span<const int4, 4> cs,
+      cuda::std::array<int4, 4> &pi) {
+    size_t count = pi_tildes.size();
+    assert(count >= 1);
+
+    std::vector<cuda::std::array<int4, 2>> nodes(count);
+#pragma omp parallel for
+    for (size_t i = 0; i < count; ++i) {
+      nodes[i] = hash.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
+    }
+
+    while (count > 1) {
+      size_t pairs = count / 2;
+      std::vector<cuda::std::array<int4, 2>> next(pairs + count % 2);
+#pragma omp parallel for
+      for (size_t i = 0; i < pairs; ++i) {
+        int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
+        next[i] = hash.Hash(cuda::std::span<const int4, 4>(msg));
+      }
+      if (count % 2 != 0) next[pairs] = nodes[count - 1];
+      nodes = std::move(next);
+      count = nodes.size();
+    }
+
+    pi = {nodes[0][0], nodes[0][1], cs[2], cs[3]};
+  }
+
+  /**
+   * Full domain evaluation method with the Merkle-fold proof.
+   *
+   * Same output shares as EvalAll(); the proof comes from ProveMerkle() over the corrected
+   * per-point hashes. The conversion phase and every fold level are OpenMP parallel, unlike
+   * EvalAll()'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.
+   *
+   * @param b Party index. False for 0 and true for 1. $i$.
+   * @param key The party's key returned by Gen().
+   * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
+   * @param pi Proof output.
+   */
+  void EvalAllMerkle(bool b, const Key &key, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+    int4 st = key.s0;
+    bool t = b;
+    st = util::SetLsb(st, t);
+
+    assert(in_bits < sizeof(size_t) * 8);
+    size_t l = 0;
+    size_t r = 1ULL << in_bits;
+    int i = 0;
+
+    int par_depth_ = util::ResolveParDepth(par_depth);
+
+    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
+#pragma omp parallel
+#pragma omp single
+    EvalTree(st, key.cws, ys, l, r, i, par_depth_);
+
+    // Phase 2: parallel output conversion and leaf hashing, then the Merkle fold
+    pi = {key.cs[0], key.cs[1], key.cs[2], key.cs[3]};
+    size_t n = 1ULL << in_bits;
+    assert((key.ocw.w & 1) == 0);
+    auto ocw_group = Group::From(key.ocw);
+    std::vector<cuda::std::array<int4, 4>> leaves(n);
+#pragma omp parallel for
+    for (size_t j = 0; j < n; ++j) {
+      int4 sj = ys[j];
+      bool tj = util::GetLsb(sj);
+      sj = util::SetLsb(sj, false);
+
+      auto g = Group::From(sj);
+      if (tj) g = g + ocw_group;
+      if (b) g = -g;
+      ys[j] = g.Into();
+
+      int4 x_buf = util::Pack(static_cast<In>(j));
+
+      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
+      if (tj) {
+        leaves[j] = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(key.cs));
+      } else {
+        leaves[j] = pi_tilde;
+      }
+    }
+    ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(leaves), cuda::std::span<const int4, 4>(key.cs), pi);
+  }
+
+private:
+  /**
+     * Key generation core on the correction-word form.
      *
      * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits.
      * @param cs Correction seed output ($4\lambda$ bits).
@@ -97,7 +396,7 @@ public:
      * @param s0s 2 initial seeds. Users can randomly sample them.
      * @param a $a$.
      * @param b_buf $b$. Will be clamped and converted to the group element.
-     * @return 0 on success, 1 if $t_0 = t_1$ at the end (caller should resample seeds and retry).
+     * @return 0 on success, 1 if cs is all zeros or $t_0 = t_1$ at the end (caller should resample seeds and retry).
      *
      * The key for party i consists of cws + cs + ocw + s0s[i].
      */
@@ -190,278 +489,6 @@ public:
     return 0;
   }
 
-  /**
-     * Evaluation method.
-     *
-     * @param b Party index. False for 0 and true for 1. $i$.
-     * @param s0 Initial seed of the party.
-     * @param cws Returned by Gen(). Size must be in_bits.
-     * @param cs Returned by Gen().
-     * @param ocw Returned by Gen().
-     * @param x Evaluated input. $x$.
-     * @param y Output share written here. $y_{i,x}$.
-     * @return Corrected per-point hash ($\correct(\tilde\pi, cs, t)$) for proof accumulation.
-     */
-  __host__ __device__ cuda::std::array<int4, 4> Eval(
-      bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw, In x, int4 &y) {
-    int4 s = s0;
-    s = util::SetLsb(s, false);
-    bool t = b;
-
-    for (int i = 0; i < in_bits; ++i) {
-      Cw cw = cws[i];
-      int4 s_cw = cw.s;
-      bool tl_cw = util::GetLsb(s_cw);
-      s_cw = util::SetLsb(s_cw, false);
-      bool tr_cw = cw.tr;
-
-      auto [sl, sr] = prg.Gen(s);
-
-      bool tl = util::GetLsb(sl);
-      sl = util::SetLsb(sl, false);
-      bool tr = util::GetLsb(sr);
-      sr = util::SetLsb(sr, false);
-
-      if (t) {
-        sl = util::Xor(sl, s_cw);
-        sr = util::Xor(sr, s_cw);
-        tl = tl ^ tl_cw;
-        tr = tr ^ tr_cw;
-      }
-
-      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
-
-      if (!x_bit) {
-        s = sl;
-        t = tl;
-      } else {
-        s = sr;
-        t = tr;
-      }
-    }
-
-    // Output share
-    auto g = Group::From(s);
-    assert((ocw.w & 1) == 0);
-    if (t) g = g + Group::From(ocw);
-    if (b) g = -g;
-    y = g.Into();
-
-    // Corrected verification hash
-    int4 x_buf = util::Pack(x);
-
-    auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
-    if (t) {
-      return util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
-    }
-    return pi_tilde;
-  }
-
-  /**
-     * Proof accumulation method.
-     *
-     * Accumulates corrected per-point hashes (from Eval()) into a single proof.
-     *
-     * @param pi_tildes Corrected per-point hashes returned by Eval().
-     * @param cs Returned by Gen().
-     * @param pi Proof output.
-     */
-  void Prove(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes, cuda::std::span<const int4, 4> cs,
-      cuda::std::array<int4, 4> &pi) {
-    pi = {cs[0], cs[1], cs[2], cs[3]};
-    for (size_t i = 0; i < pi_tildes.size(); ++i) {
-      cuda::std::array<int4, 4> h_input =
-          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tildes[i]));
-      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
-      pi[0] = util::Xor(pi[0], h_out[0]);
-      pi[1] = util::Xor(pi[1], h_out[1]);
-    }
-  }
-
-  /**
-     * Verification method.
-     *
-     * @return True if proofs match (Accept), false otherwise (Reject).
-     */
-  __host__ __device__ static bool Verify(cuda::std::span<const int4, 4> pi0, cuda::std::span<const int4, 4> pi1) {
-    for (int i = 0; i < 4; ++i) {
-      if (pi0[i].x != pi1[i].x || pi0[i].y != pi1[i].y || pi0[i].z != pi1[i].z || pi0[i].w != pi1[i].w) return false;
-    }
-    return true;
-  }
-
-  /**
-     * Full domain evaluation method.
-     *
-     * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
-     * Store the outputs sequentially and accumulate the proof.
-     *
-     * @param b Party index. False for 0 and true for 1.
-     * @param s0 Initial seed of the party.
-     * @param cws Correction words returned by Gen().
-     * @param cs Check seeds returned by Gen().
-     * @param ocw Output correction word returned by Gen().
-     * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
-     * @param pi Proof output.
-     *
-     * Support parallel using OpenMP for the tree traversal phase.
-     * The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads.
-     * par_depth = -1: use ceil(log(num of threads)).
-     * par_depth = 0: no parallelism, i.e., sequential execution.
-     */
-  void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw,
-      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
-    int4 st = s0;
-    bool t = b;
-    st = util::SetLsb(st, t);
-
-    assert(in_bits < sizeof(size_t) * 8);
-    size_t l = 0;
-    size_t r = 1ULL << in_bits;
-    int i = 0;
-
-    int par_depth_ = util::ResolveParDepth(par_depth);
-
-    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
-#pragma omp parallel
-#pragma omp single
-    EvalTree(st, cws, ys, l, r, i, par_depth_);
-
-    // Phase 2: sequential output computation and proof accumulation
-    pi = {cs[0], cs[1], cs[2], cs[3]};
-    size_t n = 1ULL << in_bits;
-    assert((ocw.w & 1) == 0);
-    auto ocw_group = Group::From(ocw);
-    for (size_t j = 0; j < n; ++j) {
-      int4 sj = ys[j];
-      bool tj = util::GetLsb(sj);
-      sj = util::SetLsb(sj, false);
-
-      // Output share
-      auto g = Group::From(sj);
-      if (tj) g = g + ocw_group;
-      if (b) g = -g;
-      ys[j] = g.Into();
-
-      // Proof accumulation
-      int4 x_buf = util::Pack(static_cast<In>(j));
-
-      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
-      if (tj) {
-        pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
-      }
-
-      cuda::std::array<int4, 4> h_input =
-          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tilde));
-      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
-      pi[0] = util::Xor(pi[0], h_out[0]);
-      pi[1] = util::Xor(pi[1], h_out[1]);
-    }
-  }
-
-  /**
-   * Proof accumulation method (Merkle fold).
-   *
-   * Order-independent alternative to Prove(): hashes the corrected per-point hashes into the
-   * leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the
-   * same hash level by level (an odd trailing node carries to the next level unchanged). The
-   * proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so Verify() is shared.
-   * Every level is an OpenMP parallel batch. See doc/vdpf_merkle_fold_security.md.
-   *
-   * @param pi_tildes Corrected per-point hashes returned by Eval().
-   * @param cs Returned by Gen().
-   * @param pi Proof output.
-   */
-  void ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes, cuda::std::span<const int4, 4> cs,
-      cuda::std::array<int4, 4> &pi) {
-    size_t count = pi_tildes.size();
-    assert(count >= 1);
-
-    std::vector<cuda::std::array<int4, 2>> nodes(count);
-#pragma omp parallel for
-    for (size_t i = 0; i < count; ++i) {
-      nodes[i] = hash.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
-    }
-
-    while (count > 1) {
-      size_t pairs = count / 2;
-      std::vector<cuda::std::array<int4, 2>> next(pairs + count % 2);
-#pragma omp parallel for
-      for (size_t i = 0; i < pairs; ++i) {
-        int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
-        next[i] = hash.Hash(cuda::std::span<const int4, 4>(msg));
-      }
-      if (count % 2 != 0) next[pairs] = nodes[count - 1];
-      nodes = std::move(next);
-      count = nodes.size();
-    }
-
-    pi = {nodes[0][0], nodes[0][1], cs[2], cs[3]};
-  }
-
-  /**
-   * Full domain evaluation method with the Merkle-fold proof.
-   *
-   * Same output shares as EvalAll(); the proof comes from ProveMerkle() over the corrected
-   * per-point hashes. The conversion phase and every fold level are OpenMP parallel, unlike
-   * EvalAll()'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.
-   *
-   * @param b Party index. False for 0 and true for 1. $i$.
-   * @param s0 Initial seed of the party.
-   * @param cws Correction words returned by Gen(). Size must be in_bits.
-   * @param cs Returned by Gen().
-   * @param ocw Output correction word returned by Gen().
-   * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
-   * @param pi Proof output.
-   */
-  void EvalAllMerkle(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw,
-      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
-    int4 st = s0;
-    bool t = b;
-    st = util::SetLsb(st, t);
-
-    assert(in_bits < sizeof(size_t) * 8);
-    size_t l = 0;
-    size_t r = 1ULL << in_bits;
-    int i = 0;
-
-    int par_depth_ = util::ResolveParDepth(par_depth);
-
-    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
-#pragma omp parallel
-#pragma omp single
-    EvalTree(st, cws, ys, l, r, i, par_depth_);
-
-    // Phase 2: parallel output conversion and leaf hashing, then the Merkle fold
-    pi = {cs[0], cs[1], cs[2], cs[3]};
-    size_t n = 1ULL << in_bits;
-    assert((ocw.w & 1) == 0);
-    auto ocw_group = Group::From(ocw);
-    std::vector<cuda::std::array<int4, 4>> leaves(n);
-#pragma omp parallel for
-    for (size_t j = 0; j < n; ++j) {
-      int4 sj = ys[j];
-      bool tj = util::GetLsb(sj);
-      sj = util::SetLsb(sj, false);
-
-      auto g = Group::From(sj);
-      if (tj) g = g + ocw_group;
-      if (b) g = -g;
-      ys[j] = g.Into();
-
-      int4 x_buf = util::Pack(static_cast<In>(j));
-
-      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
-      if (tj) {
-        leaves[j] = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
-      } else {
-        leaves[j] = pi_tilde;
-      }
-    }
-    ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(leaves), cs, pi);
-  }
-
-private:
   void EvalTree(
       int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_) {
     if (i == in_bits) {

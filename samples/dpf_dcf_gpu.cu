@@ -37,7 +37,7 @@ constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 // --- DPF Kernels ---
 
-__global__ void DpfGenKernel(Dpf::Cw *cws, const int4 *seeds, const In *alphas, const int4 *betas) {
+__global__ void DpfGenKernel(Dpf::Key *k0s, Dpf::Key *k1s, const int4 *seeds, const In *alphas, const int4 *betas) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
@@ -45,22 +45,22 @@ __global__ void DpfGenKernel(Dpf::Cw *cws, const int4 *seeds, const In *alphas, 
   Dpf dpf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  dpf.Gen(cws + tid * (kInBits + 1), s, alphas[tid], betas[tid]);
+  dpf.Gen(k0s[tid], k1s[tid], cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
 }
 
-__global__ void DpfEvalKernel(int4 *ys, bool party, const int4 *seeds, const Dpf::Cw *cws, const In *xs) {
+__global__ void DpfEvalKernel(int4 *ys, bool party, const Dpf::Key *keys, const In *xs) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
   DpfPrg prg(kNonce0, kNonce1);
   Dpf dpf{prg};
 
-  ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);
+  ys[tid] = dpf.Eval(party, keys[tid], xs[tid]);
 }
 
 // --- DCF Kernels ---
 
-__global__ void DcfGenKernel(Dcf::Cw *cws, const int4 *seeds, const In *alphas, const int4 *betas) {
+__global__ void DcfGenKernel(Dcf::Key *k0s, Dcf::Key *k1s, const int4 *seeds, const In *alphas, const int4 *betas) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
@@ -68,17 +68,17 @@ __global__ void DcfGenKernel(Dcf::Cw *cws, const int4 *seeds, const In *alphas, 
   Dcf dcf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  dcf.Gen(cws + tid * (kInBits + 1), s, alphas[tid], betas[tid]);
+  dcf.Gen(k0s[tid], k1s[tid], cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
 }
 
-__global__ void DcfEvalKernel(int4 *ys, bool party, const int4 *seeds, const Dcf::Cw *cws, const In *xs) {
+__global__ void DcfEvalKernel(int4 *ys, bool party, const Dcf::Key *keys, const In *xs) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
   DcfPrg prg(kNonce0, kNonce1);
   Dcf dcf{prg};
 
-  ys[tid] = dcf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);
+  ys[tid] = dcf.Eval(party, keys[tid], xs[tid]);
 }
 
 // --- Host helpers ---
@@ -103,7 +103,6 @@ static void DpfSample() {
 
   // Prepare host data
   int4 h_seeds[kN * 2];
-  int4 h_seeds0[kN], h_seeds1[kN];
   In h_alphas[kN];
   int4 h_betas[kN];
   In h_xs[kN];
@@ -112,8 +111,6 @@ static void DpfSample() {
   for (int i = 0; i < kN; i++) {
     h_seeds[i * 2] = {rand(), rand(), rand(), rand() & ~1};
     h_seeds[i * 2 + 1] = {rand(), rand(), rand(), rand() & ~1};
-    h_seeds0[i] = h_seeds[i * 2];
-    h_seeds1[i] = h_seeds[i * 2 + 1];
     h_alphas[i] = rand() & 0xFF;
     h_betas[i] = {rand(), rand(), rand(), rand() & ~1};
     // Eval at alpha for even indices, random x for odd
@@ -122,32 +119,31 @@ static void DpfSample() {
 
   // Copy to device
   int4 *d_seeds = ToDevice(h_seeds, kN * 2);
-  int4 *d_seeds0 = ToDevice(h_seeds0, kN);
-  int4 *d_seeds1 = ToDevice(h_seeds1, kN);
   In *d_alphas = ToDevice(h_alphas, kN);
   int4 *d_betas = ToDevice(h_betas, kN);
   In *d_xs = ToDevice(h_xs, kN);
 
   // Allocate output buffers
-  Dpf::Cw *d_cws;
+  Dpf::Key *d_k0s, *d_k1s;
   int4 *d_ys;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(Dpf::Cw) * (kInBits + 1) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k0s, sizeof(Dpf::Key) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k1s, sizeof(Dpf::Key) * kN));
   CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * kN));
 
   int blocks = (kN + kThreadsPerBlock - 1) / kThreadsPerBlock;
 
   // Gen
-  DpfGenKernel<<<blocks, kThreadsPerBlock>>>(d_cws, d_seeds, d_alphas, d_betas);
+  DpfGenKernel<<<blocks, kThreadsPerBlock>>>(d_k0s, d_k1s, d_seeds, d_alphas, d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   // Eval party 0
-  DpfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_seeds0, d_cws, d_xs);
+  DpfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_k0s, d_xs);
   CUDA_CHECK(cudaDeviceSynchronize());
   int4 h_y0s[kN];
   ToHost(h_y0s, d_ys, kN);
 
   // Eval party 1
-  DpfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_seeds1, d_cws, d_xs);
+  DpfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_k1s, d_xs);
   CUDA_CHECK(cudaDeviceSynchronize());
   int4 h_y1s[kN];
   ToHost(h_y1s, d_ys, kN);
@@ -162,12 +158,11 @@ static void DpfSample() {
   printf("  Verification: %d/%d correct\n", correct, kN);
 
   cudaFree(d_seeds);
-  cudaFree(d_seeds0);
-  cudaFree(d_seeds1);
   cudaFree(d_alphas);
   cudaFree(d_betas);
   cudaFree(d_xs);
-  cudaFree(d_cws);
+  cudaFree(d_k0s);
+  cudaFree(d_k1s);
   cudaFree(d_ys);
 }
 
@@ -176,7 +171,6 @@ static void DcfSample() {
 
   // Prepare host data
   int4 h_seeds[kN * 2];
-  int4 h_seeds0[kN], h_seeds1[kN];
   In h_alphas[kN];
   int4 h_betas[kN];
   In h_xs[kN];
@@ -185,8 +179,6 @@ static void DcfSample() {
   for (int i = 0; i < kN; i++) {
     h_seeds[i * 2] = {rand(), rand(), rand(), rand() & ~1};
     h_seeds[i * 2 + 1] = {rand(), rand(), rand(), rand() & ~1};
-    h_seeds0[i] = h_seeds[i * 2];
-    h_seeds1[i] = h_seeds[i * 2 + 1];
     h_alphas[i] = 1 + (rand() % 254);  // alpha in [1, 254] to allow x < and x > cases
     h_betas[i] = {rand(), rand(), rand(), rand() & ~1};
     h_xs[i] = rand() & 0xFF;
@@ -194,32 +186,31 @@ static void DcfSample() {
 
   // Copy to device
   int4 *d_seeds = ToDevice(h_seeds, kN * 2);
-  int4 *d_seeds0 = ToDevice(h_seeds0, kN);
-  int4 *d_seeds1 = ToDevice(h_seeds1, kN);
   In *d_alphas = ToDevice(h_alphas, kN);
   int4 *d_betas = ToDevice(h_betas, kN);
   In *d_xs = ToDevice(h_xs, kN);
 
   // Allocate output buffers
-  Dcf::Cw *d_cws;
+  Dcf::Key *d_k0s, *d_k1s;
   int4 *d_ys;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(Dcf::Cw) * (kInBits + 1) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k0s, sizeof(Dcf::Key) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k1s, sizeof(Dcf::Key) * kN));
   CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * kN));
 
   int blocks = (kN + kThreadsPerBlock - 1) / kThreadsPerBlock;
 
   // Gen
-  DcfGenKernel<<<blocks, kThreadsPerBlock>>>(d_cws, d_seeds, d_alphas, d_betas);
+  DcfGenKernel<<<blocks, kThreadsPerBlock>>>(d_k0s, d_k1s, d_seeds, d_alphas, d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   // Eval party 0
-  DcfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_seeds0, d_cws, d_xs);
+  DcfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_k0s, d_xs);
   CUDA_CHECK(cudaDeviceSynchronize());
   int4 h_y0s[kN];
   ToHost(h_y0s, d_ys, kN);
 
   // Eval party 1
-  DcfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_seeds1, d_cws, d_xs);
+  DcfEvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_k1s, d_xs);
   CUDA_CHECK(cudaDeviceSynchronize());
   int4 h_y1s[kN];
   ToHost(h_y1s, d_ys, kN);
@@ -234,12 +225,11 @@ static void DcfSample() {
   printf("  Verification: %d/%d correct\n", correct, kN);
 
   cudaFree(d_seeds);
-  cudaFree(d_seeds0);
-  cudaFree(d_seeds1);
   cudaFree(d_alphas);
   cudaFree(d_betas);
   cudaFree(d_xs);
-  cudaFree(d_cws);
+  cudaFree(d_k0s);
+  cudaFree(d_k1s);
   cudaFree(d_ys);
 }
 

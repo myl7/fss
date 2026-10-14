@@ -124,91 +124,42 @@ public:
   static_assert(sizeof(Cw) == 16);
 
   /**
+   * A party's key: the correction words, the final correction word, and the party's initial
+   * seed. Both parties share the same correction words and the final correction word, and
+   * differ in the seed.
+   */
+  struct Key {
+    Cw cws[kDepth];
+    int4 fcw;
+    int4 s0;
+  };
+
+  /**
    * Key generation method.
    *
-   * @param cws Pre-allocated array of Cw as returns. The array size must be kDepth.
-   * @param fcw Final correction word as return. It carries the packed beta.
+   * @param k0, k1 Returned keys of the two parties.
    * @param s0s 2 initial seeds. Users can randomly sample them.
    * @param a $a$. Its low log2(kLanes) bits select the lane within the output block.
    * @param beta $b$. Must fit in out_bits bits.
-   *
-   * The key for party i consists of cws + fcw + s0s[i].
    */
-  __host__ __device__ void Gen(Cw cws[], int4 &fcw, const int4 s0s[2], In a, uint64_t beta) {
-    assert(beta <= kBetaMax);
-
-    int4 packed_beta = PackBeta(a, beta);
-
-    // node1 starts with the control bit set, so the path difference delta keeps LSB 1 and
-    // exactly one party has t=1 on the path at every level.
-    int4 node0 = util::SetLsb(s0s[0], false);
-    int4 node1 = util::SetLsb(s0s[1], true);
-    int4 delta = util::Xor(node0, node1);  // LSB = 0^1 = 1
-
-    for (int i = 0; i < kDepth; ++i) {
-      int4 h0 = prg.Gen(util::Xor(hash_key, node0))[0];
-      int4 h1 = prg.Gen(util::Xor(hash_key, node1))[0];
-
-      bool a_bit = (a >> (in_bits - 1 - i)) & 1;
-
-      // CW = h0 ^ h1 ^ (!a_bit ? delta : 0)
-      // When a_bit=0 (go left): non-alpha is right, CW = h0^h1^delta makes right0=right1
-      // When a_bit=1 (go right): non-alpha is left, CW = h0^h1 makes left0=left1
-      int4 cw = util::Xor(h0, h1);
-      if (!a_bit) cw = util::Xor(cw, delta);
-
-      cws[i] = {cw};
-
-      bool t0 = util::GetLsb(node0);
-      bool t1 = util::GetLsb(node1);
-
-      // node_b = h_b ^ (a_bit ? node_b : 0) ^ (t_b ? cw : 0)
-      int4 zero4 = {0, 0, 0, 0};
-      int4 ab_mask0 = a_bit ? node0 : zero4;
-      int4 ab_mask1 = a_bit ? node1 : zero4;
-      int4 t0_mask = t0 ? cw : zero4;
-      int4 t1_mask = t1 ? cw : zero4;
-
-      node0 = util::Xor(util::Xor(h0, ab_mask0), t0_mask);
-      node1 = util::Xor(util::Xor(h1, ab_mask1), t1_mask);
-
-      // delta = node0 ^ node1 for the next level; stays the root seed XOR
-      delta = util::Xor(node0, node1);
-    }
-
-    // The leaf hash masks the constant path difference, see the file-level details.
-    int4 leaf0 = prg.Gen(util::Xor(hash_key, node0))[0];
-    int4 leaf1 = prg.Gen(util::Xor(hash_key, node1))[0];
-    fcw = util::Xor(util::Xor(packed_beta, leaf0), leaf1);
+  __host__ __device__ void Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a, uint64_t beta) {
+    Gen(k0.cws, k0.fcw, s0s.data(), a, beta);
+    for (int i = 0; i < kDepth; ++i) k1.cws[i] = k0.cws[i];
+    k1.fcw = k0.fcw;
+    k0.s0 = s0s[0];
+    k1.s0 = s0s[1];
   }
 
   /**
    * Evaluation method.
    *
    * @param b Party index. False for 0 and true for 1. $i$.
-   * @param s0 Initial seed of the party.
-   * @param cws Returned by Gen().
-   * @param fcw Final correction word returned by Gen().
+   * @param key The party's key returned by Gen().
    * @param x Evaluated input. $x$.
    * @return Output share block containing $x$. Extract() reads the lane of $x$ from it.
    */
-  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], int4 fcw, In x) {
-    int4 node = util::SetLsb(s0, b);
-
-    for (int i = 0; i < kDepth; ++i) {
-      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
-      bool t = util::GetLsb(node);
-
-      int4 h = prg.Gen(util::Xor(hash_key, node))[0];
-
-      int4 zero4 = {0, 0, 0, 0};
-      int4 xb_mask = x_bit ? node : zero4;
-      int4 t_mask = t ? cws[i].s : zero4;
-
-      node = util::Xor(util::Xor(h, xb_mask), t_mask);
-    }
-
-    return ConvertLeaf(node, fcw);
+  __host__ __device__ int4 Eval(bool b, const Key &key, In x) {
+    return Eval(b, key.s0, key.cws, key.fcw, x);
   }
 
   /**
@@ -267,13 +218,84 @@ public:
    * (j + 1) * kLanes - 1.
    *
    * @param b Party index. False for 0 and true for 1. $i$.
-   * @param s0 Initial seed of the party.
-   * @param cws Correction words returned by Gen().
-   * @param fcw Final correction word returned by Gen().
+   * @param key The party's key returned by Gen().
    * @param ys Pre-allocated output array. Its size must be at least 2 ** kDepth.
    *
    * Support parallel using OpenMP.
    */
+  void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys) {
+    EvalAll(b, key.s0, key.cws, key.fcw, ys.data());
+  }
+
+private:
+  __host__ __device__ void Gen(Cw cws[], int4 &fcw, const int4 s0s[2], In a, uint64_t beta) {
+    assert(beta <= kBetaMax);
+
+    int4 packed_beta = PackBeta(a, beta);
+
+    // node1 starts with the control bit set, so the path difference delta keeps LSB 1 and
+    // exactly one party has t=1 on the path at every level.
+    int4 node0 = util::SetLsb(s0s[0], false);
+    int4 node1 = util::SetLsb(s0s[1], true);
+    int4 delta = util::Xor(node0, node1);  // LSB = 0^1 = 1
+
+    for (int i = 0; i < kDepth; ++i) {
+      int4 h0 = prg.Gen(util::Xor(hash_key, node0))[0];
+      int4 h1 = prg.Gen(util::Xor(hash_key, node1))[0];
+
+      bool a_bit = (a >> (in_bits - 1 - i)) & 1;
+
+      // CW = h0 ^ h1 ^ (!a_bit ? delta : 0)
+      // When a_bit=0 (go left): non-alpha is right, CW = h0^h1^delta makes right0=right1
+      // When a_bit=1 (go right): non-alpha is left, CW = h0^h1 makes left0=left1
+      int4 cw = util::Xor(h0, h1);
+      if (!a_bit) cw = util::Xor(cw, delta);
+
+      cws[i] = {cw};
+
+      bool t0 = util::GetLsb(node0);
+      bool t1 = util::GetLsb(node1);
+
+      // node_b = h_b ^ (a_bit ? node_b : 0) ^ (t_b ? cw : 0)
+      int4 zero4 = {0, 0, 0, 0};
+      int4 ab_mask0 = a_bit ? node0 : zero4;
+      int4 ab_mask1 = a_bit ? node1 : zero4;
+      int4 t0_mask = t0 ? cw : zero4;
+      int4 t1_mask = t1 ? cw : zero4;
+
+      node0 = util::Xor(util::Xor(h0, ab_mask0), t0_mask);
+      node1 = util::Xor(util::Xor(h1, ab_mask1), t1_mask);
+
+      // delta = node0 ^ node1 for the next level; stays the root seed XOR
+      delta = util::Xor(node0, node1);
+    }
+
+    // The leaf hash masks the constant path difference, see the file-level details.
+    int4 leaf0 = prg.Gen(util::Xor(hash_key, node0))[0];
+    int4 leaf1 = prg.Gen(util::Xor(hash_key, node1))[0];
+    fcw = util::Xor(util::Xor(packed_beta, leaf0), leaf1);
+  }
+
+  // Seed + correction-words form used by the internal recursion and tests.
+  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], int4 fcw, In x) {
+    int4 node = util::SetLsb(s0, b);
+
+    for (int i = 0; i < kDepth; ++i) {
+      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
+      bool t = util::GetLsb(node);
+
+      int4 h = prg.Gen(util::Xor(hash_key, node))[0];
+
+      int4 zero4 = {0, 0, 0, 0};
+      int4 xb_mask = x_bit ? node : zero4;
+      int4 t_mask = t ? cws[i].s : zero4;
+
+      node = util::Xor(util::Xor(h, xb_mask), t_mask);
+    }
+
+    return ConvertLeaf(node, fcw);
+  }
+
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 fcw, int4 ys[]) {
     int4 node = util::SetLsb(s0, b);
 
@@ -294,7 +316,6 @@ public:
     }
   }
 
-private:
   __host__ __device__ int4 ConvertLeaf(int4 node, int4 fcw) {
     int4 leaf = prg.Gen(util::Xor(hash_key, node))[0];
     if (util::GetLsb(node)) leaf = util::Xor(leaf, fcw);

@@ -13,6 +13,9 @@
  * Run the matching Relayout*Gpu() once per key after Gen(); the relayout cost
  * amortizes over every later point evaluation, same as Gen itself sits outside
  * the timed loop.
+ *
+ * The query points are 32-bit, so these kernels support input domains up to
+ * 2^32 regardless of the scheme's wider In type.
  */
 #ifndef FSS_POINT_EVAL_GPU_CUH_
 #define FSS_POINT_EVAL_GPU_CUH_

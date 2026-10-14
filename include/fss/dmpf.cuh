@@ -90,23 +90,16 @@ public:
   Prp prp;
 
   /**
-     * Per-bucket key containing the inner DPF key data.
-     */
-  struct BucketKey {
-    typename InnerDpf::Cw cws[bucket_bits + 1];
-    int4 s0;
-  };
-
-  /**
      * DMPF key for one party.
      *
      * Stores the PRP seed, runtime parameters from Gen, and per-bucket inner DPF keys.
+     * Both parties share each bucket's correction words and differ in the seed.
      */
   struct Key {
     int4 sigma;
     int m_rt;       ///< Runtime bucket count used during Gen.
     int b_size_rt;  ///< Runtime bucket size used during Gen.
-    BucketKey bks[m];
+    typename InnerDpf::Key bks[m];
   };
 
   /**
@@ -120,10 +113,10 @@ public:
      * @param b_bufs Corresponding beta values. Will be clamped.
      * @param t Actual number of points (<= max_points).
      * @param ch_retry Max Cuckoo hash eviction attempts.
-     * @return 0 on success, 1 on failure (Cuckoo hash or inner DPF Gen failed).
+     * @return 0 on success, 1 on failure (Cuckoo hashing failed).
      */
-  int Gen(Key &k0, Key &k1, int4 sigma, cuda::std::span<const cuda::std::array<int4, 2>, m> s0s, std::span<const In> as,
-      std::span<const int4> b_bufs, int t, int ch_retry = 1000) {
+  int Gen(Key &k0, Key &k1, int4 sigma, cuda::std::span<const cuda::std::array<int4, 2>, m> s0s,
+      cuda::std::span<const In> as, cuda::std::span<const int4> b_bufs, int t, int ch_retry = 1000) {
     assert(t <= max_points);
 
     k0.sigma = sigma;
@@ -146,7 +139,8 @@ public:
     cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
     std::vector<std::pair<int, int>> table(m_, {-1, -1});
     cuckoo_hash::Compact<Prp, In, kappa> compact{prp};
-    int ret = compact.Run(as.first(t), m_, sigma, n, b_rt, ch_retry, std::span<std::pair<int, int>>(table));
+    int ret = compact.Run(std::span<const In>(as.data(), t), m_, sigma, n, b_rt, ch_retry,
+        std::span<std::pair<int, int>>(table));
     if (ret != 0) return 1;
 
     // Generate inner DPF keys for each bucket.
@@ -165,14 +159,9 @@ public:
         b_buf_prime = b_bufs[j];
       }
 
-      inner_dpf.Gen(k0.bks[i].cws, s0s[i].data(), static_cast<uint>(a_prime), b_buf_prime);
-
-      k0.bks[i].s0 = s0s[i][0];
-      k1.bks[i].s0 = s0s[i][1];
-
-      for (int l = 0; l < bucket_bits + 1; ++l) {
-        k1.bks[i].cws[l] = k0.bks[i].cws[l];
-      }
+      // The inner Gen shares the correction words between the parties and differs in the seed.
+      typename InnerDpf::Key &bk = k0.bks[i];
+      inner_dpf.Gen(bk, k1.bks[i], s0s[i], static_cast<uint>(a_prime), b_buf_prime);
     }
 
     return 0;
@@ -188,7 +177,7 @@ public:
      * @param xs Input points to evaluate.
      * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
      */
-  void BatchEval(bool b, const Key &key, std::span<const In> xs, std::span<int4> ys) {
+  void BatchEval(bool b, const Key &key, cuda::std::span<const In> xs, cuda::std::span<int4> ys) {
     size_t eta = xs.size();
     assert(ys.size() >= eta);
 
@@ -232,7 +221,7 @@ public:
     InnerDpf inner_dpf{prg};
     for (int i = 0; i < m; ++i) {
       for (auto &[j, omega] : inputs[i]) {
-        int4 y = inner_dpf.Eval(b, key.bks[i].s0, key.bks[i].cws, j);
+        int4 y = inner_dpf.Eval(b, key.bks[i], j);
 
         // Accumulate output.
         ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();
@@ -247,7 +236,7 @@ public:
    * @param key This party's key.
    * @param ys Output shares (pre-allocated, size == n). Will be zero-initialized.
    */
-  void EvalAll(bool b, const Key &key, std::span<int4> ys) {
+  void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys) {
     assert(ys.size() == n);
 
     int bucket_count = key.m_rt;
@@ -298,7 +287,7 @@ public:
     InnerDpf inner_dpf{prg};
     std::vector<int4> bucket_ys(1ULL << bucket_bits, {0, 0, 0, 0});
     for (int i = 0; i < bucket_count; ++i) {
-      inner_dpf.EvalAll(b, key.bks[i].s0, key.bks[i].cws, bucket_ys.data());
+      inner_dpf.EvalAll(b, key.bks[i], cuda::std::span<int4>(bucket_ys.data(), bucket_ys.size()));
 
       // merge
       for (auto &[j, omega] : inputs[i]) {

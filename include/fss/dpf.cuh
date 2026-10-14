@@ -81,15 +81,61 @@ public:
   static_assert(sizeof(Cw) == 32);
 
   /**
+     * A party's key: the correction words plus the party's initial seed.
+     * Both parties share the same correction words and differ in the seed.
+     */
+  struct Key {
+    Cw cws[in_bits + 1];
+    int4 s0;
+  };
+
+  /**
      * Key generation method.
      *
-     * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits + 1.
+     * @param k0, k1 Returned keys of the two parties.
      * @param s0s 2 initial seeds. Users can randomly sample them.
      * @param a $a$.
      * @param b_buf $b$. Will be clamped and converted to the group element.
-     *
-     * The key for party i consists of cws + s0s[i].
      */
+  __host__ __device__ void Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+    Gen(k0.cws, s0s.data(), a, b_buf);
+    for (int i = 0; i <= in_bits; ++i) k1.cws[i] = k0.cws[i];
+    k0.s0 = s0s[0];
+    k1.s0 = s0s[1];
+  }
+
+  /**
+     * Evaluation method.
+     *
+     * @param b Party index. False for 0 and true for 1. $i$.
+     * @param key The party's key returned by Gen().
+     * @param x Evaluated input. $x$.
+     * @return Output share. $y_{i,x}$.
+     */
+  __host__ __device__ int4 Eval(bool b, const Key &key, In x) {
+    return Eval(b, key.s0, key.cws, x);
+  }
+
+  /**
+     * Full domain evaluation method.
+     *
+     * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
+     * Store the outputs sequentially.
+     *
+     * @param b Party index. False for 0 and true for 1.
+     * @param key The party's key returned by Gen().
+     * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
+     *
+     * Support parallel using OpenMP.
+     * The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads.
+     * par_depth = -1: use ceil(log(num of threads)).
+     * par_depth = 0: no parallelism, i.e., sequential execution.
+     */
+  void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys) {
+    EvalAll(b, key.s0, key.cws, ys.data());
+  }
+
+private:
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
     int4 s0 = s0s[0];
     s0 = util::SetLsb(s0, false);
@@ -158,15 +204,7 @@ public:
     cws[in_bits] = {v_cw_np1.Into(), false};
   }
 
-  /**
-     * Evaluation method.
-     *
-     * @param b Party index. False for 0 and true for 1. $i$.
-     * @param s0 Initial seed of the party.
-     * @param cws Returned by Gen().
-     * @param x Evaluated input. $x$.
-     * @return Output share. $y_{i,x}$.
-     */
+  // Seed + correction-words form used by the internal recursion and tests.
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x) {
     int4 s = s0;
     s = util::SetLsb(s, false);
@@ -213,22 +251,6 @@ public:
     return y.Into();
   }
 
-  /**
-     * Full domain evaluation method.
-     *
-     * Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.
-     * Store the outputs sequentially.
-     *
-     * @param b Party index. False for 0 and true for 1.
-     * @param s0 Initial seed of the party.
-     * @param cws Correction words returned by Gen().
-     * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
-     *
-     * Support parallel using OpenMP.
-     * The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads.
-     * par_depth = -1: use ceil(log(num of threads)).
-     * par_depth = 0: no parallelism, i.e., sequential execution.
-     */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
     int4 st = s0;
     bool t = b;
@@ -246,7 +268,6 @@ public:
     EvalTree(b, st, cws, ys, l, r, i, par_depth_);
   }
 
-private:
   void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_) {
     bool t = util::GetLsb(st);
     int4 s = st;

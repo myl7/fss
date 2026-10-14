@@ -98,25 +98,16 @@ public:
   Prp prp;
 
   /**
-     * Per-bucket key containing the inner VDPF key data.
-     */
-  struct BucketKey {
-    typename InnerVdpf::Cw cws[bucket_bits];
-    cuda::std::array<int4, 4> cs;
-    int4 ocw;
-    int4 s0;
-  };
-
-  /**
      * VDMPF key for one party.
      *
      * Stores the PRP seed, runtime parameters from Gen, and per-bucket inner VDPF keys.
+     * Both parties share each bucket's cws, cs, and ocw and differ in the seed.
      */
   struct Key {
     int4 sigma;
     int m_rt;       ///< Runtime bucket count used during Gen.
     int b_size_rt;  ///< Runtime bucket size used during Gen.
-    BucketKey bks[m];
+    typename InnerVdpf::Key bks[m];
   };
 
   /**
@@ -132,8 +123,8 @@ public:
      * @param ch_retry Max Cuckoo hash eviction attempts.
      * @return 0 on success, 1 on failure (Cuckoo hash or inner VDPF Gen failed).
      */
-  int Gen(Key &k0, Key &k1, int4 sigma, cuda::std::span<const cuda::std::array<int4, 2>, m> s0s, std::span<const In> as,
-      std::span<const int4> b_bufs, int t, int ch_retry = 1000) {
+  int Gen(Key &k0, Key &k1, int4 sigma, cuda::std::span<const cuda::std::array<int4, 2>, m> s0s,
+      cuda::std::span<const In> as, cuda::std::span<const int4> b_bufs, int t, int ch_retry = 1000) {
     assert(t <= max_points);
 
     k0.sigma = sigma;
@@ -156,7 +147,8 @@ public:
     cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
     std::vector<std::pair<int, int>> table(m_, {-1, -1});
     cuckoo_hash::Compact<Prp, In, kappa> compact{prp};
-    int ret = compact.Run(as.first(t), m_, sigma, n, b_rt, ch_retry, std::span<std::pair<int, int>>(table));
+    int ret = compact.Run(std::span<const In>(as.data(), t), m_, sigma, n, b_rt, ch_retry,
+        std::span<std::pair<int, int>>(table));
     if (ret != 0) return 1;
 
     // Generate inner VDPF keys for each bucket.
@@ -174,15 +166,10 @@ public:
         b_buf_prime = b_bufs[j];
       }
 
-      ret = inner_vdpf.Gen(k0.bks[i].cws, k0.bks[i].cs, k0.bks[i].ocw, s0s[i], static_cast<uint>(a_prime), b_buf_prime);
+      // The inner Gen shares cws, cs, and ocw between the parties and differs in the seed.
+      typename InnerVdpf::Key &bk = k0.bks[i];
+      ret = inner_vdpf.Gen(bk, k1.bks[i], s0s[i], static_cast<uint>(a_prime), b_buf_prime);
       if (ret != 0) return 1;
-
-      k0.bks[i].s0 = s0s[i][0];
-      k1.bks[i].s0 = s0s[i][1];
-      // Copy shared parts.
-      for (int l = 0; l < bucket_bits; ++l) k1.bks[i].cws[l] = k0.bks[i].cws[l];
-      k1.bks[i].cs = k0.bks[i].cs;
-      k1.bks[i].ocw = k0.bks[i].ocw;
     }
 
     return 0;
@@ -199,7 +186,8 @@ public:
      * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
      * @param pi Proof output.
      */
-  void BatchEval(bool b, const Key &key, std::span<const In> xs, std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+  void BatchEval(bool b, const Key &key, cuda::std::span<const In> xs, cuda::std::span<int4> ys,
+      cuda::std::array<int4, 4> &pi) {
     size_t eta = xs.size();
     assert(ys.size() >= eta);
 
@@ -244,10 +232,7 @@ public:
       cuda::std::array<int4, 4> pi_bucket = {key.bks[i].cs[0], key.bks[i].cs[1], key.bks[i].cs[2], key.bks[i].cs[3]};
 
       for (auto &[j, omega] : inputs[i]) {
-        int4 y;
-        auto pi_tilde = inner_vdpf.Eval(b, key.bks[i].s0,
-            cuda::std::span<const typename InnerVdpf::Cw>(key.bks[i].cws, bucket_bits),
-            cuda::std::span<const int4, 4>(key.bks[i].cs), key.bks[i].ocw, j, y);
+        auto [y, pi_tilde] = inner_vdpf.Eval(b, key.bks[i], j);
 
         // Accumulate output.
         ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();

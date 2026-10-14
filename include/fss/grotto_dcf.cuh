@@ -52,18 +52,33 @@ public:
   Prg prg;
 
   /**
+     * A party's key: the correction words plus the party's initial seed.
+     * Both parties share the same correction words and differ in the seed.
+     */
+  struct Key {
+    Cw cws[in_bits + 1];
+    int4 s0;
+  };
+
+  /**
      * Key generation method. Delegates to Dpf::Gen with beta=0.
      *
-     * @param cws Pre-allocated array of Cw. Size must be in_bits + 1.
+     * @param k0, k1 Returned keys of the two parties.
      * @param s0s 2 initial seeds. Users can randomly sample them.
      * @param a The secret comparison threshold.
-     *
-     * The key for party i consists of cws + s0s[i].
      */
-  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a) {
+  __host__ __device__ void Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a) {
     DpfType dpf{prg};
+    typename DpfType::Key dk0;
+    typename DpfType::Key dk1;
     int4 beta = {0, 0, 0, 0};
-    dpf.Gen(cws, s0s, a, beta);
+    dpf.Gen(dk0, dk1, s0s, a, beta);
+    for (int i = 0; i <= in_bits; ++i) {
+      k0.cws[i] = dk0.cws[i];
+      k1.cws[i] = dk1.cws[i];
+    }
+    k0.s0 = s0s[0];
+    k1.s0 = s0s[1];
   }
 
   /**
@@ -87,15 +102,17 @@ public:
      * Phase 2a: O(N) XOR operations to build the parity segment tree bottom-up.
      *
      * @param pt ParityTree with p pre-allocated to size 2*N-1 where N = 2^in_bits.
-     *           pt.b must be set to the party index before calling.
-     * @param s0 Initial seed of the party.
-     * @param cws Correction words from Gen().
+     *           pt.b is set to b.
+     * @param b Party index.
+     * @param key The party's key returned by Gen().
      */
-  void Preprocess(ParityTree &pt, int4 s0, const Cw cws[]) {
+  void Preprocess(ParityTree &pt, bool b, const Key &key) {
     constexpr size_t N = 1ULL << in_bits;
 
+    pt.b = b;
+
     // Phase 1: expand tree, write leaf control bits to pt.p[N-1 .. 2N-2]
-    ExpandTree(pt.b, s0, cws, pt.p + (N - 1));
+    ExpandTree(b, key.s0, key.cws, pt.p + (N - 1));
 
     // Phase 2a: build parity segment tree bottom-up
     for (size_t j = N - 2; j < N - 1; --j) {
@@ -143,16 +160,15 @@ public:
      * Phase 2b: O(N) prefix-sum (running XOR) over leaf control bits.
      *
      * @param b Party index.
-     * @param s0 Initial seed of the party.
-     * @param cws Correction words from Gen().
+     * @param key The party's key returned by Gen().
      * @param ys Pre-allocated output array of size N = 2^in_bits.
      *           ys[x] = party b's share of 1[alpha <= x].
      */
-  void EvalAll(bool b, int4 s0, const Cw cws[], bool ys[]) {
+  void EvalAll(bool b, const Key &key, cuda::std::span<bool> ys) {
     constexpr size_t N = 1ULL << in_bits;
 
     // Phase 1: expand tree to get leaf control bits into ys[]
-    ExpandTree(b, s0, cws, ys);
+    ExpandTree(b, key.s0, key.cws, ys.data());
 
     // Phase 2b: prefix-sum scan (running XOR)
     // ys[x] currently holds leaf x's control bit.
@@ -163,14 +179,7 @@ public:
   }
 
 private:
-  /**
-     * Expand the DPF tree and write leaf control bits.
-     *
-     * @param b Party index.
-     * @param s0 Initial seed of the party.
-     * @param cws Correction words from Gen().
-     * @param t Output array of size N = 2^in_bits for leaf control bits.
-     */
+  // Expand the DPF tree and write leaf control bits.
   void ExpandTree(bool b, int4 s0, const Cw cws[], bool t[]) {
     int4 st = s0;
     st = util::SetLsb(st, b);

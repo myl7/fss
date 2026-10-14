@@ -41,7 +41,7 @@ protected:
   using DcfType = fss::Dcf<kAlphaBits, Group, Prg, uint16_t, pred>;
 
   int4 s0s[2];
-  typename DcfType::Cw cws[kAlphaBits + 1];
+  typename DcfType::Key k0, k1;
   Prg prg;
 
   DcfTestBase(Prg p) : prg(p) {}
@@ -60,13 +60,13 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dcf.Gen(cws, s0s, kAlpha, b_buf);
+    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     constexpr size_t n = 1ULL << kAlphaBits;
     std::vector<int4> ys0(n), ys1(n);
 
-    dcf.EvalAll(false, s0s[0], cws, ys0.data());
-    dcf.EvalAll(true, s0s[1], cws, ys1.data());
+    dcf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    dcf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -93,7 +93,7 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dcf.Gen(cws, s0s, kAlpha, b_buf);
+    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -103,8 +103,8 @@ protected:
     for (int i = 0; i < 50; i++) {
       uint16_t x = dis_lt(gen);
 
-      int4 y0 = dcf.Eval(false, s0s[0], cws, x);
-      int4 y1 = dcf.Eval(true, s0s[1], cws, x);
+      int4 y0 = dcf.Eval(false, k0, x);
+      int4 y1 = dcf.Eval(true, k1, x);
 
       auto g0 = Group::From(y0);
       auto g1 = Group::From(y1);
@@ -121,8 +121,8 @@ protected:
     for (int i = 0; i < 50; i++) {
       uint16_t x = dis_ge(gen);
 
-      int4 y0 = dcf.Eval(false, s0s[0], cws, x);
-      int4 y1 = dcf.Eval(true, s0s[1], cws, x);
+      int4 y0 = dcf.Eval(false, k0, x);
+      int4 y1 = dcf.Eval(true, k1, x);
 
       auto g0 = Group::From(y0);
       auto g1 = Group::From(y1);
@@ -159,7 +159,7 @@ protected:
   using DcfType = fss::Dcf<kAlphaBits, Group, Prg, uint16_t>;
 
   int4 s0s[2];
-  DcfType::Cw cws[kAlphaBits + 1];
+  DcfType::Key k0, k1;
   cuda::std::array<EVP_CIPHER_CTX *, 4> ctxs;
 
   void SetUp() override {
@@ -210,7 +210,7 @@ TEST_F(DcfBytesAesTest, EvalLt) {
 
   int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
       static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-  dcf.Gen(cws, s0s, kAlpha, b_buf);
+  dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -220,8 +220,8 @@ TEST_F(DcfBytesAesTest, EvalLt) {
   for (int i = 0; i < 50; i++) {
     uint16_t x = dis_lt(gen);
 
-    int4 y0 = dcf.Eval(false, s0s[0], cws, x);
-    int4 y1 = dcf.Eval(true, s0s[1], cws, x);
+    int4 y0 = dcf.Eval(false, k0, x);
+    int4 y1 = dcf.Eval(true, k1, x);
 
     auto g0 = Group::From(y0);
     auto g1 = Group::From(y1);
@@ -238,8 +238,8 @@ TEST_F(DcfBytesAesTest, EvalLt) {
   for (int i = 0; i < 50; i++) {
     uint16_t x = dis_ge(gen);
 
-    int4 y0 = dcf.Eval(false, s0s[0], cws, x);
-    int4 y1 = dcf.Eval(true, s0s[1], cws, x);
+    int4 y0 = dcf.Eval(false, k0, x);
+    int4 y1 = dcf.Eval(true, k1, x);
 
     auto g0 = Group::From(y0);
     auto g1 = Group::From(y1);

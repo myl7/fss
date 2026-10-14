@@ -41,18 +41,18 @@ int main() {
   };
 
   // Key generation (done by a trusted dealer)
-  Gdcf::Cw cws[kInBits + 1];
-  dcf.Gen(cws, seeds, alpha);
+  Gdcf::Key k0, k1;
+  dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha);
 
   // Preprocess: each party expands its tree and builds a parity segment tree.
-  // pt.p must hold 2*N-1 bools, pt.b is the party index.
+  // pt.p must hold 2*N-1 bools; Preprocess sets pt.b to the party index.
   constexpr size_t N = size_t{1} << kInBits;
   auto p0 = std::make_unique<bool[]>(2 * N - 1);
   auto p1 = std::make_unique<bool[]>(2 * N - 1);
   Gdcf::ParityTree pt0{p0.get(), false};
   Gdcf::ParityTree pt1{p1.get(), true};
-  dcf.Preprocess(pt0, seeds[0], cws);
-  dcf.Preprocess(pt1, seeds[1], cws);
+  dcf.Preprocess(pt0, false, k0);
+  dcf.Preprocess(pt1, true, k1);
 
   // Evaluation: the parties XOR their bool shares; the result is x >= alpha
   bool y0 = Gdcf::Eval(pt0, alpha);
@@ -67,8 +67,8 @@ int main() {
   // Full-domain evaluation over all 2^8 inputs
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, seeds[0], cws, ys0.get());
-  dcf.EvalAll(true, seeds[1], cws, ys1.get());
+  dcf.EvalAll(false, k0, cuda::std::span<bool>(ys0.get(), N));
+  dcf.EvalAll(true, k1, cuda::std::span<bool>(ys1.get(), N));
 
   int mismatches = 0;
   for (size_t i = 0; i < N; ++i) {

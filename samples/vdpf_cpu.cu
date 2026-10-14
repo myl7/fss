@@ -60,27 +60,20 @@ int main() {
 
   // Key generation. Gen() returns 1 when the sampled seeds hit a bad case;
   // the dealer retries with fresh seeds then.
-  Vdpf::Cw cws[kInBits];
-  cuda::std::array<int4, 4> cs;
-  int4 ocw;
+  Vdpf::Key k0, k1;
   int4 seeds[2];
   int ret;
   int r = 0;
   do {
     MakeSeeds(r, seeds);
-    ret = vdpf.Gen(cws, cs, ocw, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+    ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
     ++r;
   } while (ret != 0);
   printf("  Gen retried %d time(s)\n", r - 1);
 
   // Evaluation with proof. Each party also gets pi_tilde at every point.
-  int4 y0, y1;
-  auto pi_tilde0 =
-      vdpf.Eval(false, seeds[0], cuda::std::span<const Vdpf::Cw>(cws, kInBits),
-          cuda::std::span<const int4, 4>(cs), ocw, alpha, y0);
-  auto pi_tilde1 =
-      vdpf.Eval(true, seeds[1], cuda::std::span<const Vdpf::Cw>(cws, kInBits),
-          cuda::std::span<const int4, 4>(cs), ocw, alpha, y1);
+  auto [y0, pi_tilde0] = vdpf.Eval(false, k0, alpha);
+  auto [y1, pi_tilde1] = vdpf.Eval(true, k1, alpha);
   int4 sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
 
@@ -88,9 +81,9 @@ int main() {
   // With one evaluation the proof just aggregates that point's pi_tilde.
   cuda::std::array<int4, 4> pi0, pi1;
   vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(&pi_tilde0, 1),
-      cuda::std::span<const int4, 4>(cs), pi0);
+      cuda::std::span<const int4, 4>(k0.cs), pi0);
   vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(&pi_tilde1, 1),
-      cuda::std::span<const int4, 4>(cs), pi1);
+      cuda::std::span<const int4, 4>(k1.cs), pi1);
 
   // Verify: the two parties' proofs match iff they evaluated the same key
   printf("  Verify(pi0, pi1) == true?           %s\n",
@@ -99,10 +92,8 @@ int main() {
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
   int4 ys1[1 << kInBits];
-  vdpf.EvalAll(false, seeds[0], cuda::std::span<const Vdpf::Cw>(cws, kInBits),
-      cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys0), pi0);
-  vdpf.EvalAll(true, seeds[1], cuda::std::span<const Vdpf::Cw>(cws, kInBits),
-      cuda::std::span<const int4, 4>(cs), ocw, cuda::std::span<int4>(ys1), pi1);
+  vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys0), pi0);
+  vdpf.EvalAll(true, k1, cuda::std::span<int4>(ys1), pi1);
 
   int4 zero = {0, 0, 0, 0};
   int mismatches = 0;
