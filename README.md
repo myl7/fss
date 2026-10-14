@@ -419,6 +419,7 @@ Each figure is one platform, one scheme family per row — DCF (including Grotto
 Time axes are logarithmic and legends show each library's native output shape and PRG backend.
 Hardware, sampling, timing boundaries, and reproduction commands are in the [curve methodology](doc/bench_figures.md).
 The exact measured medians behind the curves, with per-domain values and pairwise library comparison, are on the [benchmark comparison site](https://myl7.github.io/fss/bench/).
+An implementation appears in a panel only where it provides that method on that platform.
 
 ![CPU benchmark operations](doc/figures/cpu-operations.svg)
 

@@ -61,7 +61,10 @@ export function figureGroups(records) {
       // Gen, Eval, and EvalAll columns stay aligned across families.
       FAMILIES.forEach(([family, familyLabel], row) => {
         operations.forEach((operation, column) => {
-          const rows = selected.filter(row_ => row_.family === family && row_.operation === operation);
+          // The historical FSS releases stay on the comparison site with full
+          // provenance; the figures compare current implementations.
+          const rows = selected.filter(row_ => row_.family === family && row_.operation === operation
+            && !['fss_v060', 'fss_v070'].includes(row_.library));
           if (rows.length) panels.push({family, familyLabel, operation, rows, row, column});
         });
       });

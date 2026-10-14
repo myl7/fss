@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* The comparison figures show current implementations: the historical FSS 0.6.0 and
+  0.7.0 curves moved to the benchmark comparison site (with full provenance), and the
+  figure notes state that an implementation appears in a panel only where it provides
+  that method on that platform.
 * The GPU benchmark curves moved to a new GPU reference host: `cs11369a`
   (Intel Xeon Platinum 8352V, NVIDIA A6000, SM 86, CUDA 12.6, GPU 0, launch pinned
   to CPU 100, shared-host CPU governor left unchanged). CPU curves stay on `cs659b`.

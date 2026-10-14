@@ -124,7 +124,14 @@ Main figures show logarithmic N and logarithmic time per key: CPU point
 operations in microseconds, GPU point operations in nanoseconds, and full
 evaluation in milliseconds. The block-size figure shows actual T and a
 logarithmic time axis. Render only successful positive measurements. Leave
-unsupported, failed, and unmeasured points absent. Captions must follow the
+unsupported, failed, and unmeasured points absent. A curve absent from a
+panel means the implementation does not provide that method on that
+platform or has no benchmark for it — GPU-DPF contributes only full-domain
+evaluation, Grotto DCF and the packed HalfTree DPF appear only in
+full-domain evaluation — so panels in the same row carry different numbers
+of curves. The figures compare current implementations; the historical FSS
+0.6.0 and 0.7.0 curves and every absent case stay available on the
+comparison site. Captions must follow the
 collected raw data.
 
 Each platform renders one figure: one scheme family per row — DCF (including
