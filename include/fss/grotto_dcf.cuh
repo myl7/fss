@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <cassert>
 #include <omp.h>
+#include <memory>
 #include <fss/dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/prg.cuh>
@@ -82,11 +83,11 @@ public:
   }
 
   /**
-     * Parity segment tree over leaf control bits.
-     *
-     * p[0..2N-2]: level-order binary tree where N = 2^in_bits.
-     * Root is p[0]. Leaf x has index p[x + N - 1].
-     * Internal node j: p[j] = p[2j+1] XOR p[2j+2].
+     * Non-owning view of a parity segment tree over leaf control bits, usable
+     * from both host and device (see Eval()). The parity bits live in external
+     * storage: e.g. the device buffer filled by GrottoDcfPreprocessGpu() for
+     * direct on-GPU point evaluation, or the buffer owned by PreprocessedTree
+     * and handed out by view().
      *
      * b: party index, needed for reconstructing comparison results.
      */
@@ -96,28 +97,47 @@ public:
   };
 
   /**
+     * Host-owned preprocessing result. Owns the 2 ** (in_bits + 1) - 1 parity
+     * bits and hands them to the device-usable ParityTree view.
+     *
+     * The parity bits form a level-order binary tree where N = 2^in_bits.
+     * Root is p[0]. Leaf x has index p[x + N - 1].
+     * Internal node j: p[j] = p[2j+1] XOR p[2j+2].
+     */
+  struct PreprocessedTree {
+    std::unique_ptr<bool[]> p;
+    bool b;
+    ParityTree view() const { return ParityTree{p.get(), b}; }
+  };
+
+  /**
      * Preprocess: expand DPF tree and build parity segment tree.
      *
      * Phase 1: O(N) PRG calls to expand the tree and extract leaf control bits.
      * Phase 2a: O(N) XOR operations to build the parity segment tree bottom-up.
      *
-     * @param pt ParityTree with p pre-allocated to size 2*N-1 where N = 2^in_bits.
-     *           pt.b is set to b.
      * @param b Party index.
      * @param key The party's key returned by Gen().
+     * @return Host-owned tree of 2 ** (in_bits + 1) - 1 parity bits, see
+     *         PreprocessedTree. Query it through Eval() directly or via
+     *         view() for a device-usable ParityTree.
      */
-  void Preprocess(ParityTree &pt, bool b, const Key &key) {
-    constexpr size_t N = 1ULL << in_bits;
+  PreprocessedTree Preprocess(bool b, const Key &key) {
+    constexpr size_t N = size_t{1} << in_bits;
 
+    PreprocessedTree pt;
+    pt.p = std::make_unique<bool[]>(2 * N - 1);
     pt.b = b;
 
     // Phase 1: expand tree, write leaf control bits to pt.p[N-1 .. 2N-2]
-    ExpandTree(b, key.s0, key.cws, pt.p + (N - 1));
+    ExpandTree(b, key.s0, key.cws, pt.p.get() + (N - 1));
 
     // Phase 2a: build parity segment tree bottom-up
     for (size_t j = N - 2; j < N - 1; --j) {
       pt.p[j] = pt.p[2 * j + 1] ^ pt.p[2 * j + 2];
     }
+
+    return pt;
   }
 
   /**
@@ -126,7 +146,9 @@ public:
      * Returns party b's share of 1[alpha <= x].
      * Internally queries endpoint e = x + 1, computing prefix-parity of [0, e).
      *
-     * @param pt ParityTree from Preprocess().
+     * @param pt ParityTree view of preprocessed parity bits, e.g.
+     *           PreprocessedTree::view() or a view over the device buffer
+     *           filled by GrottoDcfPreprocessGpu().
      * @param x Query point.
      * @return bool share such that share_0 XOR share_1 = 1[alpha <= x].
      */
@@ -149,6 +171,18 @@ public:
       }
     }
     return pi;
+  }
+
+  /**
+     * Host-side prefix-parity query on a PreprocessedTree returned by
+     * Preprocess().
+     *
+     * @param tree PreprocessedTree from Preprocess().
+     * @param x Query point.
+     * @return bool share such that share_0 XOR share_1 = 1[alpha <= x].
+     */
+  static bool Eval(const PreprocessedTree &tree, In x) {
+    return Eval(tree.view(), x);
   }
 
   /**

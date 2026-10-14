@@ -40,17 +40,12 @@ TEST_F(GrottoDcfChaChaTest, PreprocessEvalAll) {
   GrottoDcfType dcf{prg};
   constexpr size_t N = 1ULL << kAlphaBits;
 
-  auto p0 = std::make_unique<bool[]>(2 * N - 1);
-  auto p1 = std::make_unique<bool[]>(2 * N - 1);
-  GrottoDcfType::ParityTree pt0{p0.get()};
-  GrottoDcfType::ParityTree pt1{p1.get()};
-
-  dcf.Preprocess(pt0, false, k0);
-  dcf.Preprocess(pt1, true, k1);
+  auto tree0 = dcf.Preprocess(false, k0);
+  auto tree1 = dcf.Preprocess(true, k1);
 
   for (size_t x = 0; x < N; ++x) {
-    bool share0 = GrottoDcfType::Eval(pt0, static_cast<uint16_t>(x));
-    bool share1 = GrottoDcfType::Eval(pt1, static_cast<uint16_t>(x));
+    bool share0 = GrottoDcfType::Eval(tree0, static_cast<uint16_t>(x));
+    bool share1 = GrottoDcfType::Eval(tree1, static_cast<uint16_t>(x));
     bool result = share0 ^ share1;
     bool expected = (kAlpha <= x);
     EXPECT_EQ(result, expected) << "Failed at x=" << x;
@@ -81,16 +76,14 @@ TEST_F(GrottoDcfChaChaTest, PreprocessEvalMatchesEvalAll) {
   constexpr size_t N = 1ULL << kAlphaBits;
 
   // Preprocess path
-  auto p0 = std::make_unique<bool[]>(2 * N - 1);
-  GrottoDcfType::ParityTree pt0{p0.get()};
-  dcf.Preprocess(pt0, false, k0);
+  auto tree0 = dcf.Preprocess(false, k0);
 
   // EvalAll path
   auto ys0 = std::make_unique<bool[]>(N);
   dcf.EvalAll(false, k0, cuda::std::span<bool>(ys0.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
-    bool from_preprocess = GrottoDcfType::Eval(pt0, static_cast<uint16_t>(x));
+    bool from_preprocess = GrottoDcfType::Eval(tree0, static_cast<uint16_t>(x));
     EXPECT_EQ(from_preprocess, ys0[x]) << "Mismatch at x=" << x;
   }
 }

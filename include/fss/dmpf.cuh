@@ -105,25 +105,33 @@ public:
   /**
      * Key generation method.
      *
+     * Retries automatically on failure (Cuckoo hashing failed): up to 128 attempts, each
+     * deterministically perturbing sigma and the seeds from the previous one. The effective
+     * sigma and seeds of the successful attempt are written back, so after a successful call
+     * sigma and s0s hold the values the returned keys carry.
+     *
      * @param k0 Key output for party 0.
      * @param k1 Key output for party 1.
-     * @param sigma PRP seed. Users can randomly sample it.
+     * @param sigma PRP seed. Users can randomly sample it. Written back with the effective
+     *   value used by the successful attempt.
      * @param s0s m pairs of initial seeds for inner DPFs. Users can randomly sample them.
+     *   Written back with the effective seeds used by the successful attempt.
      * @param as Alpha values of t point functions.
      * @param b_bufs Corresponding beta values. Will be clamped.
      * @param t Actual number of points (<= max_points).
      * @param ch_retry Max Cuckoo hash eviction attempts.
-     * @return 0 on success, 1 on failure (Cuckoo hashing failed).
+     * @param retry Whether to retry with perturbed sigma and seeds on failure. If false, Gen
+     *   returns 1 immediately after the first failed attempt.
+     * @return 0 on success, 1 if the first attempt failed (with retry = false) or all 128
+     *   attempts failed (with retry = true).
      */
-  int Gen(Key &k0, Key &k1, int4 sigma, cuda::std::span<const cuda::std::array<int4, 2>, m> s0s,
-      cuda::std::span<const In> as, cuda::std::span<const int4> b_bufs, int t, int ch_retry = 1000) {
+  int Gen(Key &k0, Key &k1, int4 &sigma, cuda::std::span<cuda::std::array<int4, 2>, m> s0s,
+      cuda::std::span<const In> as, cuda::std::span<const int4> b_bufs, int t, int ch_retry = 1000,
+      bool retry = true) {
     assert(t <= max_points);
-
-    k0.sigma = sigma;
-    k1.sigma = sigma;
+    assert(t >= 30);
 
     // Compute runtime bucket count and bucket size.
-    assert(t >= 30);
     int m_ = cuckoo_hash::ChBucket(t, ch_lambda);
     assert(m_ <= m);
     __uint128_t n128 = static_cast<__uint128_t>(n);
@@ -135,36 +143,54 @@ public:
     k0.b_size_rt = b_rt;
     k1.b_size_rt = b_rt;
 
-    // Run Cuckoo hashing.
     cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
-    std::vector<std::pair<int, int>> table(m_, {-1, -1});
     cuckoo_hash::Compact<Prp, In, kappa> compact{prp};
-    int ret = compact.Run(std::span<const In>(as.data(), t), m_, sigma, n, b_rt, ch_retry,
-        std::span<std::pair<int, int>>(table));
-    if (ret != 0) return 1;
 
-    // Generate inner DPF keys for each bucket.
-    InnerDpf inner_dpf{prg};
+    for (int attempt = 0; attempt < 128; ++attempt) {
+      k0.sigma = sigma;
+      k1.sigma = sigma;
 
-    for (int i = 0; i < m; ++i) {
-      uint a_prime = 0;
-      int4 b_buf_prime = {0, 0, 0, 0};
+      // Run Cuckoo hashing.
+      std::vector<std::pair<int, int>> table(m_, {-1, -1});
+      int ret = compact.Run(std::span<const In>(as.data(), t), m_, sigma, n, b_rt, ch_retry,
+          std::span<std::pair<int, int>>(table));
 
-      if (i < m_ && table[i].first != -1) {
-        int j = table[i].first;   // index into as
-        int k = table[i].second;  // hash function that placed it
-        auto [bucket, index] = prp_hash.Locate(sigma, as[j], k, n, b_rt);
-        a_prime = static_cast<uint>(index);
-        assert(a_prime < (1u << bucket_bits));
-        b_buf_prime = b_bufs[j];
+      // Generate inner DPF keys for each bucket.
+      if (ret == 0) {
+        InnerDpf inner_dpf{prg};
+
+        for (int i = 0; i < m; ++i) {
+          uint a_prime = 0;
+          int4 b_buf_prime = {0, 0, 0, 0};
+
+          if (i < m_ && table[i].first != -1) {
+            int j = table[i].first;   // index into as
+            int k = table[i].second;  // hash function that placed it
+            auto [bucket, index] = prp_hash.Locate(sigma, as[j], k, n, b_rt);
+            a_prime = static_cast<uint>(index);
+            assert(a_prime < (1u << bucket_bits));
+            b_buf_prime = b_bufs[j];
+          }
+
+          // The inner Gen shares the correction words between the parties and differs in the seed.
+          typename InnerDpf::Key &bk = k0.bks[i];
+          inner_dpf.Gen(bk, k1.bks[i], s0s[i], static_cast<uint>(a_prime), b_buf_prime);
+        }
+
+        return 0;
       }
 
-      // The inner Gen shares the correction words between the parties and differs in the seed.
-      typename InnerDpf::Key &bk = k0.bks[i];
-      inner_dpf.Gen(bk, k1.bks[i], s0s[i], static_cast<uint>(a_prime), b_buf_prime);
+      if (!retry) return 1;
+
+      // Deterministically perturb the PRP seed and the initial seeds, then retry.
+      sigma.x += 1;
+      for (int i = 0; i < m; ++i) {
+        s0s[i][0].x += 1;
+        s0s[i][1].y += 1;
+      }
     }
 
-    return 0;
+    return 1;
   }
 
   /**

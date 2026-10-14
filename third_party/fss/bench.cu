@@ -474,18 +474,15 @@ static void BM_CpuGrottoDcfGen(benchmark::State &state) {
 }
 
 static void BM_CpuGrottoDcfEval(benchmark::State &state) {
-  constexpr size_t n = size_t{1} << kInBits;
   int4 seeds[2] = {kSeeds[0], kSeeds[1]};
   typename GrottoDcfT::Key k0, k1;
   AesCtx<2> ctx;
   GrottoDcfT dcf{ctx.prg};
   dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha);
-  auto p = std::make_unique<bool[]>(2 * n - 1);
-  typename GrottoDcfT::ParityTree pt{p.get(), false};
-  dcf.Preprocess(pt, false, k0);
+  auto tree = dcf.Preprocess(false, k0);
   uint32_t x = 0;
   for (auto _ : state) {
-    bool y = GrottoDcfT::Eval(pt, x);
+    bool y = GrottoDcfT::Eval(tree, x);
     benchmark::DoNotOptimize(y);
     x = (x + 1) & ((1u << kInBits) - 1);
   }
@@ -499,13 +496,11 @@ static void BM_CpuGrottoDcfEvalAll(benchmark::State &state) {
   GrottoDcfT dcf{ctx.prg};
   dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha);
   CheckCpuGrottoFull(k0, k1);
-  auto p = std::make_unique<bool[]>(2 * n - 1);
-  typename GrottoDcfT::ParityTree pt{p.get(), false};
   auto ys = std::make_unique<bool[]>(n);
   for (auto _ : state) {
-    dcf.Preprocess(pt, false, k0);
+    auto tree = dcf.Preprocess(false, k0);
     dcf.EvalAll(false, k0, cuda::std::span<bool>(ys.get(), n));
-    benchmark::DoNotOptimize(p.get());
+    benchmark::DoNotOptimize(tree.p.get());
     benchmark::DoNotOptimize(ys.get());
   }
   state.SetItemsProcessed(state.iterations() * n);
@@ -565,11 +560,12 @@ static void GenDmpfKeys(Scheme &scheme, typename Scheme::Key &k0, typename Schem
   for (int i = 0; i < m; ++i) {
     s0s[i] = {DmpfSeed(2 * i), DmpfSeed(2 * i + 1)};
   }
-  int ret;
-  do {
-    ret = scheme.Gen(k0, k1, kDmpfSigma, cuda::std::span<const cuda::std::array<int4, 2>, m>(s0s),
-        std::span<const uint32_t>(kDmpfPoints.as), std::span<const int4>(kDmpfPoints.bs), kDmpfNumPoints);
-  } while (ret != 0);
+  int4 sigma = kDmpfSigma;
+  if (scheme.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
+      std::span<const uint32_t>(kDmpfPoints.as), std::span<const int4>(kDmpfPoints.bs), kDmpfNumPoints) != 0) {
+    fprintf(stderr, "dmpf/vdmpf gen failed after retries\n");
+    exit(EXIT_FAILURE);
+  }
 }
 
 static bool IsDmpfAlpha(uint32_t x, int *j) {
@@ -808,15 +804,13 @@ static void BM_CpuVdpfGen(benchmark::State &state) {
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   VdpfT vdpf{ctx.prg, xor_hash, hash};
-  int ret;
-  do {
-    ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
-  } while (ret != 0);
+  if (vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), kAlpha, kBeta) != 0) {
+    fprintf(stderr, "vdpf gen failed after retries\n");
+    exit(1);
+  }
   CheckCpuVdpfScheme(k0, k1);
   for (auto _ : state) {
-    do {
-      ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
-    } while (ret != 0);
+    vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), kAlpha, kBeta);
     benchmark::DoNotOptimize(k0);
     benchmark::DoNotOptimize(k1);
   }
@@ -829,10 +823,10 @@ static void BM_CpuVdpfEval(benchmark::State &state) {
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   VdpfT vdpf{ctx.prg, xor_hash, hash};
-  int ret;
-  do {
-    ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
-  } while (ret != 0);
+  if (vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), kAlpha, kBeta) != 0) {
+    fprintf(stderr, "vdpf gen failed after retries\n");
+    exit(1);
+  }
   CheckCpuVdpfScheme(k0, k1);
   uint32_t x = 0;
   for (auto _ : state) {
@@ -855,10 +849,10 @@ static void BM_CpuVdpfEvalAll(benchmark::State &state) {
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   VdpfT vdpf{ctx.prg, xor_hash, hash};
-  int ret;
-  do {
-    ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
-  } while (ret != 0);
+  if (vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), kAlpha, kBeta) != 0) {
+    fprintf(stderr, "vdpf gen failed after retries\n");
+    exit(1);
+  }
   CheckCpuVdpfScheme(k0, k1);
   CheckCpuVdpfFull(k0, k1);
   cuda::std::array<int4, 4> pi;
@@ -1468,14 +1462,10 @@ static void BM_GpuVdpfEvalAllMerkle(benchmark::State &state) {
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), hash, hash};
   int4 seeds[2] = {kSeeds[0], kSeeds[1]};
   typename Scheme::Key k0, k1;
-  int ret;
-  do {
-    ret = scheme.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
-    if (ret != 0) {
-      seeds[0].x += 1;
-      seeds[1].y += 1;
-    }
-  } while (ret != 0);
+  if (scheme.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), kAlpha, kBeta) != 0) {
+    fprintf(stderr, "vdpf gen failed after retries\n");
+    exit(EXIT_FAILURE);
+  }
   typename Scheme::Cw *device_cws;
   int4 *device_outputs;
   cuda::std::array<int4, 4> *device_pi;

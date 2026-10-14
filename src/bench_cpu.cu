@@ -352,14 +352,14 @@ static void BM_VdpfGen(benchmark::State &state) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
     for (auto _ : state) {
-      vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+      vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
       benchmark::DoNotOptimize(k0);
     }
   } else {
     Prg prg(kNonce0, kNonce1);
     VdpfType vdpf{prg, xor_hash, hash_};
     for (auto _ : state) {
-      vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+      vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
       benchmark::DoNotOptimize(k0);
     }
   }
@@ -384,7 +384,7 @@ static void BM_VdpfEval(benchmark::State &state) {
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
-    vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       auto [y, pi_tilde] = vdpf.Eval(false, k0, x);
       cuda::std::array<int4, 4> pi;
@@ -395,7 +395,7 @@ static void BM_VdpfEval(benchmark::State &state) {
   } else {
     Prg prg(kNonce0, kNonce1);
     VdpfType vdpf{prg, xor_hash, hash_};
-    vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       auto [y, pi_tilde] = vdpf.Eval(false, k0, x);
       cuda::std::array<int4, 4> pi;
@@ -423,7 +423,7 @@ static void BM_VdpfProve(benchmark::State &state) {
   auto hash_ = MakeHash<Hash>();
   Prg prg(kNonce0, kNonce1);
   VdpfType vdpf{prg, xor_hash, hash_};
-  vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+  vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
 
   auto [y, pi_tilde] = vdpf.Eval(false, k0, x);
 
@@ -454,7 +454,7 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
-    vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -463,7 +463,7 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
     }
   } else {
     VdpfType vdpf{Prg(kNonce0, kNonce1), xor_hash, hash_};
-    vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -494,7 +494,7 @@ static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
-    vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       vdpf.EvalAllMerkle(false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -503,7 +503,7 @@ static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
     }
   } else {
     VdpfType vdpf{Prg(kNonce0, kNonce1), xor_hash, hash_};
-    vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       vdpf.EvalAllMerkle(false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -633,19 +633,16 @@ static void BM_GrottoDcfEval(benchmark::State &state) {
   uint alpha = 42;
   typename GdcfType::Key k0, k1;
 
-  constexpr size_t N = size_t{1} << in_bits;
   uint x = 100;
 
   AesCtx<2> ctx;
   GdcfType dcf{ctx.prg};
   dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
 
-  auto p = std::make_unique<bool[]>(2 * N - 1);
-  typename GdcfType::ParityTree pt{p.get(), false};
-  dcf.Preprocess(pt, false, k0);
+  auto tree = dcf.Preprocess(false, k0);
 
   for (auto _ : state) {
-    bool y = GdcfType::Eval(pt, x);
+    bool y = GdcfType::Eval(tree, x);
     benchmark::DoNotOptimize(y);
   }
 }
@@ -661,25 +658,20 @@ static void BM_GrottoDcfPreprocess(benchmark::State &state) {
   uint alpha = 42;
   typename GdcfType::Key k0, k1;
 
-  constexpr size_t N = size_t{1} << in_bits;
-
-  auto p = std::make_unique<bool[]>(2 * N - 1);
-  typename GdcfType::ParityTree pt{p.get(), false};
-
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     GdcfType dcf{ctx.prg};
     dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
     for (auto _ : state) {
-      dcf.Preprocess(pt, false, k0);
-      benchmark::DoNotOptimize(p.get());
+      auto tree = dcf.Preprocess(false, k0);
+      benchmark::DoNotOptimize(tree.p.get());
     }
   } else {
     GdcfType dcf{Prg(kNonce0, kNonce1)};
     dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
     for (auto _ : state) {
-      dcf.Preprocess(pt, false, k0);
-      benchmark::DoNotOptimize(p.get());
+      auto tree = dcf.Preprocess(false, k0);
+      benchmark::DoNotOptimize(tree.p.get());
     }
   }
 }
@@ -697,8 +689,6 @@ static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
 
   constexpr size_t N = size_t{1} << in_bits;
 
-  auto p = std::make_unique<bool[]>(2 * N - 1);
-  typename GdcfType::ParityTree pt{p.get(), false};
   auto ys = std::make_unique<bool[]>(N);
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
@@ -706,18 +696,18 @@ static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
     GdcfType dcf{ctx.prg};
     dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
     for (auto _ : state) {
-      dcf.Preprocess(pt, false, k0);
+      auto tree = dcf.Preprocess(false, k0);
       dcf.EvalAll(false, k0, cuda::std::span<bool>(ys.get(), N));
-      benchmark::DoNotOptimize(p.get());
+      benchmark::DoNotOptimize(tree.p.get());
       benchmark::DoNotOptimize(ys.get());
     }
   } else {
     GdcfType dcf{Prg(kNonce0, kNonce1)};
     dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
     for (auto _ : state) {
-      dcf.Preprocess(pt, false, k0);
+      auto tree = dcf.Preprocess(false, k0);
       dcf.EvalAll(false, k0, cuda::std::span<bool>(ys.get(), N));
-      benchmark::DoNotOptimize(p.get());
+      benchmark::DoNotOptimize(tree.p.get());
       benchmark::DoNotOptimize(ys.get());
     }
   }

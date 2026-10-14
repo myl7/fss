@@ -197,7 +197,7 @@ __global__ void VdpfGenKernel(typename VdpfType<in_bits, Group>::Cw *cws, cuda::
 
   typename VdpfType<in_bits, Group>::Key k0, k1;
   int4 s0s_arr[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  cuda::std::span<const int4, 2> s0s(s0s_arr);
+  cuda::std::span<int4, 2> s0s(s0s_arr);
   vdpf.Gen(k0, k1, s0s, alphas[tid], betas[tid]);
   for (int i = 0; i < in_bits; ++i) cws[tid * in_bits + i] = k0.cws[i];
   cs[tid] = k0.cs;
@@ -771,7 +771,7 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
   typename Vdpf::Key k0, k1;
-  if (vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta) != 0) {
+  if (vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
     fprintf(stderr, "vdpf gen retry condition hit for fixed seeds\n");
     exit(1);
   }

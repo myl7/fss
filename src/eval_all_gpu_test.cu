@@ -192,12 +192,7 @@ void CheckVdpfGpu() {
   const int4 beta = {7, 19, 23, 42};
   int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   typename Scheme::Key k0, k1;
-  for (int attempt = 0;; ++attempt) {
-    seeds[0].x += attempt;
-    seeds[1].y += attempt;
-    if (scheme.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta) == 0) break;
-    ASSERT_LT(attempt, 100) << "Gen retry condition never cleared";
-  }
+  ASSERT_EQ(scheme.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), alpha, beta), 0);
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_ys;
   DeviceBuffer<cuda::std::array<int4, 4>> device_pi;
@@ -394,7 +389,6 @@ void CheckGrottoGpu() {
   ASSERT_EQ(device_cws.Allocate(stride), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(k0.cws, stride), cudaSuccess);
 
-  auto host_p = std::make_unique<bool[]>(2 * n - 1);
   auto host_ys = std::make_unique<bool[]>(n);
   auto first = std::make_unique<bool[]>(n);
   DeviceBuffer<bool> device_p, device_ys;
@@ -403,8 +397,7 @@ void CheckGrottoGpu() {
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     const typename Scheme::Key &key = party == 0 ? k0 : k1;
-    typename Scheme::ParityTree pt{host_p.get(), static_cast<bool>(party)};
-    scheme.Preprocess(pt, static_cast<bool>(party), key);
+    auto host_tree = scheme.Preprocess(static_cast<bool>(party), key);
     fss::gpu::GrottoDcfPreprocessGpu<z, b1, threads>(
         static_cast<bool>(party), key.s0, device_cws.data(), device_p.data(), scheme);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
@@ -412,7 +405,7 @@ void CheckGrottoGpu() {
     auto actual_p = std::make_unique<bool[]>(2 * n - 1);
     ASSERT_EQ(cudaMemcpy(actual_p.get(), device_p.data(), (2 * n - 1) * sizeof(bool), cudaMemcpyDeviceToHost),
         cudaSuccess);
-    for (size_t i = 0; i < 2 * n - 1; ++i) EXPECT_EQ(actual_p[i], host_p[i]) << "node " << i;
+    for (size_t i = 0; i < 2 * n - 1; ++i) EXPECT_EQ(actual_p[i], host_tree.p[i]) << "node " << i;
 
     scheme.EvalAll(static_cast<bool>(party), key, cuda::std::span<bool>(host_ys.get(), n));
     fss::gpu::GrottoDcfEvalAllGpu<z, b1, threads>(

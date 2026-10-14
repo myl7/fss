@@ -31,10 +31,10 @@ static int4 Reconstruct(int4 y0, int4 y1) {
   return (Group::From(y0) + Group::From(y1)).Into();
 }
 
-// Deterministic LSB-cleared seeds for retry round r
-static void MakeSeeds(int r, int4 seeds[2]) {
-  seeds[0] = {0x11111111 + r, 0x22222222 + r, 0x33333333 + r, 0x44444440 + r};
-  seeds[1] = {0x55555555 + r, 0x66666666 + r, 0x77777777 + r, static_cast<int>(0x88888880u) + r};
+// Deterministic LSB-cleared initial seeds
+static void MakeSeeds(int4 seeds[2]) {
+  seeds[0] = {0x11111111, 0x22222222, 0x33333333, 0x44444440};
+  seeds[1] = {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)};
 }
 
 int main() {
@@ -58,18 +58,16 @@ int main() {
   In alpha = 42;
   int4 beta = {7, 0, 0, 0};
 
-  // Key generation. Gen() returns 1 when the sampled seeds hit a bad case;
-  // the dealer retries with fresh seeds then.
+  // Key generation. Gen() retries internally with perturbed seeds on the rare
+  // bad-seed cases, and writes the effective seeds back into `seeds`.
   Vdpf::Key k0, k1;
   int4 seeds[2];
-  int ret;
-  int r = 0;
-  do {
-    MakeSeeds(r, seeds);
-    ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
-    ++r;
-  } while (ret != 0);
-  printf("  Gen retried %d time(s)\n", r - 1);
+  MakeSeeds(seeds);
+  if (vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), alpha, beta) != 0) {
+    fprintf(stderr, "vdpf gen failed after retries\n");
+    VdpfPrg::FreeCtxs(ctxs);
+    return 1;
+  }
 
   // Evaluation with proof. Each party also gets pi_tilde at every point.
   auto [y0, pi_tilde0] = vdpf.Eval(false, k0, alpha);

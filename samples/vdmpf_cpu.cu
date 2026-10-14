@@ -32,10 +32,9 @@ static bool Equal(int4 a, int4 b) {
   return memcmp(&a, &b, sizeof(int4)) == 0;
 }
 
-// Deterministic LSB-cleared seed for retry round r and seed index i
-static int4 MakeSeed(int r, int i) {
-  return {0x11111111 + r + i, 0x22222222 + r + 2 * i, 0x33333333 + r + 3 * i,
-      static_cast<int>(0x44444440u + r + 4 * i) & ~1};
+// Deterministic LSB-cleared seed for seed index i
+static int4 MakeSeed(int i) {
+  return {0x11111111 + i, 0x22222222 + 2 * i, 0x33333333 + 3 * i, static_cast<int>(0x44444440u + 4 * i) & ~1};
 }
 
 int main() {
@@ -62,24 +61,24 @@ int main() {
     betas[i] = {(i + 1) * 11, 0, 0, 0};
   }
 
-  // Key generation. Gen() returns 1 when the sampled seeds hit a bad case;
-  // the dealer retries with fresh seeds then. m is the cuckoo table size.
+  // Key generation. Gen() retries internally with perturbed sigma and seeds on
+  // the rare failure cases, and writes the effective values back into sigma
+  // and s0s. m is the cuckoo table size.
   constexpr int m = Vdmpf::m;
   Vdmpf::Key k0, k1;
-  int ret;
-  int r = 0;
-  do {
-    int4 sigma = {static_cast<int>(0xdeadbeefu) + r, 0x12345678 + r, static_cast<int>(0xabcdef01u + r),
-        static_cast<int>(0x98765432u + r) & ~1};
-    cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
-    for (int i = 0; i < m; ++i) {
-      s0s[i] = {MakeSeed(r, 2 * i), MakeSeed(r, 2 * i + 1)};
-    }
-    ret = vdmpf.Gen(k0, k1, sigma, cuda::std::span<const cuda::std::array<int4, 2>, m>(s0s),
-        std::span<const In>(alphas, kT), std::span<const int4>(betas, kT), kT);
-    ++r;
-  } while (ret != 0);
-  printf("  Gen retried %d time(s), table size m=%d\n", r - 1, m);
+  int4 sigma = {static_cast<int>(0xdeadbeefu), 0x12345678, static_cast<int>(0xabcdef01u),
+      static_cast<int>(0x98765432u) & ~1};
+  cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
+  for (int i = 0; i < m; ++i) {
+    s0s[i] = {MakeSeed(2 * i), MakeSeed(2 * i + 1)};
+  }
+  if (vdmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s), std::span<const In>(alphas, kT),
+      std::span<const int4>(betas, kT), kT) != 0) {
+    fprintf(stderr, "vdmpf gen failed after retries\n");
+    VdmpfPrg::FreeCtxs(ctxs);
+    return 1;
+  }
+  printf("  Gen done, table size m=%d\n", m);
 
   // Batch evaluation at the points: y0+y1 == beta_i
   std::vector<In> xs(alphas, alphas + kT);

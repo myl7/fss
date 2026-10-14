@@ -103,22 +103,40 @@ public:
   /**
      * Key generation method.
      *
+     * Retries automatically on the rare bad-seed cases (cs all zeros or $t_0 = t_1$ at the end):
+     * up to 128 attempts, each deterministically perturbing the seeds from the previous one.
+     * The effective seeds of the successful attempt are written back to s0s, so after a
+     * successful call s0s holds the seeds the returned keys carry.
+     *
      * @param k0, k1 Returned keys of the two parties.
-     * @param s0s 2 initial seeds. Users can randomly sample them.
+     * @param s0s 2 initial seeds. Users can randomly sample them. Written back with the
+     *   effective seeds used by the successful attempt.
      * @param a $a$.
      * @param b_buf $b$. Will be clamped and converted to the group element.
-     * @return 0 on success, 1 if cs is all zeros or $t_0 = t_1$ at the end (caller should resample seeds and retry).
+     * @param retry Whether to retry with perturbed seeds on failure. If false, Gen returns 1
+     *   immediately after the first failed attempt.
+     * @return 0 on success, 1 if the first attempt failed (with retry = false) or all 128
+     *   attempts failed (with retry = true).
      *
      * Both parties share the returned cws, cs, and ocw and differ in s0.
      */
-  __host__ __device__ int Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
-    int ret = Gen(k0.cws, k0.cs, k0.ocw, s0s, a, b_buf);
-    k0.s0 = s0s[0];
-    for (int i = 0; i < in_bits; ++i) k1.cws[i] = k0.cws[i];
-    k1.cs = k0.cs;
-    k1.ocw = k0.ocw;
-    k1.s0 = s0s[1];
-    return ret;
+  __host__ __device__ int Gen(Key &k0, Key &k1, cuda::std::span<int4, 2> s0s, In a, int4 b_buf, bool retry = true) {
+    for (int attempt = 0; attempt < 128; ++attempt) {
+      int ret = Gen(k0.cws, k0.cs, k0.ocw, s0s, a, b_buf);
+      if (ret != 0) {
+        if (!retry) return 1;
+        s0s[0].x += 1;
+        s0s[1].y += 1;
+        continue;
+      }
+      k0.s0 = s0s[0];
+      for (int i = 0; i < in_bits; ++i) k1.cws[i] = k0.cws[i];
+      k1.cs = k0.cs;
+      k1.ocw = k0.ocw;
+      k1.s0 = s0s[1];
+      return 0;
+    }
+    return 1;
   }
 
   /**

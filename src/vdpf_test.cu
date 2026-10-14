@@ -56,15 +56,7 @@ protected:
 
   void GenKey() {
     VdpfType vdpf{prg, xor_hash, hash_};
-    int ret;
-    do {
-      std::random_device rd;
-      std::mt19937 gen(rd());
-      std::uniform_int_distribution<int> dis;
-      s0s[0] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
-      s0s[1] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
-      ret = vdpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, MakeBBuf());
-    } while (ret != 0);
+    ASSERT_EQ(vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), kAlpha, MakeBBuf()), 0);
   }
 
   void TestEvalAtAlpha() {

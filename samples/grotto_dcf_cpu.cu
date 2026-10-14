@@ -45,23 +45,19 @@ int main() {
   dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha);
 
   // Preprocess: each party expands its tree and builds a parity segment tree.
-  // pt.p must hold 2*N-1 bools; Preprocess sets pt.b to the party index.
+  // The result owns its 2*N-1 parity bits and answers Eval() queries in O(log N).
   constexpr size_t N = size_t{1} << kInBits;
-  auto p0 = std::make_unique<bool[]>(2 * N - 1);
-  auto p1 = std::make_unique<bool[]>(2 * N - 1);
-  Gdcf::ParityTree pt0{p0.get(), false};
-  Gdcf::ParityTree pt1{p1.get(), true};
-  dcf.Preprocess(pt0, false, k0);
-  dcf.Preprocess(pt1, true, k1);
+  auto tree0 = dcf.Preprocess(false, k0);
+  auto tree1 = dcf.Preprocess(true, k1);
 
   // Evaluation: the parties XOR their bool shares; the result is x >= alpha
-  bool y0 = Gdcf::Eval(pt0, alpha);
-  bool y1 = Gdcf::Eval(pt1, alpha);
+  bool y0 = Gdcf::Eval(tree0, alpha);
+  bool y1 = Gdcf::Eval(tree1, alpha);
   printf("  Eval(x=%d == alpha): y0^y1 == 1? %s\n", alpha, (y0 ^ y1) ? "yes" : "NO");
 
   In x = 10;
-  y0 = Gdcf::Eval(pt0, x);
-  y1 = Gdcf::Eval(pt1, x);
+  y0 = Gdcf::Eval(tree0, x);
+  y1 = Gdcf::Eval(tree1, x);
   printf("  Eval(x=%d  < alpha): y0^y1 == 0? %s\n", x, !(y0 ^ y1) ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs

@@ -64,16 +64,13 @@ protected:
     std::random_device rd;
     std::mt19937 gen(rd());
 
-    int ret;
-    do {
-      int4 sigma = RandomSeed(gen);
-      cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
-      for (int i = 0; i < m; ++i) {
-        s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
-      }
-      ret = vdmpf.Gen(k0, k1, sigma, cuda::std::span<const cuda::std::array<int4, 2>, m>(s0s),
-          cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT);
-    } while (ret != 0);
+    int4 sigma = RandomSeed(gen);
+    cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
+    for (int i = 0; i < m; ++i) {
+      s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
+    }
+    ASSERT_EQ(vdmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
+        cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT), 0);
   }
 
   void TestEvalAtAlpha() {
