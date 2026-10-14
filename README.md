@@ -152,16 +152,16 @@ This PRG requires OpenSSL.
        {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
    };
 
-   Dpf::Cw cws[kInBits + 1];
-   dpf.Gen(cws, seeds, alpha, beta);
+   Dpf::Key k0, k1;
+   dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
    ```
 
 4. Run `Eval` on each party and reconstruct using the group:
 
    ```cpp
-   // Each party evaluates independently
-   int4 y0 = dpf.Eval(false, seeds[0], cws, alpha);
-   int4 y1 = dpf.Eval(true, seeds[1], cws, alpha);
+   // Each party evaluates independently with its own key
+   int4 y0 = dpf.Eval(false, k0, alpha);
+   int4 y1 = dpf.Eval(true, k1, alpha);
 
    // Reconstruct via the group: convert to group elements, add, convert back
    // For Bytes group this is XOR; for Uint group this is arithmetic addition
@@ -175,7 +175,7 @@ This PRG requires OpenSSL.
    DpfPrg::FreeCtxs(ctxs);
    ```
 
-DCF follows the same pattern — use `DcfPrg` (mul=4, needs 4 AES keys), `Dcf`, and `Dcf::Cw`.
+DCF follows the same pattern — use `DcfPrg` (mul=4, needs 4 AES keys) and `Dcf`; `Gen` fills one `Key` per party.
 The reconstructed output equals `beta` when `x < alpha` and `0` otherwise.
 
 Link with OpenSSL in your `CMakeLists.txt`:
@@ -210,19 +210,18 @@ This walks through using DPF and DCF on the GPU with ChaCha PRG.
    using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
    ```
 
-2. Set up a nonce in constant memory and create the PRG in a kernel:
+2. Write a `Gen` kernel; the PRG stores its nonce by value, so one PRG instance works on host and device:
 
    ```cpp
-   __constant__ int kNonce[2] = {0x12345678, 0x9abcdef0};
-
-   __global__ void GenKernel(Dpf::Cw *cws, const int4 *seeds, const In *alphas, const int4 *betas) {
+   __global__ void GenKernel(Dpf::Key *keys0, Dpf::Key *keys1, const int4 *seeds, const In *alphas,
+       const int4 *betas) {
        int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-       DpfPrg prg(kNonce);
+       DpfPrg prg(0x12345678, 0x9abcdef0);
        Dpf dpf{prg};
 
        int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-       dpf.Gen(cws + tid * (kInBits + 1), s, alphas[tid], betas[tid]);
+       dpf.Gen(keys0[tid], keys1[tid], cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
    }
    ```
 
@@ -233,27 +232,28 @@ This walks through using DPF and DCF on the GPU with ChaCha PRG.
    In *d_alphas = /* cudaMalloc + cudaMemcpy alphas to device */;
    int4 *d_betas = /* cudaMalloc + cudaMemcpy betas to device */;
 
-   Dpf::Cw *d_cws;
-   cudaMalloc(&d_cws, sizeof(Dpf::Cw) * (kInBits + 1) * N);
+   Dpf::Key *d_k0s, *d_k1s;
+   cudaMalloc(&d_k0s, sizeof(Dpf::Key) * N);
+   cudaMalloc(&d_k1s, sizeof(Dpf::Key) * N);
 
-   GenKernel<<<blocks, kThreadsPerBlock>>>(d_cws, d_seeds, d_alphas, d_betas);
+   GenKernel<<<blocks, kThreadsPerBlock>>>(d_k0s, d_k1s, d_seeds, d_alphas, d_betas);
    ```
 
 4. Write and launch an `Eval` kernel for each party, then copy results back:
 
    ```cpp
-   __global__ void EvalKernel(int4 *ys, bool party, const int4 *seeds, const Dpf::Cw *cws, const In *xs) {
+   __global__ void EvalKernel(int4 *ys, bool party, const Dpf::Key *keys, const In *xs) {
        int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-       DpfPrg prg(kNonce);
+       DpfPrg prg(0x12345678, 0x9abcdef0);
        Dpf dpf{prg};
 
-       ys[tid] = dpf.Eval(party, seeds[tid], cws + tid * (kInBits + 1), xs[tid]);
+       ys[tid] = dpf.Eval(party, keys[tid], xs[tid]);
    }
 
    // Launch for party 0 and party 1, then copy d_ys back to host
-   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_seeds0, d_cws, d_xs);
-   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_seeds1, d_cws, d_xs);
+   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_k0s, d_xs);
+   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_k1s, d_xs);
    ```
 
 5. Reconstruct on the host using the group, same as the CPU case:
@@ -262,7 +262,7 @@ This walks through using DPF and DCF on the GPU with ChaCha PRG.
    int4 sum = (Group::From(h_y0s[i]) + Group::From(h_y1s[i])).Into();
    ```
 
-DCF follows the same pattern — use `DcfPrg` (mul=4), `Dcf`, and `Dcf::Cw`.
+DCF follows the same pattern — use `DcfPrg` (mul=4) and `Dcf` with its own `Key`.
 
 See `samples/dpf_dcf_gpu.cu` for the complete working example.
 
@@ -291,8 +291,9 @@ The CPU samples link OpenSSL, and `EvalAll` uses OpenMP when it is found.
 
 ### Python
 
-The `fss_crypto` package exposes PyTorch wrappers for DPF and DCF.
+The `fss_crypto` package exposes PyTorch wrappers for every scheme: `Dpf`, `Dcf`, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, `Vdpf`, `Dmpf`, and `Vdmpf`.
 It is published on PyPI as `fss-crypto`.
+`eval` and full-domain `eval_all` accept CUDA tensors (where the scheme has a GPU path); key generation and the cuckoo-hashed multi-point schemes stay on CPU.
 
 Install it with pip:
 

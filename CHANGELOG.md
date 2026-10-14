@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Python bindings for every scheme: `HalfTreeDpf`, `PackedHalfTreeDpf` (with a pure-Python
+  lane `extract`), `GrottoDcf` (preprocess and full-domain evaluation on CPU or CUDA),
+  `Vdpf` (chain and Merkle accumulators, device-side Merkle full-domain evaluation with
+  the proof, `prove`/`prove_merkle`/`verify`), and the CPU-only `Dmpf`/`Vdmpf` with their
+  per-bucket key tensors and batch proofs. `Dpf`/`Dcf` `eval_all` now accepts CUDA tensors
+  and routes to the frontier full-domain kernels on the current torch stream
+  (`in_bits <= 24`), and every CUDA path launches on the current stream and returns
+  asynchronously. The JIT layer is registry-driven and compiles one module per scheme
+  configuration with full input validation.
 * Merkle-fold proof accumulation for VDPF (`ProveMerkle`, `EvalAllMerkle`,
   `VdpfEvalAllMerkleGpu`): an order-independent alternative to the paper's sequential Prove chain
   that hashes the corrected per-point values into the leaves of a binary Merkle tree and folds
@@ -59,6 +68,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* **Breaking** (0.x): `ChaCha` stores its nonce by value (`ChaCha(int, int)`); the pointer
+  constructor and the host/device dual-instance pattern are gone — one instance built
+  anywhere works on both sides.
+* **Breaking** (0.x): every scheme exposes a `Key` aggregate (correction words plus the
+  party seed, plus `ocw`/`fcw`/`cs` where the scheme has them); `Gen` fills one `Key` per
+  party, `Eval`/`EvalAll` take the party's `Key`, all public array parameters are
+  `cuda::std::span`, `Vdpf::Eval` returns `{y, pi_tilde}`, and `GrottoDcf::Preprocess`
+  returns an owning `PreprocessedTree` (the non-owning `ParityTree` view remains for
+  device-side point evaluation).
+* **Breaking** (0.x): `Vdpf`/`Dmpf`/`Vdmpf` `Gen` retries internally by default
+  (`bool retry = true`) and writes the effective seeds and sigma back; `retry = false`
+  restores the fail-fast return.
 * The comparison figures show current implementations: the historical FSS 0.6.0 and
   0.7.0 curves moved to the benchmark comparison site (with full provenance), and the
   figure notes state that an implementation appears in a panel only where it provides
@@ -77,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* The Python bindings' CUDA paths no longer dereference device tensors on the host when
+  reading seeds and check values for kernel launches (the single-point paths passed the
+  seed by value after a host read, which faults over PCIe; seeds now travel as kernel
+  argument pointers and scalars through explicit device-to-host copies).
 * The supplementary block-size figure wraps its panels across two-column bands instead of
   rendering every panel beyond the second outside the SVG canvas.
 * The packed GPU `EvalAll` benchmark compiles on domains whose frontier is smaller than
