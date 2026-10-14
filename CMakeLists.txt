@@ -95,6 +95,10 @@ if(BUILD_TESTING)
     target_link_libraries(dmpf_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(dmpf_test)
 
+    add_executable(chacha_feistel_test src/chacha_feistel_test.cu)
+    target_link_libraries(chacha_feistel_test GTest::gtest_main fss)
+    gtest_discover_tests(chacha_feistel_test)
+
     add_executable(packed_half_tree_dpf_test src/packed_half_tree_dpf_test.cu)
     target_link_libraries(packed_half_tree_dpf_test GTest::gtest_main fss)
     gtest_discover_tests(packed_half_tree_dpf_test)

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* `ChaChaFeistel` small-domain PRP backend: the 4-round Feistel + cycle-walking construction
+  of `Aes128Feistel` with the round PRF replaced by the keyed ChaCha block function the
+  library PRG already uses (round key in the ChaCha key, the <=64-bit Feistel half-word in
+  the nonce slot), so no new assumption is introduced. Stateless and OpenSSL-free: `Permu`
+  is `__host__ __device__` and instances are trivially copyable, preparing a device-side
+  Cuckoo `Locate` for DMPF/VDMPF. Tests cover bijection (exhaustive to 2^20 plus a sampled
+  128-bit domain), determinism, seed variation, bucket balance, and DMPF + Cuckoo `Compact`
+  end-to-end on the new backend.
 * GPU point evaluation now covers the same input-domain widths as the host `Eval`, through
   `__uint128_t`: the query-point kernels take `In`-typed points (`uint8_t` to `__uint128_t`),
   and the per-level tr bits packed by the repack kernels widen to `uint64_t` or `__uint128_t`
