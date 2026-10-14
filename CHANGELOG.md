@@ -77,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* The supplementary block-size figure wraps its panels across two-column bands instead of
+  rendering every panel beyond the second outside the SVG canvas.
 * The packed GPU `EvalAll` benchmark compiles on domains whose frontier is smaller than
   the configured block (`n = 2^8 … 2^12`): those launches now use one block of `2^z`
   threads instead of a negative block-root depth, and the VDPF benchmark is excluded by
