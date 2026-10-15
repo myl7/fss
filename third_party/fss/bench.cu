@@ -1212,12 +1212,11 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
     constexpr size_t n = size_t{1} << kInBits;
     int active_blocks = 0;
     if constexpr (half_tree) {
-      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks,
-          fss::gpu::detail::HalfTreeDpfEvalAllKernel<kInBits, z, b1, Group, Prg, typename Scheme::Cw>,
-          kThreadsPerBlock, 0));
+      auto *kernel = &fss::gpu::detail::HalfTreeDpfEvalAllKernel<kInBits, z, b1, Group, Prg, typename Scheme::Cw>;
+      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, kernel, kThreadsPerBlock, size_t{0}));
     } else {
-      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks,
-          fss::gpu::detail::DpfEvalAllKernel<kInBits, z, b1, Group, Prg, typename Scheme::Cw>, kThreadsPerBlock, 0));
+      auto *kernel = &fss::gpu::detail::DpfEvalAllKernel<kInBits, z, b1, Group, Prg, typename Scheme::Cw>;
+      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, kernel, kThreadsPerBlock, size_t{0}));
     }
     if (active_blocks == 0) {
       state.SkipWithError("unsupported: insufficient kernel resources for the block size");
@@ -2055,9 +2054,9 @@ static void BM_GpuAesSoftEval(benchmark::State &state) {
   int gen_active_blocks = 0;
   int eval_active_blocks = 0;
   CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-      &gen_active_blocks, AesSoftDpfGenKernel, kThreadsPerBlock, 0));
+      &gen_active_blocks, AesSoftDpfGenKernel, kThreadsPerBlock, size_t{0}));
   CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-      &eval_active_blocks, AesSoftDpfEvalKernel, kThreadsPerBlock, 0));
+      &eval_active_blocks, AesSoftDpfEvalKernel, kThreadsPerBlock, size_t{0}));
   if (gen_active_blocks == 0 || eval_active_blocks == 0) {
     state.SkipWithError("unsupported: insufficient software AES kernel resources for the block size");
     return;
