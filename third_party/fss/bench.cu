@@ -1211,7 +1211,8 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
     int active_blocks = 0;
     if constexpr (half_tree) {
       CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks,
-          fss::gpu::detail::HalfTreeDpfEvalAllKernel<kInBits, z, b1, Group, Prg>, kThreadsPerBlock, 0));
+          fss::gpu::detail::HalfTreeDpfEvalAllKernel<kInBits, z, b1, Group, Prg, typename Scheme::Cw>,
+          kThreadsPerBlock, 0));
     } else {
       CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks,
           fss::gpu::detail::DpfEvalAllKernel<kInBits, z, b1, Group, Prg, typename Scheme::Cw>, kThreadsPerBlock, 0));
