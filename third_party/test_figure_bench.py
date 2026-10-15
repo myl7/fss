@@ -184,6 +184,18 @@ class FigureSweepTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "threads_per_block"):
             sweep.validate_native_configuration(self.case(operation="EvalAll", threads_per_block=128), raw)
 
+    def test_scheme_filter_restricts_native_collections(self):
+        cases = sweep.cases(self.args(libraries="fss", platform="gpu", domain_bits=[12], scheme="DMPF"))
+        self.assertTrue(cases)
+        for case in cases:
+            self.assertEqual(case["scheme"], "DMPF")
+            selected = sweep.pattern(case)
+            self.assertRegex(f"fss/GPU/DMPF-bytes/{case['operation']}", selected)
+            self.assertNotRegex("fss/GPU/DPF-bytes/EvalAll", selected)
+            self.assertNotRegex("fss/GPU/GrottoDCF/EvalAll", selected)
+        with self.assertRaisesRegex(ValueError, "unknown sweep scheme"):
+            sweep.cases(self.args(libraries="fss", scheme="Nope"))
+
     def test_export_keeps_failures_and_merges_cases(self):
         (self.directory / "run.json").write_text(json.dumps({"source_sha256": {"bench.cu": "abc"}}))
         for index, status in enumerate(("ok", "unsupported", "known_failure")):

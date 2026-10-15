@@ -61,11 +61,15 @@ def cases(args):
                                            configured_num_keys=args.num_keys if device == "gpu" else 1,
                                            num_keys=1 if device == "cpu" or operation == "EvalAll" else args.num_keys,
                                            threads_per_block=(256 if name == "ezpc" else t), cpu_prg=args.cpu_prg,
-                                           sweep=args.sweep, include_uint=getattr(args, "include_uint", False)))
+                                           sweep=args.sweep, include_uint=getattr(args, "include_uint", False),
+                                           scheme=getattr(args, "scheme", None)))
                         if device == "cpu":
                             break
     if libraries and set(libraries) - set(CPU_LIBRARIES) - {"ezpc"}:
         raise ValueError("unknown sweep library")
+    scheme = getattr(args, "scheme", None)
+    if scheme and scheme not in ("DPF", "DCF", "HalfTreeDPF", "DMPF", "VDMPF", "VDPF"):
+        raise ValueError("unknown sweep scheme")
     return result
 
 
@@ -88,6 +92,8 @@ def pattern(case):
         operation = "EvalAllFull"
     if case["library"] == "fss" and case["platform"] == "cpu":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
+        if case.get("scheme"):
+            return f"^fss/CPU/{case['scheme']}-{groups}/{operation}(/|$)"
         return f"^fss/CPU/((DPF|DCF|HalfTreeDPF|DMPF|VDMPF|VDPF)-{groups}|PackedHalfTreeDPF-bits1|GrottoDCF)/{operation}(/|$)"
     if case["library"] == "ezpc" and case["operation"] != "EvalAll":
         return f"^EzPC/GPU/(DPF|DCF)/{operation}/{case['num_keys']}(/|$)"
@@ -96,6 +102,8 @@ def pattern(case):
         return "^fss/GPU/DPF-bytes/AesSoft/Eval(/|$)"
     if case["library"] == "fss":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
+        if case.get("scheme"):
+            return f"^fss/GPU/{case['scheme']}-{groups}/(AesSoft/)?{operation}(/|$)"
         return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF|DMPF)-{groups}"
                 f"|PackedHalfTreeDPF-bits1|GrottoDCF)/(AesSoft/)?{operation}(/|$)")
     return f"^{prefix}/{case['platform'].upper()}/.*{operation}(/|$)"
@@ -393,7 +401,8 @@ def collect(args, case, directory, sources):
                 rows.append(row)
     else:
         units = [(binary, pattern(case)) for binary in executables(args, case)]
-        if case["library"] == "fss" and case["platform"] == "gpu" and case["operation"] == "Eval" and case["sweep"] != "block":
+        if case["library"] == "fss" and case["platform"] == "gpu" and case["operation"] == "Eval" and case["sweep"] != "block" \
+                and not case.get("scheme"):
             groups = ("bytes", "uint") if case["include_uint"] else ("bytes",)
             filters = [f"^fss/GPU/{scheme}-{group}/Eval(/|$)" for group in groups for scheme in ("DPF", "DCF")]
             filters.append("^fss/GPU/DPF-bytes/AesSoft/Eval(/|$)")
@@ -504,6 +513,7 @@ def main(argv=None):
     parser.add_argument("--drop", action="append",
                         help="drop all rows of 'library:platform[:reason]' from every input, e.g. fss_v070:gpu:'upstream crashes on the reference GPU'")
     parser.add_argument("--libraries")
+    parser.add_argument("--scheme", help="restrict fss native collections to one scheme, e.g. DMPF")
     parser.add_argument("--platform", choices=("cpu", "gpu", "all"), default="all")
     parser.add_argument("--sweep", choices=("domain", "block"), default="domain")
     parser.add_argument("--operations", choices=("Gen", "Eval", "EvalAll"), nargs="+", default=("Gen", "Eval", "EvalAll"))
