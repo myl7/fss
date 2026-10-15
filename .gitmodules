@@ -28,3 +28,6 @@
 [submodule "third_party/plasma"]
 	path = third_party/plasma
 	url = https://github.com/TrustworthyComputing/plasma
+[submodule "third_party/sycret"]
+	path = third_party/sycret
+	url = https://github.com/OpenMined/sycret
