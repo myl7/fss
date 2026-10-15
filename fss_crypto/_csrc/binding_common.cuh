@@ -64,6 +64,23 @@ constexpr int EvalAllZ(int bits) { return bits < 16 ? bits : 16; }
 constexpr int EvalAllB1(int bits) { int z = EvalAllZ(bits); return z >= 7 ? z - 7 : 0; }
 constexpr int EvalAllBS(int bits) { return 1 << (EvalAllZ(bits) - EvalAllB1(bits)); }
 
+// Frontier tiling for the wrappers whose kernels take the correction-word
+// type generically (Dpf and Dcf): domains above 16 bits deepen the frontier
+// so the per-thread DFS tail stays at <= 4 levels and the thread-local node
+// arrays keep the measured register footprint; the shared-memory frontier is
+// unchanged because z - b1 stays at 7.
+constexpr int WideDomainEvalAllZ(int bits) { return bits <= 16 ? bits : (bits - 4 > 16 ? bits - 4 : 16); }
+constexpr int WideDomainEvalAllB1(int bits) { int z = WideDomainEvalAllZ(bits); return z >= 7 ? z - 7 : 0; }
+constexpr int WideDomainEvalAllBS(int bits) { return 1 << (WideDomainEvalAllZ(bits) - WideDomainEvalAllB1(bits)); }
+
+// The grid.x dimension of the wide-domain launch is 2^(z-7) blocks, so the
+// 2^31-1 dimension limit caps in_bits at 41.
+constexpr int kMaxCudaEvalAllBits = 41;
+
+// The full-domain output tensor holds 2^(in_bits+2) int32 elements, which
+// stays inside the int64 element count up to in_bits = 60.
+constexpr int kMaxEvalAllBits = 60;
+
 template <typename In>
 __host__ __device__ In BuildInput(int64_t lo, int64_t hi) {
   if constexpr (sizeof(In) <= 8) {

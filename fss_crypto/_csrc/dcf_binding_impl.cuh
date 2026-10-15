@@ -111,23 +111,6 @@ static torch::Tensor dcf_eval(int64_t party, torch::Tensor s0, torch::Tensor cws
 // dcf_eval_all
 // ---------------------------------------------------------------------------
 
-// The GPU full-domain wrapper is not templated on the predicate (only the
-// default lt Dcf instantiates against it); the discarded branch of a template
-// is not type-checked, unlike a plain function's.
-template <int kInBits, fss::DcfPred kPred, typename Inst>
-void DcfEvalAllGpuIf(bool b, int4 s0_val, const typename Inst::Cw *cws_ptr, int4 *ys_ptr,
-    const Inst &dpf, cudaStream_t stream) {
-  if constexpr (kInBits <= 24 && kPred == fss::DcfPred::kLt) {
-    constexpr int kZ = EvalAllZ(kInBits), kB1 = EvalAllB1(kInBits), kBS = EvalAllBS(kInBits);
-    fss::gpu::DcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, dpf, stream);
-    auto err = cudaGetLastError();
-    TORCH_CHECK(err == cudaSuccess, "dcf eval_all launch failed: ", cudaGetErrorString(err));
-  } else {
-    TORCH_CHECK(false, "GPU EvalAll supports in_bits <= 24 and the lt predicate");
-  }
-}
-
-
 static torch::Tensor dcf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor cws) {
   TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
   TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
@@ -139,7 +122,13 @@ static torch::Tensor dcf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor
   EnsureNonce();
   bool b = (party == 1);
 
-  int64_t n = 1LL << kInBits;
+  int64_t n = 0;
+  if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
+  else TORCH_CHECK(false, "dcf.eval_all cannot represent the 2^", kInBits, "-entry output size");
+  if (s0.is_cuda())
+    TORCH_CHECK(kInBits <= kMaxCudaEvalAllBits, "dcf.eval_all on CUDA supports in_bits <= ", kMaxCudaEvalAllBits,
+        " (grid index width), got ", kInBits);
+
   auto options = torch::dtype(torch::kInt32).device(s0.device());
   auto ys = torch::zeros({n, 4}, options);
 
@@ -149,7 +138,11 @@ static torch::Tensor dcf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor
   auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
   int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
   if (s0.is_cuda()) {
-    DcfEvalAllGpuIf<kInBits, kPred>(b, s0_val, cws_ptr, ys_ptr, dpf, CurrentStream());
+    constexpr int kZ = WideDomainEvalAllZ(kInBits), kB1 = WideDomainEvalAllB1(kInBits),
+        kBS = WideDomainEvalAllBS(kInBits);
+    fss::gpu::DcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, dpf, CurrentStream());
+    auto err = cudaGetLastError();
+    TORCH_CHECK(err == cudaSuccess, "dcf eval_all launch failed: ", cudaGetErrorString(err));
     return ys;
   }
 

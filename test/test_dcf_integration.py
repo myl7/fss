@@ -66,12 +66,42 @@ class TestDcfEvalAllShape:
 
 
 class TestDcfPredVariant:
-    def test_gt_variant(self, s0s, beta):
+    def test_gt_eval_all_semantics_cpu(self, s0s, beta):
         dcf_gt = fss_crypto.Dcf(
             in_bits=16, group="bytes", prg="chacha", pred="gt"
         )
         cws = dcf_gt.gen(s0s, alpha=107, beta=beta)
         assert cws.shape == (17, 8)
+        first = dcf_gt.eval_all(party=0, s0=s0s[0], cws=cws)
+        second = dcf_gt.eval_all(party=1, s0=s0s[1], cws=cws)
+        # XOR reconstruction with the gt predicate: beta strictly above alpha
+        # (x == alpha included in the zero side), zero at and below alpha.
+        diff = torch.bitwise_xor(first, second)
+        assert not torch.any(diff[:108])
+        assert torch.equal(diff[108:], beta.expand(2**16 - 108, 4))
+
+    def test_gt_alpha_zero(self, s0s, beta):
+        dcf_gt = fss_crypto.Dcf(
+            in_bits=16, group="bytes", prg="chacha", pred="gt"
+        )
+        cws = dcf_gt.gen(s0s, alpha=0, beta=beta)
+        first = dcf_gt.eval_all(party=0, s0=s0s[0], cws=cws)
+        second = dcf_gt.eval_all(party=1, s0=s0s[1], cws=cws)
+        diff = torch.bitwise_xor(first, second)
+        assert not torch.any(diff[:1])
+        assert torch.equal(diff[1:], beta.expand(2**16 - 1, 4))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+    def test_gt_eval_all_matches_cpu_cuda(self, s0s, beta):
+        dcf_gt = fss_crypto.Dcf(
+            in_bits=16, group="bytes", prg="chacha", pred="gt"
+        )
+        cws = dcf_gt.gen(s0s, alpha=107, beta=beta)
+        for party in (0, 1):
+            cpu = dcf_gt.eval_all(party=party, s0=s0s[party], cws=cws)
+            gpu = dcf_gt.eval_all(party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda"))
+            assert gpu.device.type == "cuda"
+            assert torch.equal(cpu, gpu.cpu())
 
 
 class TestDcfEvalAllCuda:
@@ -90,4 +120,16 @@ class TestDcfEvalAllCuda:
         diff = torch.bitwise_xor(first, second)
         assert torch.equal(diff[:107], beta.expand(107, 4))
         assert not torch.any(diff[107:])
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+    def test_above_24_bits_matches_cpu(self):
+        dcf = fss_crypto.Dcf(in_bits=25, group="bytes", prg="chacha")
+        s0s = torch.randint(-2**31, 2**31, (2, 4), dtype=torch.int32)
+        beta = torch.tensor([0, 0, 0, 604], dtype=torch.int32)
+        cws = dcf.gen(s0s, alpha=107, beta=beta)
+        for party in (0, 1):
+            cpu = dcf.eval_all(party=party, s0=s0s[party], cws=cws)
+            gpu = dcf.eval_all(party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda"))
+            assert gpu.device.type == "cuda"
+            assert torch.equal(cpu, gpu.cpu())
 

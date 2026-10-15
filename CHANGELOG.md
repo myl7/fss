@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Vdpf` (chain and Merkle accumulators, device-side Merkle full-domain evaluation with
   the proof, `prove`/`prove_merkle`/`verify`), and the CPU-only `Dmpf`/`Vdmpf` with their
   per-bucket key tensors and batch proofs. `Dpf`/`Dcf` `eval_all` now accepts CUDA tensors
-  and routes to the frontier full-domain kernels on the current torch stream
-  (`in_bits <= 24`), and every CUDA path launches on the current stream and returns
+  with either DCF comparison predicate and routes to the frontier full-domain kernels on
+  the current torch stream, and every CUDA path launches on the current stream and returns
   asynchronously. The JIT layer is registry-driven and compiles one module per scheme
   configuration with full input validation.
 * Merkle-fold proof accumulation for VDPF (`ProveMerkle`, `EvalAllMerkle`,
