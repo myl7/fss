@@ -10,7 +10,7 @@
  * load is one coalesced 128B transaction per warp. The VDPF kernel keeps its
  * per-key cs/ocw: each is read once per evaluation, not once per level.
  *
- * Run the matching Relayout*Gpu() once per key after Gen(); the relayout cost
+ * Run the matching Repack*Gpu() once per key after Gen(); the repack cost
  * amortizes over every later point evaluation, same as Gen itself sits outside
  * the timed loop.
  *
@@ -40,7 +40,7 @@ __device__ __host__ inline bool GetBit(uint32_t x, int i) { return ((x >> i) & 1
 // Pack per-key HalfTree DPF cws (stride in_bits) into level-major cw_s and the
 // last-level extra bit (bit 0 of extra[k]).
 template <int in_bits, typename Cw>
-__global__ void HalfTreeDpfRelayoutKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int nkeys) {
+__global__ void HalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   uint32_t e = 0;
@@ -54,7 +54,7 @@ __global__ void HalfTreeDpfRelayoutKernel(const Cw *pk, int4 *cw_s, uint32_t *ex
 // Pack per-key DPF cws (stride in_bits + 1) into level-major cw_s, the tr bits
 // (bit i of extra[k] = level i), and the output correction word.
 template <int in_bits, typename Cw>
-__global__ void DpfRelayoutKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int4 *out_cw, int nkeys) {
+__global__ void DpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int4 *out_cw, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   uint32_t e = 0;
@@ -69,7 +69,7 @@ __global__ void DpfRelayoutKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int
 // Pack per-key VDPF cws (stride in_bits) into level-major cw_s and the tr
 // bits (bit i of extra[k] = level i).
 template <int in_bits, typename Cw>
-__global__ void VdpfRelayoutKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int nkeys) {
+__global__ void VdpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   uint32_t e = 0;
@@ -83,7 +83,7 @@ __global__ void VdpfRelayoutKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, in
 // Pack per-key DCF cws (stride in_bits + 1) into level-major cw_s and cw_v and
 // the final correction word's v part.
 template <int in_bits, typename Cw>
-__global__ void DcfRelayoutKernel(const Cw *pk, int4 *cw_s, int4 *cw_v, int4 *out_cw, int nkeys) {
+__global__ void DcfRepackKernel(const Cw *pk, int4 *cw_s, int4 *cw_v, int4 *out_cw, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   for (int i = 0; i < in_bits; ++i) {
@@ -94,7 +94,7 @@ __global__ void DcfRelayoutKernel(const Cw *pk, int4 *cw_s, int4 *cw_v, int4 *ou
 }
 
 // Point-evaluate in_bits-level HalfTree DPF keys: one thread per key, one
-// output value per key at xs[tid]. cw_s/extra come from HalfTreeDpfRelayoutKernel.
+// output value per key at xs[tid]. cw_s/extra come from HalfTreeDpfRepackKernel.
 template <int in_bits, int unroll, bool b, typename Group, typename Prg>
 __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s,
     const uint32_t *extra, const int4 *ocws, const uint32_t *xs, int nkeys, Prg prg, int4 hash_key) {
@@ -131,7 +131,7 @@ __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const in
 }
 
 // Point-evaluate in_bits-level DPF keys, one thread per key. cw_s/extra/out_cw
-// come from DpfRelayoutKernel.
+// come from DpfRepackKernel.
 template <int in_bits, int unroll, bool b, typename Group, typename Prg>
 __global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const uint32_t *extra,
     const int4 *out_cw, const uint32_t *xs, int nkeys, Prg prg) {
@@ -180,7 +180,7 @@ __global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
 }
 
 // Point-evaluate in_bits-level DCF keys, one thread per key. cw_s/cw_v/out_cw
-// come from DcfRelayoutKernel. v starts at zero, which is the value the
+// come from DcfRepackKernel. v starts at zero, which is the value the
 // library Eval relies on the compiler to produce for its uninitialized v.
 template <int in_bits, int unroll, bool b, typename Group, typename Prg>
 __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const int4 *cw_v,
@@ -252,7 +252,7 @@ __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
 // Point-evaluate in_bits-level VDPF keys, one thread per key. Same seed walk
 // as the DPF kernel plus the per-point verification hash; the walk carries no
 // hash cost, the tail does one Blake3 and, when t, the cs correction.
-// cw_s/extra come from VdpfRelayoutKernel. cs and ocws stay per-key: each is
+// cw_s/extra come from VdpfRepackKernel. cs and ocws stay per-key: each is
 // read once per evaluation, not once per level.
 template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash>
 __global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const int4 *cw_s, const uint32_t *extra,
@@ -313,7 +313,7 @@ __global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const
 }  // namespace detail
 
 /**
- * One-time relayout of per-key HalfTree DPF keys into the level-major layout
+ * One-time repack of per-key HalfTree DPF keys into the level-major layout
  * consumed by HalfTreeDpfEvalPointGpu. cw_s has in_bits * nkeys int4s,
  * extra and ocws have nkeys entries each.
  *
@@ -325,16 +325,16 @@ __global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const
  * @param stream CUDA stream to launch on.
  */
 template <int in_bits, typename Group, typename Prg, typename In>
-void HalfTreeDpfRelayoutGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
+void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
     uint32_t *extra, cudaStream_t stream = 0) {
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::HalfTreeDpfRelayoutKernel<in_bits, typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw>
+  detail::HalfTreeDpfRepackKernel<in_bits, typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nkeys);
 }
 
 /**
- * One-time relayout of per-key DPF keys into the level-major layout consumed
+ * One-time repack of per-key DPF keys into the level-major layout consumed
  * by DpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra and out_cw have
  * nkeys entries each.
  *
@@ -347,16 +347,16 @@ void HalfTreeDpfRelayoutGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In>:
  * @param stream CUDA stream to launch on.
  */
 template <int in_bits, typename Group, typename Prg, typename In>
-void DpfRelayoutGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s, uint32_t *extra,
+void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s, uint32_t *extra,
     int4 *out_cw, cudaStream_t stream = 0) {
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DpfRelayoutKernel<in_bits, typename Dpf<in_bits, Group, Prg, In>::Cw>
+  detail::DpfRepackKernel<in_bits, typename Dpf<in_bits, Group, Prg, In>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, out_cw, nkeys);
 }
 
 /**
- * One-time relayout of per-key DCF keys into the level-major layout consumed
+ * One-time repack of per-key DCF keys into the level-major layout consumed
  * by DcfEvalPointGpu. cw_s and cw_v have in_bits * nkeys int4s each; out_cw
  * has nkeys entries.
  *
@@ -369,18 +369,18 @@ void DpfRelayoutGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nk
  * @param stream CUDA stream to launch on.
  */
 template <int in_bits, typename Group, typename Prg, typename In>
-void DcfRelayoutGpu(const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s, int4 *cw_v,
+void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s, int4 *cw_v,
     int4 *out_cw, cudaStream_t stream = 0) {
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DcfRelayoutKernel<in_bits, typename Dcf<in_bits, Group, Prg, In>::Cw>
+  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, cw_v, out_cw, nkeys);
 }
 
 /**
- * One-time relayout of per-key VDPF keys into the level-major layout consumed
+ * One-time repack of per-key VDPF keys into the level-major layout consumed
  * by VdpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra has nkeys
- * entries. cs and ocws need no relayout: each is read once per evaluation.
+ * entries. cs and ocws need no repack: each is read once per evaluation.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param cws Correction words returned by Gen(), key-major, stride in_bits.
@@ -390,25 +390,25 @@ void DcfRelayoutGpu(const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int nk
  * @param stream CUDA stream to launch on.
  */
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
-void VdpfRelayoutGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws, int nkeys, int4 *cw_s,
+void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws, int nkeys, int4 *cw_s,
     uint32_t *extra, cudaStream_t stream = 0) {
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::VdpfRelayoutKernel<in_bits, typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
+  detail::VdpfRepackKernel<in_bits, typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nkeys);
 }
 
 /**
  * GPU point evaluation of nkeys HalfTree DPF keys: ys[k] = Eval(b, seeds[k],
  * cws, ocws[k], xs[k]). One thread per key. cw_s/extra must come from
- * HalfTreeDpfRelayoutGpu.
+ * HalfTreeDpfRepackGpu.
  *
  * @tparam unroll Unroll factor of the level loop.
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param b Party index. False for 0 and true for 1.
  * @param seeds Party seeds, one per key.
- * @param cw_s Level-major correction words from HalfTreeDpfRelayoutGpu.
- * @param extra Packed last-level extra bits from HalfTreeDpfRelayoutGpu.
+ * @param cw_s Level-major correction words from HalfTreeDpfRepackGpu.
+ * @param extra Packed last-level extra bits from HalfTreeDpfRepackGpu.
  * @param ocws Output correction words returned by Gen(), one per key.
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
@@ -433,15 +433,15 @@ void HalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const 
 
 /**
  * GPU point evaluation of nkeys DPF keys: ys[k] = Eval(b, seeds[k], cws[k],
- * xs[k]). One thread per key. cw_s/extra/out_cw must come from DpfRelayoutGpu.
+ * xs[k]). One thread per key. cw_s/extra/out_cw must come from DpfRepackGpu.
  *
  * @tparam unroll Unroll factor of the level loop.
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param b Party index. False for 0 and true for 1.
  * @param seeds Party seeds, one per key.
- * @param cw_s Level-major correction words from DpfRelayoutGpu.
- * @param extra Packed tr bits from DpfRelayoutGpu.
- * @param out_cw Output correction words from DpfRelayoutGpu.
+ * @param cw_s Level-major correction words from DpfRepackGpu.
+ * @param extra Packed tr bits from DpfRepackGpu.
+ * @param out_cw Output correction words from DpfRepackGpu.
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
  * @param nkeys Number of keys.
@@ -464,15 +464,15 @@ void DpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const uint32_t
 
 /**
  * GPU point evaluation of nkeys DCF keys: ys[k] = Eval(b, seeds[k], cws[k],
- * xs[k]). One thread per key. cw_s/cw_v/out_cw must come from DcfRelayoutGpu.
+ * xs[k]). One thread per key. cw_s/cw_v/out_cw must come from DcfRepackGpu.
  *
  * @tparam unroll Unroll factor of the level loop.
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param b Party index. False for 0 and true for 1.
  * @param seeds Party seeds, one per key.
- * @param cw_s Level-major s parts from DcfRelayoutGpu.
- * @param cw_v Level-major v parts from DcfRelayoutGpu.
- * @param out_cw Final correction words' v parts from DcfRelayoutGpu.
+ * @param cw_s Level-major s parts from DcfRepackGpu.
+ * @param cw_v Level-major v parts from DcfRepackGpu.
+ * @param out_cw Final correction words' v parts from DcfRepackGpu.
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
  * @param nkeys Number of keys.
@@ -496,14 +496,14 @@ void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw
 /**
  * GPU point evaluation of nkeys VDPF keys: ys[k] = Eval(b, seeds[k], cws[k],
  * cs[k], ocws[k], xs[k])[0] and pi[k] = its corrected verification hash. One
- * thread per key. cw_s/extra must come from VdpfRelayoutGpu.
+ * thread per key. cw_s/extra must come from VdpfRepackGpu.
  *
  * @tparam unroll Unroll factor of the level loop.
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param b Party index. False for 0 and true for 1.
  * @param seeds Party seeds, one per key.
- * @param cw_s Level-major correction words from VdpfRelayoutGpu.
- * @param extra Packed tr bits from VdpfRelayoutGpu.
+ * @param cw_s Level-major correction words from VdpfRepackGpu.
+ * @param extra Packed tr bits from VdpfRepackGpu.
  * @param cs Check seeds returned by Gen(), one per key.
  * @param ocws Output correction words returned by Gen(), one per key.
  * @param xs Evaluation points, one per key.

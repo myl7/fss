@@ -804,11 +804,11 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
 // --- GPU point eval benchmarks (level-major layout) ---
 //
 // Same workload as the per-key Eval benchmarks above (one output per key at
-// one random point each), but the correction words are relaid level-major
+// one random point each), but the correction words are repacked level-major
 // once after Gen: level i of every key adjacent, plus the packed control bits
 // and the output correction words. Each level load is then one coalesced 128B
 // transaction per warp instead of 32 lines of 128B each, which removes the
-// DRAM bound for DPF and DCF point evaluation. The relayout is a one-time
+// DRAM bound for DPF and DCF point evaluation. The repack is a one-time
 // preprocessing cost outside the timed loop, same as Gen.
 
 template <int in_bits, typename Group>
@@ -826,7 +826,7 @@ static void BM_DpfEvalPointGpu(benchmark::State &state) {
 
   DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::DpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<2>, uint>(d_cws, kNumKeys, d_cw_s, d_extra, d_out_cw);
+  fss::gpu::DpfRepackGpu<in_bits, Group, fss::prg::ChaCha<2>, uint>(d_cws, kNumKeys, d_cw_s, d_extra, d_out_cw);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -858,7 +858,7 @@ static void BM_DcfEvalPointGpu(benchmark::State &state) {
 
   DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::DcfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<4>, uint>(d_cws, kNumKeys, d_cw_s, d_cw_v, d_out_cw);
+  fss::gpu::DcfRepackGpu<in_bits, Group, fss::prg::ChaCha<4>, uint>(d_cws, kNumKeys, d_cw_s, d_cw_v, d_out_cw);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -893,7 +893,7 @@ static void BM_HalfTreeDpfEvalPointGpu(benchmark::State &state) {
   HalfTreeDpfGenKernel<in_bits, Group>
       <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::HalfTreeDpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<1>, uint>(d_cws, kNumKeys, d_cw_s, d_extra);
+  fss::gpu::HalfTreeDpfRepackGpu<in_bits, Group, fss::prg::ChaCha<1>, uint>(d_cws, kNumKeys, d_cw_s, d_extra);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss::prg::ChaCha<1> prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -931,7 +931,7 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
   VdpfGenKernel<in_bits, Group>
       <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_cs, d_ocws, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::VdpfRelayoutGpu<in_bits, Group, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3, uint>(
+  fss::gpu::VdpfRepackGpu<in_bits, Group, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3, uint>(
       d_cws, kNumKeys, d_cw_s, d_extra);
   CUDA_CHECK(cudaDeviceSynchronize());
 
