@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* GPU evaluation for DMPF: `DmpfBatchEvalGpu` (one thread per input point runs its kappa
+  Cuckoo `Locate` calls and the located bucket descents itself, so no atomics or synchronization;
+  level-major bucket keys from `DpfRepackGpu` serve both parties) and `DmpfEvalAllGpu`
+  (full-domain-evaluates every active bucket key through `DpfEvalAllGpuBatch` into caller scratch,
+  then one gather thread per domain point). `PrpHash::Locate` is now `__host__ __device__` and
+  returns a plain `LocateResult` aggregate (std::pair's constructor is host-only under nvcc), so
+  the ChaChaFeistel PRP serves host and device from one code path. The phase-1 tiling defaults
+  adapt to small bucket domains. Bit-exact against the host `BatchEval`/`EvalAll` on both parties,
+  tested with the Bytes and Uint127 groups.
 * `ChaChaFeistel` small-domain PRP backend: the 4-round Feistel + cycle-walking construction
   of `Aes128Feistel` with the round PRF replaced by the keyed ChaCha block function the
   library PRG already uses (round key in the ChaCha key, the <=64-bit Feistel half-word in

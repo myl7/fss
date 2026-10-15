@@ -26,7 +26,9 @@
 #include <type_traits>
 #include <cuda_runtime.h>
 #include <cuda/std/array>
+#include <fss/cuckoo_hash.cuh>
 #include <fss/dcf.cuh>
+#include <fss/dmpf.cuh>
 #include <fss/dpf.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/util.cuh>
@@ -325,6 +327,72 @@ __global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const
   for (int j = 0; j < 4; ++j) pi[(size_t)tid * 4 + j] = pi_tilde[j];
 }
 
+// Batch-evaluate a DMPF key: one thread per input point. Each thread runs the
+// kappa Cuckoo Locate calls on its own point and descends the located bucket
+// keys itself, so the outputs need no atomics and no cross-thread
+// synchronization. cw_s/extra/out_cw come from DpfRepackGpu run over the m_rt
+// active bucket keys; a warp's bucket indices are pseudorandom, so per-level
+// loads scatter inside the level's row instead of following the per-key
+// layout's one-line-per-thread pattern.
+template <int in_bits, int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename Prp, typename In,
+    int kappa>
+__global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma, int m_rt, int b_rt, const int4 *s0s,
+    const int4 *cw_s, const ExtBits<bucket_bits> *extra, const int4 *out_cw, Prg prg, Prp prp) {
+  static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
+  static_assert(bucket_bits <= 32, "the bucket point type is fixed to uint");
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= n) return;
+  In x = xs[tid];
+  constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
+  cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
+  auto acc = Group::From(Zero4());
+  for (int k = 0; k < kappa; ++k) {
+    auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
+    if (bucket >= m_rt) continue;
+
+    int4 s = fss::util::SetLsb(s0s[bucket], false);
+    bool t = b;
+    ExtBits<bucket_bits> ex = extra[bucket];
+
+#pragma unroll unroll
+    for (int i = 0; i < bucket_bits; ++i) {
+      int4 s_cw = cw_s[(size_t)i * m_rt + bucket];
+      bool tr_cw = GetBit(ex, i);
+      bool tl_cw = fss::util::GetLsb(s_cw);
+      s_cw = fss::util::SetLsb(s_cw, false);
+
+      auto g = prg.Gen(s);
+      int4 sl = g[0], sr = g[1];
+      bool tl = fss::util::GetLsb(sl);
+      sl = fss::util::SetLsb(sl, false);
+      bool tr = fss::util::GetLsb(sr);
+      sr = fss::util::SetLsb(sr, false);
+
+      if (t) {
+        sl = fss::util::Xor(sl, s_cw);
+        sr = fss::util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
+
+      bool x_bit = GetBit(j, bucket_bits - 1 - i);
+      if (x_bit) {
+        s = sr;
+        t = tr;
+      } else {
+        s = sl;
+        t = tl;
+      }
+    }
+
+    auto y = Group::From(s);
+    if (t) y = y + Group::From(out_cw[bucket]);
+    if constexpr (b) y = -y;
+    acc = acc + y;
+  }
+  ys[tid] = acc.Into();
+}
+
 }  // namespace detail
 
 /**
@@ -543,6 +611,49 @@ void VdpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits
   } else {
     detail::VdpfEvalPointKernel<in_bits, unroll, false, Group, Prg, XorHash, In>
         <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys, vdpf.prg, vdpf.xor_hash);
+  }
+}
+
+/**
+ * GPU batch evaluation of a DMPF key: ys[i] = BatchEval(b, key, xs)[i]. One
+ * thread per input point; each thread runs its kappa Cuckoo Locate calls and
+ * the located bucket descents itself, so no atomics and no synchronization.
+ *
+ * cw_s/extra/out_cw must come from DpfRepackGpu run over the m_rt active
+ * bucket keys (nkeys = m_rt, in_bits = bucket_bits of the Dmpf) and s0s holds
+ * party b's per-bucket seeds. The Prp backend must be device-callable:
+ * ChaChaFeistel qualifies, Aes128Feistel does not.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param xs Evaluation points (device memory), n entries.
+ * @param ys Output array (device memory), one int4 per point.
+ * @param n Number of points.
+ * @param sigma PRP seed from the key.
+ * @param m_rt Runtime bucket count stored in the key.
+ * @param b_rt Runtime bucket size stored in the key.
+ * @param s0s Per-bucket party seeds (device memory), m_rt entries.
+ * @param cw_s Level-major correction words from DpfRepackGpu.
+ * @param extra Packed tr bits from DpfRepackGpu.
+ * @param out_cw Output correction words from DpfRepackGpu.
+ * @param dmpf A Dmpf instance (holds the PRG and PRP, passed to the kernel by
+ *   value on the host side).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp,
+    typename In, int kappa>
+void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_rt, int b_rt, const int4 *s0s,
+    const int4 *cw_s, const ExtBits<bucket_bits> *extra, const int4 *out_cw,
+    const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa> &dmpf, cudaStream_t stream = 0) {
+  static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
+  constexpr int kBs = 256;
+  int blocks = (n + kBs - 1) / kBs;
+  if (b) {
+    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Group, Prg, Prp, In, kappa>
+        <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw, dmpf.prg, dmpf.prp);
+  } else {
+    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Group, Prg, Prp, In, kappa>
+        <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw, dmpf.prg, dmpf.prp);
   }
 }
 

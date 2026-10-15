@@ -84,6 +84,16 @@ constexpr int ChBucket(int t, int lambda) {
 }
 
 /**
+ * Locate result: a Locate() bucket and the position inside it. A plain
+ * aggregate instead of std::pair because std::pair's constructor is host-only
+ * under nvcc and Locate is __host__ __device__.
+ */
+struct LocateResult {
+  int bucket;  ///< Bucket index.
+  int index;   ///< Within-bucket index.
+};
+
+/**
  * PRP-based hash for Cuckoo hashing.
  *
  * Implements the hash functions from Equations (1) and (2) of the paper using a PRP.
@@ -110,8 +120,11 @@ struct PrpHash {
      * @param n Domain size (N = 2^{in_bits}).
      * @param b_size Bucket size B.
      * @return (bucket_index, within_bucket_index).
+     *
+     * Usable from both host and device when the Prp backend is (ChaChaFeistel
+     * is; Aes128Feistel is not because of its OpenSSL context).
      */
-  std::pair<int, int> Locate(int4 sigma, In x, int k, __uint128_t n, int b_size) {
+  __host__ __device__ LocateResult Locate(int4 sigma, In x, int k, __uint128_t n, int b_size) {
     __uint128_t val = static_cast<__uint128_t>(x) + n * k;
     __uint128_t domain = n * kappa;
     __uint128_t y = prp.Permu(sigma, val, domain);

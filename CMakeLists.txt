@@ -99,6 +99,10 @@ if(BUILD_TESTING)
     target_link_libraries(chacha_feistel_test GTest::gtest_main fss)
     gtest_discover_tests(chacha_feistel_test)
 
+    add_executable(dmpf_gpu_test src/dmpf_gpu_test.cu)
+    target_link_libraries(dmpf_gpu_test GTest::gtest_main fss)
+    gtest_discover_tests(dmpf_gpu_test)
+
     add_executable(packed_half_tree_dpf_test src/packed_half_tree_dpf_test.cu)
     target_link_libraries(packed_half_tree_dpf_test GTest::gtest_main fss)
     gtest_discover_tests(packed_half_tree_dpf_test)

@@ -32,9 +32,11 @@
  */
 
 #pragma once
+#include <type_traits>
 #include <cuda_runtime.h>
 #include <cub/device/device_scan.cuh>
 #include <fss/dcf.cuh>
+#include <fss/dmpf.cuh>
 #include <fss/dpf.cuh>
 #include <fss/grotto_dcf.cuh>
 #include <fss/half_tree_dpf.cuh>
@@ -1078,6 +1080,28 @@ __global__ void VdpfMerkleRootsKernel(const cuda::std::array<int4, 2> *roots, in
   }
 }
 
+// Merge the per-bucket full-domain evaluations of a DMPF key into the whole
+// domain: one thread per domain point gathers the kappa Cuckoo buckets that
+// Locate maps it to. bucket_ys holds the m_rt bucket evaluations, stride
+// 2^bucket_bits each.
+template <int in_bits, int bucket_bits, typename Group, typename Prp, typename In, int kappa>
+__global__ void DmpfEvalAllMergeKernel(int4 *ys, int4 sigma, int m_rt, int b_rt, const int4 *bucket_ys, Prp prp) {
+  constexpr size_t N = size_t{1} << in_bits;
+  size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (omega >= N) return;
+  In x = static_cast<In>(omega);
+  constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
+  cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
+  int4 zero = {0, 0, 0, 0};
+  auto acc = Group::From(zero);
+  for (int k = 0; k < kappa; ++k) {
+    auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
+    if (bucket >= m_rt) continue;
+    acc = acc + Group::From(bucket_ys[(size_t)bucket * (size_t{1} << bucket_bits) + j]);
+  }
+  ys[omega] = acc.Into();
+}
+
 }  // namespace detail
 
 /**
@@ -1436,6 +1460,53 @@ void VdpfEvalAllMerkleGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, P
       typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, cs, ocw, ys, d_roots, vdpf.prg, vdpf.xor_hash, vdpf.hash);
   detail::VdpfMerkleRootsKernel<bs, Hash><<<1, bs, 0, stream>>>(d_roots, kBlocks, cs, d_pi, vdpf.hash);
+}
+
+/**
+ * GPU full-domain evaluation of a DMPF key: two launches on the stream.
+ * Phase 1 full-domain-evaluates every active bucket key through
+ * DpfEvalAllGpuBatch into the scratch bucket_ys; phase 2 gathers each domain
+ * point's kappa Cuckoo buckets. The Prp backend must be device-callable:
+ * ChaChaFeistel qualifies, Aes128Feistel does not.
+ *
+ * Layouts: s0s and cws follow DpfEvalAllGpuBatch over the m_rt active bucket
+ * keys (cws key-major, stride bucket_bits + 1); bucket_ys is caller-allocated
+ * scratch of m_rt * 2^bucket_bits int4s; ys holds 2^in_bits outputs.
+ *
+ * @tparam z Frontier depth, see DpfEvalAllGpuBatch. Defaults to
+ *   min(bucket_bits, 16).
+ * @tparam b1 Block-root depth, see DpfEvalAllGpuBatch. Defaults to the
+ *   deepest block root that keeps 256 frontier threads when z >= 8; a smaller
+ *   z runs the whole frontier breadth-parallel in one 2^z block. The phase-1
+ *   block size is derived as 2^(z - b1) either way.
+ * @param b Party index. False for 0 and true for 1.
+ * @param sigma PRP seed from the key.
+ * @param m_rt Runtime bucket count stored in the key.
+ * @param b_rt Runtime bucket size stored in the key.
+ * @param s0s Per-bucket party seeds (device memory), m_rt entries.
+ * @param cws Per-bucket correction words (device memory), key-major.
+ * @param bucket_ys Scratch buffer (device memory), m_rt * 2^bucket_bits int4s.
+ * @param ys Output array (device memory), 2^in_bits int4s.
+ * @param dmpf A Dmpf instance (holds the PRG and PRP).
+ * @param stream CUDA stream to launch both phases on.
+ */
+template <int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bits, typename Group,
+    typename Prg, typename Prp, typename In, int kappa>
+void DmpfEvalAllGpu(bool b, int4 sigma, int m_rt, int b_rt, const int4 *s0s,
+    const typename Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa>::InnerDpf::Cw *cws,
+    int4 *bucket_ys, int4 *ys, const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa> &dmpf,
+    cudaStream_t stream = 0) {
+  using DmpfType = Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa>;
+  static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
+  constexpr int Z = z < 0 ? (bucket_bits <= 16 ? bucket_bits : 16) : z;
+  constexpr int B1 = b1 < 0 ? (Z >= 8 ? Z - 8 : 0) : b1;
+  typename DmpfType::InnerDpf inner{dmpf.prg};
+  DpfEvalAllGpuBatch<Z, B1, (1 << (Z - B1))>(b, s0s, cws, m_rt, bucket_ys, inner, stream);
+  constexpr size_t N = size_t{1} << in_bits;
+  constexpr int kBs = 256;
+  int blocks = static_cast<int>((N + kBs - 1) / kBs);
+  detail::DmpfEvalAllMergeKernel<in_bits, bucket_bits, Group, Prp, In, kappa>
+      <<<blocks, kBs, 0, stream>>>(ys, sigma, m_rt, b_rt, bucket_ys, dmpf.prp);
 }
 
 }  // namespace fss::gpu
