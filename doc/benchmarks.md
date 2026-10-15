@@ -59,6 +59,11 @@ log):
 | PackedHalfTreeDpfEvalAll | -  | `ChaCha<1>`     | 47 |      | 4096B |
 | DmpfBatchEval        | Bytes | `ChaCha<2>`     | 48 |      |       |
 | DmpfEvalAllMerge     | Bytes | `ChaChaFeistel` | 40 |      |       |
+| VdmpfLocate          | -     | `ChaChaFeistel` | 39 |      |       |
+| VdmpfBatchEval       | Bytes | `ChaCha<2>`     | 48 |      |       |
+| VdmpfFoldSetup       | -     | -               | 22 |      |       |
+| VdmpfChunkFold       | -     | Blake3          | 40 |      | 16384B |
+| VdmpfBucketFold      | -     | Blake3          | 48 |      | 7168B |
 | VdpfEvalAllMerkle    | Uint  | `ChaCha<2>`     | 128 |      | 12288B |
 | VdpfMerkleRoots      | -     | Blake3          | 40 |      | 8192B |
 | GrottoDcfExpandLeafBits | -  | `ChaCha<2>`     | 63 |      | 4096B |

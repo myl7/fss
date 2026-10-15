@@ -530,6 +530,8 @@ using VdmpfT = fss::Vdmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, 
 // above keep Aes128Feistel as their own implementation.
 using GpuDmpfT =
     fss::Dmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, fss::prg::ChaCha<2>, fss::prp::ChaChaFeistel, uint32_t>;
+using GpuVdmpfT = fss::Vdmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3,
+    fss::hash::Blake3, fss::prp::ChaChaFeistel, uint32_t>;
 
 static const int4 kDmpfSigma = {0x0f1e2d3c, 0x4b5a6978, static_cast<int>(0x8796a5b4u), static_cast<int>(0xc3d2e1f0u)};
 static const int4 kDmpfHashIv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
@@ -1796,6 +1798,175 @@ static void BM_GpuDmpfEvalAll(benchmark::State &state) {
   CUDA_CHECK(cudaFree(d_bucket_ys));
 }
 
+// ============================================================
+// GPU VDMPF benchmarks (ChaChaFeistel PRP for the device Cuckoo Locate)
+// ============================================================
+
+// Generates the GPU VDMPF keys once and uploads the per-bucket inner VDPF key
+// material. Both parties share cws, cs, and ocw, so the repack and the cs and
+// ocw buffers serve both; only the seeds differ.
+struct GpuVdmpfKeys {
+  using Cw = typename GpuVdmpfT::InnerVdpf::Cw;
+
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  GpuVdmpfT vdmpf;
+  typename GpuVdmpfT::Key k0, k1;
+  int m_rt;
+  int b_rt;
+  int4 *d_s0s[2] = {nullptr, nullptr};
+  Cw *d_cws = nullptr;
+  int4 *d_cw_s = nullptr;
+  int4 *d_ocws = nullptr;
+  fss::gpu::ExtBits<kDmpfBucketBits> *d_extra = nullptr;
+  cuda::std::array<int4, 4> *d_cs = nullptr;
+
+  GpuVdmpfKeys()
+      : vdmpf{fss::prg::ChaCha<2>(0x12345678, static_cast<int>(0x9abcdef0u)), xor_hash, hash,
+            fss::prp::ChaChaFeistel()} {
+    GenDmpfKeys(vdmpf, k0, k1);
+    m_rt = k0.m_rt;
+    b_rt = k0.b_size_rt;
+
+    std::vector<int4> h_s0s[2];
+    std::vector<Cw> h_cws(static_cast<size_t>(m_rt) * kDmpfBucketBits);
+    std::vector<int4> h_ocws(m_rt);
+    std::vector<cuda::std::array<int4, 4>> h_cs(GpuVdmpfT::m);
+    for (int p = 0; p < 2; ++p) {
+      h_s0s[p].resize(m_rt);
+      for (int i = 0; i < m_rt; ++i) {
+        h_s0s[p][i] = (p ? k1 : k0).bks[i].s0;
+      }
+    }
+    for (int i = 0; i < m_rt; ++i) {
+      h_ocws[i] = k0.bks[i].ocw;
+      for (int j = 0; j < kDmpfBucketBits; ++j) {
+        h_cws[static_cast<size_t>(i) * kDmpfBucketBits + j] = k0.bks[i].cws[j];
+      }
+    }
+    // cs is shared between the parties; the fold covers all m buckets.
+    for (int i = 0; i < GpuVdmpfT::m; ++i) h_cs[i] = k0.bks[i].cs;
+
+    CUDA_CHECK(cudaMalloc(&d_s0s[0], sizeof(int4) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_s0s[1], sizeof(int4) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_cws, h_cws.size() * sizeof(Cw)));
+    CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_cs, sizeof(*d_cs) * GpuVdmpfT::m));
+    CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * static_cast<size_t>(kDmpfBucketBits) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_extra, sizeof(*d_extra) * m_rt));
+    CUDA_CHECK(cudaMemcpy(d_s0s[0], h_s0s[0].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_s0s[1], h_s0s[1].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_cws, h_cws.data(), h_cws.size() * sizeof(Cw), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_ocws, h_ocws.data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_cs, h_cs.data(), sizeof(*d_cs) * GpuVdmpfT::m, cudaMemcpyHostToDevice));
+
+    fss::gpu::VdpfRepackGpu<kDmpfBucketBits, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3,
+        uint32_t>(d_cws, m_rt, d_cw_s, d_extra);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+  }
+
+  ~GpuVdmpfKeys() {
+    CUDA_CHECK(cudaFree(d_s0s[0]));
+    CUDA_CHECK(cudaFree(d_s0s[1]));
+    CUDA_CHECK(cudaFree(d_cws));
+    CUDA_CHECK(cudaFree(d_ocws));
+    CUDA_CHECK(cudaFree(d_cs));
+    CUDA_CHECK(cudaFree(d_cw_s));
+    CUDA_CHECK(cudaFree(d_extra));
+  }
+
+  GpuVdmpfKeys(const GpuVdmpfKeys &) = delete;
+  GpuVdmpfKeys &operator=(const GpuVdmpfKeys &) = delete;
+};
+
+// Validates both parties' shares and proofs on a batch, then times party 0.
+// The wrapper's internal pipeline buffers warm up during validation.
+static void RunGpuVdmpfBatch(benchmark::State &state, const uint32_t *h_xs, int n) {
+  GpuVdmpfKeys keys;
+  int4 *d_ys[2];
+  cuda::std::array<int4, 4> *d_pi[2];
+  uint32_t *d_xs;
+  CUDA_CHECK(cudaMalloc(&d_ys[0], sizeof(int4) * n));
+  CUDA_CHECK(cudaMalloc(&d_ys[1], sizeof(int4) * n));
+  CUDA_CHECK(cudaMalloc(&d_pi[0], sizeof(*d_pi[0])));
+  CUDA_CHECK(cudaMalloc(&d_pi[1], sizeof(*d_pi[1])));
+  CUDA_CHECK(cudaMalloc(&d_xs, sizeof(uint32_t) * n));
+  CUDA_CHECK(cudaMemcpy(d_xs, h_xs, sizeof(uint32_t) * n, cudaMemcpyHostToDevice));
+
+  // Validate: both parties reconstruct the sparse multi-point function and
+  // their honest proofs match.
+  for (int party = 0; party < 2; ++party) {
+    fss::gpu::VdmpfBatchEvalGpu(party != 0, d_xs, d_ys[party], d_pi[party], n, keys.k0.sigma, keys.m_rt, keys.b_rt,
+        keys.d_s0s[party], keys.d_cw_s, keys.d_extra, keys.d_cs, keys.d_ocws, keys.vdmpf);
+    CUDA_CHECK(cudaGetLastError());
+  }
+  CUDA_CHECK(cudaDeviceSynchronize());
+  std::vector<int4> ys0(n), ys1(n);
+  cuda::std::array<int4, 4> pi0, pi1;
+  CUDA_CHECK(cudaMemcpy(ys0.data(), d_ys[0], sizeof(int4) * n, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(ys1.data(), d_ys[1], sizeof(int4) * n, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(&pi0, d_pi[0], sizeof(pi0), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(&pi1, d_pi[1], sizeof(pi1), cudaMemcpyDeviceToHost));
+  if (!GpuVdmpfT::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1))) {
+    fprintf(stderr, "gpu vdmpf proof rejected on honest shares\n");
+    exit(EXIT_FAILURE);
+  }
+  for (int i = 0; i < n; ++i) {
+    int4 actual = (BytesGroup::From(ys0[i]) + BytesGroup::From(ys1[i])).Into();
+    int j;
+    int4 expected = IsDmpfAlpha(h_xs[i], &j) ? kDmpfPoints.bs[j] : int4{0, 0, 0, 0};
+    if (actual.x != expected.x || actual.y != expected.y || actual.z != expected.z || actual.w != expected.w) {
+      fprintf(stderr, "gpu vdmpf batch reconstruction mismatch at input %u\n", h_xs[i]);
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  for (auto _ : state) {
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    CUDA_CHECK(cudaEventRecord(start));
+    fss::gpu::VdmpfBatchEvalGpu(false, d_xs, d_ys[0], d_pi[0], n, keys.k0.sigma, keys.m_rt, keys.b_rt, keys.d_s0s[0],
+        keys.d_cw_s, keys.d_extra, keys.d_cs, keys.d_ocws, keys.vdmpf);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    float ms = 0;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+    state.SetIterationTime(ms / 1000.0);
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+  }
+  state.SetItemsProcessed(state.iterations() * n);
+  CUDA_CHECK(cudaFree(d_ys[0]));
+  CUDA_CHECK(cudaFree(d_ys[1]));
+  CUDA_CHECK(cudaFree(d_pi[0]));
+  CUDA_CHECK(cudaFree(d_pi[1]));
+  CUDA_CHECK(cudaFree(d_xs));
+}
+
+static void BM_GpuVdmpfEval(benchmark::State &state) {
+  // GpuData samples raw 32-bit points while the VDMPF domain is 2^kInBits, so
+  // keep the batch inside the domain.
+  std::vector<uint32_t> xs(kN);
+  srand(44);
+  for (int i = 0; i < kN; ++i) xs[i] = static_cast<uint32_t>(rand()) & ((1u << kInBits) - 1);
+  RunGpuVdmpfBatch(state, xs.data(), kN);
+}
+
+static void BM_GpuVdmpfEvalAll(benchmark::State &state) {
+  constexpr size_t n = size_t{1} << kInBits;
+  std::vector<uint32_t> xs(n);
+  for (size_t i = 0; i < n; ++i) xs[i] = static_cast<uint32_t>(i);
+  RunGpuVdmpfBatch(state, xs.data(), static_cast<int>(n));
+  state.counters["keys_per_launch"] = 1;
+  // The VDMPF GPU kernels launch fixed 256-thread blocks (and the small fold
+  // blocks); the configured block size is not a tiling parameter for them.
+  state.counters["threads_per_block"] = 256;
+  state.counters["domain_outputs"] = n;
+}
+
 
 
 
@@ -1951,6 +2122,9 @@ static void RegisterGpuBenchmarks() {
   // DMPF
   benchmark::RegisterBenchmark("fss/GPU/DMPF-bytes/Eval", BM_GpuDmpfEval)->UseManualTime();
   benchmark::RegisterBenchmark("fss/GPU/DMPF-bytes/EvalAll", BM_GpuDmpfEvalAll)->UseManualTime();
+  // VDMPF
+  benchmark::RegisterBenchmark("fss/GPU/VDMPF-bytes/Eval", BM_GpuVdmpfEval)->UseManualTime();
+  benchmark::RegisterBenchmark("fss/GPU/VDMPF-bytes/EvalAll", BM_GpuVdmpfEvalAll)->UseManualTime();
   // AesSoft DPF Eval
   benchmark::RegisterBenchmark("fss/GPU/DPF-bytes/AesSoft/Eval", BM_GpuAesSoftEval)->UseManualTime();
 }

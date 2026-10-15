@@ -44,6 +44,11 @@ inputs, including proof generation, as a point loop.
 On the GPU, DMPF Eval evaluates a `2^18`-point batch per launch through the
 one-thread-per-point kernel, and EvalAll full-domain-evaluates every bucket
 key before gathering each domain point's Cuckoo buckets.
+GPU VDMPF Eval and EvalAll run the same batch pipeline with the Merkle-fold
+proof included in the timing, while the CPU VDMPF curves time the
+paper-faithful sequential chains - the accumulator difference follows the
+per-platform-implementation split below, and proofs do not verify across the
+two accumulators.
 The two platforms drive the Cuckoo Locate with their own optimal PRP backend:
 GPU curves use the device-callable `ChaChaFeistel` while CPU curves keep the
 OpenSSL-backed `Aes128Feistel`, and the figures compare implementations within

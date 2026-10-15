@@ -104,7 +104,7 @@ def pattern(case):
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
         if case.get("scheme"):
             return f"^fss/GPU/{case['scheme']}-{groups}/(AesSoft/)?{operation}(/|$)"
-        return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF|DMPF)-{groups}"
+        return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF|VDMPF|DMPF)-{groups}"
                 f"|PackedHalfTreeDPF-bits1|GrottoDCF)/(AesSoft/)?{operation}(/|$)")
     return f"^{prefix}/{case['platform'].upper()}/.*{operation}(/|$)"
 
