@@ -136,7 +136,13 @@ static torch::Tensor half_tree_dpf_eval_all(int64_t party, torch::Tensor s0, tor
   EnsureNonce();
   bool b = (party == 1);
 
-  int64_t n = 1LL << kInBits;
+  int64_t n = 0;
+  if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
+  else TORCH_CHECK(false, "half_tree_dpf.eval_all cannot represent the 2^", kInBits, "-entry output size");
+  if (s0.is_cuda())
+    TORCH_CHECK(kInBits - 1 <= kMaxCudaEvalAllBits, "half_tree_dpf.eval_all on CUDA supports in_bits <= ",
+        kMaxCudaEvalAllBits + 1, " (grid index width), got ", kInBits);
+
   auto options = torch::dtype(torch::kInt32).device(s0.device());
   auto ys = torch::zeros({n, 4}, options);
 
@@ -154,17 +160,14 @@ static torch::Tensor half_tree_dpf_eval_all(int64_t party, torch::Tensor s0, tor
     cpy_err = cudaMemcpy(&ocw_val, ocw_ptr, sizeof(int4), cudaMemcpyDeviceToHost);
     TORCH_CHECK(cpy_err == cudaSuccess, "half_tree_dpf eval_all ocw copy failed: ", cudaGetErrorString(cpy_err));
 
-    if constexpr (kInBits <= 24) {
-      // Tiling is computed on the scheme depth, one level below the leaves.
-      constexpr int kDepth = kInBits - 1;
-      constexpr int kZ = EvalAllZ(kDepth), kB1 = EvalAllB1(kDepth), kBS = EvalAllBS(kDepth);
-      HtDpfInst dpf{PrgType(g_nonce0, g_nonce1), kHashIv[0]};
-      fss::gpu::HalfTreeDpfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ocw_val, ys_ptr, dpf, CurrentStream());
-      auto err = cudaGetLastError();
-      TORCH_CHECK(err == cudaSuccess, "half_tree_dpf eval_all launch failed: ", cudaGetErrorString(err));
-    } else {
-      TORCH_CHECK(false, "GPU EvalAll supports in_bits <= 24, got ", kInBits);
-    }
+    // Tiling is computed on the scheme depth, one level below the leaves.
+    constexpr int kDepth = kInBits - 1;
+    constexpr int kZ = WideDomainEvalAllZ(kDepth), kB1 = WideDomainEvalAllB1(kDepth),
+        kBS = WideDomainEvalAllBS(kDepth);
+    HtDpfInst dpf{PrgType(g_nonce0, g_nonce1), kHashIv[0]};
+    fss::gpu::HalfTreeDpfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ocw_val, ys_ptr, dpf, CurrentStream());
+    auto err = cudaGetLastError();
+    TORCH_CHECK(err == cudaSuccess, "half_tree_dpf eval_all launch failed: ", cudaGetErrorString(err));
     return ys;
   }
 

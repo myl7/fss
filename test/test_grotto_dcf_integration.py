@@ -92,3 +92,22 @@ class TestGrottoDcfCuda:
             )
             assert gpu.device.type == "cuda"
             assert torch.equal(cpu, gpu.cpu())
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+    def test_above_24_bits_matches_cpu(self):
+        dcf = fss_crypto.GrottoDcf(in_bits=25, prg="chacha")
+        s0s = torch.randint(-2**31, 2**31, (2, 4), dtype=torch.int32)
+        cws = dcf.gen(s0s, alpha=107)
+        for party in (0, 1):
+            tree_cpu = dcf.preprocess(party=party, s0=s0s[party], cws=cws)
+            tree_gpu = dcf.preprocess(
+                party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda")
+            )
+            assert tree_gpu.device.type == "cuda"
+            assert torch.equal(tree_cpu, tree_gpu.cpu())
+            cpu = dcf.eval_all(party=party, s0=s0s[party], cws=cws)
+            gpu = dcf.eval_all(
+                party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda")
+            )
+            assert gpu.device.type == "cuda"
+            assert torch.equal(cpu, gpu.cpu())

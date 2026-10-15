@@ -111,3 +111,20 @@ class TestHalfTreeDpfCuda:
         mask = torch.ones(diff.shape[0], dtype=torch.bool)
         mask[107] = False
         assert not torch.any(diff[mask])
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+    def test_above_24_bits_matches_cpu(self):
+        dpf = fss_crypto.HalfTreeDpf(in_bits=25, group="bytes", prg="chacha")
+        s0s = torch.randint(-2**31, 2**31, (2, 4), dtype=torch.int32)
+        beta = torch.tensor([0, 0, 0, 604], dtype=torch.int32)
+        cws, ocw = dpf.gen(s0s, alpha=107, beta=beta)
+        for party in (0, 1):
+            cpu = dpf.eval_all(party=party, s0=s0s[party], cws=cws, ocw=ocw)
+            gpu = dpf.eval_all(
+                party=party,
+                s0=s0s[party].to("cuda"),
+                cws=cws.to("cuda"),
+                ocw=ocw.to("cuda"),
+            )
+            assert gpu.device.type == "cuda"
+            assert torch.equal(cpu, gpu.cpu())

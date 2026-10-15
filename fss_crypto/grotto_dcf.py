@@ -65,18 +65,12 @@ class GrottoDcf:
         Returns:
             (2*2^in_bits-1,) bool tensor, the level-order parity segment tree,
             on the same device as the inputs. CUDA tensors need
-            in_bits <= 24.
+            in_bits <= 38 (launch grid) and enough device memory for the tree.
         """
         validate_party(party)
         validate_s0(s0)
         validate_cws(cws, self.in_bits)
         validate_device_match(s0, cws)
-
-        if s0.device.type == "cuda" and self.in_bits > 24:
-            raise RuntimeError(
-                f"grotto_dcf GPU paths support in_bits <= 24, "
-                f"got {self.in_bits}"
-            )
 
         return self._ext.preprocess(party, s0, cws)
 
@@ -112,18 +106,13 @@ class GrottoDcf:
 
         Returns:
             (2^in_bits,) bool tensor of output shares on the same device.
-            CUDA tensors need in_bits <= 24.
+            CUDA tensors need in_bits <= 38 (launch grid) and enough device
+            memory for the output.
         """
         validate_party(party)
         validate_s0(s0)
         validate_cws(cws, self.in_bits)
         validate_device_match(s0, cws)
-
-        if s0.device.type == "cuda" and self.in_bits > 24:
-            raise RuntimeError(
-                f"grotto_dcf GPU paths support in_bits <= 24, "
-                f"got {self.in_bits}"
-            )
 
         return self._ext.eval_all(party, s0, cws)
 

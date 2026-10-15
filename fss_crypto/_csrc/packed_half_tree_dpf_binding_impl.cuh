@@ -135,7 +135,13 @@ static torch::Tensor packed_half_tree_dpf_eval_all(int64_t party, torch::Tensor 
   bool b = (party == 1);
 
   constexpr int kDepth = PackedInst::kDepth;
-  int64_t n = 1LL << kDepth;
+  int64_t n = 0;
+  if constexpr (kDepth <= kMaxEvalAllBits) n = 1LL << kDepth;
+  else TORCH_CHECK(false, "packed_half_tree_dpf.eval_all cannot represent the 2^", kDepth, "-block output size");
+  if (s0.is_cuda())
+    TORCH_CHECK(kDepth <= kMaxCudaEvalAllBits, "packed_half_tree_dpf.eval_all on CUDA supports tree depth <= ",
+        kMaxCudaEvalAllBits, " (grid index width), got ", kDepth);
+
   auto options = torch::dtype(torch::kInt32).device(s0.device());
   auto ys = torch::zeros({n, 4}, options);
 
@@ -154,15 +160,12 @@ static torch::Tensor packed_half_tree_dpf_eval_all(int64_t party, torch::Tensor 
     TORCH_CHECK(
         cpy_err == cudaSuccess, "packed_half_tree_dpf eval_all fcw copy failed: ", cudaGetErrorString(cpy_err));
 
-    if constexpr (kDepth <= 16 + 8) {
-      constexpr int kZ = EvalAllZ(kDepth), kB1 = EvalAllB1(kDepth), kBS = EvalAllBS(kDepth);
-      PackedInst dpf{PrgType(g_nonce0, g_nonce1), kHashIv[0]};
-      fss::gpu::PackedHalfTreeDpfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, fcw_val, ys_ptr, dpf, CurrentStream());
-      auto err = cudaGetLastError();
-      TORCH_CHECK(err == cudaSuccess, "packed_half_tree_dpf eval_all launch failed: ", cudaGetErrorString(err));
-    } else {
-      TORCH_CHECK(false, "GPU EvalAll supports tree depth <= ", 16 + 8, ", got ", kDepth);
-    }
+    constexpr int kZ = WideDomainEvalAllZ(kDepth), kB1 = WideDomainEvalAllB1(kDepth),
+        kBS = WideDomainEvalAllBS(kDepth);
+    PackedInst dpf{PrgType(g_nonce0, g_nonce1), kHashIv[0]};
+    fss::gpu::PackedHalfTreeDpfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, fcw_val, ys_ptr, dpf, CurrentStream());
+    auto err = cudaGetLastError();
+    TORCH_CHECK(err == cudaSuccess, "packed_half_tree_dpf eval_all launch failed: ", cudaGetErrorString(err));
     return ys;
   }
 

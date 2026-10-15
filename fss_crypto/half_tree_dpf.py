@@ -119,7 +119,8 @@ class HalfTreeDpf:
 
         Returns:
             (2^in_bits, 4) int32 tensor of output shares on the same device.
-            CUDA tensors need in_bits <= 24.
+            CUDA tensors need in_bits <= 42 (launch grid) and enough device
+            memory for the output.
         """
         validate_party(party)
         validate_s0(s0)

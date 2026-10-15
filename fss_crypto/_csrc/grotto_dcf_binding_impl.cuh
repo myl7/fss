@@ -49,25 +49,31 @@ static torch::Tensor grotto_preprocess(int64_t party, torch::Tensor s0, torch::T
   EnsureNonce();
   bool b = (party == 1);
 
+  // The widest preprocess parity level launches 2^(in_bits-8) blocks, so the
+  // grid.x index width caps the CUDA paths at 38 bits.
+  constexpr int kMaxGrottoCudaBits = 38;
+  int64_t n = 0;
+  if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
+  else TORCH_CHECK(false, "grotto_dcf.preprocess cannot represent the 2^", kInBits, "-entry tree size");
+  if (s0.is_cuda())
+    TORCH_CHECK(kInBits <= kMaxGrottoCudaBits, "grotto_dcf.preprocess on CUDA supports in_bits <= ",
+        kMaxGrottoCudaBits, " (grid index width), got ", kInBits);
+
   auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
   int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
   auto *cws_ptr = reinterpret_cast<const typename GrottoInst::Cw *>(cws.data_ptr<int32_t>());
 
-  int64_t n = 1LL << kInBits;
   GrottoInst grotto{PrgType(g_nonce0, g_nonce1)};
 
   if (s0.is_cuda()) {
-    if constexpr (kInBits <= 24) {
-      constexpr int kZ = EvalAllZ(kInBits), kB1 = EvalAllB1(kInBits), kBS = EvalAllBS(kInBits);
-      auto tree = torch::zeros({2 * n - 1}, torch::dtype(torch::kBool).device(s0.device()));
-      auto *p_ptr = tree.data_ptr<bool>();
-      fss::gpu::GrottoDcfPreprocessGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, p_ptr, grotto, CurrentStream());
-      auto err = cudaGetLastError();
-      TORCH_CHECK(err == cudaSuccess, "grotto preprocess launch failed: ", cudaGetErrorString(err));
-      return tree;
-    } else {
-      TORCH_CHECK(false, "GPU preprocess supports in_bits <= 24, got ", kInBits);
-    }
+    constexpr int kZ = WideDomainEvalAllZ(kInBits), kB1 = WideDomainEvalAllB1(kInBits),
+        kBS = WideDomainEvalAllBS(kInBits);
+    auto tree = torch::zeros({2 * n - 1}, torch::dtype(torch::kBool).device(s0.device()));
+    auto *p_ptr = tree.data_ptr<bool>();
+    fss::gpu::GrottoDcfPreprocessGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, p_ptr, grotto, CurrentStream());
+    auto err = cudaGetLastError();
+    TORCH_CHECK(err == cudaSuccess, "grotto preprocess launch failed: ", cudaGetErrorString(err));
+    return tree;
   }
 
   // CPU path.
@@ -120,7 +126,14 @@ static torch::Tensor grotto_eval_all(int64_t party, torch::Tensor s0, torch::Ten
   EnsureNonce();
   bool b = (party == 1);
 
-  int64_t n = 1LL << kInBits;
+  constexpr int kMaxGrottoCudaBits = 38;
+  int64_t n = 0;
+  if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
+  else TORCH_CHECK(false, "grotto_dcf.eval_all cannot represent the 2^", kInBits, "-entry output size");
+  if (s0.is_cuda())
+    TORCH_CHECK(kInBits <= kMaxGrottoCudaBits, "grotto_dcf.eval_all on CUDA supports in_bits <= ",
+        kMaxGrottoCudaBits, " (grid index width), got ", kInBits);
+
   auto ys = torch::zeros({n}, torch::dtype(torch::kBool).device(s0.device()));
 
   GrottoInst grotto{PrgType(g_nonce0, g_nonce1)};
@@ -130,14 +143,11 @@ static torch::Tensor grotto_eval_all(int64_t party, torch::Tensor s0, torch::Ten
   auto *ys_ptr = ys.data_ptr<bool>();
 
   if (s0.is_cuda()) {
-    if constexpr (kInBits <= 24) {
-      constexpr int kZ = EvalAllZ(kInBits), kB1 = EvalAllB1(kInBits), kBS = EvalAllBS(kInBits);
-      fss::gpu::GrottoDcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, grotto, CurrentStream());
-      auto err = cudaGetLastError();
-      TORCH_CHECK(err == cudaSuccess, "grotto eval_all launch failed: ", cudaGetErrorString(err));
-    } else {
-      TORCH_CHECK(false, "GPU EvalAll supports in_bits <= 24, got ", kInBits);
-    }
+    constexpr int kZ = WideDomainEvalAllZ(kInBits), kB1 = WideDomainEvalAllB1(kInBits),
+        kBS = WideDomainEvalAllBS(kInBits);
+    fss::gpu::GrottoDcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, grotto, CurrentStream());
+    auto err = cudaGetLastError();
+    TORCH_CHECK(err == cudaSuccess, "grotto eval_all launch failed: ", cudaGetErrorString(err));
     return ys;
   }
 

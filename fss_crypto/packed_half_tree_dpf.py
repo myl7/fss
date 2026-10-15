@@ -145,7 +145,8 @@ class PackedHalfTreeDpf:
         Returns:
             (2^depth, 4) int32 tensor of output share blocks on the same
             device: block j covers inputs j * lanes to (j + 1) * lanes - 1.
-            CUDA tensors need depth <= 24.
+            CUDA tensors need tree depth <= 41 (launch grid) and enough device
+            memory for the output.
         """
         validate_party(party)
         validate_s0(s0)
