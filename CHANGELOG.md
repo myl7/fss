@@ -139,6 +139,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* The grid figures drew a rotated y-axis label on every panel, reaching past the 34px column
+  gap into the neighboring plot. Each row (and block-size band) now carries one label on its
+  leftmost existing panel, and a panel whose time unit differs from that label notes its unit
+  in the panel caption (`(ms/key)`, `(ns/key)`).
 * The Python bindings' CUDA paths no longer dereference device tensors on the host when
   reading seeds and check values for kernel launches (the single-point paths passed the
   seed by value after a host read, which faults over PCIe; seeds now travel as kernel

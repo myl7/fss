@@ -53,6 +53,19 @@ export function renderFigures(d3, figures, metadata) {
     svg.append('rect').attr('data-layer', 'background').attr('width', W).attr('height', H).attr('fill', '#fff');
     svg.append('text').attr('data-name', 'figure-title').attr('x', left).attr('y', 22)
       .attr('font-size', 17).attr('font-weight', 600).attr('fill', '#202020').text(figure.title);
+    // The leftmost existing panel of each grid row; rows can start past
+    // column 0 when the family lacks that operation's implementation.
+    const rowMinColumn = new Map();
+    if (grid) for (const panel of figure.panels) {
+      rowMinColumn.set(panel.row, Math.min(rowMinColumn.get(panel.row) ?? Infinity, panel.column));
+    }
+    const unitOf = panel => panel.operation !== 'eval_all' ? (figure.id.startsWith('gpu') ? 'ns' : 'µs') : 'ms';
+    // The unit of the label each row/band carries, from its leftmost panel.
+    const bandUnit = new Map();
+    figure.panels.forEach((panel, index) => {
+      const leftmost = grid ? panel.column === rowMinColumn.get(panel.row) : index % cols === 0;
+      if (leftmost) bandUnit.set(grid ? panel.row : Math.floor(index / cols), unitOf(panel));
+    });
     figure.panels.forEach((panel, index) => {
       const timeUnit = panel.operation !== 'eval_all' ? (figure.id.startsWith('gpu') ? 'ns' : 'µs') : 'ms';
       const timeMultiplier = {ns: 1e6, 'µs': 1e3, ms: 1}[timeUnit];
@@ -110,8 +123,19 @@ export function renderFigures(d3, figures, metadata) {
       g.selectAll('[data-axis] text').attr('font-size', 13).attr('fill', '#333');
       g.append('text').attr('data-name', 'x-label').attr('x', panelW / 2).attr('y', plotH + 43).attr('text-anchor', 'middle')
         .text(figure.isThreads ? 'Threads per block, T' : 'Domain size, N');
-      g.append('text').attr('data-name', 'y-label').attr('transform', `translate(-52,${plotH / 2}) rotate(-90)`)
-        .attr('text-anchor', 'middle').text(`Time (${timeUnit}/key)`);
+      // Only the leftmost existing panel of a grid row (or block-size band)
+      // carries the y-axis label: the per-panel label would reach past the 34px
+      // column gap into the neighboring plot, and a row whose first column is
+      // empty (GPU DMPF has no Gen panel) starts further right. A panel whose
+      // unit differs from the unit that label states notes its own unit in the
+      // panel label instead.
+      const leftmost = grid ? panel.column === rowMinColumn.get(panel.row) : index % cols === 0;
+      const unitNote = leftmost || timeUnit === bandUnit.get(grid ? panel.row : Math.floor(index / cols))
+        ? '' : ` (${timeUnit}/key)`;
+      if (leftmost) {
+        g.append('text').attr('data-name', 'y-label').attr('transform', `translate(-52,${plotH / 2}) rotate(-90)`)
+          .attr('text-anchor', 'middle').text(`Time (${timeUnit}/key)`);
+      }
       const series = d3.group(panel.rows, row => row.method);
       for (const [method, points] of series) {
         points.sort((a, b) => xValue(a) - xValue(b));
@@ -125,7 +149,7 @@ export function renderFigures(d3, figures, metadata) {
       const operation = {gen: 'Gen', eval: 'Eval', eval_all: 'EvalAll'}[panel.operation];
       g.append('text').attr('data-name', 'panel-label').attr('x', panelW / 2).attr('y', plotH + 69)
         .attr('text-anchor', 'middle').attr('font-size', 15).attr('font-weight', 600)
-        .text(`(${String.fromCharCode(97 + index)}) ${panel.familyLabel} ${operation}`);
+        .text(`(${String.fromCharCode(97 + index)}) ${panel.familyLabel} ${operation}${unitNote}`);
     });
     rowLayouts.forEach(rowLayout => {
       const legendTop = legendStarts[rowLayout.rowIndex];
