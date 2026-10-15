@@ -19,3 +19,6 @@
 [submodule "third_party/vdpf/vdpf"]
 	path = third_party/vdpf/vdpf
 	url = https://github.com/sachaservan/vdpf.git
+[submodule "third_party/dpf-cpp/dpf-cpp"]
+	path = third_party/dpf-cpp/dpf-cpp
+	url = https://github.com/dkales/dpf-cpp
