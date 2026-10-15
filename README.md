@@ -54,7 +54,7 @@ More details, including the definitions and the implementation details that user
 ### Prerequisites
 
 - CMake >= 3.22
-- CUDA toolkit >= 12.0 (for C++20 support). Tested on the latest CUDA toolkit.
+- CUDA toolkit >= 12.0 (for C++20 support). C++ CI is configured for CUDA 12.6 and 13.4.
 - OpenSSL 3 (only required for CPU with AES-128 MMO PRG)
 
 ### Build
@@ -308,6 +308,10 @@ uv add fss-crypto
 ```
 
 The package requires Python >= 3.10 and PyTorch >= 2.6.
+CI is configured for Python 3.10 with PyTorch 2.6 and CUDA 12.6, and Python 3.13 with PyTorch 2.13 and CUDA 13.4.
+CI checks compilation and CPU execution.
+GPU tests are skipped because CI runners have no GPU.
+For JIT compilation, use a local CUDA toolkit with the same major version as `torch.version.cuda`.
 The first use of each parameter set JIT-compiles a small CUDA extension with `torch.utils.cpp_extension.load`, so the CUDA toolkit is required even when the example below runs on CPU tensors.
 The `aes128_mmo` PRG also links OpenSSL at JIT time.
 Compiled extensions are cached under `~/.cache/fss_crypto`.
