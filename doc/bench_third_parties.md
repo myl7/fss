@@ -22,6 +22,11 @@ parameter.
 | fss-rs 0.6.0 | [pado-labs/fss-rs](https://github.com/pado-labs/fss-rs)                                     | Rust            | CPU      | `bench_fss_v060.sh`                              |
 | fss 0.7.0    | (internal)                                                                                  | C               | CPU+GPU  | `bench_fss_v070_cpu.sh`, `bench_fss_v070_gpu.sh` |
 | fss          | (this repo)                                                                                 | C++/CUDA        | CPU+GPU  | `bench_fss_cpu.sh`, `bench_fss_gpu.sh`           |
+| mastic       | [TrustworthyComputing/mastic](https://github.com/TrustworthyComputing/mastic)               | Rust            | CPU      | `bench.py --libraries mastic`                     |
+| plasma       | [TrustworthyComputing/plasma](https://github.com/TrustworthyComputing/plasma)               | Rust            | CPU      | `bench.py --libraries plasma`                     |
+| sycret       | [OpenMined/sycret](https://github.com/OpenMined/sycret)                                     | Rust            | CPU      | `bench.py --libraries sycret`                     |
+| dpf-cpp      | [dkales/dpf-cpp](https://github.com/dkales/dpf-cpp)                                        | C++             | CPU      | `bench.py --libraries dpf-cpp`                    |
+| dpfplusplus  | [rh3nry/dpfplusplus](https://github.com/rh3nry/dpfplusplus) (fetched, not vendored)          | C++             | CPU      | `bench.py --libraries dpfplusplus`                |
 | torchcsprng  | [meta-pytorch/csprng](https://github.com/meta-pytorch/csprng)                               | C++/CUDA        | CPU+GPU  | `bench.py --libraries torchcsprng`                |
 
 ## Benchmarked Operations
@@ -39,9 +44,22 @@ parameter.
 | fss 0.7.0 (GPU) | x       | x         |             | x       | x        |             |             |
 | fss (CPU)       | x       | x         | x           | x       | x        |             | x           |
 | fss (GPU)       | x       | x         |             | x       | x        |             | x           |
+| mastic          | x       | x[^mastic] | x[^mastic] |         |          |             |             |
+| plasma          | x       | x[^plasma] |             |         |          |             |             |
+| sycret          |         |           |             |         |          |             |             |
+| dpf-cpp         | x       | x         | x           |         |          |             |             |
+| dpfplusplus     | x       | x         | x           |         |          |             |             |
 | torchcsprng     |         |           |             |         |          |             | x           |
 
 [^1]: See `doc/bench_aes128_soft.md` for implementation details and results.
+[^mastic]: Mastic is a VIDPF: Eval chains the running proof, and EvalAll is
+    `eval_tree` over the full domain for both parties including the proof digest
+    comparison. Outputs are Field128 shares (prio's 128-bit prime field).
+[^plasma]: PLASMA is a VIDPF: Eval chains the running proof over u64 shares
+    mod 2^63-25. Upstream has no full-domain API, so no EvalAll is measured.
+    sycret has no DPF rows in this table: it benchmarks equality (EQ) and
+    comparison (CMP) keygen and batched point eval through its C ABI, with
+    additive bit shares mod 2^32 over its fixed 32-bit domain.
 
 GPU-DPF's GPU operation is a full-domain table reduction. EzPC's `EvalAll`
 traverses the domain and returns a packed reduction bit per key. These operations
@@ -225,6 +243,84 @@ GPU rows are dropped when the GPU reference is the A6000.
 | Toolchain       | nvcc + g++ (C++20)                                                     |
 | Bench framework | Google Benchmark 1.9.5 (UseManualTime, CUDA events)                    |
 
+### mastic (Rust)
+
+| Setting              | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| in_bits              | 12, 16, 20                                                   |
+| out_bits             | 128 (prio Field128, Montgomery form, counter appended)       |
+| PRG                  | AES-128 MMO (fixed-key, `AES_0(ctr) xor ctr`)                |
+| PRG acceleration     | AES-NI (`aes` crate)                                         |
+| Proof                | BLAKE3 node hashes (16-byte); EvalAll compares both parties' digests |
+| EvalAll method       | `eval_tree` over all leaves for both parties, proof included in timing |
+| Output group         | Field128 additive shares                                     |
+| Threading            | Single-thread (`RAYON_NUM_THREADS=1`)                        |
+| Build                | Cargo via `mastic-bench/` wrapper: opt-level=3, LTO, codegen-units=1 |
+| Toolchain            | Rust stable                                                  |
+| Bench framework      | Criterion 0.5.1                                              |
+
+### plasma (Rust)
+
+| Setting              | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| in_bits              | 16, 20                                                       |
+| out_bits             | 64 (u64 shares mod p = 2^63-25)                              |
+| PRG                  | AES-128-CTR (software, RustCrypto)                           |
+| Proof                | 12-byte BLAKE3 XOF running proof, chained through Eval       |
+| EvalAll method       | None upstream; point eval only                               |
+| Output group         | u64 additive shares mod p                                    |
+| Threading            | Single-thread (`RAYON_NUM_THREADS=1`)                        |
+| Build                | Cargo via `plasma-bench/` wrapper: opt-level=3, LTO, codegen-units=1 |
+| Toolchain            | Rust stable                                                  |
+| Bench framework      | Criterion 0.5.1                                              |
+
+### sycret (Rust)
+
+| Setting              | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| Domain               | Fixed 32-bit inputs                                          |
+| Operations           | EQ and CMP keygen and batched point eval (C ABI entry points) |
+| Key widths           | 621 B (EQ), 920 B (CMP)                                      |
+| Batch sizes          | 1024, 16384, 65536 keys or points per call                   |
+| PRG                  | Fixed-key AES-NI stream, 128 fixed streams                   |
+| Output group         | Additive bit shares mod 2^32                                 |
+| Threading            | Single-thread (`RAYON_NUM_THREADS=1`)                        |
+| Maintenance          | Upstream unmaintained since 2021-10; no full-domain API      |
+| Build                | Cargo via `sycret-bench/` wrapper: opt-level=3, LTO, codegen-units=1 |
+| Toolchain            | Rust stable                                                  |
+| Bench framework      | Criterion 0.5.1                                              |
+
+### dpf-cpp (C++)
+
+| Setting              | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| in_bits              | 16, 20, 24                                                   |
+| out_bits             | 1 (packed-bit truth table)                                   |
+| PRG                  | AES-128 MMO (AES-NI, two fixed keys for left/right children) |
+| Gen randomness       | Fixed-seed test PRNG (upstream `PRNG::getTestPRNG`)          |
+| EvalAll method       | `EvalFull` scalar and `EvalFull8` 8-way batched              |
+| Output group         | GF(2) XOR                                                    |
+| Threading            | Single-thread                                                |
+| Build                | CMake, Release, `-maes -msse4.1 -mavx2 -mpclmul`, x86-64 only |
+| Toolchain            | g++ (C++14)                                                  |
+| Bench framework      | Google Benchmark 1.9.5                                       |
+
+### dpfplusplus (C++)
+
+| Setting              | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| in_bits              | 16, 20, 24                                                   |
+| out_bits             | 1 (bool leaves packed 128 per `__m128i` node)                |
+| PRG                  | Fixed-key AES (static zero key, counter/xor mode)            |
+| Gen randomness       | `arc4random_buf`                                             |
+| EvalAll method       | `evalfull` level-by-level traversal                          |
+| Output group         | GF(2) XOR                                                    |
+| Threading            | Single-thread                                                |
+| Source               | Header-only; fetched and patched on demand, never committed (see [bench-dpfplusplus.md](bench-dpfplusplus.md)) |
+| Build                | CMake, Release, `-O2 -maes -mavx2`, x86-64 only              |
+| Toolchain            | g++ (C++17)                                                  |
+| Bench framework      | Google Benchmark 1.9.5                                       |
+
 ### torchcsprng (C++/CUDA)
 
 See `doc/bench_aes128_soft.md` for implementation details and results.
@@ -264,6 +360,14 @@ patches to that copy. The submodule stays at its recorded commit.
 
 The other source versions are fixed by Git submodule entries, Cargo lockfiles,
 Rust toolchain files, and Bazel's module lockfile. Google DPF uses Bazel 7.6.1.
+dpfplusplus is the exception to vendoring: its headers are an anonymous
+pre-release that forbids redistribution, so `prepare` clones it on demand under
+`build/third_party/dpfplusplus/`, checks out the pinned commit, and applies
+three documented text fixes before the wrapper compiles against it; no
+upstream byte is committed. See [bench-dpfplusplus.md](bench-dpfplusplus.md)
+for provenance, license status, and reproduction steps. The mastic, plasma,
+and sycret entries build on the Rust stable toolchain through the same pinned
+`RUST` map that libdpf uses.
 Each CMake wrapper uses Google Benchmark 1.9.5, while Google DPF uses 1.8.3.
 `prepare` initializes selected submodules recursively and installs the pinned
 Rust toolchains and GPU-DPF environment. It does not run EzPC's setup script,

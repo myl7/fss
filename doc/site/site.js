@@ -5,18 +5,18 @@
 // SVG and the independent variable is always the domain size N.
 
 const FAMILY = {DCF: 'dcf', GrottoDCF: 'dcf', DPF: 'dpf', HalfTreeDPF: 'dpf',
-  PackedHalfTreeDPF: 'dpf', VDPF: 'dpf', DMPF: 'dmpf', VDMPF: 'dmpf'};
+  PackedHalfTreeDPF: 'dpf', VDPF: 'dpf', VIDPF: 'dpf', DMPF: 'dmpf', VDMPF: 'dmpf'};
 const OPERATIONS = ['Gen', 'Eval', 'EvalAll'];
-const LIBRARY_NAMES = {fss: 'FSS (this repo)', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0',
+const LIBRARY_NAMES = {fss: 'FSS (this repo)', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0', mastic: 'Mastic (S&P 2025 prototype)', plasma: 'PLASMA (PoPETs 2024 prototype)', 'dpf-cpp': 'dpf-cpp (Kales)', dpfplusplus: 'dpf++ (fetched, pre-release)',
   google_dpf: 'Google DPF', gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf',
   libfss: 'libfss', servan_vdpf: 'Servan-Schreiber VDPF'};
-const LIBRARY_SHORT = {fss: 'FSS', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0',
+const LIBRARY_SHORT = {fss: 'FSS', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0', mastic: 'Mastic', plasma: 'PLASMA', 'dpf-cpp': 'dpf-cpp', dpfplusplus: 'dpf++',
   google_dpf: 'Google', gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf',
   libfss: 'libfss', servan_vdpf: 'Servan-Schreiber'};
 const SCHEME_NAMES = {DPF: 'DPF', DCF: 'DCF', HalfTreeDPF: 'HalfTree DPF',
-  PackedHalfTreeDPF: 'Packed HalfTree DPF', VDPF: 'VDPF', GrottoDCF: 'Grotto DCF',
+  PackedHalfTreeDPF: 'Packed HalfTree DPF', VDPF: 'VDPF', VIDPF: 'VIDPF', GrottoDCF: 'Grotto DCF',
   DMPF: 'DMPF', VDMPF: 'VDMPF'};
-const SCHEME_ORDER = ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF', 'DCF', 'GrottoDCF', 'DMPF', 'VDMPF'];
+const SCHEME_ORDER = ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF', 'VIDPF', 'DCF', 'GrottoDCF', 'DMPF', 'VDMPF'];
 const PRG_NAMES = {'AES-NI': 'AES-128 MMO, AES-NI', 'OpenSSL-AES': 'AES-128 MMO, OpenSSL',
   AES128: 'AES-128', 'AES128-MMO/OpenSSL': 'AES-128 MMO, OpenSSL', 'AES128-MMO/RustCrypto': 'AES-128 MMO, RustCrypto',
   'AES128/OpenSSL': 'AES-128, OpenSSL EVP', 'AES128-MMO-NI': 'AES-128 MMO, AES-NI',
@@ -31,7 +31,7 @@ const TIMING_NAMES = {
 // DMPF keeps its own comparison pool. DPF and DCF share one, so their curves
 // can be set against each other.
 const comparablePool = family => family === 'dmpf' ? 'dmpf' : 'point';
-const PREFERRED_B = ['libdpf', 'google_dpf', 'ezpc', 'libfss', 'servan_vdpf', 'gpu_dpf', 'fss_v070', 'fss_v060', 'fss'];
+const PREFERRED_B = ['libdpf', 'google_dpf', 'ezpc', 'libfss', 'servan_vdpf', 'dpf-cpp', 'dpfplusplus', 'mastic', 'plasma', 'gpu_dpf', 'fss_v070', 'fss_v060', 'fss'];
 
 let variants = new Map();
 const state = {platform: 'cpu', a: null, b: null, op: null};
@@ -42,13 +42,14 @@ function outputQualifier(row) {
   return {packed_128_binary_leaf: '1-bit packed', packed_bits: `${row.logical_output_bits}-bit packed`,
     packed_lanes: `${row.logical_output_bits}-bit packed`, bool_scalar: '1-bit bool',
     gmp_scalar: `${row.logical_output_bits}-bit prime field`,
-    uint128_scalar: `${row.logical_output_bits}-bit integer`}[row.output_storage] ?? group ??
+    uint128_scalar: `${row.logical_output_bits}-bit integer`, field128x2_plus_counter: 'two Field128 words + counter',
+    u64_mod_p_scalar: 'u64 mod 2^63-25'}[row.output_storage] ?? group ??
     (row.logical_output_bits ? `${row.logical_output_bits}-bit output` : null);
 }
 
 function buildVariants(records) {
   for (const row of records) {
-    const key = `${row.platform}|${row.variant}`;
+    const key = `${row.platform}|${row.library}|${row.variant}`;
     if (!variants.has(key)) variants.set(key, {key, platform: row.platform, family: FAMILY[row.scheme],
       variant: row.variant, library: row.library, scheme: row.scheme, ops: new Map(), sample: row});
     const entry = variants.get(key);
@@ -294,7 +295,8 @@ function update() {
   renderTabs();
   renderTable();
   syncPlatformToggle();
-  const hash = `p=${state.platform}&a=${encodeURIComponent(state.a.variant)}&b=${encodeURIComponent(state.b.variant)}` +
+  const encodeVariant = entry => `${entry.library}:${entry.variant}`;
+  const hash = `p=${state.platform}&a=${encodeURIComponent(encodeVariant(state.a))}&b=${encodeURIComponent(encodeVariant(state.b))}` +
     (state.op ? `&op=${state.op}` : '');
   if (location.hash !== `#${hash}`) {
     suppressHashChange = true;
@@ -308,8 +310,13 @@ function restoreFromHash() {
   const platform = parameters.get('p');
   if (platform === 'cpu' || platform === 'gpu') state.platform = platform;
   for (const slot of ['a', 'b']) {
-    const variant = parameters.get(slot);
-    if (variant) state[slot] = [...variants.values()].find(entry => entry.platform === state.platform && entry.variant === variant) ?? null;
+    const param = parameters.get(slot);
+    if (!param) continue;
+    const separator = param.indexOf(':');
+    const library = separator === -1 ? null : param.slice(0, separator);
+    const variant = separator === -1 ? param : param.slice(separator + 1);
+    state[slot] = [...variants.values()].find(entry => entry.platform === state.platform &&
+      entry.variant === variant && (library === null || entry.library === library)) ?? null;
   }
   const operation = parameters.get('op');
   if (OPERATIONS.includes(operation)) state.op = operation;

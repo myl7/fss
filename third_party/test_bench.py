@@ -143,7 +143,8 @@ class RunnerSelectionTest(unittest.TestCase):
         self.assertEqual(env["PYTHONDONTWRITEBYTECODE"], "1")
         self.assertEqual(env["CARGO_TARGET_DIR"], str(bench.BUILD / "libdpf" / "target"))
         self.assertEqual(env["TORCH_CUDA_ARCH_LIST"], "8.6")
-        self.assertEqual(bench.RUST, {"libdpf": "nightly-2025-09-01", "fss_v060": "nightly-2025-09-01"})
+        self.assertEqual(bench.RUST, {"libdpf": "nightly-2025-09-01", "fss_v060": "nightly-2025-09-01",
+                                  "mastic": "stable", "plasma": "stable", "sycret": "stable"})
 
     def test_bazel_probe_and_build_share_pinned_isolated_environment(self):
         args = argparse.Namespace(libraries="google_dpf", platform="cpu", gpu="0", jobs=4,

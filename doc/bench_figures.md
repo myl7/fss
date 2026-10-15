@@ -34,6 +34,21 @@ evaluation where configurable. EzPC uses its fixed T=256 full adapter.
 Read each record's `num_keys`, `domain_size`, and `threads_per_block` fields
 before comparing an operation or interpreting a native items counter.
 
+The mastic, plasma, dpf-cpp, and dpfplusplus additions join the CPU sweep with
+their own availability windows. mastic covers Gen at n = 12, 16, 20, Eval at
+n = 16, and EvalAll at n = 12, 16, 20; its EvalAll rows time both parties'
+`eval_tree` including the BLAKE3 proof digest comparison, and its outputs are
+Field128 shares. plasma covers Gen at n = 16, 20 and Eval at n = 16 with the
+running proof chained into the timing; upstream has no full-domain API.
+dpf-cpp and dpfplusplus cover Gen and Eval at n = 16, 20 and EvalAll at
+n = 16, 18, 20 with bit-valued outputs (a packed-bit truth table and 128-lane
+packed nodes respectively); dpf-cpp's Gen draws from a fixed-seed test PRG.
+sycret does not join the domain sweeps: its EQ and CMP batched operations are
+reported by `bench.py` only, counted per key or point over its fixed 32-bit
+domain. dpfplusplus sources are fetched and patched at bench time because the
+upstream license forbids redistribution
+([bench-dpfplusplus.md](bench-dpfplusplus.md)).
+
 Current-FSS specialty schemes extend these boundaries. Grotto DCF point Eval
 times the parity-tree query only, with Preprocess outside timing, and its
 EvalAll times Preprocess plus the scan as one full-domain operation.

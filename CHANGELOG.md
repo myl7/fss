@@ -43,6 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cuckoo `Locate` for DMPF/VDMPF. Tests cover bijection (exhaustive to 2^20 plus a sampled
   128-bit domain), determinism, seed variation, bucket balance, and DMPF + Cuckoo `Compact`
   end-to-end on the new backend.
+* Five third-party benchmark baselines in `third_party/bench.py`: the Mastic and PLASMA
+  verifiable-incremental DPF prototypes (Rust wrappers over the pinned submodules; Gen,
+  proof-chained Eval, and for Mastic a both-party full-domain `eval_tree` whose timing
+  includes the BLAKE3 digest comparison), sycret's equality/comparison keygen and batched
+  point eval through its C ABI (batch sizes 1024 to 65536), the dkales/dpf-cpp DPF entry
+  (Gen, Eval, and the `EvalFull`/`EvalFull8` full-domain paths), and dpfplusplus fetched
+  and patched at bench time — its anonymous pre-release headers forbid redistribution, so
+  nothing is vendored and `doc/bench-dpfplusplus.md` documents provenance, license status,
+  the three scripted fixes, and reproduction. The runner parses per-operation domain and
+  batch suffixes from the new benchmark IDs for correct work-unit accounting, smoke
+  filters match suffixed criterion IDs, and `figure_bench.py` sweeps the four domain-swept
+  additions with per-library operation and domain guards (sycret stays `bench.py`-only).
 * GPU point evaluation now covers the same input-domain widths as the host `Eval`, through
   `__uint128_t`: the query-point kernels take `In`-typed points (`uint8_t` to `__uint128_t`),
   and the per-level tr bits packed by the repack kernels widen to `uint64_t` or `__uint128_t`

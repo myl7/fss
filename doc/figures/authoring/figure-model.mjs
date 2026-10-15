@@ -1,12 +1,12 @@
 // Normalize measured timing records without interpolating missing measurements.
-const SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'GrottoDCF', 'DMPF', 'VDMPF', 'VDPF'];
+const SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'GrottoDCF', 'DMPF', 'VDMPF', 'VDPF', 'VIDPF'];
 // Scheme families share one figure row: comparison DCFs together with Grotto
 // DCF, point-function schemes together with their verifiable VDPF
 // counterparts, and the multi-point DMPF family. Families without measured
 // panels simply leave their grid cells empty.
 const FAMILIES = [
   ['dcf', 'DCF', ['DCF', 'GrottoDCF']],
-  ['dpf', 'DPF / VDPF', ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF']],
+  ['dpf', 'DPF / VDPF', ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF', 'VIDPF']],
   ['dmpf', 'DMPF / VDMPF', ['DMPF', 'VDMPF']],
 ];
 const OPERATIONS = ['gen', 'eval', 'eval_all'];
@@ -32,7 +32,7 @@ export function normalizeRecords(input) {
     // The scheme suffix keeps series apart when two schemes share a variant
     // (DPF/DCF/VDPF bytes-AES-NI in the DPF and DCF rows, DMPF/VDMPF in the
     // multi-point row); otherwise the renderer groups them into one polyline.
-    const suffix = {HalfTreeDPF: ':half-tree', PackedHalfTreeDPF: ':packed', DCF: ':dcf', VDPF: ':vdpf',
+    const suffix = {HalfTreeDPF: ':half-tree', PackedHalfTreeDPF: ':packed', DCF: ':dcf', VDPF: ':vdpf', VIDPF: ':vidpf',
       GrottoDCF: ':grotto', DMPF: ':dmpf', VDMPF: ':vdmpf'}[row.scheme] ?? '';
     const method = `${row.library}:${variant}${suffix}`;
     const label = row.label ?? `${row.library}${row.scheme === 'HalfTreeDPF' ? ' HalfTree' : ''}${row.variant ? ` (${row.variant})` : ''}`;

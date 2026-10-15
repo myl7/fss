@@ -23,6 +23,11 @@ LIBRARIES = {
     "libdpf": ("libdpf-bench", "cargo", ("cpu",), "third_party/libdpf"),
     "libfss": ("libfss", "cmake", ("cpu",), "third_party/libfss/libfss"),
     "servan_vdpf": ("vdpf", "cmake", ("cpu",), "third_party/vdpf/vdpf"),
+    "mastic": ("mastic-bench", "cargo", ("cpu",), "third_party/mastic"),
+    "plasma": ("plasma-bench", "cargo", ("cpu",), "third_party/plasma"),
+    "sycret": ("sycret-bench", "cargo", ("cpu",), "third_party/sycret"),
+    "dpf-cpp": ("dpf-cpp", "cmake", ("cpu",), "third_party/dpf-cpp/dpf-cpp"),
+    "dpfplusplus": ("dpfplusplus-bench", "cmake", ("cpu",), None),
     "google_dpf": ("distributed_point_functions", "bazel", ("cpu",),
                    "third_party/distributed_point_functions/distributed_point_functions"),
     "gpu_dpf": ("GPU-DPF", "cmake", ("cpu", "gpu"), "third_party/GPU-DPF/GPU-DPF"),
@@ -34,7 +39,8 @@ LIBRARIES = {
     "torchcsprng": ("torchcsprng", "cmake", ("cpu", "gpu"), None),
     "main": ("..", "cmake", ("cpu", "gpu"), None),
 }
-RUST = {"libdpf": "nightly-2025-09-01", "fss_v060": "nightly-2025-09-01"}
+RUST = {"libdpf": "nightly-2025-09-01", "fss_v060": "nightly-2025-09-01",
+        "mastic": "stable", "plasma": "stable", "sycret": "stable"}
 
 
 def source(library):
@@ -134,6 +140,11 @@ def prepare(args, selected):
     paths = [LIBRARIES[name][3] for name in names if LIBRARIES[name][3]]
     if paths:
         execute(["git", "submodule", "update", "--init", "--recursive", "--", *paths])
+    if "dpfplusplus" in names:
+        # The upstream headers forbid redistribution: clone and patch on demand
+        # under build/, never commit them (doc/bench-dpfplusplus.md).
+        execute(["bash", str(ROOT / "third_party" / "dpfplusplus-bench" / "fetch.sh"),
+                 str(BUILD / "dpfplusplus")])
     for name in names:
         if name in RUST:
             execute(["rustup", "toolchain", "install", RUST[name], "--profile", "minimal"])
@@ -207,7 +218,10 @@ def build(args, selected):
             cmake(args, name, env, [f"bench_{p}" for p in sorted(platforms)],
                   ["-DBUILD_BENCH=ON"])
         else:
-            cmake(args, name, env)
+            extra = ()
+            if name == "dpfplusplus":
+                extra = (f"-DDPFPP_INCLUDE_DIR={BUILD / 'dpfplusplus' / 'src' / 'include'}",)
+            cmake(args, name, env, extra=extra)
 
 
 @contextlib.contextmanager
@@ -244,7 +258,7 @@ def benchmark_source_hashes(args):
         for pattern in ("*.cu", "*.cc", "*.cpp", "*.cuh", "*.h", "*.py", "CMakeLists.txt",
                         "Cargo.toml", "BUILD", "BUILD.bazel", "WORKSPACE", "WORKSPACE.bazel",
                         ".bazelversion", "pyproject.toml", "benches/*.rs", "patches/**/*.patch",
-                        "sytorch/CMakeLists.txt", "torchcsprng/*.cuh"):
+                        "sytorch/CMakeLists.txt", "torchcsprng/*.cuh", "*.sh"):
             paths.update(directory.glob(pattern))
         if name == "main":
             paths.update((ROOT / "src").rglob("*.cu"))
@@ -269,7 +283,8 @@ def build_configuration(selected):
                 key = definition.split(":", 1)[0]
                 if key.startswith(("CMAKE_CXX_", "CMAKE_CUDA_", "CMAKE_C_COMPILER", "CMAKE_C_FLAGS",
                                    "CMAKE_BUILD_TYPE", "CMAKE_EXE_LINKER_FLAGS")) or key in (
-                        "EZPC_SYTORCH_BUILD", "FSS070_BUILD_GPU", "BUILD_BENCH", "CMAKE_EXPORT_COMPILE_COMMANDS"):
+                        "EZPC_SYTORCH_BUILD", "FSS070_BUILD_GPU", "BUILD_BENCH", "CMAKE_EXPORT_COMPILE_COMMANDS",
+                        "FSS_BENCH_CPU_PRG", "FSS_BENCH_DOMAIN_BITS", "FSS_BENCH_NUM_KEYS"):
                     values[key] = value
             configurations[str(cache.relative_to(ROOT))] = values
     return configurations
@@ -306,6 +321,9 @@ def metadata(args, active_governor):
             "lockfile_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                 for path in [source("libdpf") / "Cargo.lock",
                                              source("fss_v060") / "Cargo.lock",
+                                             source("mastic") / "Cargo.lock",
+                                             source("plasma") / "Cargo.lock",
+                                             source("sycret") / "Cargo.lock",
                                              source("gpu_dpf") / "uv.lock"] if path.exists()},
             "probes": {key: capture(command,
                                     cwd=source("google_dpf") if key == "bazel" else ROOT,
@@ -352,7 +370,8 @@ def record(args, name, device, directory, commands):
         if args.filter:
             command.append(args.filter)
         elif args.smoke:
-            command.append("/(Gen|Eval)$")
+            # Keygen covers sycret's EqKeygen/LeKeygen, which end lowercase.
+            command.append(r"/(Gen|Eval|Keygen)(/|$)")
         units.append((command, "criterion", "", target))
     elif name == "gpu_dpf" and device == "gpu":
         directory_env = BUILD / name
@@ -476,7 +495,7 @@ def result_rows(entry, data):
                     batch = int(match.group(1))
             total = value["real_time"] * units[value["time_unit"]]
             domain = 1 << entry.get("domain_bits", 20)
-            if name == "main" and "EvalAll" in benchmark:
+            if name in ("main", "dpf-cpp", "dpfplusplus") and "EvalAll" in benchmark:
                 match = re.search(r"/(\d+)(?:/|$)", benchmark)
                 if match:
                     domain = 1 << int(match.group(1))
@@ -497,8 +516,16 @@ def result_rows(entry, data):
             definition = json.loads((path.parent / "benchmark.json").read_text())
             estimates = json.loads(path.read_text())
             benchmark = definition["full_id"]
-            row(benchmark, estimates["median"]["point_estimate"],
-                work=(1 << entry.get("domain_bits", 20)) if "EvalAll" in benchmark or "FullEval" in benchmark else 1)
+            batch = 1
+            work = 1
+            match = re.search(r"/(\d+)$", benchmark)
+            if "EvalAll" in benchmark or "FullEval" in benchmark:
+                work = 1 << (int(match.group(1)) if match else entry.get("domain_bits", 20))
+            elif name == "sycret" and match:
+                # sycret processes N keys or points per batched call; the suffix is N.
+                batch = int(match.group(1))
+                work = batch
+            row(benchmark, estimates["median"]["point_estimate"], batch, work)
     elif framework == "python":
         for value in json.loads((data / "python.json").read_text())["benchmarks"]:
             row(value["name"], value["time_ns"], value["batch"])

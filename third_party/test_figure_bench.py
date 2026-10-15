@@ -119,6 +119,52 @@ class FigureSweepTest(unittest.TestCase):
         self.assertNotIn("num_points", ours)
         self.assertEqual(ours["output_storage"], "materialized")
 
+    def test_new_library_case_coverage_matches_registered_operations(self):
+        cases = sweep.cases(self.args(libraries="dpf-cpp,dpfplusplus,mastic,plasma", platform="cpu"))
+        seen = {(c["library"], c["operation"], c["domain_bits"]) for c in cases}
+        for library, operations in sweep.NEW_LIBRARY_DOMAINS.items():
+            for operation, domains in operations.items():
+                self.assertEqual({n for lib, op, n in seen if lib == library and op == operation}, set(domains),
+                                 f"{library}/{operation}")
+
+    def test_new_library_patterns_and_native_id_validation(self):
+        import re
+        scalar = sweep.pattern(self.case(library="dpf-cpp", platform="cpu", operation="EvalAll", domain_bits=18))
+        simd = sweep.pattern(self.case(library="dpf-cpp", platform="cpu", operation="EvalAll8", domain_bits=18))
+        self.assertTrue(re.search(scalar, "dpf-cpp/CPU/EvalAll/18"))
+        self.assertFalse(re.search(scalar, "dpf-cpp/CPU/EvalAll8/18"))
+        self.assertTrue(re.search(simd, "dpf-cpp/CPU/EvalAll8/18"))
+        self.assertFalse(re.search(simd, "dpf-cpp/CPU/EvalAll/18"))
+        # Domain-pinned: one raw file never mixes the other registered sizes.
+        self.assertFalse(re.search(scalar, "dpf-cpp/CPU/EvalAll/16"))
+        self.assertFalse(re.search(scalar, "dpf-cpp/CPU/EvalAll/20"))
+        self.assertFalse(re.search(scalar, "dpf-cpp/CPU/EvalAll/24"))
+        raw = self.directory / "raw.json"
+        raw.write_text(json.dumps({"benchmarks": [{"name": "dpf-cpp/CPU/EvalAll/16", "aggregate_name": None}]}))
+        sweep.validate_native_configuration(
+            self.case(library="dpf-cpp", operation="EvalAll", domain_bits=16), raw)
+        with self.assertRaises(ValueError):
+            sweep.validate_native_configuration(
+                self.case(library="dpf-cpp", operation="EvalAll", domain_bits=20), raw)
+
+    def test_vidpf_and_simd8_normalization(self):
+        mastic = sweep.normalize(self.case(library="mastic", platform="cpu", operation="EvalAll", num_keys=1),
+                                 "mastic/CPU/EvalAll/16", 225000, "raw", {})
+        self.assertEqual(mastic["scheme"], "VIDPF")
+        self.assertEqual(mastic["evaluation_parties"], "both")
+        self.assertIn("digest", mastic["timing_includes"])
+        self.assertTrue(mastic["variant"].startswith("VIDPF-"))
+        plasma = sweep.normalize(self.case(library="plasma", platform="cpu", operation="Eval", num_keys=1),
+                                 "plasma/CPU/Eval/16", 4600, "raw", {})
+        self.assertEqual((plasma["scheme"], plasma["evaluation_parties"]), ("VIDPF", "one"))
+        scalar = sweep.normalize(self.case(library="dpf-cpp", platform="cpu", operation="EvalAll", num_keys=1),
+                                 "dpf-cpp/CPU/EvalAll/18", 1000, "raw", {})
+        simd = sweep.normalize(self.case(library="dpf-cpp", platform="cpu", operation="EvalAll8", num_keys=1),
+                               "dpf-cpp/CPU/EvalAll8/18", 100, "raw", {})
+        self.assertEqual(simd["operation"], "EvalAll")
+        self.assertNotEqual(simd["variant"], scalar["variant"])
+        self.assertEqual(simd["implementation"], "simd8_frontier")
+
     def test_kernel_resource_failure_preserves_incomplete_raw_as_unsupported(self):
         case = self.case(operation="Eval", sweep="block", threads_per_block=1024)
         args = argparse.Namespace(cpu=16, repetitions=5, min_time=.1, warmup=.1)

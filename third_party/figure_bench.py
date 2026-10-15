@@ -28,9 +28,20 @@ BUILD = bench.BUILD / "sweep"
 DOMAINS = (8, 10, 12, 14, 16, 18, 20)
 SLOW_DOMAINS = (8, 12, 14, 18, 20)
 BLOCKS = (16, 32, 64, 128, 256, 512, 1024)
-CPU_LIBRARIES = ("fss", "libdpf", "libfss", "google_dpf", "gpu_dpf", "fss_v060", "fss_v070", "servan_vdpf")
+CPU_LIBRARIES = ("fss", "libdpf", "libfss", "google_dpf", "gpu_dpf", "fss_v060", "fss_v070", "servan_vdpf",
+                 "mastic", "plasma", "dpf-cpp", "dpfplusplus")
 TARGETS = {"fss": "bench_fss", "libfss": "bench_dpf_libfss", "gpu_dpf": "bench_dpf_gpu_dpf",
-           "ezpc": "bench_dpf_ezpc", "torchcsprng": "bench_aes128_soft", "servan_vdpf": "bench_vdpf_servan"}
+           "ezpc": "bench_dpf_ezpc", "torchcsprng": "bench_aes128_soft", "servan_vdpf": "bench_vdpf_servan",
+           "dpf-cpp": "bench_dpf_cpp", "dpfplusplus": "bench_dpfplusplus"}
+# Operations and domains the new third-party entries register; sweeps skip the
+# rest. sycret stays bench.py-only because its EQ/CMP batch operations do not
+# follow the domain-sweep model.
+NEW_LIBRARY_DOMAINS = {
+    "mastic": {"Gen": (12, 16, 20), "Eval": (16,), "EvalAll": (12, 16, 20)},
+    "plasma": {"Gen": (16, 20), "Eval": (16,)},
+    "dpf-cpp": {"Gen": (16, 20), "Eval": (16, 20), "EvalAll": (16, 18, 20), "EvalAll8": (16, 18, 20)},
+    "dpfplusplus": {"Gen": (16, 20), "Eval": (16, 20), "EvalAll": (16, 18, 20)},
+}
 
 
 def cases(args):
@@ -43,10 +54,24 @@ def cases(args):
             if libraries and name not in libraries:
                 continue
             for n in sorted(domains, reverse=True):
-                for operation in getattr(args, "operations", ("Gen", "Eval", "EvalAll")):
+                requested = getattr(args, "operations", None) or ("Gen", "Eval", "EvalAll")
+                registered = NEW_LIBRARY_DOMAINS.get(name)
+                if registered:
+                    # Registered libraries sweep the operations their wrappers
+                    # expose. EvalAll8 rides along with an EvalAll request; the
+                    # CLI operation choices cannot name it directly.
+                    selected = [op for op in requested if op in registered]
+                    if "EvalAll" in requested and "EvalAll8" in registered and "EvalAll8" not in selected:
+                        selected.append("EvalAll8")
+                    operations = sorted(selected)
+                else:
+                    operations = requested or ("Gen", "Eval", "EvalAll")
+                for operation in operations:
                     if device == "gpu" and name == "gpu_dpf" and operation != "EvalAll":
                         continue
                     if operation == "EvalAll" and device == "cpu" and name in ("libfss", "gpu_dpf") and n not in SLOW_DOMAINS:
+                        continue
+                    if registered and n not in registered[operation]:
                         continue
                     if args.sweep == "block" and (device != "gpu" or name != "fss" or n != 20):
                         continue
@@ -106,6 +131,11 @@ def pattern(case):
             return f"^fss/GPU/{case['scheme']}-{groups}/(AesSoft/)?{operation}(/|$)"
         return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF|VDMPF|DMPF)-{groups}"
                 f"|PackedHalfTreeDPF-bits1|GrottoDCF)/(AesSoft/)?{operation}(/|$)")
+    if case["library"] in ("dpf-cpp", "dpfplusplus"):
+        # Their benchmarks register several domain sizes under one operation,
+        # so the filter must pin the requested case; otherwise one raw file
+        # mixes 16/18/20/24 and the native-id consistency check rejects it.
+        return f"^{case['library']}/{case['platform'].upper()}/{operation}/{case['domain_bits']}(/|$)"
     return f"^{prefix}/{case['platform'].upper()}/.*{operation}(/|$)"
 
 
@@ -143,6 +173,12 @@ def build_case(args, case):
         extra = configuration(case)
         if name == "fss":
             pass
+        if name == "dpfplusplus":
+            fetched = bench.BUILD / "dpfplusplus" / "src" / "include"
+            if not fetched.exists():
+                bench.execute(["bash", str(bench.source(name) / "fetch.sh"),
+                               str(bench.BUILD / "dpfplusplus")], env=env)
+            extra.append(f"-DDPFPP_INCLUDE_DIR={fetched}")
         if name == "gpu_dpf" and device == "gpu":
             extra.append("-DFSS_BENCH_BUILD_GPU_FULL=ON")
             target = "bench_dpf_gpu_dpf_full"
@@ -214,6 +250,9 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
     scheme = ("PackedHalfTreeDPF" if "PackedHalfTree" in name else "GrottoDCF" if "GrottoDCF" in name else
               "VDPF" if "VDPF" in name else "VDMPF" if "VDMPF" in name else "DMPF" if "DMPF" in name else
               "HalfTreeDPF" if "HalfTree" in name else "DCF" if "DCF" in name else "DPF")
+    if case["library"] in ("mastic", "plasma"):
+        # VIDPF prototypes: verifiable-incremental DPFs, not plain DPF rows.
+        scheme = "VIDPF"
     group = "bytes" if "bytes" in name else "uint" if "uint" in name else "native"
     prg = "AES-software" if "AesSoft" in name else ("ChaCha12" if case["library"] == "gpu_dpf" and case["platform"] == "gpu" else
           "AES-NI" if case["platform"] == "cpu" and case["library"] == "fss" and case["cpu_prg"] == "aes-ni" else
@@ -221,6 +260,12 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
           ("ChaCha20-x1" if scheme == "HalfTreeDPF" else "ChaCha20-x4" if scheme == "DCF" else "ChaCha20-x2") if case["library"] == "fss" else "AES128" if case["library"] in ("gpu_dpf", "ezpc", "google_dpf") else "native")
     if case["library"] == "fss_v070":
         prg = "AES128-MMO-NI" if case["platform"] == "cpu" else "Salsa12"
+    if case["library"] in ("dpf-cpp", "mastic"):
+        prg = "AES128-MMO"
+    elif case["library"] == "dpfplusplus":
+        prg = "AES128"
+    elif case["library"] == "plasma":
+        prg = "AES128-CTR"
     bits = 127 if group in ("bytes", "uint") and case["library"] in ("fss", "fss_v070") else 128 if group in ("bytes", "uint") else None
     row.update(scheme=scheme, group=group, prg=prg, logical_output_bits=bits,
                scan="threads" if case["sweep"] == "block" else "domain",
@@ -258,10 +303,38 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
         row.update(group="uint64" if scheme == "DCF" else "prime_field",
                    logical_output_bits=64 if scheme == "DCF" else 33,
                    output_storage="uint64_scalar" if scheme == "DCF" else "gmp_scalar")
+    elif case["library"] == "mastic":
+        # VIDPF prototype. EvalAll times eval_tree over the full domain for
+        # BOTH parties and includes the proof digest comparison; each leaf
+        # carries two Field128 payload words plus the appended counter.
+        row.update(logical_output_bits=128, output_storage="field128x2_plus_counter",
+                   implementation=("vidpf_eval_tree_proof_both_parties" if case["operation"] == "EvalAll"
+                                   else "vidpf_chained_proof"),
+                   evaluation_parties="both",
+                   timing_includes=("proof digest comparison" if case["operation"] == "EvalAll"
+                                    else "chained proof"))
+    elif case["library"] == "plasma":
+        # VIDPF prototype over u64 shares mod 2^63-25; point eval carries the
+        # running proof. No full-domain API exists upstream.
+        row.update(logical_output_bits=64, output_storage="u64_mod_p_scalar",
+                   implementation="vidpf_chained_proof", evaluation_parties="one",
+                   timing_includes="chained proof")
+    elif case["library"] == "dpf-cpp":
+        # Bit-valued point function; EvalFull returns a packed-bit truth table.
+        row.update(logical_output_bits=1, output_storage="packed_bits", storage_output_bits=8)
+        if "EvalAll8" in name:
+            # The 8-wide SIMD frontier variant is its own series in the EvalAll
+            # panels, never merged into the scalar EvalFull curve.
+            row.update(operation="EvalAll", variant=row["variant"] + "-simd8",
+                       implementation="simd8_frontier", label=row["label"] + " (SIMD8)")
+    elif case["library"] == "dpfplusplus":
+        # bool leaves packed 128 per __m128i node; Gen draws real randomness.
+        row.update(logical_output_bits=1, output_storage="packed_128_binary_leaf", storage_output_bits=128)
     if case["library"] in ("fss", "fss_v070"):
         row["prg_output_blocks"] = ((2 if scheme == "DCF" else 1) if case["library"] == "fss_v070" and case["platform"] == "gpu" else
                                     4 if scheme == "DCF" else 1 if scheme in ("HalfTreeDPF", "PackedHalfTreeDPF") else 2)
-    row["variant"] = scheme + "-" + row["group"] + "-" + prg
+    variant_suffix = "-simd8" if row.get("implementation") == "simd8_frontier" else ""
+    row["variant"] = scheme + "-" + row["group"] + "-" + prg + variant_suffix
     row["label"] = case["library"] + "/" + row["variant"]
     return polish_metadata(row)
 
@@ -324,7 +397,8 @@ def polish_metadata(row):
     else:
         row["timing_boundary"] = "wall_time_operation"
         row["timing_boundary_detail"] = "Native framework wall time per operation; setup outside the benchmark iteration is excluded"
-    row["variant"] = scheme + "-" + row.get("group", "native") + "-" + row.get("prg", "native")
+    variant_suffix = "-simd8" if row.get("implementation") == "simd8_frontier" else ""
+    row["variant"] = scheme + "-" + row.get("group", "native") + "-" + row.get("prg", "native") + variant_suffix
     row["label"] = library + "/" + row["variant"]
     if row.get("scheme") == "PackedHalfTreeDPF":
         row["label"] += " (experimental)"
@@ -335,6 +409,12 @@ def validate_native_configuration(case, raw):
     for value in json.loads(raw.read_text())["benchmarks"]:
         if value.get("error_occurred") or value.get("aggregate_name") not in (None, "median"):
             continue
+        if case["library"] in ("dpf-cpp", "dpfplusplus"):
+            # The new C++ wrappers carry the domain size in the benchmark ID
+            # instead of custom counters; the ID must match the requested case.
+            match = re.search(r"/(Gen|Eval|EvalAll8?)/(\d+)$", value.get("name", ""))
+            if match and int(match.group(2)) != case["domain_bits"]:
+                raise ValueError(f"benchmark id {value['name']} does not match the configured domain {case['domain_bits']}")
         for field, expected in (("domain_bits", case["domain_bits"]), ("keys", case["num_keys"]),
                                 ("threads_per_block", case["threads_per_block"])):
             if expected is None or field not in value or value[field] == expected:
@@ -365,6 +445,10 @@ def collect(args, case, directory, sources):
         crate_bench = "bench" if case["library"] == "libdpf" else "bench_dpf"
         operation = "FullEval" if case["library"] == "fss_v060" and case["operation"] == "EvalAll" else case["operation"]
         groups = (("DPF-bytes", "DPF-uint", "DCF-bytes", "DCF-uint") if case["include_uint"] else ("DPF-bytes", "DCF-bytes")) if case["library"] == "fss_v060" else ("DPF",)
+        # The mastic and plasma criterion IDs carry the domain size, so the
+        # filter must pin the exact case; /DPF/Gen$ would match nothing.
+        exact_id = (f"{case['library']}/CPU/{case['operation']}/{case['domain_bits']}"
+                    if case["library"] in ("mastic", "plasma") else None)
         for group in groups:
             all_values = {}
             failure = None
@@ -374,7 +458,7 @@ def collect(args, case, directory, sources):
                     shutil.rmtree(criterion)
                 command = pin + ["cargo", f"+{bench.RUST[case['library']]}", "bench", "--locked", "--bench", crate_bench,
                                  "--", "--sample-size", "20", "--warm-up-time", "0.2", "--measurement-time", "0.2",
-                                 f"/{group}/{operation}$"]
+                                 (f"^{exact_id}$" if exact_id else f"/{group}/{operation}$")]
                 (directory / f"command-{group}-{repetition}.json").write_text(json.dumps(command) + "\n")
                 try:
                     bench.execute(command, cwd=bench.source(case["library"]), env=env,
@@ -389,9 +473,11 @@ def collect(args, case, directory, sources):
                     value = json.loads(path.read_text())["median"]["point_estimate"]
                     if not math.isfinite(value) or value <= 0:
                         raise ValueError("invalid Criterion median")
+                    if exact_id and name != exact_id:
+                        raise ValueError(f"criterion id {name} does not match the requested case {exact_id}")
                     all_values.setdefault(name, []).append(value)
             if failure:
-                rows.append(normalize(case, f"{case['library']}/CPU/{group}/{operation}", None,
+                rows.append(normalize(case, exact_id or f"{case['library']}/CPU/{group}/{operation}", None,
                                       directory, sources, "known_failure", failure))
                 continue
             for name, values in all_values.items():
@@ -543,6 +629,8 @@ def main(argv=None):
     if args.action == "list" or args.dry_run:
         print(json.dumps(selected, indent=2))
         return 0
+    if args.action in ("build", "run") and not selected:
+        raise ValueError("no benchmark cases selected for the requested libraries, operations, and domains")
     directory = args.directory or BUILD / "results" / datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     directory = directory.resolve()
     if not directory.is_relative_to(ROOT / "build"):
