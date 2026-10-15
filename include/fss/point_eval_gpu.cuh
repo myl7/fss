@@ -23,8 +23,10 @@
 #define FSS_POINT_EVAL_GPU_CUH_
 
 #include <cstdint>
+#include <cstddef>
 #include <type_traits>
 #include <cuda_runtime.h>
+#include <cub/device/device_radix_sort.cuh>
 #include <cuda/std/array>
 #include <fss/cuckoo_hash.cuh>
 #include <fss/dcf.cuh>
@@ -33,6 +35,7 @@
 #include <fss/half_tree_dpf.cuh>
 #include <fss/util.cuh>
 #include <fss/vdpf.cuh>
+#include <fss/vdmpf.cuh>
 
 namespace fss::gpu {
 
@@ -393,6 +396,217 @@ __global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma, i
   ys[tid] = acc.Into();
 }
 
+// Per-(point, hash) Cuckoo Locate records for VDMPF batch evaluation. keys
+// holds the bucket and vals packs (contribution index << 32 | within-bucket
+// point); a stable radix sort later groups the records by bucket while keeping
+// the (point, hash) order inside each bucket, which is exactly the canonical
+// order the host BatchEvalMerkle folds its per-bucket leaves in.
+template <int in_bits, typename Prp, typename In, int kappa>
+__global__ void VdmpfLocateKernel(const In *xs, int n, int4 sigma, int m_rt, int b_rt, uint32_t *keys,
+    uint64_t *vals, uint32_t *counts, Prp prp) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= n) return;
+  In x = xs[tid];
+  constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
+  cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
+  for (int k = 0; k < kappa; ++k) {
+    auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
+    size_t idx = static_cast<size_t>(tid) * kappa + k;
+    keys[idx] = static_cast<uint32_t>(bucket);
+    vals[idx] = (static_cast<uint64_t>(idx) << 32) | static_cast<uint32_t>(j);
+    if (bucket < m_rt) atomicAdd(&counts[bucket], 1u);
+  }
+}
+
+// Batch-evaluate a VDMPF key: one thread per input point computes its kappa
+// contributions (from the Locate records) and writes each corrected per-point
+// hash pi_tilde at its contribution index. cw_s/extra come from VdpfRepackGpu
+// over the m_rt active bucket keys; cs and ocws are indexed by bucket.
+template <int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash, typename In, int kappa>
+__global__ void VdmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int m_rt, const int4 *s0s, const int4 *cw_s,
+    const ExtBits<bucket_bits> *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws,
+    cuda::std::array<int4, 4> *pi_tilde_buf, const uint32_t *keys, const uint64_t *vals, Prg prg, XorHash xor_hash) {
+  static_assert(bucket_bits <= 32, "the bucket point type is fixed to uint");
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= n) return;
+  auto acc = Group::From(Zero4());
+  for (int k = 0; k < kappa; ++k) {
+    size_t idx = static_cast<size_t>(tid) * kappa + k;
+    int bucket = static_cast<int>(keys[idx]);
+    if (bucket >= m_rt) continue;
+    uint j = static_cast<uint>(static_cast<uint32_t>(vals[idx]));
+
+    int4 s = fss::util::SetLsb(s0s[bucket], false);
+    bool t = b;
+    ExtBits<bucket_bits> ex = extra[bucket];
+
+#pragma unroll unroll
+    for (int i = 0; i < bucket_bits; ++i) {
+      int4 s_cw = cw_s[(size_t)i * m_rt + bucket];
+      bool tr_cw = GetBit(ex, i);
+      bool tl_cw = fss::util::GetLsb(s_cw);
+      s_cw = fss::util::SetLsb(s_cw, false);
+
+      auto g = prg.Gen(s);
+      int4 sl = g[0], sr = g[1];
+      bool tl = fss::util::GetLsb(sl);
+      sl = fss::util::SetLsb(sl, false);
+      bool tr = fss::util::GetLsb(sr);
+      sr = fss::util::SetLsb(sr, false);
+
+      if (t) {
+        sl = fss::util::Xor(sl, s_cw);
+        sr = fss::util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
+
+      bool x_bit = GetBit(j, bucket_bits - 1 - i);
+      if (x_bit) {
+        s = sr;
+        t = tr;
+      } else {
+        s = sl;
+        t = tl;
+      }
+    }
+
+    auto y = Group::From(s);
+    if (t) y = y + Group::From(ocws[bucket]);
+    if constexpr (b) y = -y;
+    acc = acc + y;
+
+    int4 x_buf = fss::util::Pack(j);
+    auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
+    if (t) {
+      cuda::std::array<int4, 4> corrected = pi_tilde;
+      const cuda::std::array<int4, 4> &bucket_cs = cs[bucket];
+#pragma unroll
+      for (int w = 0; w < 4; ++w) corrected[w] = fss::util::Xor(corrected[w], bucket_cs[w]);
+      pi_tilde = corrected;
+    }
+    pi_tilde_buf[idx] = pi_tilde;
+  }
+  ys[tid] = acc.Into();
+}
+
+// Prefix tables for the Merkle-fold kernels: per-bucket leaf offsets and the
+// per-bucket chunk-count prefix, both with an m+1 sentinel end. One thread;
+// m is tiny.
+__global__ void VdmpfFoldSetupKernel(uint32_t *leaf_offsets, uint32_t *chunk_offsets, const uint32_t *counts,
+    int m_buckets, int chunk_size) {
+  if (threadIdx.x != 0 || blockIdx.x != 0) return;
+  uint32_t leaves = 0, chunks = 0;
+  for (int i = 0; i < m_buckets; ++i) {
+    leaf_offsets[i] = leaves;
+    chunk_offsets[i] = chunks;
+    uint32_t count = counts[i];
+    leaves += count;
+    chunks += (count + chunk_size - 1) / chunk_size;
+  }
+  leaf_offsets[m_buckets] = leaves;
+  chunk_offsets[m_buckets] = chunks;
+}
+
+// Fold one kMerkleChunkSize-leaf chunk of the sorted Locate records into a
+// chunk root. One block per chunk: the leaves (hashes of the corrected
+// per-point hashes, gathered through the sorted records) fold pairwise level
+// by level with an odd trailing node carrying unchanged - the same rule as the
+// host FoldNodes - into double-buffered shared nodes. The launcher
+// over-provisions blocks; the ones past the chunk table's end leave.
+template <int chunk_size, typename Hash>
+__global__ void VdmpfChunkFoldKernel(cuda::std::array<int4, 2> *chunk_roots, const uint32_t *chunk_offsets,
+    const uint32_t *leaf_offsets, const uint32_t *counts, const uint64_t *sorted_vals,
+    const cuda::std::array<int4, 4> *pi_tilde_buf, int m_buckets, Hash hash) {
+  __shared__ cuda::std::array<int4, 2> s_a[chunk_size];
+  __shared__ cuda::std::array<int4, 2> s_b[chunk_size];
+  uint32_t chunk = blockIdx.x;
+  if (chunk >= chunk_offsets[m_buckets]) return;
+
+  // Binary search the bucket whose chunk range covers this chunk.
+  int lo = 0, hi = m_buckets - 1;
+  while (lo < hi) {
+    int mid = (lo + hi) / 2;
+    if (chunk < chunk_offsets[mid + 1]) hi = mid;
+    else lo = mid + 1;
+  }
+  int bucket = lo;
+  uint32_t local = chunk - chunk_offsets[bucket];
+
+  uint32_t leaf_base = leaf_offsets[bucket] + local * chunk_size;
+  uint32_t take = counts[bucket] - local * chunk_size;
+  if (take > static_cast<uint32_t>(chunk_size)) take = chunk_size;
+
+  cuda::std::array<int4, 2> *cur = s_a;
+  cuda::std::array<int4, 2> *next = s_b;
+  if (threadIdx.x < take) {
+    uint32_t p = leaf_base + threadIdx.x;
+    uint32_t idx = static_cast<uint32_t>(sorted_vals[p] >> 32);
+    cur[threadIdx.x] = hash.Hash(cuda::std::span<const int4, 4>(pi_tilde_buf[idx]));
+  }
+  __syncthreads();
+
+  uint32_t count = take;
+  while (count > 1) {
+    uint32_t pairs = count / 2;
+    if (threadIdx.x < pairs) {
+      int4 msg[4] = {cur[2 * threadIdx.x][0], cur[2 * threadIdx.x][1], cur[2 * threadIdx.x + 1][0],
+          cur[2 * threadIdx.x + 1][1]};
+      next[threadIdx.x] = hash.Hash(cuda::std::span<const int4, 4>(msg));
+    }
+    if (count % 2 != 0 && threadIdx.x == pairs) {
+      next[pairs] = cur[count - 1];
+    }
+    __syncthreads();
+    cuda::std::array<int4, 2> *swap = cur;
+    cur = next;
+    next = swap;
+    count = pairs + count % 2;
+  }
+  if (threadIdx.x == 0) chunk_roots[chunk] = cur[0];
+}
+
+// Combine the chunk roots into per-bucket nodes and the bucket nodes into the
+// final proof. One block: every bucket thread left-chains its chunk roots
+// starting from the bucket's hashed cs, then the m bucket nodes fold level by
+// level with the same odd-carry rule as the chunks.
+template <int m_buckets, typename Hash>
+__global__ void VdmpfBucketFoldKernel(cuda::std::array<int4, 4> *pi, const cuda::std::array<int4, 2> *chunk_roots,
+    const uint32_t *chunk_offsets, const cuda::std::array<int4, 4> *cs, Hash hash) {
+  __shared__ cuda::std::array<int4, 2> s_a[m_buckets];
+  __shared__ cuda::std::array<int4, 2> s_b[m_buckets];
+  int i = threadIdx.x;
+  if (i < m_buckets) {
+    cuda::std::array<int4, 2> node = hash.Hash(cuda::std::span<const int4, 4>(cs[i]));
+    for (uint32_t q = chunk_offsets[i]; q < chunk_offsets[i + 1]; ++q) {
+      int4 msg[4] = {node[0], node[1], chunk_roots[q][0], chunk_roots[q][1]};
+      node = hash.Hash(cuda::std::span<const int4, 4>(msg));
+    }
+    s_a[i] = node;
+  }
+  __syncthreads();
+
+  cuda::std::array<int4, 2> *cur = s_a;
+  cuda::std::array<int4, 2> *next = s_b;
+  int count = m_buckets;
+  while (count > 1) {
+    int pairs = count / 2;
+    if (i < pairs) {
+      int4 msg[4] = {cur[2 * i][0], cur[2 * i][1], cur[2 * i + 1][0], cur[2 * i + 1][1]};
+      next[i] = hash.Hash(cuda::std::span<const int4, 4>(msg));
+    }
+    if (count % 2 != 0 && i == pairs) {
+      next[pairs] = cur[count - 1];
+    }
+    __syncthreads();
+    cuda::std::array<int4, 2> *swap = cur;
+    cur = next;
+    next = swap;
+    count = pairs + count % 2;
+  }
+  if (i == 0) *pi = {cur[0][0], cur[0][1], int4{0, 0, 0, 0}, int4{0, 0, 0, 0}};
+}
+
 }  // namespace detail
 
 /**
@@ -655,6 +869,123 @@ void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_r
     detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Group, Prg, Prp, In, kappa>
         <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw, dmpf.prg, dmpf.prp);
   }
+}
+
+/**
+ * GPU batch evaluation of a VDMPF key with the Merkle-fold proof:
+ * ys[i] = BatchEvalMerkle(b, key, xs)[i] and d_pi receives the proof. Launches
+ * on the stream: a Locate pass writes per-(point, hash) Cuckoo records, a
+ * stable CUB radix sort groups them by bucket in the same canonical order the
+ * host BatchEvalMerkle walks its per-bucket lists, an evaluation pass computes
+ * every point's kappa contributions and corrected per-point hashes, and the
+ * fold passes reduce the leaves chunk-wise, per bucket from the hashed cs, and
+ * across the m buckets. The proof is bit-exact with the host
+ * BatchEvalMerkle over the same construction.
+ *
+ * cw_s/extra must come from VdpfRepackGpu run over the m_rt active bucket keys
+ * (nkeys = m_rt, in_bits = bucket_bits of the Vdmpf), s0s and ocws hold party
+ * b's per-bucket seeds and output correction words (m_rt entries), and cs
+ * holds the shared per-bucket check seeds for all m buckets - the fold covers
+ * the buckets past m_rt as well. The Prp backend must be device-callable:
+ * ChaChaFeistel qualifies, Aes128Feistel does not.
+ *
+ * The Locate records, sorted copies, bucket counts, per-contribution hashes,
+ * chunk roots, and CUB temporary storage are cached per host thread and grown
+ * on demand: calls from one thread on different streams must not run
+ * concurrently.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param xs Evaluation points (device memory), n entries.
+ * @param ys Output array (device memory), one int4 per point.
+ * @param d_pi Proof output (device memory), four int4s.
+ * @param n Number of points.
+ * @param sigma PRP seed from the key.
+ * @param m_rt Runtime bucket count stored in the key.
+ * @param b_rt Runtime bucket size stored in the key.
+ * @param s0s Per-bucket party seeds (device memory), m_rt entries.
+ * @param cw_s Level-major correction words from VdpfRepackGpu.
+ * @param extra Packed tr bits from VdpfRepackGpu.
+ * @param cs Per-bucket check seeds (device memory), m entries, shared by both
+ *   parties.
+ * @param ocws Per-bucket output correction words (device memory), m_rt entries.
+ * @param vdmpf A Vdmpf instance (holds the PRG, hashes, and PRP).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg,
+    typename XorHash, typename Hash, typename Prp, typename In, int kappa>
+void VdmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, cuda::std::array<int4, 4> *d_pi, int n, int4 sigma, int m_rt,
+    int b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra,
+    const cuda::std::array<int4, 4> *cs, const int4 *ocws,
+    const Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa> &vdmpf,
+    cudaStream_t stream = 0) {
+  using VdmpfT = Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa>;
+  static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
+  static_assert(VdmpfT::m < (1 << 16), "the radix sort covers the bucket keys");
+  static_assert(2 * VdmpfT::m * 32 <= 46 * 1024, "the bucket-fold kernel double-buffers every bucket node");
+  const size_t total = static_cast<size_t>(n) * kappa;
+  constexpr int kChunk = VdmpfT::kMerkleChunkSize;
+
+  // Per-host-thread pipeline buffers, grown on demand and never freed.
+  thread_local uint32_t *d_keys = nullptr, *d_keys_out = nullptr, *d_counts = nullptr;
+  thread_local uint32_t *d_leaf_offsets = nullptr, *d_chunk_offsets = nullptr;
+  thread_local uint64_t *d_vals = nullptr, *d_vals_out = nullptr;
+  thread_local cuda::std::array<int4, 4> *d_pi_tilde = nullptr;
+  thread_local cuda::std::array<int4, 2> *d_chunk_roots = nullptr;
+  thread_local void *d_cub_temp = nullptr;
+  thread_local size_t cub_bytes = 0, capacity = 0;
+  if (capacity < total) {
+    cudaFree(d_keys);
+    cudaFree(d_keys_out);
+    cudaFree(d_vals);
+    cudaFree(d_vals_out);
+    cudaFree(d_pi_tilde);
+    cudaFree(d_chunk_roots);
+    cudaMalloc(&d_keys, sizeof(uint32_t) * total);
+    cudaMalloc(&d_keys_out, sizeof(uint32_t) * total);
+    cudaMalloc(&d_vals, sizeof(uint64_t) * total);
+    cudaMalloc(&d_vals_out, sizeof(uint64_t) * total);
+    cudaMalloc(&d_pi_tilde, sizeof(cuda::std::array<int4, 4>) * total);
+    cudaMalloc(&d_chunk_roots, sizeof(cuda::std::array<int4, 2>) * (total / kChunk + VdmpfT::m));
+    capacity = total;
+  }
+  if (d_counts == nullptr) {
+    cudaMalloc(&d_counts, sizeof(uint32_t) * VdmpfT::m);
+    cudaMalloc(&d_leaf_offsets, sizeof(uint32_t) * (VdmpfT::m + 1));
+    cudaMalloc(&d_chunk_offsets, sizeof(uint32_t) * (VdmpfT::m + 1));
+  }
+  cudaMemsetAsync(d_counts, 0, sizeof(uint32_t) * VdmpfT::m, stream);
+
+  size_t sort_bytes = 0;
+  cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes, d_keys, d_keys_out, d_vals, d_vals_out,
+      static_cast<int>(total), 0, 16, stream);
+  if (cub_bytes < sort_bytes) {
+    cudaFree(d_cub_temp);
+    cudaMalloc(&d_cub_temp, sort_bytes);
+    cub_bytes = sort_bytes;
+  }
+
+  constexpr int kBs = 256;
+  int blocks = (n + kBs - 1) / kBs;
+  detail::VdmpfLocateKernel<in_bits, Prp, In, kappa>
+      <<<blocks, kBs, 0, stream>>>(xs, n, sigma, m_rt, b_rt, d_keys, d_vals, d_counts, vdmpf.prp);
+  cub::DeviceRadixSort::SortPairs(d_cub_temp, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out,
+      static_cast<int>(total), 0, 16, stream);
+  if (b) {
+    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, true, Group, Prg, XorHash, In, kappa>
+        <<<blocks, kBs, 0, stream>>>(ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
+            vdmpf.prg, vdmpf.xor_hash);
+  } else {
+    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, false, Group, Prg, XorHash, In, kappa>
+        <<<blocks, kBs, 0, stream>>>(ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
+            vdmpf.prg, vdmpf.xor_hash);
+  }
+  detail::VdmpfFoldSetupKernel<<<1, 1, 0, stream>>>(d_leaf_offsets, d_chunk_offsets, d_counts, VdmpfT::m, kChunk);
+  detail::VdmpfChunkFoldKernel<kChunk, Hash><<<static_cast<int>(total / kChunk + VdmpfT::m), kChunk, 0, stream>>>(
+      d_chunk_roots, d_chunk_offsets, d_leaf_offsets, d_counts, d_vals_out, d_pi_tilde, VdmpfT::m, vdmpf.hash);
+  constexpr int kFoldThreads = (VdmpfT::m + 31) / 32 * 32;
+  detail::VdmpfBucketFoldKernel<VdmpfT::m, Hash><<<1, kFoldThreads, 0, stream>>>(
+      d_pi, d_chunk_roots, d_chunk_offsets, cs, vdmpf.hash);
 }
 
 }  // namespace fss::gpu

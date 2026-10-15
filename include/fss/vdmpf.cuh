@@ -286,6 +286,117 @@ public:
   static bool Verify(cuda::std::span<const int4, 4> pi0, cuda::std::span<const int4, 4> pi1) {
     return InnerVdpf::Verify(pi0, pi1);
   }
+
+  /**
+   * Leaf-chunk size of the Merkle-fold proof accumulation, in leaf nodes.
+   * Part of the proof definition: both parties must chunk identically, and the
+   * GPU path folds the same chunks.
+   */
+  static constexpr int kMerkleChunkSize = 256;
+
+  /**
+   * Batch evaluation method with the Merkle-fold proof.
+   *
+   * Parallel-friendly alternative to BatchEval(): same output shares, and the
+   * proof replaces the paper's sequential chains with Merkle-style folds. Per
+   * bucket, the leaf nodes (hashes of the corrected per-point hashes, in the
+   * bucket's canonical (input, hash) order) fold pairwise level by level in
+   * fixed kMerkleChunkSize-leaf chunks, an odd trailing node carrying to the
+   * next level unchanged; the chunk roots then combine left to right starting
+   * from the bucket's hashed cs. The m bucket nodes fold level by level the
+   * same way into the final proof, whose last two words stay zero. Every
+   * combining step hashes 64B to 32B, so soundness reduces to the pairwise
+   * collision resistance of the fold hash exactly like the VDPF Merkle fold;
+   * see doc/vdpf_merkle_fold_security.md.
+   *
+   * The proof keeps the 64B shape, so Verify() is shared, but chain and fold
+   * accumulators produce different proofs: both parties must pick the same
+   * one. This host path is the sequential reference; the GPU path folds the
+   * same construction and matches it bit-exactly.
+   *
+   * @param b Party index. False for 0 and true for 1.
+   * @param key This party's key.
+   * @param xs Input points to evaluate.
+   * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
+   * @param pi Proof output.
+   */
+  void BatchEvalMerkle(bool b, const Key &key, cuda::std::span<const In> xs, cuda::std::span<int4> ys,
+      cuda::std::array<int4, 4> &pi) {
+    size_t eta = xs.size();
+    assert(ys.size() >= eta);
+
+    int m_ = key.m_rt;
+    int b_rt = key.b_size_rt;
+
+    cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
+
+    // Build per-bucket input lists in the canonical (input, hash) order: the
+    // GPU path reproduces this order through a stable sort of the same
+    // per-(input, hash) records.
+    std::vector<std::vector<std::pair<uint, size_t>>> inputs(m);
+
+    for (size_t omega = 0; omega < eta; ++omega) {
+      for (int k = 0; k < kappa; ++k) {
+        auto [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);
+        if (bucket >= m) continue;
+        uint j = static_cast<uint>(index);
+        assert(j < (1u << bucket_bits));
+        inputs[bucket].push_back({j, omega});
+      }
+    }
+
+    for (size_t i = 0; i < eta; ++i) {
+      ys[i] = {0, 0, 0, 0};
+    }
+
+    InnerVdpf inner_vdpf{prg, xor_hash, hash};
+    std::vector<cuda::std::array<int4, 2>> bucket_nodes(m);
+    std::vector<cuda::std::array<int4, 2>> nodes;
+    for (int i = 0; i < m; ++i) {
+      // The bucket's node starts at its hashed cs and absorbs every chunk
+      // root of its leaf sequence left to right.
+      cuda::std::array<int4, 2> bucket_node = hash.Hash(cuda::std::span<const int4, 4>(key.bks[i].cs));
+      size_t consumed = 0;
+      while (consumed < inputs[i].size()) {
+        size_t take = inputs[i].size() - consumed;
+        if (take > static_cast<size_t>(kMerkleChunkSize)) take = kMerkleChunkSize;
+        nodes.clear();
+        nodes.reserve(take);
+        for (size_t c = 0; c < take; ++c) {
+          auto [j, omega] = inputs[i][consumed + c];
+          auto [y, pi_tilde] = inner_vdpf.Eval(b, key.bks[i], j);
+          ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();
+          nodes.push_back(hash.Hash(cuda::std::span<const int4, 4>(pi_tilde)));
+        }
+        cuda::std::array<int4, 2> root = FoldNodes(nodes);
+        int4 msg[4] = {bucket_node[0], bucket_node[1], root[0], root[1]};
+        bucket_node = hash.Hash(cuda::std::span<const int4, 4>(msg));
+        consumed += take;
+      }
+      bucket_nodes[i] = bucket_node;
+    }
+
+    cuda::std::array<int4, 2> root = FoldNodes(bucket_nodes);
+    pi = {root[0], root[1], int4{0, 0, 0, 0}, int4{0, 0, 0, 0}};
+  }
+
+private:
+  // Level-by-level pairwise fold with an odd trailing node carrying to the
+  // next level unchanged, as in Vdpf::ProveMerkle.
+  cuda::std::array<int4, 2> FoldNodes(std::vector<cuda::std::array<int4, 2>> &nodes) {
+    size_t count = nodes.size();
+    assert(count >= 1);
+    while (count > 1) {
+      size_t pairs = count / 2;
+      for (size_t i = 0; i < pairs; ++i) {
+        int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
+        nodes[i] = hash.Hash(cuda::std::span<const int4, 4>(msg));
+      }
+      if (count % 2 != 0) nodes[pairs] = nodes[count - 1];
+      count = pairs + count % 2;
+    }
+    return nodes[0];
+  }
 };
 
 }  // namespace fss

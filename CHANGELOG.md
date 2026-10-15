@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Merkle-fold proof accumulation for VDMPF (`BatchEvalMerkle`, GPU `VdmpfBatchEvalGpu`): extends
+  the VDPF fold to the multi-point scheme across the Cuckoo buckets. Per bucket the corrected
+  per-point hashes fold pairwise in fixed 256-leaf chunks (odd trailing node carries), the chunk
+  roots combine from the bucket's hashed cs, and the m bucket nodes fold into the 64B proof.
+  `Gen`, `Verify`, and the output shares are unchanged; the paper-faithful chains `BatchEval`
+  remain the reference, and both parties must pick the same accumulator. The GPU path builds the
+  canonical per-bucket order from Locate records plus a stable radix sort, then runs the
+  evaluation and fold passes fully parallel, bit-exact with the host fold; security analysis
+  extended in doc/vdpf_merkle_fold_security.md.
 * GPU benchmark curves for DMPF batch `Eval` and `EvalAll`: the GPU Cuckoo `Locate` runs on the
   `ChaChaFeistel` PRP while the CPU curves keep OpenSSL-backed `Aes128Feistel` — each platform's
   own optimal backend, and the figures compare implementations within one platform. The refreshed

@@ -1,11 +1,9 @@
-# VDPF Merkle-fold proof accumulation: security analysis
+# VDPF and VDMPF Merkle-fold proof accumulation: security analysis
 
 This document analyzes the modification to the 2-party VDPF of de Castro and Polychroniadou
 ([dCP22], EUROCRYPT 2022, eprint 2021/580) implemented in this library: `Gen`, `Eval`, and
 `Verify` are kept exactly as in the paper/implementation, and only the `Prove` accumulation is
-replaced by an order-independent binary Merkle fold. The new algorithm ships as `ProveMerkle`,
-`EvalAllMerkle`, and `VdpfEvalAllMerkleGpu`; the paper-faithful chain `Prove` remains implemented
-as the reference. Both parties must switch jointly — proofs from the two accumulators are not
+replaced by an order-independent binary Merkle fold. The new algorithm ships as `ProveMerkle`, `EvalAllMerkle`, and `VdpfEvalAllMerkleGpu`, with the VDMPF extension shipping as `BatchEvalMerkle` and `VdmpfBatchEvalGpu` (Section 8); the paper-faithful chains `Prove` and VDMPF `BatchEval` remain implemented as the references. Both parties must switch jointly — proofs from the two accumulators are not
 compatible, and `Verify` compares within one version only.
 
 The document is self-contained for a reader with [dCP22] at hand. It states what is proven here,
@@ -360,7 +358,162 @@ recomputation (or a rebuild). The chain instead must absorb points strictly in o
 by appending at the end. The same property supports streaming the full-domain evaluation in
 chunks.
 
-## 8. References
+## 8. The VDMPF Merkle-fold accumulation
+
+The VDMPF extension described as future work in Section 7(d) now ships in
+`include/fss/vdmpf.cuh` (`BatchEvalMerkle`, with private helper `FoldNodes`) and
+`include/fss/point_eval_gpu.cuh` (`VdmpfBatchEvalGpu`). It replaces the proof accumulation
+within and across Cuckoo buckets. `Gen`, `Verify`, and the output shares are unchanged.
+The sequential-chain `BatchEval` remains the paper-faithful reference.
+
+### Construction
+
+Let i = 0,...,m-1 index buckets and p ∈ {0,1} index parties. Here m is the class's
+compile-time bucket count: the final fold includes all m buckets, including those beyond
+`key.m_rt`. Both parties evaluate the same ordered input batch with common Cuckoo parameters
+and PRP seed. For each input position ω, in batch order, they enumerate hash indices
+k = 0,...,κ-1 and append the resulting record to its bucket. This fixes each bucket's
+canonical sequence by (input position, hash index), not by its within-bucket point index.
+
+Write c_i for the number of records in bucket i and C_{p,i}(r) for record r's corrected
+64B per-point hash. These are the inner VDPF's C-values from Section 4: `XorHash` outputs
+with the bucket's cs correction applied according to the control bit. `HashMerkle` denotes
+the same Blake3 64B-to-32B hash as in Section 3, called through `hash.Hash` in this code.
+
+```
+K = kMerkleChunkSize = 256
+q_i = ceil(c_i / K)
+
+Fold(N[0..s-1]):                              // s >= 1, each node is 32B
+    while s > 1:
+        next[j] = HashMerkle(N[2*j] || N[2*j+1])
+                                               // j = 0 .. floor(s/2)-1
+        if s is odd:
+            next[floor(s/2)] = N[s-1]         // carry unchanged
+        N = next
+        s = ceil(s/2)
+    return N[0]
+
+leaf:       L_{p,i}(r) = HashMerkle(C_{p,i}(r))
+                                               // 64B -> 32B, r = 0..c_i-1
+
+chunk:      R_{p,i}(j) = Fold(L_{p,i}[j*K : min((j+1)*K, c_i)])
+                                               // half-open slice, j = 0..q_i-1
+
+anchor:     A_{p,i}(0) = HashMerkle(cs_i)       // 64B -> 32B
+bucket:     A_{p,i}(j+1) = HashMerkle(A_{p,i}(j) || R_{p,i}(j))
+                                               // left to right, j = 0..q_i-1
+            B_{p,i} = A_{p,i}(q_i)
+
+root:       root_p = Fold(B_{p,0}, ..., B_{p,m-1})
+proof:      pi_p = { root_p[0], root_p[1], 0, 0 }
+                                               // 64B, two trailing zero int4s
+```
+
+An empty bucket has no chunks and contributes `HashMerkle(cs_i)`. A one-node fold returns
+that node unchanged. At larger sizes, `Fold` uses Section 3's adjacent-pair level rule,
+carrying an odd trailing node to the next level without hashing or duplicating it.
+The cs anchor plays the role of the chain's cs-initialized running value: each bucket
+starts from its correction seed, including when it has no evaluated records.
+
+Bucket leaf counts are arbitrary, unlike the power-of-two full domain of the VDPF fold.
+Fixed chunks let the GPU fold leaves and chunks in parallel, leaving only q_i = ceil(c_i/K)
+dependent combining calls per bucket after its anchor hash. K is part of the proof
+definition, like a hash function's block size. Both parties must use the same chunk
+boundaries.
+
+The GPU reproduces this construction bit-exactly. `VdmpfLocateKernel` writes records in
+(input position, hash index) order, and the stable radix sort groups them by bucket while
+preserving that order. `VdmpfBatchEvalKernel` computes the output shares and corrected
+C-values. `VdmpfFoldSetupKernel` computes leaf and chunk offsets,
+`VdmpfChunkFoldKernel` folds the same K-leaf chunks as the host, and
+`VdmpfBucketFoldKernel` performs the anchored bucket chains and the final fold over all
+m bucket nodes.
+
+### Correctness
+
+For honestly generated keys, Section 4's argument applies to each inner VDPF: both parties
+share every C-value and every cs_i. Common Cuckoo parameters and the same input batch give
+the same canonical record sequences and chunk boundaries. Thus their leaves, chunk roots,
+anchored bucket nodes, and final roots agree. Their 64B proofs match and the shared
+`Verify` accepts.
+
+### Soundness
+
+We inherit Section 5's common-key-material assumption and its nonzero-cs caveat for each
+inner VDPF, together with the same hash assumptions. The common batch, Cuckoo mapping,
+and K fix identical positions and fold shapes for the two parties. The accumulator binding
+argument extends Lemma 1 through each tier.
+
+**Lemma 3 (VDMPF fold binding).** For these common positions and shapes, equal final roots
+with any differing C-value, chunk root, or bucket node yield a literal `HashMerkle`
+collision: distinct 64B inputs with the same 32B output.
+
+*Proof.* Apply Lemma 1's sibling-path argument to the top fold. If a bucket node differs
+but the final roots agree, follow its path to the last differing node before an equal
+parent. An odd carry preserves the node value, so it cannot turn unequal nodes into equal
+ones. The transition must occur at a combining hash. Its inputs differ in the same
+32B child slot and its outputs agree, giving a collision. Excluding such collisions,
+B_{0,i} = B_{1,i} for every bucket i.
+
+For a bucket with q_i > 0, its final node is
+
+```
+B_{p,i} = HashMerkle(A_{p,i}(q_i-1) || R_{p,i}(q_i-1)).
+```
+
+If the outputs agree but either child differs, these two calls exhibit a collision.
+Otherwise both children agree. Repeat backwards through the bucket's left chain.
+Without a collision, equality of the final bucket nodes forces equality of every
+corresponding chunk root and intermediate accumulator. This is the same sibling-path
+induction on a composition of pairwise combining steps. Each step concatenates two
+fixed-width children, so a difference in either child gives distinct 64B inputs.
+
+Now apply Lemma 1 within each chunk. Equal chunk roots with a differing leaf yield a
+collision at the last differing node before an equal parent. Again, an odd carry cannot
+erase a difference. For a one-leaf chunk, the leaf is already its root. Finally, equal
+leaves with differing C-preimages give the collision of Lemma 2 directly:
+
+```
+C_{0,i}(r) != C_{1,i}(r)
+HashMerkle(C_{0,i}(r)) = HashMerkle(C_{1,i}(r)).
+```
+
+Thus any disagreement at the stated tiers beneath equal final roots produces a literal
+collision. ∎
+
+`Verify` accepting implies root equality because the trailing 32B are fixed zeros.
+Lemma 3 then gives agreement of all evaluated inner C-values unless a `HashMerkle`
+collision occurs. Section 5's remaining per-point argument applies within each bucket:
+under the inherited assumptions, agreement implies at most one differing inner seed
+among that bucket's evaluated indices, except for a collision or XOR-collision of H.
+The output-share computation and the Cuckoo construction remain unchanged. This supplies
+the replacement accumulation step for the VDMPF share-integrity argument.
+
+As in Section 5, a union bound accounts for failure across the tiers. Let
+ε_leaf, ε_chunk, ε_bucket, and ε_top denote the collision-finding advantages of the
+reductions extracting a `HashMerkle` collision at leaves, within chunks, in bucket chains,
+and in the top fold, respectively. Let ε_H include the inherited H collision and
+XOR-collision advantages, summed over the inner buckets. Then the failure probability
+under the inherited assumptions is bounded by
+
+```
+Pr[failure] <= epsilon_leaf + epsilon_chunk + epsilon_bucket + epsilon_top
+               + epsilon_H.
+```
+
+These are collision advantages against the same hash, not assumptions of independent
+hashes at different tiers. The reduction requires neither independence between tiers
+nor an assumption about XOR aggregation. Common cs_i makes the anchors identical without
+a further failure term.
+
+**A deliberate deviation.** As in Section 7(a), this is an alternative accumulation
+algorithm chosen for parallelism. The sequential-chain `BatchEval` remains the reference.
+Both parties must switch together and use the same K and canonical order. Host and GPU
+implementations compute the same fold proof, but chain and fold proofs have no
+cross-accumulator compatibility.
+
+## 9. References
 
 - Leo de Castro, Antigoni Polychroniadou. *Lightweight, Maliciously Secure Verifiable Function
   Secret Sharing.* EUROCRYPT 2022, LNCS 13276, pp. 150-179.
