@@ -214,13 +214,12 @@ __device__ __forceinline__ int4 DpfPathStep(int4 st, const Cw &cw, Prg prg, bool
   return x_bit ? util::SetLsb(sr, tr) : util::SetLsb(sl, tl);
 }
 
-template <int in_bits, int z, int b1, typename Group, typename Prg>
-__global__ void DpfEvalAllKernel(
-    bool b, int4 s0, const typename Dpf<in_bits, Group, Prg, uint>::Cw *cws, int4 *ys, Prg prg) {
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename Cw>
+__global__ void DpfEvalAllKernel(bool b, int4 s0, const Cw *cws, int4 *ys, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
-  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
+  const int64_t tid = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
 
   // Phase 0: block root walk (top b1 levels) by thread 0.
   __shared__ int4 s_front[1 << kSub];
@@ -268,7 +267,7 @@ __global__ void DpfEvalAllKernel(
   }
 
   int4 v_cw_np1 = cws[in_bits].s;
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 st_cur = nodes[k];
@@ -287,18 +286,17 @@ __global__ void DpfEvalAllKernel(
 // The grid covers nkeys * 2^b1 blocks; block (key, bid) walks the
 // same subtree as bid in the single-key kernel, but for key.
 
-template <int in_bits, int z, int b1, typename Group, typename Prg>
-__global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s,
-    const typename Dpf<in_bits, Group, Prg, uint>::Cw *cws, int4 *ys, int nkeys, Prg prg) {
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename Cw>
+__global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, int4 *ys, int nkeys, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
   constexpr int kBlocks = 1 << b1;
   const int key = blockIdx.x / kBlocks;
   const int bid = blockIdx.x - key * kBlocks;
-  const int tid = bid * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
-  const auto *kcws = cws + key * (in_bits + 1);
-  int4 *kys = ys + key * (1 << in_bits);
+  const int64_t tid = static_cast<int64_t>(bid) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
+  const auto *kcws = cws + static_cast<size_t>(key) * (in_bits + 1);
+  int4 *kys = ys + static_cast<size_t>(key) * (size_t{1} << in_bits);
 
   __shared__ int4 s_front[1 << kSub];
   if (threadIdx.x == 0) {
@@ -343,7 +341,7 @@ __global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s,
   }
 
   int4 v_cw_np1 = kcws[in_bits].s;
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 st_cur = nodes[k];
@@ -367,8 +365,8 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
   const int bid = blockIdx.x - key * kBlocks;
   const int tid = bid * blockDim.x + threadIdx.x;
   if (tid >= (1 << z)) return;
-  const auto *kcws = cws + key * in_bits;
-  int4 *kys = ys + key * (1 << in_bits);
+  const auto *kcws = cws + static_cast<size_t>(key) * in_bits;
+  int4 *kys = ys + static_cast<size_t>(key) * (size_t{1} << in_bits);
 
   __shared__ int4 s_front[1 << kSub];
   if (threadIdx.x == 0) {
@@ -541,8 +539,8 @@ __global__ void PackedHalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
   const int bid = blockIdx.x - key * kBlocks;
   const int tid = bid * blockDim.x + threadIdx.x;
   if (tid >= (1 << z)) return;
-  const auto *kcws = cws + key * kDepth;
-  int4 *kys = ys + key * (1 << kDepth);
+  const auto *kcws = cws + static_cast<size_t>(key) * kDepth;
+  int4 *kys = ys + static_cast<size_t>(key) * (size_t{1} << kDepth);
   int4 fcw = fcws[key];
 
   // Phase 0: block root walk (top b1 levels) by thread 0.
@@ -667,13 +665,12 @@ __device__ __forceinline__ void DcfPathStep(int4 st, Group v, bool b, const Cw &
   }
 }
 
-template <int in_bits, int z, int b1, typename Group, typename Prg>
-__global__ void DcfEvalAllKernel(
-    bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, uint>::Cw *cws, int4 *ys, Prg prg) {
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename Cw>
+__global__ void DcfEvalAllKernel(bool b, int4 s0, const Cw *cws, int4 *ys, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
-  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
+  const int64_t tid = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
 
   // Phase 0: block root walk (top b1 levels) by thread 0.
   __shared__ int4 s_front[1 << kSub];
@@ -735,7 +732,7 @@ __global__ void DcfEvalAllKernel(
   }
 
   auto v_cw_np1 = Group::From(cws[in_bits].v);
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 st_cur = nodes[k];
@@ -752,18 +749,17 @@ __global__ void DcfEvalAllKernel(
 // Batched variant: nkeys keys evaluated in one launch. cws is flat, key-major
 // with stride (in_bits + 1) per key (the final cw's v part is used); each
 // key's 2^in_bits outputs land at ys + k * (1 << in_bits).
-template <int in_bits, int z, int b1, typename Group, typename Prg>
-__global__ void DcfEvalAllBatchKernel(bool b, const int4 *s0s,
-    const typename Dcf<in_bits, Group, Prg, uint>::Cw *cws, int4 *ys, int nkeys, Prg prg) {
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename Cw>
+__global__ void DcfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, int4 *ys, int nkeys, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
   constexpr int kBlocks = 1 << b1;
   const int key = blockIdx.x / kBlocks;
   const int bid = blockIdx.x - key * kBlocks;
-  const int tid = bid * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
-  const auto *kcws = cws + key * (in_bits + 1);
-  int4 *kys = ys + key * (1 << in_bits);
+  const int64_t tid = static_cast<int64_t>(bid) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
+  const auto *kcws = cws + static_cast<size_t>(key) * (in_bits + 1);
+  int4 *kys = ys + static_cast<size_t>(key) * (size_t{1} << in_bits);
 
   __shared__ int4 s_front[1 << kSub];
   __shared__ Group v_front[1 << kSub];
@@ -822,7 +818,7 @@ __global__ void DcfEvalAllBatchKernel(bool b, const int4 *s0s,
   }
 
   auto v_cw_np1 = Group::From(kcws[in_bits].v);
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 st_cur = nodes[k];
@@ -1140,7 +1136,7 @@ void DpfEvalAllGpu(bool b, int4 s0, const typename Dpf<in_bits, Group, Prg, In>:
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  constexpr int kBlocks = (1 << Z) / bs;
+  constexpr size_t kBlocks = (size_t{1} << Z) / bs;
   detail::DpfEvalAllKernel<in_bits, Z, B1, Group, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, ys, dpf.prg);
 }
@@ -1174,7 +1170,7 @@ void DpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dpf<in_bits, Gro
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   detail::DpfEvalAllBatchKernel<in_bits, Z, B1, Group, Prg>
-      <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, ys, nkeys, dpf.prg);
+      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(b, s0s, cws, ys, nkeys, dpf.prg);
 }
 
 /**
@@ -1255,17 +1251,19 @@ void PackedHalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s,
  * @param s0 Initial seed of the party.
  * @param cws Correction words returned by Gen().
  * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
- * @param dcf A Dcf instance (holds the PRG). Used on the host side.
+ * @param dcf A Dcf instance (holds the PRG). Used on the host side. Any predicate and
+ *   par_depth instantiation; both are deduced from the argument.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
-void DcfEvalAllGpu(bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int4 *ys,
-    const Dcf<in_bits, Group, Prg, In> &dcf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In, DcfPred pred,
+    int par_depth>
+void DcfEvalAllGpu(bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws, int4 *ys,
+    const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf, cudaStream_t stream = 0) {
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  constexpr int kBlocks = (1 << Z) / bs;
+  constexpr size_t kBlocks = (size_t{1} << Z) / bs;
   detail::DcfEvalAllKernel<in_bits, Z, B1, Group, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, ys, dcf.prg);
 }
@@ -1288,18 +1286,21 @@ void DcfEvalAllGpu(bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, In>:
  * @param cws Flat correction words, key-major, stride (in_bits + 1).
  * @param nkeys Number of keys to evaluate.
  * @param ys Output array, flat, stride (1 << in_bits) per key.
- * @param dcf A Dcf instance (holds the PRG). Used on the host side.
+ * @param dcf A Dcf instance (holds the PRG). Used on the host side. Any predicate and
+ *   par_depth instantiation; both are deduced from the argument.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
-void DcfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int nkeys,
-    int4 *ys, const Dcf<in_bits, Group, Prg, In> &dcf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In, DcfPred pred,
+    int par_depth>
+void DcfEvalAllGpuBatch(bool b, const int4 *s0s,
+    const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws, int nkeys, int4 *ys,
+    const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf, cudaStream_t stream = 0) {
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   detail::DcfEvalAllBatchKernel<in_bits, Z, B1, Group, Prg>
-      <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, ys, nkeys, dcf.prg);
+      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(b, s0s, cws, ys, nkeys, dcf.prg);
 }
 
 /**

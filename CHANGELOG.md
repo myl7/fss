@@ -39,7 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   library's control-bit bookkeeping needs, with a matching Gen retry). Fixed the eprint citation
   of the VDPF/VDMPF scheme in the vdpf/cuckoo_hash/vdmpf headers (2024/677 -> 2021/580).
 * GPU full-domain evaluation for the schemes that had no GPU `EvalAll`: `DcfEvalAllGpu` and
-  `DcfEvalAllGpuBatch` (frontier kernel carrying the DCF group state), `PackedHalfTreeDpfEvalAllGpu`
+  `DcfEvalAllGpuBatch` (frontier kernel carrying the DCF group state, for both `lt` and `gt`
+  predicates), `PackedHalfTreeDpfEvalAllGpu`
   and `PackedHalfTreeDpfEvalAllGpuBatch` (frontier stops at `kDepth`, one packed block per leaf
   node), and `GrottoDcfPreprocessGpu` and `GrottoDcfEvalAllGpu` (parity segment tree built per
   level plus a CUB inclusive XOR scan). All bit-exact against the CPU schemes on both parties;
