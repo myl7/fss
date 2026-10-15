@@ -65,13 +65,12 @@ __device__ __forceinline__ int4 HtPathStep(int4 n, bool x_bit, int4 cw_s, int4 h
   return util::Xor(util::Xor(h, x_bit ? n : kZero4), t ? cw_s : kZero4);
 }
 
-template <int in_bits, int z, int b1, typename Group, typename Prg>
-__global__ void HalfTreeDpfEvalAllKernel(bool b, int4 s0,
-    const typename HalfTreeDpf<in_bits, Group, Prg, uint>::Cw *cws, int4 ocw, int4 *ys, int4 hash_key, Prg prg) {
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename Cw>
+__global__ void HalfTreeDpfEvalAllKernel(bool b, int4 s0, const Cw *cws, int4 ocw, int4 *ys, int4 hash_key, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
-  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
+  const int64_t tid = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
 
   // Phase 0: block root walk (top b1 levels) by thread 0.
   __shared__ int4 s_front[1 << kSub];
@@ -126,7 +125,7 @@ __global__ void HalfTreeDpfEvalAllKernel(bool b, int4 s0,
   bool lcw_1 = cws[in_bits - 1].extra;
   auto ocw_group = Group::From(ocw);
 
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 n = nodes[k];
@@ -354,17 +353,16 @@ __global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, in
   }
 }
 
-template <int in_bits, int z, int b1, typename Group, typename Prg>
-__global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
-    const typename HalfTreeDpf<in_bits, Group, Prg, uint>::Cw *cws, const int4 *ocws, int4 *ys,
+template <int in_bits, int z, int b1, typename Group, typename Prg, typename Cw>
+__global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, const int4 *ocws, int4 *ys,
     int nkeys, int4 hash_key, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
   constexpr int kBlocks = 1 << b1;
   const int key = blockIdx.x / kBlocks;
   const int bid = blockIdx.x - key * kBlocks;
-  const int tid = bid * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
+  const int64_t tid = static_cast<int64_t>(bid) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
   const auto *kcws = cws + static_cast<size_t>(key) * in_bits;
   int4 *kys = ys + static_cast<size_t>(key) * (size_t{1} << in_bits);
 
@@ -417,7 +415,7 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
   bool lcw_1 = kcws[in_bits - 1].extra;
   auto ocw_group = Group::From(ocws[key]);
 
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 n = nodes[k];
@@ -459,15 +457,13 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
 // ^ (t ? fcw : 0), see PackedHalfTreeDpf::ConvertLeaf. There is no Group, no
 // ocw, and no party negation of outputs since packed shares XOR-reconstruct.
 
-template <int in_bits, int out_bits, int z, int b1, typename Prg>
-__global__ void PackedHalfTreeDpfEvalAllKernel(bool b, int4 s0,
-    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::Cw *cws, int4 fcw, int4 *ys, int4 hash_key,
+template <int in_bits, int out_bits, int kDepth, int z, int b1, typename Prg, typename Cw>
+__global__ void PackedHalfTreeDpfEvalAllKernel(bool b, int4 s0, const Cw *cws, int4 fcw, int4 *ys, int4 hash_key,
     Prg prg) {
-  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::kDepth;
   constexpr int D = kDepth - z;
   constexpr int kSub = z - b1;
-  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
+  const int64_t tid = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
 
   // Phase 0: block root walk (top b1 levels) by thread 0.
   __shared__ int4 s_front[1 << kSub];
@@ -517,7 +513,7 @@ __global__ void PackedHalfTreeDpfEvalAllKernel(bool b, int4 s0,
   }
 
   // Leaf conversion: one level-kDepth node per packed output block.
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 n = nodes[k];
@@ -527,18 +523,16 @@ __global__ void PackedHalfTreeDpfEvalAllKernel(bool b, int4 s0,
   }
 }
 
-template <int in_bits, int out_bits, int z, int b1, typename Prg>
-__global__ void PackedHalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
-    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::Cw *cws, const int4 *fcws, int4 *ys, int nkeys,
-    int4 hash_key, Prg prg) {
-  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, uint>::kDepth;
+template <int in_bits, int out_bits, int kDepth, int z, int b1, typename Prg, typename Cw>
+__global__ void PackedHalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, const int4 *fcws,
+    int4 *ys, int nkeys, int4 hash_key, Prg prg) {
   constexpr int D = kDepth - z;
   constexpr int kSub = z - b1;
   constexpr int kBlocks = 1 << b1;
   const int key = blockIdx.x / kBlocks;
   const int bid = blockIdx.x - key * kBlocks;
-  const int tid = bid * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
+  const int64_t tid = static_cast<int64_t>(bid) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
   const auto *kcws = cws + static_cast<size_t>(key) * kDepth;
   int4 *kys = ys + static_cast<size_t>(key) * (size_t{1} << kDepth);
   int4 fcw = fcws[key];
@@ -591,7 +585,7 @@ __global__ void PackedHalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s,
   }
 
   // Leaf conversion: one level-kDepth node per packed output block.
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     int4 n = nodes[k];
@@ -842,8 +836,8 @@ template <int in_bits, int z, int b1, typename Cw, typename Prg>
 __global__ void GrottoDcfExpandLeafBitsKernel(bool b, int4 s0, const Cw *cws, bool *t, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
-  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= (1 << z)) return;
+  const int64_t tid = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (tid >= (1LL << z)) return;
 
   // Phase 0: block root walk (top b1 levels) by thread 0.
   __shared__ int4 s_front[1 << kSub];
@@ -890,7 +884,7 @@ __global__ void GrottoDcfExpandLeafBitsKernel(bool b, int4 s0, const Cw *cws, bo
     count *= 2;
   }
 
-  const int out_base = tid << D;
+  const size_t out_base = static_cast<size_t>(tid) << D;
 #pragma unroll
   for (int k = 0; k < count; ++k) {
     t[out_base + k] = util::GetLsb(nodes[k]);
@@ -900,10 +894,10 @@ __global__ void GrottoDcfExpandLeafBitsKernel(bool b, int4 s0, const Cw *cws, bo
 // One level of the bottom-up parity build of GrottoDcf::Preprocess: thread j
 // sets p[idx] = p[2*idx+1] ^ p[2*idx+2] for its node of the level.
 // nodes = 2^l is the level width; node j of level l has tree index nodes-1+j.
-__global__ void GrottoDcfParityLevelKernel(bool *p, int nodes) {
-  int j = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void GrottoDcfParityLevelKernel(bool *p, int64_t nodes) {
+  int64_t j = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (j >= nodes) return;
-  int idx = nodes - 1 + j;
+  int64_t idx = nodes - 1 + j;
   p[idx] = p[2 * idx + 1] ^ p[2 * idx + 2];
 }
 
@@ -1109,7 +1103,7 @@ void HalfTreeDpfEvalAllGpu(bool b, int4 s0, const typename HalfTreeDpf<in_bits, 
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z < in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  constexpr int kBlocks = (1 << Z) / bs;
+  constexpr size_t kBlocks = (size_t{1} << Z) / bs;
   detail::HalfTreeDpfEvalAllKernel<in_bits, Z, B1, Group, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, ocw, ys, dpf.hash_key, dpf.prg);
 }
@@ -1185,7 +1179,8 @@ void HalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename HalfTree
   static_assert(Z < in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   detail::HalfTreeDpfEvalAllBatchKernel<in_bits, Z, B1, Group, Prg>
-      <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, ocws, ys, nkeys, dpf.hash_key, dpf.prg);
+      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(b, s0s, cws, ocws, ys, nkeys, dpf.hash_key,
+          dpf.prg);
 }
 
 /**
@@ -1216,8 +1211,8 @@ void PackedHalfTreeDpfEvalAllGpu(bool b, int4 s0,
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= kDepth && kDepth - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  constexpr int kBlocks = (1 << Z) / bs;
-  detail::PackedHalfTreeDpfEvalAllKernel<in_bits, out_bits, Z, B1, Prg>
+  constexpr size_t kBlocks = (size_t{1} << Z) / bs;
+  detail::PackedHalfTreeDpfEvalAllKernel<in_bits, out_bits, kDepth, Z, B1, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, fcw, ys, dpf.hash_key, dpf.prg);
 }
 
@@ -1235,8 +1230,9 @@ void PackedHalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s,
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= kDepth && kDepth - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  detail::PackedHalfTreeDpfEvalAllBatchKernel<in_bits, out_bits, Z, B1, Prg>
-      <<<nkeys * (1 << B1), bs, 0, stream>>>(b, s0s, cws, fcws, ys, nkeys, dpf.hash_key, dpf.prg);
+  detail::PackedHalfTreeDpfEvalAllBatchKernel<in_bits, out_bits, kDepth, Z, B1, Prg>
+      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(b, s0s, cws, fcws, ys, nkeys, dpf.hash_key,
+          dpf.prg);
 }
 
 /**
@@ -1329,7 +1325,7 @@ void GrottoDcfPreprocessGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, P
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  constexpr int kBlocks = (1 << Z) / bs;
+  constexpr size_t kBlocks = (size_t{1} << Z) / bs;
   constexpr size_t N = size_t{1} << in_bits;
   detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In>::Cw, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, d_p + (N - 1), dcf.prg);
@@ -1339,8 +1335,8 @@ void GrottoDcfPreprocessGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, P
   constexpr int kTopL = detail::ConstLog2(bs);
   constexpr int kTop = kTopL < in_bits - 1 ? kTopL : in_bits - 1;
   for (int l = in_bits - 1; l > kTop; --l) {
-    int nodes = 1 << l;
-    detail::GrottoDcfParityLevelKernel<<<(nodes + bs - 1) / bs, bs, 0, stream>>>(d_p, nodes);
+    int64_t nodes = int64_t{1} << l;
+    detail::GrottoDcfParityLevelKernel<<<static_cast<size_t>((nodes + bs - 1) / bs), bs, 0, stream>>>(d_p, nodes);
   }
   detail::GrottoDcfParityTopKernel<kTop><<<1, bs, 0, stream>>>(d_p);
 }
@@ -1368,7 +1364,7 @@ void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg,
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
-  constexpr int kBlocks = (1 << Z) / bs;
+  constexpr size_t kBlocks = (size_t{1} << Z) / bs;
   constexpr size_t N = size_t{1} << in_bits;
   detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In>::Cw, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, d_ys, dcf.prg);
@@ -1381,7 +1377,7 @@ void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg,
   auto *bits = reinterpret_cast<unsigned char *>(d_ys);
   detail::GrottoXorScanOp scan_op;
   size_t tmp_bytes = 0;
-  cub::DeviceScan::InclusiveScan(nullptr, tmp_bytes, bits, bits, scan_op, static_cast<int>(N), stream);
+  cub::DeviceScan::InclusiveScan(nullptr, tmp_bytes, bits, bits, scan_op, static_cast<int64_t>(N), stream);
   thread_local void *d_tmp = nullptr;
   thread_local size_t tmp_cap = 0;
   if (tmp_cap < tmp_bytes) {
@@ -1389,7 +1385,7 @@ void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg,
     cudaMalloc(&d_tmp, tmp_bytes);
     tmp_cap = tmp_bytes;
   }
-  cub::DeviceScan::InclusiveScan(d_tmp, tmp_bytes, bits, bits, scan_op, static_cast<int>(N), stream);
+  cub::DeviceScan::InclusiveScan(d_tmp, tmp_bytes, bits, bits, scan_op, static_cast<int64_t>(N), stream);
 }
 
 /**

@@ -39,17 +39,17 @@ class DeviceBuffer {
   T *data_ = nullptr;
 };
 
-template <int bits, typename Group, bool half_tree>
+template <int bits, typename Group, bool half_tree, typename In = uint>
 struct SchemeType;
-template <int bits, typename Group>
-struct SchemeType<bits, Group, false> {
+template <int bits, typename Group, typename In>
+struct SchemeType<bits, Group, false, In> {
   using Prg = fss::prg::ChaCha<2>;
-  using Type = fss::Dpf<bits, Group, Prg, uint>;
+  using Type = fss::Dpf<bits, Group, Prg, In>;
 };
-template <int bits, typename Group>
-struct SchemeType<bits, Group, true> {
+template <int bits, typename Group, typename In>
+struct SchemeType<bits, Group, true, In> {
   using Prg = fss::prg::ChaCha<1>;
-  using Type = fss::HalfTreeDpf<bits, Group, Prg, uint>;
+  using Type = fss::HalfTreeDpf<bits, Group, Prg, In>;
 };
 
 void ExpectOutput(int4 actual, int4 expected, size_t input) {
@@ -59,7 +59,8 @@ void ExpectOutput(int4 actual, int4 expected, size_t input) {
   EXPECT_EQ(actual.w, expected.w) << "input " << input;
 }
 
-template <int bits, int z, int threads, int keys, typename Group, bool half_tree, bool large = false>
+template <int bits, int z, int threads, int keys, typename Group, bool half_tree, bool large = false,
+    typename In = uint>
 void CheckFullEvaluation() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -67,7 +68,7 @@ void CheckFullEvaluation() {
     GTEST_SKIP() << "no CUDA device available";
   }
   ASSERT_EQ(status, cudaSuccess);
-  using Types = SchemeType<bits, Group, half_tree>;
+  using Types = SchemeType<bits, Group, half_tree, In>;
   using Scheme = typename Types::Type;
   using Prg = typename Types::Prg;
   using Cw = typename Scheme::Cw;
@@ -173,6 +174,12 @@ TEST(EvalAllGpu, HalfTreeSubtreesUint) {
 TEST(EvalAllGpu, DpfAbove24Bits) {
   CheckFullEvaluation<25, 21, 128, 1, Uint127Group, false, true>();
 }
+TEST(EvalAllGpu, HalfTreeAbove24Bits) {
+  CheckFullEvaluation<25, 20, 128, 1, Uint127Group, true, true>();
+}
+TEST(EvalAllGpu, HalfTreeWideInUint16) {
+  CheckFullEvaluation<8, 7, 128, 1, fss::group::Bytes, true, false, uint16_t>();
+}
 
 template <int bits, int z, int threads, typename In = uint>
 void CheckVdpfGpu() {
@@ -238,7 +245,7 @@ void CheckVdpfGpu() {
   EXPECT_TRUE(Scheme::Verify(cuda::std::span<const int4, 4>(gpu_pi[0]), cuda::std::span<const int4, 4>(gpu_pi[1])));
 }
 
-template <int bits, int out_bits, int z, int b1, int threads, int keys = 1>
+template <int bits, int out_bits, int z, int b1, int threads, int keys = 1, typename In = uint>
 void CheckPackedGpu() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -247,7 +254,7 @@ void CheckPackedGpu() {
   }
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<1>;
-  using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, Prg, uint>;
+  using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, Prg, In>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kDepth = Scheme::kDepth;
@@ -378,7 +385,7 @@ void CheckDcfGpu() {
   }
 }
 
-template <int bits, int z, int threads>
+template <int bits, int z, int threads, typename In = uint>
 void CheckGrottoGpu() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -387,7 +394,7 @@ void CheckGrottoGpu() {
   }
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
-  using Scheme = fss::GrottoDcf<bits, Prg, uint>;
+  using Scheme = fss::GrottoDcf<bits, Prg, In>;
   using Cw = typename Scheme::Cw;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
@@ -456,6 +463,12 @@ TEST(EvalAllGpu, PackedOneBit) {
 TEST(EvalAllGpu, PackedBatch) {
   CheckPackedGpu<12, 8, 8, 1, 128, 3>();
 }
+TEST(EvalAllGpu, PackedAbove24Bits) {
+  CheckPackedGpu<25, 8, 17, 10, 128>();
+}
+TEST(EvalAllGpu, PackedWideInUint16) {
+  CheckPackedGpu<12, 8, 8, 1, 128, 1, uint16_t>();
+}
 
 TEST(EvalAllGpu, DcfLeafFrontierBytes) {
   CheckDcfGpu<8, 8, 128, 1, fss::group::Bytes>();
@@ -506,6 +519,12 @@ TEST(EvalAllGpu, GrottoSmall) {
 }
 TEST(EvalAllGpu, GrottoSubtrees) {
   CheckGrottoGpu<14, 12, 256>();
+}
+TEST(EvalAllGpu, GrottoAbove24Bits) {
+  CheckGrottoGpu<25, 21, 128>();
+}
+TEST(EvalAllGpu, GrottoWideInUint16) {
+  CheckGrottoGpu<10, 10, 128, uint16_t>();
 }
 
 }  // namespace

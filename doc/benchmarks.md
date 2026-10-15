@@ -59,6 +59,9 @@ log):
 | VdpfEvalAllMerkle    | Uint  | `ChaCha<2>`     | 128 |      | 12288B |
 | VdpfMerkleRoots      | -     | Blake3          | 40 |      | 8192B |
 | GrottoDcfExpandLeafBits | -  | `ChaCha<2>`     | 63 |      | 4096B |
+| HalfTreeDpfEvalAll (z=20) | Bytes | `ChaCha<1>`  | 105 |      | 2048B |
+| PackedHalfTreeDpfEvalAll (z=17) | - | `ChaCha<1>` | 94 |      | 2048B |
+| GrottoDcfExpandLeafBits (z=21) | - | `ChaCha<2>` | 61 | 256B | 2048B |
 
 The PRG drives most of the difference. Software AES-128 MMO costs about 1.8x
 the registers of ChaCha for the same scheme and group and is the only backend
@@ -66,3 +69,6 @@ here with a T-table in shared memory (see
 [the software AES study](bench_aes128_soft.md)). The `mul` parameter is part
 of the PRG type because it sets how many 16B blocks one `Gen` call produces.
 All kernels shown have zero spill stores and zero spill loads.
+The `(z=...)` rows are the deep-frontier tilings the Python bindings dispatch
+to for domains above a 16-bit frontier (25-bit domain shown, per-thread tail
+depth 4).
