@@ -168,7 +168,7 @@ TEST(EvalAllGpu, HalfTreeSubtreesUint) {
   CheckFullEvaluation<14, 12, 256, 1, Uint127Group, true>();
 }
 
-template <int bits, int z, int threads>
+template <int bits, int z, int threads, typename In = uint>
 void CheckVdpfGpu() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -179,7 +179,7 @@ void CheckVdpfGpu() {
   using Prg = fss::prg::ChaCha<2>;
   using Blake3 = fss::hash::Blake3;
   using Group = Uint127Group;
-  using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, uint>;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>;
   using Cw = typename Scheme::Cw;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits;
@@ -188,7 +188,7 @@ void CheckVdpfGpu() {
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   Blake3 hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), hash, hash};
-  const uint alpha = 42;
+  const In alpha = 42;
   const int4 beta = {7, 19, 23, 42};
   int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   typename Scheme::Key k0, k1;
@@ -430,6 +430,9 @@ TEST(EvalAllGpu, VdpfSmall) {
 }
 TEST(EvalAllGpu, VdpfSubtrees) {
   CheckVdpfGpu<14, 12, 256>();
+}
+TEST(EvalAllGpu, VdpfWideInUint128) {
+  CheckVdpfGpu<10, 10, 256, __uint128_t>();
 }
 
 TEST(EvalAllGpu, PackedSmall) {
