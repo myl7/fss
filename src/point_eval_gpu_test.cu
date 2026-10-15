@@ -191,7 +191,7 @@ void CheckHalfTreePoint() {
   }
 }
 
-template <int bits, typename In, int keys = 8>
+template <int bits, typename In, int keys = 8, fss::DcfPred pred = fss::DcfPred::kLt>
 void CheckDcfPoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -201,7 +201,7 @@ void CheckDcfPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<4>;
   using Group = fss::group::Bytes;
-  using Scheme = fss::Dcf<bits, Group, Prg, In>;
+  using Scheme = fss::Dcf<bits, Group, Prg, In, pred>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kStride = bits + 1;
@@ -230,7 +230,7 @@ void CheckDcfPoint() {
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Upload(xs.data(), keys), cudaSuccess);
-  fss::gpu::DcfRepackGpu<bits, Group, Prg, In>(
+  fss::gpu::DcfRepackGpu<bits, Group, Prg, In, pred>(
       device_cws.data(), keys, device_cw_s.data(), device_cw_v.data(), device_out_cw.data());
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
@@ -248,8 +248,9 @@ void CheckDcfPoint() {
       ExpectInt4(actual[k], scheme.Eval(party != 0, party_key, xs[k]), k);
       if (party == 0) first[k] = actual[k];
       else {
+        const bool hit = pred == fss::DcfPred::kLt ? xs[k] < alphas[k] : xs[k] > alphas[k];
         int4 sum = (Group::From(first[k]) + Group::From(actual[k])).Into();
-        ExpectInt4(sum, xs[k] < alphas[k] ? beta : int4{0, 0, 0, 0}, k);
+        ExpectInt4(sum, hit ? beta : int4{0, 0, 0, 0}, k);
       }
     }
   }
@@ -365,6 +366,12 @@ TEST(PointEvalGpu, DcfBytes) {
 }
 TEST(PointEvalGpu, DcfUint64) {
   CheckDcfPoint<40, uint64_t>();
+}
+TEST(PointEvalGpu, DcfGtBytes) {
+  CheckDcfPoint<10, uint, 8, fss::DcfPred::kGt>();
+}
+TEST(PointEvalGpu, DcfGtUint64) {
+  CheckDcfPoint<40, uint64_t, 8, fss::DcfPred::kGt>();
 }
 TEST(PointEvalGpu, VdpfBytes) {
   CheckVdpfPoint<10, uint>();

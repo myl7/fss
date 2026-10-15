@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `__uint128_t`: the query-point kernels take `In`-typed points (`uint8_t` to `__uint128_t`),
   and the per-level tr bits packed by the repack kernels widen to `uint64_t` or `__uint128_t`
   once `in_bits` passes 32 or 64 (`fss::gpu::ExtBits`, `uint32_t` layout unchanged for common
-  `in_bits <= 32` keys). Domains beyond 32 bits used to silently wrap the tr-bit word. New
+  `in_bits <= 32` keys). The DCF repack and point-evaluation wrappers also take the
+  predicate of the `Dcf` instance (`lt` default, `gt` explicit). Domains beyond 32 bits
+  used to silently wrap the tr-bit word. New
   `point_eval_gpu_test` suite covers repack + point evaluation of every scheme against the
   host `Eval` oracle, including the VDPF per-point proof and `Verify`, the `in_bits` 32/33
   tr-bit boundary, and a wide-`In` (`__uint128_t`, n=2^10) GPU `EvalAllMerkle` smoke test.

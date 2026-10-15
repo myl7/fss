@@ -376,6 +376,7 @@ void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkey
  * has nkeys entries.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
+ * @tparam pred DCF predicate of the keys, see DcfPred. Defaults to lt.
  * @param cws Correction words returned by Gen(), key-major, stride in_bits + 1.
  * @param nkeys Number of keys.
  * @param cw_s Output level-major s parts, cw_s[i * nkeys + k].
@@ -383,12 +384,12 @@ void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkey
  * @param out_cw Output final correction words' v parts, one per key.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename In>
-void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s, int4 *cw_v,
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred = DcfPred::kLt>
+void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred>::Cw *cws, int nkeys, int4 *cw_s, int4 *cw_v,
     int4 *out_cw, cudaStream_t stream = 0) {
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In>::Cw>
+  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In, pred>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, cw_v, out_cw, nkeys);
 }
 
@@ -491,12 +492,14 @@ void DpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
  * @param nkeys Number of keys.
- * @param dpf A Dcf instance (holds the PRG).
+ * @param dcf A Dcf instance (holds the PRG). Used on the host side. Any predicate and
+ *   par_depth instantiation; both are deduced from the argument.
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In>
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, DcfPred pred, int par_depth>
 void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw,
-    const In *xs, int4 *ys, int nkeys, const Dcf<in_bits, Group, Prg, In> &dcf, cudaStream_t stream = 0) {
+    const In *xs, int4 *ys, int nkeys, const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf,
+    cudaStream_t stream = 0) {
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
