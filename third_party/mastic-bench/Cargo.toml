@@ -1,0 +1,25 @@
+[package]
+name = "mastic-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+mastic = { path = "../mastic" }
+
+[dev-dependencies]
+blake3 = "1.5"
+criterion = "0.5.1"
+prio = "0.15.3"
+
+# `cargo test` must not execute the criterion binary (harness = false makes it
+# run every benchmark with default settings); correctness tests live in tests/.
+[[bench]]
+name = "bench_dpf"
+harness = false
+test = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

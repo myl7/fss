@@ -22,3 +22,9 @@
 [submodule "third_party/dpf-cpp/dpf-cpp"]
 	path = third_party/dpf-cpp/dpf-cpp
 	url = https://github.com/dkales/dpf-cpp
+[submodule "third_party/mastic"]
+	path = third_party/mastic
+	url = https://github.com/TrustworthyComputing/mastic
+[submodule "third_party/plasma"]
+	path = third_party/plasma
+	url = https://github.com/TrustworthyComputing/plasma

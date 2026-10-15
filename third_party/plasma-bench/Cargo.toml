@@ -1,0 +1,31 @@
+[package]
+name = "plasma-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+plasma = { path = "../plasma" }
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+# `cargo test` must not execute the criterion binary (harness = false makes it
+# run every benchmark with default settings); correctness tests live in tests/.
+[[bench]]
+name = "bench_dpf"
+harness = false
+test = false
+
+# Upstream's DPFKey::gen debug-asserts `alpha_bits.len() == values.len() + 1`,
+# yet its own loop (and gen_from_str, which passes one value per level) index
+# values[0..alpha_bits.len()]. The assert is wrong and never fires in the
+# release builds upstream ships; turn debug assertions off so plain `cargo
+# test` can call gen the way upstream's binaries do.
+[profile.dev]
+debug-assertions = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
