@@ -14,6 +14,7 @@
 #include <array>
 #include <memory>
 #include <span>
+#include <fss/point_eval_gpu.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/packed_half_tree_dpf.cuh>
 #include <fss/grotto_dcf.cuh>
@@ -21,6 +22,7 @@
 #include <fss/vdmpf.cuh>
 #include <fss/hash/blake3.cuh>
 #include <fss/prp/aes128_feistel.cuh>
+#include <fss/prp/chacha_feistel.cuh>
 #ifdef FSS_BENCH_AES_NI
 #include <fss/prg/aes128_mmo_raw.cuh>
 #endif
@@ -524,6 +526,10 @@ constexpr int kDmpfNumPoints = 64;
 using DmpfT = fss::Dmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, CpuPrg<2>, fss::prp::Aes128Feistel, uint32_t>;
 using VdmpfT = fss::Vdmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, CpuPrg<2>, fss::hash::Blake3,
     fss::hash::Blake3, fss::prp::Aes128Feistel, uint32_t>;
+// The GPU benchmarks evaluate DMPF with the device-callable PRP; the CPU curves
+// above keep Aes128Feistel as their own implementation.
+using GpuDmpfT =
+    fss::Dmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, fss::prg::ChaCha<2>, fss::prp::ChaChaFeistel, uint32_t>;
 
 static const int4 kDmpfSigma = {0x0f1e2d3c, 0x4b5a6978, static_cast<int>(0x8796a5b4u), static_cast<int>(0xc3d2e1f0u)};
 static const int4 kDmpfHashIv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
@@ -562,7 +568,7 @@ static void GenDmpfKeys(Scheme &scheme, typename Scheme::Key &k0, typename Schem
   }
   int4 sigma = kDmpfSigma;
   if (scheme.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
-      std::span<const uint32_t>(kDmpfPoints.as), std::span<const int4>(kDmpfPoints.bs), kDmpfNumPoints) != 0) {
+      cuda::std::span<const uint32_t>(kDmpfPoints.as), cuda::std::span<const int4>(kDmpfPoints.bs), kDmpfNumPoints) != 0) {
     fprintf(stderr, "dmpf/vdmpf gen failed after retries\n");
     exit(EXIT_FAILURE);
   }
@@ -582,8 +588,8 @@ template <typename Scheme>
 static void CheckCpuDmpfFull(Scheme &scheme, const typename Scheme::Key &k0, const typename Scheme::Key &k1) {
   constexpr size_t n = size_t{1} << kInBits;
   std::vector<int4> first(n), second(n);
-  scheme.EvalAll(false, k0, std::span<int4>(first));
-  scheme.EvalAll(true, k1, std::span<int4>(second));
+  scheme.EvalAll(false, k0, cuda::std::span<int4>(first));
+  scheme.EvalAll(true, k1, cuda::std::span<int4>(second));
   for (size_t x = 0; x < n; ++x) {
     int4 actual = (BytesGroup::From(first[x]) + BytesGroup::From(second[x])).Into();
     int j;
@@ -618,7 +624,7 @@ static void BM_CpuDmpfEval(benchmark::State &state) {
   for (auto _ : state) {
     uint32_t xs[1] = {x};
     int4 y;
-    dmpf.BatchEval(false, k0, std::span<const uint32_t>(xs), std::span<int4>(&y, 1));
+    dmpf.BatchEval(false, k0, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(&y, 1));
     benchmark::DoNotOptimize(y);
     x = (x + 1) & ((1u << kInBits) - 1);
   }
@@ -634,7 +640,7 @@ static void BM_CpuDmpfEvalAll(benchmark::State &state) {
   CheckCpuDmpfFull(dmpf, k0, k1);
   std::vector<int4> ys(n);
   for (auto _ : state) {
-    dmpf.EvalAll(false, k0, std::span<int4>(ys));
+    dmpf.EvalAll(false, k0, cuda::std::span<int4>(ys));
     benchmark::DoNotOptimize(ys.data());
   }
   state.SetItemsProcessed(state.iterations() * n);
@@ -652,8 +658,8 @@ static void CheckCpuVdmpfBatch(VdmpfT &vdmpf, const typename VdmpfT::Key &k0, co
   xs.push_back((1u << kInBits) - 1);
   std::vector<int4> ys0(xs.size()), ys1(xs.size());
   cuda::std::array<int4, 4> pi0, pi1;
-  vdmpf.BatchEval(false, k0, std::span<const uint32_t>(xs), std::span<int4>(ys0), pi0);
-  vdmpf.BatchEval(true, k1, std::span<const uint32_t>(xs), std::span<int4>(ys1), pi1);
+  vdmpf.BatchEval(false, k0, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys0), pi0);
+  vdmpf.BatchEval(true, k1, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys1), pi1);
   if (!VdmpfT::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1))) {
     fprintf(stderr, "vdmpf proof rejected on honest shares\n");
     exit(EXIT_FAILURE);
@@ -698,7 +704,7 @@ static void BM_CpuVdmpfEval(benchmark::State &state) {
     uint32_t xs[1] = {x};
     int4 y;
     cuda::std::array<int4, 4> pi;
-    vdmpf.BatchEval(false, k0, std::span<const uint32_t>(xs), std::span<int4>(&y, 1), pi);
+    vdmpf.BatchEval(false, k0, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(&y, 1), pi);
     benchmark::DoNotOptimize(y);
     benchmark::DoNotOptimize(pi);
     x = (x + 1) & ((1u << kInBits) - 1);
@@ -722,7 +728,7 @@ static void BM_CpuVdmpfEvalAll(benchmark::State &state) {
   std::vector<int4> ys(n);
   cuda::std::array<int4, 4> pi;
   for (auto _ : state) {
-    vdmpf.BatchEval(false, k0, std::span<const uint32_t>(xs), std::span<int4>(ys), pi);
+    vdmpf.BatchEval(false, k0, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys), pi);
     benchmark::DoNotOptimize(ys.data());
     benchmark::DoNotOptimize(pi);
   }
@@ -1208,7 +1214,7 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
           fss::gpu::detail::HalfTreeDpfEvalAllKernel<kInBits, z, b1, Group, Prg>, kThreadsPerBlock, 0));
     } else {
       CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks,
-          fss::gpu::detail::DpfEvalAllKernel<kInBits, z, b1, Group, Prg>, kThreadsPerBlock, 0));
+          fss::gpu::detail::DpfEvalAllKernel<kInBits, z, b1, Group, Prg, typename Scheme::Cw>, kThreadsPerBlock, 0));
     }
     if (active_blocks == 0) {
       state.SkipWithError("unsupported: insufficient kernel resources for the block size");
@@ -1608,6 +1614,187 @@ static void BM_GpuGrottoDcfEvalAll(benchmark::State &state) {
   }
 }
 
+// ============================================================
+// GPU DMPF benchmarks (ChaChaFeistel PRP for the device Cuckoo Locate)
+// ============================================================
+
+// Generates the GPU DMPF keys once, uploads the active bucket keys, and repacks
+// them into the level-major layout the kernels read. Both parties share the
+// correction words, so one repack serves both.
+struct GpuDmpfKeys {
+  using Cw = typename GpuDmpfT::InnerDpf::Cw;
+
+  GpuDmpfT dmpf;
+  typename GpuDmpfT::Key k0, k1;
+  int m_rt;
+  int b_rt;
+  int4 *d_s0s[2] = {nullptr, nullptr};
+  Cw *d_cws = nullptr;
+  int4 *d_cw_s = nullptr;
+  int4 *d_out_cw = nullptr;
+  fss::gpu::ExtBits<kDmpfBucketBits> *d_extra = nullptr;
+
+  GpuDmpfKeys()
+      : dmpf{fss::prg::ChaCha<2>(0x12345678, static_cast<int>(0x9abcdef0u)), fss::prp::ChaChaFeistel()} {
+    GenDmpfKeys(dmpf, k0, k1);
+    m_rt = k0.m_rt;
+    b_rt = k0.b_size_rt;
+
+    std::vector<int4> h_s0s[2];
+    std::vector<Cw> h_cws(static_cast<size_t>(m_rt) * (kDmpfBucketBits + 1));
+    for (int p = 0; p < 2; ++p) {
+      h_s0s[p].resize(m_rt);
+      for (int i = 0; i < m_rt; ++i) {
+        h_s0s[p][i] = (p ? k1 : k0).bks[i].s0;
+      }
+    }
+    for (int i = 0; i < m_rt; ++i) {
+      for (int j = 0; j <= kDmpfBucketBits; ++j) {
+        h_cws[static_cast<size_t>(i) * (kDmpfBucketBits + 1) + j] = k0.bks[i].cws[j];
+      }
+    }
+
+    CUDA_CHECK(cudaMalloc(&d_s0s[0], sizeof(int4) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_s0s[1], sizeof(int4) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_cws, h_cws.size() * sizeof(Cw)));
+    CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * static_cast<size_t>(kDmpfBucketBits) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_out_cw, sizeof(int4) * m_rt));
+    CUDA_CHECK(cudaMalloc(&d_extra, sizeof(*d_extra) * m_rt));
+    CUDA_CHECK(cudaMemcpy(d_s0s[0], h_s0s[0].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_s0s[1], h_s0s[1].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_cws, h_cws.data(), h_cws.size() * sizeof(Cw), cudaMemcpyHostToDevice));
+
+    fss::gpu::DpfRepackGpu<kDmpfBucketBits, BytesGroup, fss::prg::ChaCha<2>, uint32_t>(
+        d_cws, m_rt, d_cw_s, d_extra, d_out_cw);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+  }
+
+  ~GpuDmpfKeys() {
+    CUDA_CHECK(cudaFree(d_s0s[0]));
+    CUDA_CHECK(cudaFree(d_s0s[1]));
+    CUDA_CHECK(cudaFree(d_cws));
+    CUDA_CHECK(cudaFree(d_cw_s));
+    CUDA_CHECK(cudaFree(d_out_cw));
+    CUDA_CHECK(cudaFree(d_extra));
+  }
+
+  GpuDmpfKeys(const GpuDmpfKeys &) = delete;
+  GpuDmpfKeys &operator=(const GpuDmpfKeys &) = delete;
+};
+
+static void BM_GpuDmpfEval(benchmark::State &state) {
+  GpuDmpfKeys keys;
+  GpuData data;
+  int4 *d_ys1;
+  CUDA_CHECK(cudaMalloc(&d_ys1, sizeof(int4) * kN));
+
+  // GpuData samples raw 32-bit points while the DMPF domain is 2^kInBits, so
+  // keep the batch inside the domain.
+  std::vector<uint32_t> xs(kN);
+  srand(43);
+  for (int i = 0; i < kN; ++i) xs[i] = static_cast<uint32_t>(rand()) & ((1u << kInBits) - 1);
+  uint32_t *d_xs;
+  CUDA_CHECK(cudaMalloc(&d_xs, sizeof(uint32_t) * kN));
+  CUDA_CHECK(cudaMemcpy(d_xs, xs.data(), sizeof(uint32_t) * kN, cudaMemcpyHostToDevice));
+
+  // Validate: both parties reconstruct the sparse multi-point function.
+  for (int party = 0; party < 2; ++party) {
+    fss::gpu::DmpfBatchEvalGpu(party != 0, d_xs, party ? d_ys1 : data.d_ys, kN, keys.k0.sigma, keys.m_rt, keys.b_rt,
+        keys.d_s0s[party], keys.d_cw_s, keys.d_extra, keys.d_out_cw, keys.dmpf);
+    CUDA_CHECK(cudaGetLastError());
+  }
+  CUDA_CHECK(cudaDeviceSynchronize());
+  std::vector<int4> ys0(kN), ys1(kN);
+  CUDA_CHECK(cudaMemcpy(ys0.data(), data.d_ys, sizeof(int4) * kN, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(ys1.data(), d_ys1, sizeof(int4) * kN, cudaMemcpyDeviceToHost));
+  for (int i = 0; i < kN; ++i) {
+    int4 actual = (BytesGroup::From(ys0[i]) + BytesGroup::From(ys1[i])).Into();
+    int j;
+    int4 expected = IsDmpfAlpha(xs[i], &j) ? kDmpfPoints.bs[j] : int4{0, 0, 0, 0};
+    if (actual.x != expected.x || actual.y != expected.y || actual.z != expected.z || actual.w != expected.w) {
+      fprintf(stderr, "gpu dmpf batch reconstruction mismatch at input %u\n", xs[i]);
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  for (auto _ : state) {
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    CUDA_CHECK(cudaEventRecord(start));
+    fss::gpu::DmpfBatchEvalGpu(false, d_xs, data.d_ys, kN, keys.k0.sigma, keys.m_rt, keys.b_rt, keys.d_s0s[0],
+        keys.d_cw_s, keys.d_extra, keys.d_out_cw, keys.dmpf);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    float ms = 0;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+    state.SetIterationTime(ms / 1000.0);
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+  }
+  state.SetItemsProcessed(state.iterations() * kN);
+  CUDA_CHECK(cudaFree(d_xs));
+  CUDA_CHECK(cudaFree(d_ys1));
+}
+
+static void BM_GpuDmpfEvalAll(benchmark::State &state) {
+  constexpr size_t n = size_t{1} << kInBits;
+  GpuDmpfKeys keys;
+  int4 *d_ys[2];
+  int4 *d_bucket_ys;
+  CUDA_CHECK(cudaMalloc(&d_ys[0], n * sizeof(int4)));
+  CUDA_CHECK(cudaMalloc(&d_ys[1], n * sizeof(int4)));
+  CUDA_CHECK(cudaMalloc(&d_bucket_ys, sizeof(int4) * static_cast<size_t>(keys.m_rt) * (size_t{1} << kDmpfBucketBits)));
+
+  // Validate: both parties reconstruct the sparse multi-point function.
+  for (int party = 0; party < 2; ++party) {
+    fss::gpu::DmpfEvalAllGpu(party != 0, keys.k0.sigma, keys.m_rt, keys.b_rt, keys.d_s0s[party], keys.d_cws,
+        d_bucket_ys, d_ys[party], keys.dmpf);
+    CUDA_CHECK(cudaGetLastError());
+  }
+  CUDA_CHECK(cudaDeviceSynchronize());
+  std::vector<int4> ys0(n), ys1(n);
+  CUDA_CHECK(cudaMemcpy(ys0.data(), d_ys[0], n * sizeof(int4), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(ys1.data(), d_ys[1], n * sizeof(int4), cudaMemcpyDeviceToHost));
+  for (size_t x = 0; x < n; ++x) {
+    int4 actual = (BytesGroup::From(ys0[x]) + BytesGroup::From(ys1[x])).Into();
+    int j;
+    int4 expected = IsDmpfAlpha(static_cast<uint32_t>(x), &j) ? kDmpfPoints.bs[j] : int4{0, 0, 0, 0};
+    if (actual.x != expected.x || actual.y != expected.y || actual.z != expected.z || actual.w != expected.w) {
+      fprintf(stderr, "gpu dmpf full reconstruction mismatch at input %zu\n", x);
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  for (auto _ : state) {
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    CUDA_CHECK(cudaEventRecord(start));
+    fss::gpu::DmpfEvalAllGpu(false, keys.k0.sigma, keys.m_rt, keys.b_rt, keys.d_s0s[0], keys.d_cws, d_bucket_ys,
+        d_ys[0], keys.dmpf);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    float ms = 0;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+    state.SetIterationTime(ms / 1000.0);
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+  }
+  state.SetItemsProcessed(state.iterations() * n);
+  state.counters["keys_per_launch"] = 1;
+  // The DMPF GPU kernels launch fixed 256-thread blocks; the configured block
+  // size is not a tiling parameter for them.
+  state.counters["threads_per_block"] = 256;
+  state.counters["domain_outputs"] = n;
+  CUDA_CHECK(cudaFree(d_ys[0]));
+  CUDA_CHECK(cudaFree(d_ys[1]));
+  CUDA_CHECK(cudaFree(d_bucket_ys));
+}
+
 
 
 
@@ -1760,6 +1947,9 @@ static void RegisterGpuBenchmarks() {
   benchmark::RegisterBenchmark("fss/GPU/VDPF-uint/EvalAll", BM_GpuVdpfEvalAllMerkle<UintGroup>)->UseManualTime();
 #endif
   benchmark::RegisterBenchmark("fss/GPU/GrottoDCF/EvalAll", BM_GpuGrottoDcfEvalAll)->UseManualTime();
+  // DMPF
+  benchmark::RegisterBenchmark("fss/GPU/DMPF-bytes/Eval", BM_GpuDmpfEval)->UseManualTime();
+  benchmark::RegisterBenchmark("fss/GPU/DMPF-bytes/EvalAll", BM_GpuDmpfEvalAll)->UseManualTime();
   // AesSoft DPF Eval
   benchmark::RegisterBenchmark("fss/GPU/DPF-bytes/AesSoft/Eval", BM_GpuAesSoftEval)->UseManualTime();
 }

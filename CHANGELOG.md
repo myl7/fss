@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* GPU benchmark curves for DMPF batch `Eval` and `EvalAll`: the GPU Cuckoo `Locate` runs on the
+  `ChaChaFeistel` PRP while the CPU curves keep OpenSSL-backed `Aes128Feistel` — each platform's
+  own optimal backend, and the figures compare implementations within one platform. The refreshed
+  `gpu-operations` grid gains the DMPF / VDMPF row (Gen cell empty: DMPF Gen stays host-side).
+  `figure_bench.py --scheme` restricts a native collection to one scheme, which collected the new
+  curves without re-running the existing GPU rows. Also restores the `bench_fss` build, which the
+  span-taking public-API refactor had broken (stale `std::span` call sites and a missing `Cw`
+  template argument in the occupancy check).
 * GPU evaluation for DMPF: `DmpfBatchEvalGpu` (one thread per input point runs its kappa
   Cuckoo `Locate` calls and the located bucket descents itself, so no atomics or synchronization;
   level-major bucket keys from `DpfRepackGpu` serve both parties) and `DmpfEvalAllGpu`

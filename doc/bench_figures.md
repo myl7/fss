@@ -7,8 +7,9 @@ CPU curves use `cs659b`: AMD EPYC 9115, NVIDIA RTX PRO 5000, SM 120, and
 CUDA 13.2. The experiment pins CPU operations to CPU 24, uses one CPU
 thread, and verifies the `performance` governor.
 GPU curves use `cs11369a`: Intel Xeon Platinum 8352V, NVIDIA A6000, SM 86,
-and CUDA 12.6. GPU runs use GPU 0 and pin the launch process to CPU 100,
-leaving the shared host's CPU governor unchanged.
+and CUDA 12.6. GPU runs pin the launch process to CPU 100, leaving the shared
+host's CPU governor unchanged. All four GPUs are the same A6000 model, so runs
+take whichever card is idle; the DMPF curves were collected on GPU 1.
 Historical FSS 0.7 has no GPU curves: its upstream benchmarks crash on the
 A6000 with a misaligned address, so the merge drops its GPU rows instead of
 keeping measurements from the previous GPU.
@@ -39,7 +40,14 @@ EvalAll times Preprocess plus the scan as one full-domain operation.
 DMPF and VDMPF use `t = 64` points with `m = ChBucket(64, 80) = 112` Cuckoo
 buckets and bucket domains of `2^(n-5)`. DMPF EvalAll evaluates every padded
 bucket domain, and VDMPF EvalAll materializes through BatchEval over all N
-inputs, including proof generation, as a point loop. Packed HalfTree DPF
+inputs, including proof generation, as a point loop.
+On the GPU, DMPF Eval evaluates a `2^18`-point batch per launch through the
+one-thread-per-point kernel, and EvalAll full-domain-evaluates every bucket
+key before gathering each domain point's Cuckoo buckets.
+The two platforms drive the Cuckoo Locate with their own optimal PRP backend:
+GPU curves use the device-callable `ChaChaFeistel` while CPU curves keep the
+OpenSSL-backed `Aes128Feistel`, and the figures compare implementations within
+one platform, never across. Packed HalfTree DPF
 EvalAll emits `N/128` packed blocks for one-bit outputs. CPU benchmarks pin
 one CPU, which also pins the OpenMP team to one thread. DMPF EvalAll would
 otherwise pay one parallel-region spawn per bucket. The Servan-Schreiber VDPF

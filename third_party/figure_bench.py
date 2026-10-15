@@ -96,7 +96,7 @@ def pattern(case):
         return "^fss/GPU/DPF-bytes/AesSoft/Eval(/|$)"
     if case["library"] == "fss":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
-        return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF)-{groups}"
+        return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF|DMPF)-{groups}"
                 f"|PackedHalfTreeDPF-bits1|GrottoDCF)/(AesSoft/)?{operation}(/|$)")
     return f"^{prefix}/{case['platform'].upper()}/.*{operation}(/|$)"
 
@@ -339,6 +339,11 @@ def validate_native_configuration(case, raw):
                 reported = int(value[field])
                 if 0 < reported <= expected and reported & (reported - 1) == 0:
                     continue
+            # The DMPF GPU kernels launch fixed 256-thread blocks; the
+            # configured block size is not a tiling parameter for them.
+            if field == "threads_per_block" and case["platform"] == "gpu" \
+                    and "DMPF" in value.get("name", "") and int(value[field]) == 256:
+                continue
             raise ValueError(f"benchmark {field} {value[field]} does not match configured {expected}")
 
 

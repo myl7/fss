@@ -172,6 +172,18 @@ class FigureSweepTest(unittest.TestCase):
         raw.write_text(json.dumps({"benchmarks": [dict(name="x", domain_bits=12, keys=262144, threads_per_block=256)]}))
         sweep.validate_native_configuration(self.case(), raw)
 
+    def test_dmpf_gpu_reports_its_fixed_block_size(self):
+        raw = self.directory / "raw.json"
+        raw.write_text(json.dumps({"benchmarks": [
+            dict(name="fss/GPU/DMPF-bytes/EvalAll", domain_bits=12, keys=262144, threads_per_block=256)]}))
+        # The DMPF GPU kernels launch fixed 256-thread blocks, so the reported
+        # size is accepted against a smaller configured EvalAll default.
+        sweep.validate_native_configuration(self.case(operation="EvalAll", threads_per_block=128), raw)
+        raw.write_text(json.dumps({"benchmarks": [
+            dict(name="fss/GPU/DPF-bytes/EvalAll", domain_bits=12, keys=262144, threads_per_block=256)]}))
+        with self.assertRaisesRegex(ValueError, "threads_per_block"):
+            sweep.validate_native_configuration(self.case(operation="EvalAll", threads_per_block=128), raw)
+
     def test_export_keeps_failures_and_merges_cases(self):
         (self.directory / "run.json").write_text(json.dumps({"source_sha256": {"bench.cu": "abc"}}))
         for index, status in enumerate(("ok", "unsupported", "known_failure")):
