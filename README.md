@@ -187,6 +187,26 @@ target_link_libraries(your_target fss OpenSSL::Crypto)
 
 See `samples/dpf_dcf_cpu.cu` for the complete working example.
 
+### CPU Point Evaluation Fast Path
+
+`include/fss/point_eval_cpu.cuh` provides an optional fast path for host-side point evaluation of DPF and Half-Tree DPF keys.
+`fss::cpu::DpfPackPoint()` and `fss::cpu::HalfTreeDpfPackPoint()` convert a key from `Gen()` into a packed point key, which keeps one 16 B correction word per level and the per-level control bits in a single word.
+`fss::cpu::DpfEvalPoint()` and `fss::cpu::HalfTreeDpfEvalPoint()` evaluate a packed key faster than the normal `Eval()`, with bit-exact outputs.
+The pack runs once per key, so the cost amortizes over repeated point evaluations of that key; a one-off evaluation gains nothing and should call `Eval()`, which remains the default interface.
+
+This path is host-only and requires x86-64 with SSE4.1.
+Compile with `-msse4.1`, plus `-maes` when the PRG itself uses AES-NI (e.g. `Aes128MmoRaw`); the repository compiles its tests with `-maes -msse4.2` for that reason.
+A plain PRG such as ChaCha needs no AES flag.
+A packed key must be used with the scheme configuration it was generated with: pass the same PRG instance, and for Half-Tree DPF also the same hash key.
+
+```cpp
+// Continuing the DPF setup from the CPU section above, after dpf.Gen(k0, k1, ...)
+const fss::cpu::DpfPointKey<kInBits> pk0 = fss::cpu::DpfPackPoint<kInBits, Group, DpfPrg, In>(k0);
+
+// Repeated point evaluations; bit-exact with dpf.Eval(false, k0, x)
+int4 y0 = fss::cpu::DpfEvalPoint<kInBits, Group, DpfPrg, In>(false, pk0, x, prg);
+```
+
 ### GPU
 
 This walks through using DPF and DCF on the GPU with ChaCha PRG.
