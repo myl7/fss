@@ -120,6 +120,12 @@ protected:
   }
 
   void TestBatchEval() {
+    int devices = 0;
+    const cudaError_t status = cudaGetDeviceCount(&devices);
+    if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver || (status == cudaSuccess && devices == 0)) {
+      GTEST_SKIP() << "no CUDA device available";
+    }
+    ASSERT_EQ(status, cudaSuccess);
     typename DmpfType::Key k0, k1;
     int4 sigma;
     GenKeys(k0, k1, sigma);
@@ -204,6 +210,12 @@ protected:
   }
 
   void TestEvalAll() {
+    int devices = 0;
+    const cudaError_t status = cudaGetDeviceCount(&devices);
+    if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver || (status == cudaSuccess && devices == 0)) {
+      GTEST_SKIP() << "no CUDA device available";
+    }
+    ASSERT_EQ(status, cudaSuccess);
     typename DmpfType::Key k0, k1;
     int4 sigma;
     GenKeys(k0, k1, sigma);
