@@ -14,7 +14,9 @@ the comparison site.
   `ProveMerkle`/`EvalAllMerkle`, Grotto DCF `Preprocess` and `PreprocessEvalAll`,
   GPU point eval, and full-domain GPU `EvalAll` for DPF, HalfTree DPF, packed
   HalfTree DPF, DCF, and VDPF, plus GPU Grotto DCF `Preprocess` and `EvalAll`,
-  and GPU DMPF batch `Eval` and `EvalAll`.
+  and GPU DMPF batch `Eval` and `EvalAll`. The lean host point-evaluation fast
+  paths (`fss::cpu` packed-key walks for DPF and HalfTree DPF, bit-exact with
+  the generic `Eval`) carry their own rows beside the generic point `Eval`.
 - PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics,
   software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The
   GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on

@@ -6,6 +6,7 @@
 #include <fss/half_tree_dpf.cuh>
 #include <fss/packed_half_tree_dpf.cuh>
 #include <fss/grotto_dcf.cuh>
+#include <fss/point_eval_cpu.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/prg/aes128_mmo.cuh>
@@ -186,6 +187,41 @@ static void BM_DpfEval(benchmark::State &state) {
     dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
     for (auto _ : state) {
       int4 y = dpf.Eval(false, k0, x);
+      benchmark::DoNotOptimize(y);
+    }
+  }
+}
+
+template <int in_bits, typename Group, typename Prg>
+static void BM_DpfEvalPoint(benchmark::State &state) {
+  using DpfType = fss::Dpf<in_bits, Group, Prg, uint>;
+  using PointKey = fss::cpu::DpfPointKey<in_bits>;
+
+  int4 seeds[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename DpfType::Key k0, k1;
+  uint x = 100;
+
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
+    RawAesCtx<2> ctx;
+    DpfType dpf{ctx.prg};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+    const PointKey pk = fss::cpu::DpfPackPoint<in_bits, Group, Prg, uint>(k0);
+    for (auto _ : state) {
+      int4 y = fss::cpu::DpfEvalPoint<in_bits, Group, Prg, uint>(false, pk, x, ctx.prg);
+      benchmark::DoNotOptimize(y);
+    }
+  } else {
+    Prg prg(kNonce0, kNonce1);
+    DpfType dpf{prg};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+    const PointKey pk = fss::cpu::DpfPackPoint<in_bits, Group, Prg, uint>(k0);
+    for (auto _ : state) {
+      int4 y = fss::cpu::DpfEvalPoint<in_bits, Group, Prg, uint>(false, pk, x, prg);
       benchmark::DoNotOptimize(y);
     }
   }
@@ -559,6 +595,41 @@ static void BM_HalfTreeDpfEval(benchmark::State &state) {
 }
 
 template <int in_bits, typename Group, typename Prg>
+static void BM_HalfTreeDpfEvalPoint(benchmark::State &state) {
+  using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
+  using PointKey = fss::cpu::HalfTreeDpfPointKey<in_bits>;
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
+  };
+  uint alpha = 42;
+  int4 beta = {7, 0, 0, 0};
+  typename HtDpfType::Key k0, k1;
+  uint x = 100;
+
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<1>>) {
+    RawAesCtx<1> ctx;
+    HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    const PointKey pk = fss::cpu::HalfTreeDpfPackPoint<in_bits, Group, Prg, uint>(k0);
+    for (auto _ : state) {
+      int4 y = fss::cpu::HalfTreeDpfEvalPoint<in_bits, Group, Prg, uint>(false, pk, x, dpf.prg, dpf.hash_key);
+      benchmark::DoNotOptimize(y);
+    }
+  } else {
+    Prg prg(kNonce0, kNonce1);
+    HtDpfType dpf{prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    const PointKey pk = fss::cpu::HalfTreeDpfPackPoint<in_bits, Group, Prg, uint>(k0);
+    for (auto _ : state) {
+      int4 y = fss::cpu::HalfTreeDpfEvalPoint<in_bits, Group, Prg, uint>(false, pk, x, dpf.prg, dpf.hash_key);
+      benchmark::DoNotOptimize(y);
+    }
+  }
+}
+
+template <int in_bits, typename Group, typename Prg>
 static void BM_HalfTreeDpfEvalAll(benchmark::State &state) {
   using HtDpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint>;
 
@@ -733,6 +804,7 @@ using DcfAes = fss::prg::Aes128Mmo<4>;
 using DcfChaCha = fss::prg::ChaCha<4>;
 using DcfAesRaw = fss::prg::Aes128MmoRaw<4>;
 using HtDpfAes = fss::prg::Aes128Mmo<1>;
+using HtDpfAesRaw = fss::prg::Aes128MmoRaw<1>;
 using HtDpfChaCha = fss::prg::ChaCha<1>;
 using GdcfAes = fss::prg::Aes128Mmo<2>;
 using GdcfChaCha = fss::prg::ChaCha<2>;
@@ -764,6 +836,9 @@ BENCHMARK(BM_DpfEval<20, UintGroup, DpfAesRaw>)->Name("BM_DpfEval_Uint_AesRaw/20
 BENCHMARK(BM_DpfEval<20, BytesGroup, DpfAesRaw>)->Name("BM_DpfEval_Bytes_AesRaw/20");
 BENCHMARK(BM_DpfGen<20, UintGroup, DpfAesRaw>)->Name("BM_DpfGen_Uint_AesRaw/20");
 BENCHMARK(BM_DpfGen<20, BytesGroup, DpfAesRaw>)->Name("BM_DpfGen_Bytes_AesRaw/20");
+BENCHMARK(BM_DpfEvalPoint<20, UintGroup, DpfAesRaw>)->Name("BM_DpfEvalPoint_Uint_AesRaw/20");
+BENCHMARK(BM_DpfEvalPoint<20, BytesGroup, DpfAesRaw>)->Name("BM_DpfEvalPoint_Bytes_AesRaw/20");
+BENCHMARK(BM_DpfEvalPoint<20, UintGroup, DpfChaCha>)->Name("BM_DpfEvalPoint_Uint_ChaCha/20");
 BENCHMARK(BM_DcfEval<20, UintGroup, DcfAesRaw>)->Name("BM_DcfEval_Uint_AesRaw/20");
 BENCHMARK(BM_DcfEval<20, BytesGroup, DcfAesRaw>)->Name("BM_DcfEval_Bytes_AesRaw/20");
 BENCHMARK(BM_DcfGen<20, UintGroup, DcfAesRaw>)->Name("BM_DcfGen_Uint_AesRaw/20");
@@ -800,6 +875,8 @@ BENCHMARK((BM_VdpfEvalAllMerkle<20, UintGroup, DpfChaCha, Blake3, Blake3>))
 
 // 19. BM_HalfTreeDpfEval_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEval_Uint_Aes/20");
+BENCHMARK(BM_HalfTreeDpfEvalPoint<20, UintGroup, HtDpfAesRaw>)->Name("BM_HalfTreeDpfEvalPoint_Uint_AesRaw/20");
+BENCHMARK(BM_HalfTreeDpfEvalPoint<20, BytesGroup, HtDpfAesRaw>)->Name("BM_HalfTreeDpfEvalPoint_Bytes_AesRaw/20");
 // 20. BM_HalfTreeDpfGen_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfGen_Uint_Aes/20");
 // 21. BM_HalfTreeDpfEvalAll_Uint_Aes/20

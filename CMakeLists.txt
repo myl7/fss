@@ -120,6 +120,10 @@ if(BUILD_TESTING)
     target_compile_options(aes128_mmo_raw_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
     gtest_discover_tests(aes128_mmo_raw_test)
 
+    add_executable(point_eval_cpu_test src/point_eval_cpu_test.cu)
+    target_link_libraries(point_eval_cpu_test GTest::gtest_main fss)
+    target_compile_options(point_eval_cpu_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
+    gtest_discover_tests(point_eval_cpu_test)
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)

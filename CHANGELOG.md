@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   seeds at once through the classic eight-stream `aesenc` interleave, bit-exact with eight
   `Gen` calls. The internal `fss::detail::GenBatch` helper exposes the batch to callers:
   it forwards to `Gen8` on PRGs that provide one and loops `Gen` otherwise.
+* Lean host point-evaluation fast paths under `fss::cpu`: packed point keys hold
+  aligned 16-byte correction rows with the tr bits in one word, and the walks stay in
+  registers with branchless corrections and child selection — the DPF walk cancels the
+  level correction across the child pair. Bit-exact with the generic walks; at 2^20 the
+  DPF point evaluation drops from 325 to 210 ns and the Half-Tree walk from 225 to 185 ns.
 * GPU benchmark curves for DMPF batch `Eval` and `EvalAll`: the GPU Cuckoo `Locate` runs on the
   `ChaChaFeistel` PRP while the CPU curves keep OpenSSL-backed `Aes128Feistel` — each platform's
   own optimal backend, and the figures compare implementations within one platform. The refreshed
