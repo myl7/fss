@@ -36,24 +36,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-12 g++-12
 
-      # Install straight from the NVIDIA network repo like
-      # Jimver/cuda-toolkit does: the action's strict-semver parser rejects
-      # major.minor pins and its version table does not know 13.4 yet.
+      # Our cuda-toolkit fork, tagged v0.2.36-myl7.1 (upstream v0.2.36 base):
+      # upstream rejects major.minor pins and its version table lacks CUDA 13.4
+      # (Jimver/cuda-toolkit#448, #449). Fork tags are append-only; bump to a
+      # new fork tag when it gains a new CUDA series.
       - name: Install CUDA
-        env:
-          CUDA: ${{ matrix.cuda }}
-        run: |
-          repo=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64
-          wget -q "${repo}/cuda-keyring_1.1-1_all.deb" -O /tmp/cuda-keyring.deb
-          sudo dpkg -i /tmp/cuda-keyring.deb
-          wget -q "${repo}/cuda-ubuntu2404.pin" -O /tmp/cuda-pin
-          sudo mv /tmp/cuda-pin /etc/apt/preferences.d/cuda-repository-pin-600
-          sudo add-apt-repository "deb ${repo}/ /"
-          sudo apt-get update
-          sudo apt-get install -y "cuda-nvcc-$(echo "$CUDA" | tr . -)"
-          echo "CUDA_PATH=/usr/local/cuda-${CUDA}" >> "$GITHUB_ENV"
-          echo "/usr/local/cuda-${CUDA}/bin" >> "$GITHUB_PATH"
-          echo "LD_LIBRARY_PATH=/usr/local/cuda-${CUDA}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+        uses: myl7/cuda-toolkit@v0.2.36-myl7.1
+        with:
+          method: network
+          cuda: ${{ matrix.cuda }}
+          sub-packages: '["nvcc"]'
 
       - name: Configure CMake
         env:
@@ -116,23 +108,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-12 g++-12
 
-      # Same direct NVIDIA repo install as the cpp job; see the comment there
-      # for why this does not use Jimver/cuda-toolkit.
+      # Same forked cuda-toolkit action as the cpp job; see the comment there
+      # for why it is not plain Jimver/cuda-toolkit.
       - name: Install CUDA
-        env:
-          CUDA: ${{ matrix.cuda }}
-        run: |
-          repo=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64
-          wget -q "${repo}/cuda-keyring_1.1-1_all.deb" -O /tmp/cuda-keyring.deb
-          sudo dpkg -i /tmp/cuda-keyring.deb
-          wget -q "${repo}/cuda-ubuntu2404.pin" -O /tmp/cuda-pin
-          sudo mv /tmp/cuda-pin /etc/apt/preferences.d/cuda-repository-pin-600
-          sudo add-apt-repository "deb ${repo}/ /"
-          sudo apt-get update
-          sudo apt-get install -y "cuda-nvcc-$(echo "$CUDA" | tr . -)"
-          echo "CUDA_PATH=/usr/local/cuda-${CUDA}" >> "$GITHUB_ENV"
-          echo "/usr/local/cuda-${CUDA}/bin" >> "$GITHUB_PATH"
-          echo "LD_LIBRARY_PATH=/usr/local/cuda-${CUDA}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+        uses: myl7/cuda-toolkit@v0.2.36-myl7.1
+        with:
+          method: network
+          cuda: ${{ matrix.cuda }}
+          sub-packages: '["nvcc"]'
 
       # An empty CC/CXX/CUDAHOSTCXX export makes torch emit a bare -ccbin that
       # breaks nvcc, so only export the vars when the matrix pins a compiler.
