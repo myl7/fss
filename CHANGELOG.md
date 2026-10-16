@@ -70,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batch suffixes from the new benchmark IDs for correct work-unit accounting, smoke
   filters match suffixed criterion IDs, and `figure_bench.py` sweeps the four domain-swept
   additions with per-library operation and domain guards (sycret stays `bench.py`-only).
+* Chart merges can drop a library-platform combination (`--drop library:platform:reason`) whose
+  rows would otherwise survive every refresh, recording the drop with its reason in the merged
+  metadata.
 * GPU point evaluation now covers the same input-domain widths as the host `Eval`, through
   `__uint128_t`: the query-point kernels take `In`-typed points (`uint8_t` to `__uint128_t`),
   and the per-level tr bits packed by the repack kernels widen to `uint64_t` or `__uint128_t`
@@ -95,7 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adjacent nodes level by level. `Gen`, `Eval`, and `Verify` are unchanged and the proof keeps the
   64B shape, so both parties only need to switch accumulators jointly. The GPU path computes the
   whole proof on device (748 us vs the sequential chain's 185 ms host-bound pipeline at n=2^20) and
-  the CPU `EvalAllMerkle` phase 2 is OpenMP-parallel, removing the chain's 8-thread scaling cap.
+  the CPU `EvalAllMerkle` phase 2 is OpenMP-parallel with every fold phase honoring `par_depth`,
+  removing the chain's 8-thread scaling cap.
   The paper-faithful chain `Prove`/`EvalAll` remain implemented as the reference. Security
   analysis in doc/vdpf_merkle_fold_security.md (soundness reduces to pairwise collision
   resistance of the fold hash; documents the `cs != 0` key-validation assumption that the
@@ -115,7 +119,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Packed-output DPF (`PackedHalfTreeDpf`, experimental): based on Half-Tree expansion with a
   domain-separated leaf conversion, `EvalAll` returns `2^(in_bits-log2(128/out_bits))` blocks that
   each pack `128/out_bits` consecutive XOR-shared outputs of `out_bits` bits,
-  `out_bits ∈ {1, 2, 4, 8, 16, 32, 64}`. No published paper describes the composition.
+  `out_bits ∈ {1, 2, 4, 8, 16, 32, 64}`. The full-domain walk descends a level-order frontier
+  below three scalar levels, expanding eight parents per batched expansion and fusing a
+  branchless final conversion — 2^20 evaluates at 16.5-32.9 G outputs/s — and every loop honors
+  `par_depth`, so 0 keeps the walk sequential. No published paper describes the composition.
 * CPU benchmark curves for HalfTree DPF, packed HalfTree DPF (one-bit), Grotto DCF, DMPF, and
   VDMPF (`t = 64` points). Each platform comparison figure is now a scheme-family grid — one
   row each for DCF (with Grotto DCF), DPF with its verifiable VDPF counterparts, and
@@ -126,6 +133,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementations and compare median per-key times over the domain sweep `N = 2^8 … 2^20`,
   with exact per-domain values, ratios, native configurations, and provenance. It replaces
   the per-benchmark result tables in the README.
+* The Doxygen pages render the README figures: the Doxygen input filter rewrites
+  figures-directory Markdown images to `\image` commands resolved through `IMAGE_PATH`, so the
+  SVGs are copied into the HTML output with a responsive width.
 * Benchmark coverage page (`doc/benchmarks.md`): what the `bench_cpu`/`bench_gpu` binaries
   measure, the benchmark naming scheme, and the GPU kernel register usage table moved out
   of the README.
@@ -172,51 +182,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * The `fss-crypto` package requires Python >= 3.10, the bindings' actual floor
   (`X | Y` annotations), instead of the development interpreter's 3.13. The torch floor
   stays 2.6.
-
-### Fixed
-
-* `par_depth = 0` now keeps every CPU evaluation path sequential. The DPF, Half-Tree,
-  and packed Half-Tree small-domain branches, the packed frontier descent, and the
-  VDPF Merkle fold phases previously ran their OpenMP loops unconditionally.
-* The grid figures drew a rotated y-axis label on every panel, reaching past the 34px column
-  gap into the neighboring plot. Each row (and block-size band) now carries one label on its
-  leftmost existing panel, and a panel whose time unit differs from that label notes its unit
-  in the panel caption (`(ms/key)`, `(ns/key)`).
-* The Python bindings' CUDA paths no longer dereference device tensors on the host when
-  reading seeds and check values for kernel launches (the single-point paths passed the
-  seed by value after a host read, which faults over PCIe; seeds now travel as kernel
-  argument pointers and scalars through explicit device-to-host copies).
-* The supplementary block-size figure wraps its panels across two-column bands instead of
-  rendering every panel beyond the second outside the SVG canvas.
-* The packed GPU `EvalAll` benchmark compiles on domains whose frontier is smaller than
-  the configured block (`n = 2^8 … 2^12`): those launches now use one block of `2^z`
-  threads instead of a negative block-root depth, and the VDPF benchmark is excluded by
-  preprocessor when the block size admits no feasible tiling, so block sweeps build
-  everywhere.
-* Curve collection accepts the shrunken packed block size instead of failing the whole
-  domain case, and chart merges can drop a library-platform combination
-  (`--drop library:platform:reason`) whose rows would otherwise survive every refresh.
-
-* README figures now render on the Doxygen GitHub Pages site: the Doxygen input filter
-  rewrites figures-directory Markdown images to `\image` commands resolved through
-  `IMAGE_PATH`, so the SVGs are copied into the HTML output with a responsive width.
-* Comparison figures label narrow logarithmic time ranges with minor log ticks. Nearly
-  flat curves (such as DMPF point evaluation) previously rendered with as few as two
-  axis ticks, which hid the logarithmic scale.
-
-### Changed
-
-* The packed Half-Tree CPU `EvalAll` walks a level-order frontier below three scalar
-  levels, expanding eight parents per batched expansion and fusing a branchless final
-  conversion; outputs are bit-exact with the previous depth-first walk and the 2^20
-  full-domain evaluation moves from 4.8 to 16.5-32.9 G outputs/s.
 * The DPF and Half-Tree CPU `EvalAll` paths grow the same batched frontier for every PRG:
   one batched expansion per eight nodes per level with branchless corrections, 64-leaf
   conversion groups for the DPF, and a fused two-sigma-set last level for the Half-Tree;
   `fss::detail::GenBatch` pipelines the batch through `Gen8` when the PRG offers one and
   loops `Gen` otherwise. At 2^20 the DPF bytes evaluation drops from 34 to 12 ms, the
   integer group from 22 to 7.6 ms, and the Half-Tree from 20 to 5 ms, bit-exact before
-  and after.
+  and after. Every new loop honors `par_depth`, so 0 keeps the walk sequential.
+
+### Fixed
+
+* The Python bindings' CUDA paths no longer dereference device tensors on the host when
+  reading seeds and check values for kernel launches (the single-point paths passed the
+  seed by value after a host read, which faults over PCIe; seeds now travel as kernel
+  argument pointers and scalars through explicit device-to-host copies).
 
 ## [1.2.0] - 2026-08-17
 
