@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -113,18 +114,27 @@ $(document).ready(function(){initNavTree('grotto__dcf_8cuh.html',''); initResiza
 <code>#include &lt;cstddef&gt;</code><br />
 <code>#include &lt;cassert&gt;</code><br />
 <code>#include &lt;omp.h&gt;</code><br />
+<code>#include &lt;memory&gt;</code><br />
 <code>#include &lt;<a class="el" href="dpf_8cuh_source.html">fss/dpf.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="bytes_8cuh_source.html">fss/group/bytes.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="prg_8cuh_source.html">fss/prg.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="util_8cuh_source.html">fss/util.cuh</a>&gt;</code><br />
-</div><table class="memberdecls">
+</div>
+<p><a href="grotto__dcf_8cuh_source.html">Go to the source code of this file.</a></p>
+<table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">2-party DCF scheme over F2 from standard DPF (Grotto construction).  <a href="classfss_1_1GrottoDcf.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::Key</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words plus the party's initial seed.  <a href="structfss_1_1GrottoDcf_1_1Key.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::ParityTree</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Parity segment tree over leaf control bits.  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a>).  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::PreprocessedTree</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Host-owned preprocessing result.  <a href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
@@ -134,7 +144,7 @@ Classes</h2></td></tr>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2023/108"><em>Grotto: Screaming fast (2+1)-PC for Z</em>{2^n} via (2,2)-DPFs_</a> (<a class="el" href="grotto__dcf_8cuh.html#grotto_dcf">1: the published version</a>).</p>
 <p>Key generation is identical to standard BGI DPF. The comparison functionality emerges from prefix-parity of the DPF control bits.</p>
 <p>Output shares are in F2 (XOR sharing). Each party holds a single bool per query. For inputs x: share_0 XOR share_1 = 1[alpha &lt;= x].</p>
-<h2><a class="anchor" id="autotoc_md30"></a>
+<h2><a class="anchor" id="autotoc_md28"></a>
 References</h2>
 <ol type="1">
 <li>Kyle Storrier, Adithya Vadapalli, Allan Lyons, Ryan Henry: Grotto: Screaming fast (2+1)-PC for Z_{2^n} via (2, 2)-DPFs. CCS 2023: 2143-2157. <a href="https://doi.org/10.1145/3576915.3623147">https://doi.org/10.1145/3576915.3623147</a>. <a href="https://eprint.iacr.org/2023/108">https://eprint.iacr.org/2023/108</a>.<a class="anchor" id="grotto_dcf"></a></li>

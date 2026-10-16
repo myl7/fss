@@ -1,0 +1,166 @@
+:root {
+  --ink: #1d1f21;
+  --muted: #55595e;
+  --rule: #d9dcdf;
+  --a: #1a5fa8;
+  --b: #b25b13;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: #fff;
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+h2 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 34px 0 10px;
+}
+
+.intro { color: var(--muted); max-width: 72ch; margin: 0 0 26px; }
+
+a { color: var(--a); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* --- controls ---------------------------------------------------------- */
+
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+  align-items: flex-end;
+  padding: 14px 0 16px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.control { display: flex; flex-direction: column; gap: 4px; }
+.control label { font-size: 12.5px; color: var(--muted); }
+.control small { color: var(--muted); font-weight: 400; }
+
+select {
+  font: inherit;
+  font-size: 14px;
+  padding: 4px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: #fff;
+  min-width: 300px;
+}
+
+.toggle { display: inline-flex; border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.toggle button {
+  font: inherit;
+  font-size: 14px;
+  border: 0;
+  background: #fff;
+  color: var(--ink);
+  padding: 4px 16px;
+  cursor: pointer;
+}
+.toggle button.active { background: var(--ink); color: #fff; }
+
+/* --- configuration lines ---------------------------------------------- */
+
+.configs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 28px;
+  padding: 12px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.configs .config-a { color: var(--a); }
+.configs .config-b { color: var(--b); }
+.configs .config-detail { grid-column: 1 / -1; color: var(--muted); margin: 0; }
+
+/* --- charts ------------------------------------------------------------ */
+
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px 28px;
+  margin-top: 20px;
+}
+
+.panel svg { display: block; width: 100%; height: auto; }
+.panel-title { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+.panel-title .series { font-weight: 400; }
+.panel-title .series-a { color: var(--a); }
+.panel-title .series-b { color: var(--b); }
+
+/* --- table -------------------------------------------------------------- */
+
+.tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.tabs button {
+  font: inherit;
+  font-size: 13.5px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--ink);
+  padding: 3px 14px;
+  cursor: pointer;
+}
+.tabs button.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+#table-overflow { overflow-x: auto; }
+
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+
+th, td {
+  padding: 5px 14px 5px 0;
+  text-align: right;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+th {
+  font-weight: 600;
+  border-bottom: 1px solid var(--ink);
+  font-size: 13px;
+}
+
+th:first-child, td:first-child { text-align: left; }
+td.missing { color: #b3b7bb; }
+th .head-a { color: var(--a); }
+th .head-b { color: var(--b); }
+
+.note { color: var(--muted); font-size: 13px; }
+
+/* --- footer ------------------------------------------------------------- */
+
+footer {
+  margin-top: 44px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 13px;
+}
+footer p { margin: 4px 0; }
+
+@media (max-width: 720px) {
+  .configs { grid-template-columns: 1fr; }
+  select { min-width: 0; width: 100%; }
+  .control { flex: 1 1 160px; }
+}

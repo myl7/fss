@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -112,9 +113,9 @@ $(document).ready(function(){initNavTree('classfss_1_1prg_1_1ChaCha.html',''); i
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a3cc5a97358c386d0c9545488f5f082f1" id="r_a3cc5a97358c386d0c9545488f5f082f1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1ChaCha.html#a3cc5a97358c386d0c9545488f5f082f1">ChaCha</a> (const int *nonce)</td></tr>
-<tr class="memdesc:a3cc5a97358c386d0c9545488f5f082f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor.  <br /></td></tr>
-<tr class="separator:a3cc5a97358c386d0c9545488f5f082f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0a54ad52ce27426538c3978f1bf4b976" id="r_a0a54ad52ce27426538c3978f1bf4b976"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1ChaCha.html#a0a54ad52ce27426538c3978f1bf4b976">ChaCha</a> (int nonce0, int nonce1)</td></tr>
+<tr class="memdesc:a0a54ad52ce27426538c3978f1bf4b976"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor.  <br /></td></tr>
+<tr class="separator:a0a54ad52ce27426538c3978f1bf4b976"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int mul, int rounds = 20&gt;<br />
@@ -128,8 +129,8 @@ class fss::prg::ChaCha&lt; mul, rounds &gt;</div><p>ChaCha as a PRG. </p>
   </dd>
 </dl>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a3cc5a97358c386d0c9545488f5f082f1" name="a3cc5a97358c386d0c9545488f5f082f1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3cc5a97358c386d0c9545488f5f082f1">&#9670;&#160;</a></span>ChaCha()</h2>
+<a id="a0a54ad52ce27426538c3978f1bf4b976" name="a0a54ad52ce27426538c3978f1bf4b976"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0a54ad52ce27426538c3978f1bf4b976">&#9670;&#160;</a></span>ChaCha()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -142,9 +143,19 @@ template&lt;int mul, int rounds = 20&gt; </div>
         <tr>
           <td class="memname"><a class="el" href="classfss_1_1prg_1_1ChaCha.html">fss::prg::ChaCha</a>&lt; mul, rounds &gt;::ChaCha </td>
           <td>(</td>
-          <td class="paramtype">const int *&#160;</td>
-          <td class="paramname"><em>nonce</em></td><td>)</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>nonce0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>nonce1</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
   </td>
@@ -157,7 +168,7 @@ template&lt;int mul, int rounds = 20&gt; </div>
 <p>Constructor. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">nonce</td><td>Can be randomly sampled by users. Read-only and can be shared by multiple instances. Users are responsible for managing their lifetime. </td></tr>
+    <tr><td class="paramname">nonce0,nonce1</td><td>Can be randomly sampled by users. The nonce is stored by value, so an instance built on the host works on the device too: kernels capture the owning scheme object by value. </td></tr>
   </table>
   </dd>
 </dl>
@@ -165,7 +176,7 @@ template&lt;int mul, int rounds = 20&gt; </div>
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>include/fss/prg/<a class="el" href="chacha_8cuh.html">chacha.cuh</a></li>
+<li>include/fss/prg/<a class="el" href="chacha_8cuh_source.html">chacha.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

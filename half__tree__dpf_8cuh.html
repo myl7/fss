@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -127,13 +128,16 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1HalfTreeDpf_1_1Cw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Key</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words, the output correction word, and the party's initial seed.  <a href="structfss_1_1HalfTreeDpf_1_1Key.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>2-party distributed point function (DPF) using the Half-Tree scheme. </p>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2022/1431"><em>Half-Tree: Halving the Cost of Tree Expansion in COT and DPF</em></a> (<a class="el" href="half__tree__dpf_8cuh.html#half_tree_dpf">1: the published version</a>). It reduces the number of hash calls from 2N to 1.5N for full-domain evaluation.</p>
-<h2><a class="anchor" id="autotoc_md33"></a>
+<h2><a class="anchor" id="autotoc_md31"></a>
 References</h2>
 <ol type="1">
 <li>Xiaojie Guo, Kang Yang, Xiao Wang, Wenhao Zhang, Xiang Xie, Jiang Zhang, Zheli Liu: Half-Tree: Halving the Cost of Tree Expansion in COT and DPF. EUROCRYPT (1) 2023: 330-362. <a href="https://doi.org/10.1007/978-3-031-30545-0_12">https://doi.org/10.1007/978-3-031-30545-0_12</a>. <a href="https://eprint.iacr.org/2022/1431">https://eprint.iacr.org/2022/1431</a>.<a class="anchor" id="half_tree_dpf"></a></li>

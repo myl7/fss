@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -114,27 +115,36 @@ $(document).ready(function(){initNavTree('classfss_1_1GrottoDcf.html',''); initR
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words plus the party's initial seed.  <a href="structfss_1_1GrottoDcf_1_1Key.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html">ParityTree</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Parity segment tree over leaf control bits.  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a>).  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">PreprocessedTree</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Host-owned preprocessing result.  <a href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a0d296570064eba952753551008abeaf4" id="r_a0d296570064eba952753551008abeaf4"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#a0d296570064eba952753551008abeaf4">Gen</a> (Cw cws[], const int4 s0s[2], In a)</td></tr>
-<tr class="memdesc:a0d296570064eba952753551008abeaf4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method.  <br /></td></tr>
-<tr class="separator:a0d296570064eba952753551008abeaf4"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ad1193bc4b5ce2ae33d4f8afaa352f5ce" id="r_ad1193bc4b5ce2ae33d4f8afaa352f5ce"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#ad1193bc4b5ce2ae33d4f8afaa352f5ce">Preprocess</a> (<a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html">ParityTree</a> &amp;pt, int4 s0, const Cw cws[])</td></tr>
-<tr class="memdesc:ad1193bc4b5ce2ae33d4f8afaa352f5ce"><td class="mdescLeft">&#160;</td><td class="mdescRight">Preprocess: expand DPF tree and build parity segment tree.  <br /></td></tr>
-<tr class="separator:ad1193bc4b5ce2ae33d4f8afaa352f5ce"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af2feed42576cd942b3c9fab811913a1f" id="r_af2feed42576cd942b3c9fab811913a1f"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#af2feed42576cd942b3c9fab811913a1f">EvalAll</a> (bool b, int4 s0, const Cw cws[], bool ys[])</td></tr>
-<tr class="memdesc:af2feed42576cd942b3c9fab811913a1f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation.  <br /></td></tr>
-<tr class="separator:af2feed42576cd942b3c9fab811913a1f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a69e20460e207c18a0e40088e4c3a5f4f" id="r_a69e20460e207c18a0e40088e4c3a5f4f"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#a69e20460e207c18a0e40088e4c3a5f4f">Gen</a> (<a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; const int4, 2 &gt; s0s, In a)</td></tr>
+<tr class="memdesc:a69e20460e207c18a0e40088e4c3a5f4f"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1GrottoDcf_1_1Key.html" title="A party&#39;s key: the correction words plus the party&#39;s initial seed.">Key</a> generation method.  <br /></td></tr>
+<tr class="separator:a69e20460e207c18a0e40088e4c3a5f4f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad0d8de3a892938fd4a54562c9775a304" id="r_ad0d8de3a892938fd4a54562c9775a304"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">PreprocessedTree</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304">Preprocess</a> (bool b, const <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;key)</td></tr>
+<tr class="memdesc:ad0d8de3a892938fd4a54562c9775a304"><td class="mdescLeft">&#160;</td><td class="mdescRight">Preprocess: expand DPF tree and build parity segment tree.  <br /></td></tr>
+<tr class="separator:ad0d8de3a892938fd4a54562c9775a304"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0f7de68279f447b7b4a3ec680af85b73" id="r_a0f7de68279f447b7b4a3ec680af85b73"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#a0f7de68279f447b7b4a3ec680af85b73">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; bool &gt; ys)</td></tr>
+<tr class="memdesc:a0f7de68279f447b7b4a3ec680af85b73"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation.  <br /></td></tr>
+<tr class="separator:a0f7de68279f447b7b4a3ec680af85b73"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
 <tr class="memitem:a7587b9923a83735146050fa77c410174" id="r_a7587b9923a83735146050fa77c410174"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174">Eval</a> (const <a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html">ParityTree</a> &amp;pt, In x)</td></tr>
 <tr class="memdesc:a7587b9923a83735146050fa77c410174"><td class="mdescLeft">&#160;</td><td class="mdescRight">Prefix-parity query on the parity segment tree.  <br /></td></tr>
 <tr class="separator:a7587b9923a83735146050fa77c410174"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aaf43513b3d5db23cb3d9d162620b0d57" id="r_aaf43513b3d5db23cb3d9d162620b0d57"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#aaf43513b3d5db23cb3d9d162620b0d57">Eval</a> (const <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">PreprocessedTree</a> &amp;tree, In x)</td></tr>
+<tr class="memdesc:aaf43513b3d5db23cb3d9d162620b0d57"><td class="mdescLeft">&#160;</td><td class="mdescRight">Host-side prefix-parity query on a <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html" title="Host-owned preprocessing result.">PreprocessedTree</a> returned by <a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304" title="Preprocess: expand DPF tree and build parity segment tree.">Preprocess()</a>.  <br /></td></tr>
+<tr class="separator:aaf43513b3d5db23cb3d9d162620b0d57"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
@@ -145,13 +155,13 @@ class fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</div><p>2-party DCF sc
     <tr><td class="paramname">in_bits</td><td>Input domain bit size. </td></tr>
     <tr><td class="paramname">Prg</td><td>See Prgable. Must satisfy Prgable&lt;Prg, 2&gt; (same as DPF). </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)). Only <a class="el" href="classfss_1_1GrottoDcf.html#ad1193bc4b5ce2ae33d4f8afaa352f5ce" title="Preprocess: expand DPF tree and build parity segment tree.">Preprocess()</a> and <a class="el" href="classfss_1_1GrottoDcf.html#af2feed42576cd942b3c9fab811913a1f" title="Full domain evaluation.">EvalAll()</a> use it. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)). Only <a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304" title="Preprocess: expand DPF tree and build parity segment tree.">Preprocess()</a> and <a class="el" href="classfss_1_1GrottoDcf.html#a0f7de68279f447b7b4a3ec680af85b73" title="Full domain evaluation.">EvalAll()</a> use it. </td></tr>
   </table>
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
 <a id="a7587b9923a83735146050fa77c410174" name="a7587b9923a83735146050fa77c410174"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7587b9923a83735146050fa77c410174">&#9670;&#160;</a></span>Eval()</h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a7587b9923a83735146050fa77c410174">&#9670;&#160;</a></span>Eval() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -190,7 +200,7 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 <p>Returns party b's share of 1[alpha &lt;= x]. Internally queries endpoint e = x + 1, computing prefix-parity of [0, e).</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">pt</td><td><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html" title="Parity segment tree over leaf control bits.">ParityTree</a> from <a class="el" href="classfss_1_1GrottoDcf.html#ad1193bc4b5ce2ae33d4f8afaa352f5ce" title="Preprocess: expand DPF tree and build parity segment tree.">Preprocess()</a>. </td></tr>
+    <tr><td class="paramname">pt</td><td><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html" title="Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (se...">ParityTree</a> view of preprocessed parity bits, e.g. PreprocessedTree::view() or a view over the device buffer filled by GrottoDcfPreprocessGpu(). </td></tr>
     <tr><td class="paramname">x</td><td>Query point. </td></tr>
   </table>
   </dd>
@@ -199,8 +209,56 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 
 </div>
 </div>
-<a id="af2feed42576cd942b3c9fab811913a1f" name="af2feed42576cd942b3c9fab811913a1f"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af2feed42576cd942b3c9fab811913a1f">&#9670;&#160;</a></span>EvalAll()</h2>
+<a id="aaf43513b3d5db23cb3d9d162620b0d57" name="aaf43513b3d5db23cb3d9d162620b0d57"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aaf43513b3d5db23cb3d9d162620b0d57">&#9670;&#160;</a></span>Eval() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">static bool <a class="el" href="classfss_1_1GrottoDcf.html">fss::GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Eval </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">PreprocessedTree</a> &amp;&#160;</td>
+          <td class="paramname"><em>tree</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>x</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Host-side prefix-parity query on a <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html" title="Host-owned preprocessing result.">PreprocessedTree</a> returned by <a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304" title="Preprocess: expand DPF tree and build parity segment tree.">Preprocess()</a>. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">tree</td><td><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html" title="Host-owned preprocessing result.">PreprocessedTree</a> from <a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304" title="Preprocess: expand DPF tree and build parity segment tree.">Preprocess()</a>. </td></tr>
+    <tr><td class="paramname">x</td><td>Query point. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>bool share such that share_0 XOR share_1 = 1[alpha &lt;= x]. </dd></dl>
+
+</div>
+</div>
+<a id="a0f7de68279f447b7b4a3ec680af85b73" name="a0f7de68279f447b7b4a3ec680af85b73"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0f7de68279f447b7b4a3ec680af85b73">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -219,20 +277,14 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const Cw&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">bool&#160;</td>
-          <td class="paramname"><em>ys</em>[]&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; bool &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -253,8 +305,7 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Correction words from <a class="el" href="classfss_1_1GrottoDcf.html#a0d296570064eba952753551008abeaf4" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1GrottoDcf.html#a69e20460e207c18a0e40088e4c3a5f4f" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array of size N = 2^in_bits. ys[x] = party b's share of 1[alpha &lt;= x]. </td></tr>
   </table>
   </dd>
@@ -262,8 +313,8 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 
 </div>
 </div>
-<a id="a0d296570064eba952753551008abeaf4" name="a0d296570064eba952753551008abeaf4"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a0d296570064eba952753551008abeaf4">&#9670;&#160;</a></span>Gen()</h2>
+<a id="a69e20460e207c18a0e40088e4c3a5f4f" name="a69e20460e207c18a0e40088e4c3a5f4f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a69e20460e207c18a0e40088e4c3a5f4f">&#9670;&#160;</a></span>Gen()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -276,14 +327,20 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
         <tr>
           <td class="memname">void <a class="el" href="classfss_1_1GrottoDcf.html">fss::GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Gen </td>
           <td>(</td>
-          <td class="paramtype">Cw&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
+          <td class="paramtype"><a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k0</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const int4&#160;</td>
-          <td class="paramname"><em>s0s</em>[2], </td>
+          <td class="paramtype"><a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 2 &gt;&#160;</td>
+          <td class="paramname"><em>s0s</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -304,22 +361,21 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 </table>
 </div><div class="memdoc">
 
-<p>Key generation method. </p>
-<p>Delegates to <a class="el" href="classfss_1_1Dpf.html#abb6b5745a642a4bd176ebafc3d65dc9f" title="Key generation method.">Dpf::Gen</a> with beta=0.</p>
+<p><a class="el" href="structfss_1_1GrottoDcf_1_1Key.html" title="A party&#39;s key: the correction words plus the party&#39;s initial seed.">Key</a> generation method. </p>
+<p>Delegates to <a class="el" href="classfss_1_1Dpf.html#ab0d8f967cce91be21ebbce24bc5958ab" title="Key generation method.">Dpf::Gen</a> with beta=0.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">cws</td><td>Pre-allocated array of Cw. Size must be in_bits + 1. </td></tr>
+    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
     <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
-    <tr><td class="paramname">a</td><td>The secret comparison threshold.</td></tr>
+    <tr><td class="paramname">a</td><td>The secret comparison threshold. </td></tr>
   </table>
   </dd>
 </dl>
-<p>The key for party i consists of cws + s0s[i]. </p>
 
 </div>
 </div>
-<a id="ad1193bc4b5ce2ae33d4f8afaa352f5ce" name="ad1193bc4b5ce2ae33d4f8afaa352f5ce"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ad1193bc4b5ce2ae33d4f8afaa352f5ce">&#9670;&#160;</a></span>Preprocess()</h2>
+<a id="ad0d8de3a892938fd4a54562c9775a304" name="ad0d8de3a892938fd4a54562c9775a304"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad0d8de3a892938fd4a54562c9775a304">&#9670;&#160;</a></span>Preprocess()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -330,22 +386,16 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1GrottoDcf.html">fss::GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Preprocess </td>
+          <td class="memname"><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">PreprocessedTree</a> <a class="el" href="classfss_1_1GrottoDcf.html">fss::GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Preprocess </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html">ParityTree</a> &amp;&#160;</td>
-          <td class="paramname"><em>pt</em>, </td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const Cw&#160;</td>
-          <td class="paramname"><em>cws</em>[]&#160;</td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -364,17 +414,17 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 <p>Phase 1: O(N) PRG calls to expand the tree and extract leaf control bits. Phase 2a: O(N) XOR operations to build the parity segment tree bottom-up.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">pt</td><td><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html" title="Parity segment tree over leaf control bits.">ParityTree</a> with p pre-allocated to size 2*N-1 where N = 2^in_bits. pt.b must be set to the party index before calling. </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Correction words from <a class="el" href="classfss_1_1GrottoDcf.html#a0d296570064eba952753551008abeaf4" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">b</td><td>Party index. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1GrottoDcf.html#a69e20460e207c18a0e40088e4c3a5f4f" title="Key generation method.">Gen()</a>. </td></tr>
   </table>
   </dd>
 </dl>
+<dl class="section return"><dt>Returns</dt><dd>Host-owned tree of 2 ** (in_bits + 1) - 1 parity bits, see <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html" title="Host-owned preprocessing result.">PreprocessedTree</a>. Query it through <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a> directly or via view() for a device-usable <a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html" title="Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (se...">ParityTree</a>. </dd></dl>
 
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="grotto__dcf_8cuh.html">grotto_dcf.cuh</a></li>
+<li>include/fss/<a class="el" href="grotto__dcf_8cuh_source.html">grotto_dcf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

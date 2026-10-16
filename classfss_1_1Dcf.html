@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -116,18 +117,21 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1Dcf_1_1Cw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words plus the party's initial seed.  <a href="structfss_1_1Dcf_1_1Key.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:aafb0247572b03e778041c9c57acfd494" id="r_aafb0247572b03e778041c9c57acfd494"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#aafb0247572b03e778041c9c57acfd494">Gen</a> (<a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a> cws[], const int4 s0s[2], In a, int4 b_buf)</td></tr>
-<tr class="memdesc:aafb0247572b03e778041c9c57acfd494"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method.  <br /></td></tr>
-<tr class="separator:aafb0247572b03e778041c9c57acfd494"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3031b91814f5ed824c6883aa24916195" id="r_a3031b91814f5ed824c6883aa24916195"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a3031b91814f5ed824c6883aa24916195">Eval</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a> cws[], In x)</td></tr>
-<tr class="memdesc:a3031b91814f5ed824c6883aa24916195"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
-<tr class="separator:a3031b91814f5ed824c6883aa24916195"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac3eac12d3ef7e72917d292329ed35a0a" id="r_ac3eac12d3ef7e72917d292329ed35a0a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#ac3eac12d3ef7e72917d292329ed35a0a">EvalAll</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a> cws[], int4 ys[])</td></tr>
-<tr class="memdesc:ac3eac12d3ef7e72917d292329ed35a0a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
-<tr class="separator:ac3eac12d3ef7e72917d292329ed35a0a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4da44b816dfe617d3763b829f8f7e963" id="r_a4da44b816dfe617d3763b829f8f7e963"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a4da44b816dfe617d3763b829f8f7e963">Gen</a> (<a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf)</td></tr>
+<tr class="memdesc:a4da44b816dfe617d3763b829f8f7e963"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1Dcf_1_1Key.html" title="A party&#39;s key: the correction words plus the party&#39;s initial seed.">Key</a> generation method.  <br /></td></tr>
+<tr class="separator:a4da44b816dfe617d3763b829f8f7e963"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acd33e7a155ff16c2c27d383fde7c176c" id="r_acd33e7a155ff16c2c27d383fde7c176c"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#acd33e7a155ff16c2c27d383fde7c176c">Eval</a> (bool b, const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;key, In x)</td></tr>
+<tr class="memdesc:acd33e7a155ff16c2c27d383fde7c176c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
+<tr class="separator:acd33e7a155ff16c2c27d383fde7c176c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0e17d5fd8c970b4e0ec6d49374022b6d" id="r_a0e17d5fd8c970b4e0ec6d49374022b6d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys)</td></tr>
+<tr class="memdesc:a0e17d5fd8c970b4e0ec6d49374022b6d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
+<tr class="separator:a0e17d5fd8c970b4e0ec6d49374022b6d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred = DcfPred::kLt, int par_depth = -1&gt;<br />
@@ -140,13 +144,13 @@ class fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</div><p>2-party
     <tr><td class="paramname">Prg</td><td>See Prgable. </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
     <tr><td class="paramname">pred</td><td>See DcfPred. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1Dcf.html#ac3eac12d3ef7e72917d292329ed35a0a" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1Dcf.html#ac3eac12d3ef7e72917d292329ed35a0a" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
   </table>
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="a3031b91814f5ed824c6883aa24916195" name="a3031b91814f5ed824c6883aa24916195"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3031b91814f5ed824c6883aa24916195">&#9670;&#160;</a></span>Eval()</h2>
+<a id="acd33e7a155ff16c2c27d383fde7c176c" name="acd33e7a155ff16c2c27d383fde7c176c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acd33e7a155ff16c2c27d383fde7c176c">&#9670;&#160;</a></span>Eval()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -165,14 +169,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -197,8 +195,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Returned by <a class="el" href="classfss_1_1Dcf.html#aafb0247572b03e778041c9c57acfd494" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Dcf.html#a4da44b816dfe617d3763b829f8f7e963" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">x</td><td>Evaluated input. \(x\). </td></tr>
   </table>
   </dd>
@@ -207,8 +204,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 
 </div>
 </div>
-<a id="ac3eac12d3ef7e72917d292329ed35a0a" name="ac3eac12d3ef7e72917d292329ed35a0a"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac3eac12d3ef7e72917d292329ed35a0a">&#9670;&#160;</a></span>EvalAll()</h2>
+<a id="a0e17d5fd8c970b4e0ec6d49374022b6d" name="a0e17d5fd8c970b4e0ec6d49374022b6d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0e17d5fd8c970b4e0ec6d49374022b6d">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -227,20 +224,14 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>ys</em>[]&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -260,8 +251,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Correction words returned by <a class="el" href="classfss_1_1Dcf.html#aafb0247572b03e778041c9c57acfd494" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Dcf.html#a4da44b816dfe617d3763b829f8f7e963" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits.</td></tr>
   </table>
   </dd>
@@ -270,8 +260,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 
 </div>
 </div>
-<a id="aafb0247572b03e778041c9c57acfd494" name="aafb0247572b03e778041c9c57acfd494"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aafb0247572b03e778041c9c57acfd494">&#9670;&#160;</a></span>Gen()</h2>
+<a id="a4da44b816dfe617d3763b829f8f7e963" name="a4da44b816dfe617d3763b829f8f7e963"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4da44b816dfe617d3763b829f8f7e963">&#9670;&#160;</a></span>Gen()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -284,14 +274,20 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
         <tr>
           <td class="memname">void <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::Gen </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
+          <td class="paramtype"><a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k0</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const int4&#160;</td>
-          <td class="paramname"><em>s0s</em>[2], </td>
+          <td class="paramtype"><a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 2 &gt;&#160;</td>
+          <td class="paramname"><em>s0s</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -318,17 +314,16 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 </table>
 </div><div class="memdoc">
 
-<p>Key generation method. </p>
+<p><a class="el" href="structfss_1_1Dcf_1_1Key.html" title="A party&#39;s key: the correction words plus the party&#39;s initial seed.">Key</a> generation method. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">cws</td><td>Pre-allocated array of <a class="el" href="structfss_1_1Dcf_1_1Cw.html" title="Correction word.">Cw</a> as returns. The array size must be in_bits + 1. </td></tr>
+    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
     <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
     <tr><td class="paramname">a</td><td>\(a\). </td></tr>
-    <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element.</td></tr>
+    <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element. </td></tr>
   </table>
   </dd>
 </dl>
-<p>The key for party i consists of cws + s0s[i]. </p>
 
 </div>
 </div>

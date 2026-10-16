@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FSS benchmark comparison</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>FSS benchmark comparison</h1>
+  <p class="intro">Median time per key for function secret sharing implementations,
+  measured on one host over domain sizes N&nbsp;=&nbsp;2<sup>8</sup>&nbsp;&hellip;&nbsp;2<sup>20</sup>.
+  Pick two implementations to compare. Output groups, PRGs, storage, and timing
+  boundaries differ between implementations. Read the configuration lines under
+  the selectors before comparing numbers.</p>
+
+  <form id="controls">
+    <span class="control">
+      <label for="select-a">Implementation A</label>
+      <select id="select-a" size="1"></select>
+    </span>
+    <span class="control">
+      <label for="select-b">Implementation B</label>
+      <select id="select-b" size="1"></select>
+    </span>
+    <span class="control">
+      <label>Platform</label>
+      <span id="platform-toggle" class="toggle">
+        <button type="button" data-platform="cpu" class="active">CPU</button>
+        <button type="button" data-platform="gpu">GPU</button>
+      </span>
+    </span>
+  </form>
+
+  <section id="config-summary" class="configs"></section>
+  <section id="panels" class="panels"></section>
+
+  <h2 id="table-title">Exact values</h2>
+  <nav id="operation-tabs" class="tabs"></nav>
+  <div id="table-overflow">
+    <table id="values-table">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p id="table-note" class="note"></p>
+
+  <footer>
+    <p id="provenance"></p>
+    <p>All times are medians — five repetitions per measurement, or five
+    Criterion process medians for the Rust libraries. CPU timings are
+    wall-clock. GPU timings are CUDA-event based, with each implementation's
+    configuration line naming its timed region. K is the number of keys per
+    timed invocation. Methodology, library versions, and reproduction
+    commands:
+    <a href="https://github.com/myl7/fss/blob/main/doc/bench_figures.md">benchmark curve methodology</a>.
+    Raw records: <a href="data.json">data.json</a>.
+    Source repository: <a href="https://github.com/myl7/fss">myl7/fss</a>.</p>
+  </footer>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

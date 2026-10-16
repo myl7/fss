@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -117,21 +118,33 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1Vdpf_1_1Cw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdpf_1_1EvalResult.html">EvalResult</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation result.  <a href="structfss_1_1Vdpf_1_1EvalResult.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words, the correction seeds, the output correction word, plus the party's initial seed.  <a href="structfss_1_1Vdpf_1_1Key.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a0d48cb786bf872e86e9ad2761b208dc3" id="r_a0d48cb786bf872e86e9ad2761b208dc3"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3">Gen</a> (<a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a> cws[], cuda::std::array&lt; int4, 4 &gt; &amp;cs, int4 &amp;ocw, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf)</td></tr>
-<tr class="memdesc:a0d48cb786bf872e86e9ad2761b208dc3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method.  <br /></td></tr>
-<tr class="separator:a0d48cb786bf872e86e9ad2761b208dc3"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3367b1502b0ec3c40f25a68af8fb10cc" id="r_a3367b1502b0ec3c40f25a68af8fb10cc"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; int4, 4 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a3367b1502b0ec3c40f25a68af8fb10cc">Eval</a> (bool b, int4 s0, cuda::std::span&lt; const <a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a> &gt; cws, cuda::std::span&lt; const int4, 4 &gt; cs, int4 ocw, In x, int4 &amp;y)</td></tr>
-<tr class="memdesc:a3367b1502b0ec3c40f25a68af8fb10cc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
-<tr class="separator:a3367b1502b0ec3c40f25a68af8fb10cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a97a701f740b8dbec072fe43663810a90" id="r_a97a701f740b8dbec072fe43663810a90"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90">Gen</a> (<a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; int4, 2 &gt; s0s, In a, int4 b_buf, bool retry=true)</td></tr>
+<tr class="memdesc:a97a701f740b8dbec072fe43663810a90"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1Vdpf_1_1Key.html" title="A party&#39;s key: the correction words, the correction seeds, the output correction word,...">Key</a> generation method.  <br /></td></tr>
+<tr class="separator:a97a701f740b8dbec072fe43663810a90"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acc5cfeb17a8a267d65852ff4dbbc4689" id="r_acc5cfeb17a8a267d65852ff4dbbc4689"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1Vdpf_1_1EvalResult.html">EvalResult</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689">Eval</a> (bool b, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, In x)</td></tr>
+<tr class="memdesc:acc5cfeb17a8a267d65852ff4dbbc4689"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
+<tr class="separator:acc5cfeb17a8a267d65852ff4dbbc4689"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a21b821af8d2b497f336a9922031ec162" id="r_a21b821af8d2b497f336a9922031ec162"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162">Prove</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt; pi_tildes, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
 <tr class="memdesc:a21b821af8d2b497f336a9922031ec162"><td class="mdescLeft">&#160;</td><td class="mdescRight">Proof accumulation method.  <br /></td></tr>
 <tr class="separator:a21b821af8d2b497f336a9922031ec162"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af57ab293080d64313a1717d1a98b7440" id="r_af57ab293080d64313a1717d1a98b7440"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#af57ab293080d64313a1717d1a98b7440">EvalAll</a> (bool b, int4 s0, cuda::std::span&lt; const <a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a> &gt; cws, cuda::std::span&lt; const int4, 4 &gt; cs, int4 ocw, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
-<tr class="memdesc:af57ab293080d64313a1717d1a98b7440"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
-<tr class="separator:af57ab293080d64313a1717d1a98b7440"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acd47773ba1f49dd1d342db6df9f4261b" id="r_acd47773ba1f49dd1d342db6df9f4261b"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
+<tr class="memdesc:acd47773ba1f49dd1d342db6df9f4261b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
+<tr class="separator:acd47773ba1f49dd1d342db6df9f4261b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2ce19a82c664e9b48893c9b202b0dc74" id="r_a2ce19a82c664e9b48893c9b202b0dc74"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74">ProveMerkle</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt; pi_tildes, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
+<tr class="memdesc:a2ce19a82c664e9b48893c9b202b0dc74"><td class="mdescLeft">&#160;</td><td class="mdescRight">Proof accumulation method (Merkle fold).  <br /></td></tr>
+<tr class="separator:a2ce19a82c664e9b48893c9b202b0dc74"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa2321715d3edadbe33b2dc1ebf64c5cd" id="r_aa2321715d3edadbe33b2dc1ebf64c5cd"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd">EvalAllMerkle</a> (bool b, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
+<tr class="memdesc:aa2321715d3edadbe33b2dc1ebf64c5cd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method with the Merkle-fold proof.  <br /></td></tr>
+<tr class="separator:aa2321715d3edadbe33b2dc1ebf64c5cd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
@@ -151,13 +164,13 @@ class fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</div>
     <tr><td class="paramname">XorHash</td><td>See XorHashable. Paper's \(H\): maps \((x, s)\) to \(4\lambda\) bits. </td></tr>
     <tr><td class="paramname">Hash</td><td>See Hashable. Paper's \(H&#39;\): maps \(4\lambda\) bits to \(2\lambda\) bits. </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1Vdpf.html#af57ab293080d64313a1717d1a98b7440" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1Vdpf.html#af57ab293080d64313a1717d1a98b7440" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
   </table>
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="a3367b1502b0ec3c40f25a68af8fb10cc" name="a3367b1502b0ec3c40f25a68af8fb10cc"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3367b1502b0ec3c40f25a68af8fb10cc">&#9670;&#160;</a></span>Eval()</h2>
+<a id="acc5cfeb17a8a267d65852ff4dbbc4689" name="acc5cfeb17a8a267d65852ff4dbbc4689"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acc5cfeb17a8a267d65852ff4dbbc4689">&#9670;&#160;</a></span>Eval()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -168,7 +181,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">cuda::std::array&lt; int4, 4 &gt; <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Eval </td>
+          <td class="memname"><a class="el" href="structfss_1_1Vdpf_1_1EvalResult.html">EvalResult</a> <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Eval </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -176,38 +189,14 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; const <a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a> &gt;&#160;</td>
-          <td class="paramname"><em>cws</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
-          <td class="paramname"><em>cs</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>ocw</em>, </td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>x</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4 &amp;&#160;</td>
-          <td class="paramname"><em>y</em>&#160;</td>
+          <td class="paramname"><em>x</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -226,21 +215,17 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. Size must be in_bits. </td></tr>
-    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ocw</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">x</td><td>Evaluated input. \(x\). </td></tr>
-    <tr><td class="paramname">y</td><td>Output share written here. \(y_{i,x}\). </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>Corrected per-point hash ( \(\correct(\tilde\pi, cs, t)\)) for proof accumulation. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>The output share \(y_{i,x}\) plus the corrected per-point hash for proof accumulation. </dd></dl>
 
 </div>
 </div>
-<a id="af57ab293080d64313a1717d1a98b7440" name="af57ab293080d64313a1717d1a98b7440"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af57ab293080d64313a1717d1a98b7440">&#9670;&#160;</a></span>EvalAll()</h2>
+<a id="acd47773ba1f49dd1d342db6df9f4261b" name="acd47773ba1f49dd1d342db6df9f4261b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acd47773ba1f49dd1d342db6df9f4261b">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -259,26 +244,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; const <a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a> &gt;&#160;</td>
-          <td class="paramname"><em>cws</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
-          <td class="paramname"><em>cs</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>ocw</em>, </td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -310,10 +277,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Correction words returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">cs</td><td>Check seeds returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ocw</td><td>Output correction word returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits. </td></tr>
     <tr><td class="paramname">pi</td><td>Proof output.</td></tr>
   </table>
@@ -323,8 +287,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 
 </div>
 </div>
-<a id="a0d48cb786bf872e86e9ad2761b208dc3" name="a0d48cb786bf872e86e9ad2761b208dc3"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a0d48cb786bf872e86e9ad2761b208dc3">&#9670;&#160;</a></span>Gen()</h2>
+<a id="aa2321715d3edadbe33b2dc1ebf64c5cd" name="aa2321715d3edadbe33b2dc1ebf64c5cd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa2321715d3edadbe33b2dc1ebf64c5cd">&#9670;&#160;</a></span>EvalAllMerkle()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -335,40 +299,28 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">int <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Gen </td>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::EvalAllMerkle </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
-          <td class="paramname"><em>cs</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4 &amp;&#160;</td>
-          <td class="paramname"><em>ocw</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; const int4, 2 &gt;&#160;</td>
-          <td class="paramname"><em>s0s</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>a</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>b_buf</em>&#160;</td>
+          <td class="paramname"><em>pi</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -383,20 +335,94 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </table>
 </div><div class="memdoc">
 
-<p>Key generation method. </p>
+<p>Full domain evaluation method with the Merkle-fold proof. </p>
+<p>Same output shares as <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>; the proof comes from <a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> over the corrected per-point hashes. The conversion phase and every fold level are OpenMP parallel, unlike <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">cws</td><td>Pre-allocated array of <a class="el" href="structfss_1_1Vdpf_1_1Cw.html" title="Correction word.">Cw</a> as returns. The array size must be in_bits. </td></tr>
-    <tr><td class="paramname">cs</td><td>Correction seed output ( \(4\lambda\) bits). </td></tr>
-    <tr><td class="paramname">ocw</td><td>Output correction word output. </td></tr>
-    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
-    <tr><td class="paramname">a</td><td>\(a\). </td></tr>
-    <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element. </td></tr>
+    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits. </td></tr>
+    <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>0 on success, 1 if \(t_0 = t_1\) at the end (caller should resample seeds and retry).</dd></dl>
-<p>The key for party i consists of cws + cs + ocw + s0s[i]. </p>
+
+</div>
+</div>
+<a id="a97a701f740b8dbec072fe43663810a90" name="a97a701f740b8dbec072fe43663810a90"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a97a701f740b8dbec072fe43663810a90">&#9670;&#160;</a></span>Gen()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Gen </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 2 &gt;&#160;</td>
+          <td class="paramname"><em>s0s</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>a</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>b_buf</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>retry</em> = <code>true</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p><a class="el" href="structfss_1_1Vdpf_1_1Key.html" title="A party&#39;s key: the correction words, the correction seeds, the output correction word,...">Key</a> generation method. </p>
+<p>Retries automatically on the rare bad-seed cases (cs all zeros or \(t_0 = t_1\) at the end): up to 128 attempts, each deterministically perturbing the seeds from the previous one. The effective seeds of the successful attempt are written back to s0s, so after a successful call s0s holds the seeds the returned keys carry.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
+    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. Written back with the effective seeds used by the successful attempt. </td></tr>
+    <tr><td class="paramname">a</td><td>\(a\). </td></tr>
+    <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element. </td></tr>
+    <tr><td class="paramname">retry</td><td>Whether to retry with perturbed seeds on failure. If false, Gen returns 1 immediately after the first failed attempt. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>0 on success, 1 if the first attempt failed (with retry = false) or all 128 attempts failed (with retry = true).</dd></dl>
+<p>Both parties share the returned cws, cs, and ocw and differ in s0. </p>
 
 </div>
 </div>
@@ -443,11 +469,66 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </div><div class="memdoc">
 
 <p>Proof accumulation method. </p>
-<p>Accumulates corrected per-point hashes (from <a class="el" href="classfss_1_1Vdpf.html#a3367b1502b0ec3c40f25a68af8fb10cc" title="Evaluation method.">Eval()</a>) into a single proof.</p>
+<p>Accumulates corrected per-point hashes (from <a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689" title="Evaluation method.">Eval()</a>) into a single proof.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#a3367b1502b0ec3c40f25a68af8fb10cc" title="Evaluation method.">Eval()</a>. </td></tr>
-    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689" title="Evaluation method.">Eval()</a>. </td></tr>
+    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a2ce19a82c664e9b48893c9b202b0dc74" name="a2ce19a82c664e9b48893c9b202b0dc74"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2ce19a82c664e9b48893c9b202b0dc74">&#9670;&#160;</a></span>ProveMerkle()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::ProveMerkle </td>
+          <td>(</td>
+          <td class="paramtype">cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt;&#160;</td>
+          <td class="paramname"><em>pi_tildes</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
+          <td class="paramname"><em>pi</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Proof accumulation method (Merkle fold). </p>
+<p>Order-independent alternative to <a class="el" href="classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162" title="Proof accumulation method.">Prove()</a>: hashes the corrected per-point hashes into the leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the same hash level by level (an odd trailing node carries to the next level unchanged). The proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so <a class="el" href="classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8" title="Verification method.">Verify()</a> is shared. Every level is an OpenMP parallel batch. See doc/vdpf_merkle_fold_security.md.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689" title="Evaluation method.">Eval()</a>. </td></tr>
+    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
   </table>
   </dd>

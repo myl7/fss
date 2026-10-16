@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -161,92 +162,102 @@ $(document).ready(function(){initNavTree('cuckoo__hash_8cuh_source.html',''); in
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>}</div>
 </div>
 <div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prp, <span class="keyword">typename</span> In, <span class="keywordtype">int</span> kappa = 3&gt;</div>
-<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>  <span class="keyword">requires</span> <a class="code hl_concept" href="conceptPermutable.html">Permutable&lt;Prp&gt;</a></div>
-<div class="foldopen" id="foldopen00096" data-start="{" data-end="};">
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">   96</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">PrpHash</a> {</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>  Prp prp;</div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span> </div>
-<div class="foldopen" id="foldopen00114" data-start="{" data-end="}">
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a1a8aea801fc13fb642bfb5e2b13b5229">  114</a></span>  std::pair&lt;int, int&gt; <a class="code hl_function" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a1a8aea801fc13fb642bfb5e2b13b5229">Locate</a>(int4 sigma, In x, <span class="keywordtype">int</span> k, __uint128_t n, <span class="keywordtype">int</span> b_size) {</div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>    __uint128_t val = <span class="keyword">static_cast&lt;</span>__uint128_t<span class="keyword">&gt;</span>(x) + n * k;</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>    __uint128_t domain = n * kappa;</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>    __uint128_t y = prp.Permu(sigma, val, domain);</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span> </div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>    <span class="keyword">auto</span> bs = <span class="keyword">static_cast&lt;</span>__uint128_t<span class="keyword">&gt;</span>(b_size);</div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>    <span class="keywordtype">int</span> bucket = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(y / bs);</div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    <span class="keywordtype">int</span> index = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(y % bs);</div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>    <span class="keywordflow">return</span> {bucket, index};</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>  }</div>
+<div class="foldopen" id="foldopen00091" data-start="{" data-end="};">
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1LocateResult.html">   91</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1LocateResult.html">LocateResult</a> {</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1LocateResult.html#a3be7467dfa355bf4331963c0519a2f70">   92</a></span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="structfss_1_1cuckoo__hash_1_1LocateResult.html#a3be7467dfa355bf4331963c0519a2f70">bucket</a>;  </div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1LocateResult.html#a3c432233f973d7aa31d97c8fa9f1381a">   93</a></span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="structfss_1_1cuckoo__hash_1_1LocateResult.html#a3c432233f973d7aa31d97c8fa9f1381a">index</a>;   </div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>};</div>
 </div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>};</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span> </div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prp, <span class="keyword">typename</span> In, <span class="keywordtype">int</span> kappa = 3&gt;</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>  <span class="keyword">requires</span> <a class="code hl_concept" href="conceptPermutable.html">Permutable&lt;Prp&gt;</a></div>
+<div class="foldopen" id="foldopen00106" data-start="{" data-end="};">
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">  106</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">PrpHash</a> {</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>  Prp prp;</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span> </div>
+<div class="foldopen" id="foldopen00127" data-start="{" data-end="}">
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a88240dd5822aa5a27a835b218fb1be56">  127</a></span>  __host__ __device__ <a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1LocateResult.html">LocateResult</a> <a class="code hl_function" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a88240dd5822aa5a27a835b218fb1be56">Locate</a>(int4 sigma, In x, <span class="keywordtype">int</span> k, __uint128_t n, <span class="keywordtype">int</span> b_size) {</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    __uint128_t val = <span class="keyword">static_cast&lt;</span>__uint128_t<span class="keyword">&gt;</span>(x) + n * k;</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    __uint128_t domain = n * kappa;</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>    __uint128_t y = prp.Permu(sigma, val, domain);</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span> </div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    <span class="keyword">auto</span> bs = <span class="keyword">static_cast&lt;</span>__uint128_t<span class="keyword">&gt;</span>(b_size);</div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>    <span class="keywordtype">int</span> bucket = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(y / bs);</div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>    <span class="keywordtype">int</span> index = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(y % bs);</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>    <span class="keywordflow">return</span> {bucket, index};</div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>  }</div>
 </div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span> </div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prp, <span class="keyword">typename</span> In, <span class="keywordtype">int</span> kappa = 3&gt;</div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>  <span class="keyword">requires</span> <a class="code hl_concept" href="conceptPermutable.html">Permutable&lt;Prp&gt;</a></div>
-<div class="foldopen" id="foldopen00137" data-start="{" data-end="};">
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1Compact.html">  137</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1Compact.html">Compact</a> {</div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>  Prp prp;</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span> </div>
-<div class="foldopen" id="foldopen00154" data-start="{" data-end="}">
-<div class="line"><a id="l00154" name="l00154"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143">  154</a></span>  <span class="keywordtype">int</span> <a class="code hl_function" href="structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143">Run</a>(std::span&lt;const In&gt; as, <span class="keywordtype">int</span> m, int4 sigma, __uint128_t n, <span class="keywordtype">int</span> b_size, <span class="keywordtype">int</span> ch_retry,</div>
-<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>      std::span&lt;std::pair&lt;int, int&gt;&gt; table) {</div>
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>    <a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">PrpHash&lt;Prp, In, kappa&gt;</a> hasher{prp};</div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>    <span class="keywordtype">int</span> t = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(as.size());</div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span> </div>
-<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>    <span class="comment">// Initialize table to empty.</span></div>
-<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
-<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>      table[i] = {-1, -1};</div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>    }</div>
-<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span> </div>
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>    std::mt19937 rng(42);</div>
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span> </div>
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> omega = 0; omega &lt; t; ++omega) {</div>
-<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>      <span class="keywordtype">int</span> cur_idx = omega;</div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>      <span class="keywordtype">int</span> cur_k = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(rng() % kappa);</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>      <span class="keywordtype">int</span> evictions = 0;</div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span> </div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>      <span class="keywordflow">for</span> (;;) {</div>
-<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>        <span class="keyword">auto</span> [bucket, _index] = hasher.Locate(sigma, as[cur_idx], cur_k, n, b_size);</div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>        <span class="comment">// Clamp bucket to [0, m).</span></div>
-<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>        bucket = bucket % m;</div>
-<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span> </div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>        <span class="keywordflow">if</span> (table[bucket].first == -1) {</div>
-<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>          <span class="comment">// Empty slot found.</span></div>
-<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>          table[bucket] = {cur_idx, cur_k};</div>
-<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>          <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>        }</div>
-<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span> </div>
-<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>        <span class="comment">// Evict the existing entry and take its place.</span></div>
-<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>        <span class="keywordtype">int</span> evicted_idx = table[bucket].first;</div>
-<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>        <span class="keywordtype">int</span> evicted_k = table[bucket].second;</div>
-<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>        table[bucket] = {cur_idx, cur_k};</div>
-<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span> </div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>        <span class="comment">// The evicted element becomes the current element with a new random hash.</span></div>
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>        cur_idx = evicted_idx;</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>        cur_k = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(rng() % kappa);</div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span> </div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>        ++evictions;</div>
-<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>        <span class="keywordflow">if</span> (evictions &gt; ch_retry) {</div>
-<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>          <span class="keywordflow">return</span> 1;</div>
-<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>        }</div>
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>      }</div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>    }</div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span> </div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>    <span class="keywordflow">return</span> 0;</div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>  }</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>};</div>
 </div>
-<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>};</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span> </div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prp, <span class="keyword">typename</span> In, <span class="keywordtype">int</span> kappa = 3&gt;</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>  <span class="keyword">requires</span> <a class="code hl_concept" href="conceptPermutable.html">Permutable&lt;Prp&gt;</a></div>
+<div class="foldopen" id="foldopen00150" data-start="{" data-end="};">
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1Compact.html">  150</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1Compact.html">Compact</a> {</div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>  Prp prp;</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span> </div>
+<div class="foldopen" id="foldopen00167" data-start="{" data-end="}">
+<div class="line"><a id="l00167" name="l00167"></a><span class="lineno"><a class="line" href="structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143">  167</a></span>  <span class="keywordtype">int</span> <a class="code hl_function" href="structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143">Run</a>(std::span&lt;const In&gt; as, <span class="keywordtype">int</span> m, int4 sigma, __uint128_t n, <span class="keywordtype">int</span> b_size, <span class="keywordtype">int</span> ch_retry,</div>
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>      std::span&lt;std::pair&lt;int, int&gt;&gt; table) {</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>    <a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">PrpHash&lt;Prp, In, kappa&gt;</a> hasher{prp};</div>
+<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>    <span class="keywordtype">int</span> t = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(as.size());</div>
+<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span> </div>
+<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>    <span class="comment">// Initialize table to empty.</span></div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
+<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>      table[i] = {-1, -1};</div>
+<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>    }</div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span> </div>
+<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>    std::mt19937 rng(42);</div>
+<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span> </div>
+<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> omega = 0; omega &lt; t; ++omega) {</div>
+<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>      <span class="keywordtype">int</span> cur_idx = omega;</div>
+<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>      <span class="keywordtype">int</span> cur_k = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(rng() % kappa);</div>
+<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>      <span class="keywordtype">int</span> evictions = 0;</div>
+<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span> </div>
+<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>      <span class="keywordflow">for</span> (;;) {</div>
+<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>        <span class="keyword">auto</span> [bucket, _index] = hasher.Locate(sigma, as[cur_idx], cur_k, n, b_size);</div>
+<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>        <span class="comment">// Clamp bucket to [0, m).</span></div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>        bucket = bucket % m;</div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span> </div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>        <span class="keywordflow">if</span> (table[bucket].first == -1) {</div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>          <span class="comment">// Empty slot found.</span></div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>          table[bucket] = {cur_idx, cur_k};</div>
+<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>          <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>        }</div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span> </div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>        <span class="comment">// Evict the existing entry and take its place.</span></div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>        <span class="keywordtype">int</span> evicted_idx = table[bucket].first;</div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>        <span class="keywordtype">int</span> evicted_k = table[bucket].second;</div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>        table[bucket] = {cur_idx, cur_k};</div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span> </div>
+<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>        <span class="comment">// The evicted element becomes the current element with a new random hash.</span></div>
+<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>        cur_idx = evicted_idx;</div>
+<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>        cur_k = <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(rng() % kappa);</div>
+<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span> </div>
+<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>        ++evictions;</div>
+<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>        <span class="keywordflow">if</span> (evictions &gt; ch_retry) {</div>
+<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>          <span class="keywordflow">return</span> 1;</div>
+<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>        }</div>
+<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>      }</div>
+<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>    }</div>
+<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span> </div>
+<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>    <span class="keywordflow">return</span> 0;</div>
+<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>  }</div>
 </div>
-<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span> </div>
-<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>}  <span class="comment">// namespace fss::cuckoo_hash</span></div>
+<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>};</div>
+</div>
+<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span> </div>
+<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span>}  <span class="comment">// namespace fss::cuckoo_hash</span></div>
 <div class="ttc" id="aconceptPermutable_html"><div class="ttname"><a href="conceptPermutable.html">Permutable</a></div><div class="ttdoc">Small-domain pseudorandom permutation (PRP) interface.</div><div class="ttdef"><b>Definition</b> prp.cuh:23</div></div>
 <div class="ttc" id="acuckoo__hash_8cuh_html_a7276e4c3bd17951b3cb5ce92591d69bb"><div class="ttname"><a href="cuckoo__hash_8cuh.html#a7276e4c3bd17951b3cb5ce92591d69bb">fss::cuckoo_hash::ChBucket</a></div><div class="ttdeci">constexpr int ChBucket(int t, int lambda)</div><div class="ttdoc">Compute the number of Cuckoo-hash buckets from Lemma 5 of the paper, simplified per Remark 1.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:76</div></div>
 <div class="ttc" id="aprp_8cuh_html"><div class="ttname"><a href="prp_8cuh.html">prp.cuh</a></div><div class="ttdoc">Pseudorandom permutation (PRP) interface.</div></div>
-<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1Compact_html"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1Compact.html">fss::cuckoo_hash::Compact</a></div><div class="ttdoc">Compact Cuckoo hashing (Algorithm 4 from the paper).</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:137</div></div>
-<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1Compact_html_a293846bbdd7230b81fd1e5b980514143"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143">fss::cuckoo_hash::Compact::Run</a></div><div class="ttdeci">int Run(std::span&lt; const In &gt; as, int m, int4 sigma, __uint128_t n, int b_size, int ch_retry, std::span&lt; std::pair&lt; int, int &gt; &gt; table)</div><div class="ttdoc">Run Cuckoo hashing to place elements into a table.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:154</div></div>
-<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1PrpHash_html"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1PrpHash.html">fss::cuckoo_hash::PrpHash</a></div><div class="ttdoc">PRP-based hash for Cuckoo hashing.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:96</div></div>
-<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1PrpHash_html_a1a8aea801fc13fb642bfb5e2b13b5229"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a1a8aea801fc13fb642bfb5e2b13b5229">fss::cuckoo_hash::PrpHash::Locate</a></div><div class="ttdeci">std::pair&lt; int, int &gt; Locate(int4 sigma, In x, int k, __uint128_t n, int b_size)</div><div class="ttdoc">Compute bucket index and within-bucket index for hash function k.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:114</div></div>
+<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1Compact_html"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1Compact.html">fss::cuckoo_hash::Compact</a></div><div class="ttdoc">Compact Cuckoo hashing (Algorithm 4 from the paper).</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:150</div></div>
+<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1Compact_html_a293846bbdd7230b81fd1e5b980514143"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143">fss::cuckoo_hash::Compact::Run</a></div><div class="ttdeci">int Run(std::span&lt; const In &gt; as, int m, int4 sigma, __uint128_t n, int b_size, int ch_retry, std::span&lt; std::pair&lt; int, int &gt; &gt; table)</div><div class="ttdoc">Run Cuckoo hashing to place elements into a table.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:167</div></div>
+<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1LocateResult_html"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1LocateResult.html">fss::cuckoo_hash::LocateResult</a></div><div class="ttdoc">Locate result: a Locate() bucket and the position inside it.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:91</div></div>
+<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1LocateResult_html_a3be7467dfa355bf4331963c0519a2f70"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1LocateResult.html#a3be7467dfa355bf4331963c0519a2f70">fss::cuckoo_hash::LocateResult::bucket</a></div><div class="ttdeci">int bucket</div><div class="ttdoc">Bucket index.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:92</div></div>
+<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1LocateResult_html_a3c432233f973d7aa31d97c8fa9f1381a"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1LocateResult.html#a3c432233f973d7aa31d97c8fa9f1381a">fss::cuckoo_hash::LocateResult::index</a></div><div class="ttdeci">int index</div><div class="ttdoc">Within-bucket index.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:93</div></div>
+<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1PrpHash_html"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1PrpHash.html">fss::cuckoo_hash::PrpHash</a></div><div class="ttdoc">PRP-based hash for Cuckoo hashing.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:106</div></div>
+<div class="ttc" id="astructfss_1_1cuckoo__hash_1_1PrpHash_html_a88240dd5822aa5a27a835b218fb1be56"><div class="ttname"><a href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a88240dd5822aa5a27a835b218fb1be56">fss::cuckoo_hash::PrpHash::Locate</a></div><div class="ttdeci">LocateResult Locate(int4 sigma, In x, int k, __uint128_t n, int b_size)</div><div class="ttdoc">Compute bucket index and within-bucket index for hash function k.</div><div class="ttdef"><b>Definition</b> cuckoo_hash.cuh:127</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

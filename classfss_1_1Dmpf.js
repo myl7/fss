@@ -1,8 +1,7 @@
 var classfss_1_1Dmpf =
 [
-    [ "BucketKey", "structfss_1_1Dmpf_1_1BucketKey.html", null ],
     [ "Key", "structfss_1_1Dmpf_1_1Key.html", "structfss_1_1Dmpf_1_1Key" ],
-    [ "BatchEval", "classfss_1_1Dmpf.html#ade0d02a1a4b430c85e44c6d6b178f5dc", null ],
-    [ "EvalAll", "classfss_1_1Dmpf.html#a3d8b6f66b77ee382d70352db9e3757e2", null ],
-    [ "Gen", "classfss_1_1Dmpf.html#ae82ddd7a1381f320b72a2a4eea362bcf", null ]
+    [ "BatchEval", "classfss_1_1Dmpf.html#a83f9598521140a74d45d72a488eb9325", null ],
+    [ "EvalAll", "classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761", null ],
+    [ "Gen", "classfss_1_1Dmpf.html#a66aa3b6e27358c78bd78b67cfa8f9890", null ]
 ];

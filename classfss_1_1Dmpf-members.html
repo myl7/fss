@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -106,9 +107,9 @@ $(document).ready(function(){initNavTree('classfss_1_1Dmpf.html',''); initResiza
 
 <p>This is the complete list of members for <a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</a>, including all inherited members.</p>
 <table class="directory">
-  <tr class="even"><td class="entry"><a class="el" href="classfss_1_1Dmpf.html#ade0d02a1a4b430c85e44c6d6b178f5dc">BatchEval</a>(bool b, const Key &amp;key, std::span&lt; const In &gt; xs, std::span&lt; int4 &gt; ys)</td><td class="entry"><a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
-  <tr class="odd"><td class="entry"><a class="el" href="classfss_1_1Dmpf.html#a3d8b6f66b77ee382d70352db9e3757e2">EvalAll</a>(bool b, const Key &amp;key, std::span&lt; int4 &gt; ys)</td><td class="entry"><a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
-  <tr class="even"><td class="entry"><a class="el" href="classfss_1_1Dmpf.html#ae82ddd7a1381f320b72a2a4eea362bcf">Gen</a>(Key &amp;k0, Key &amp;k1, int4 sigma, cuda::std::span&lt; const cuda::std::array&lt; int4, 2 &gt;, m &gt; s0s, std::span&lt; const In &gt; as, std::span&lt; const int4 &gt; b_bufs, int t, int ch_retry=1000)</td><td class="entry"><a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
+  <tr class="even"><td class="entry"><a class="el" href="classfss_1_1Dmpf.html#a83f9598521140a74d45d72a488eb9325">BatchEval</a>(bool b, const Key &amp;key, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys)</td><td class="entry"><a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
+  <tr class="odd"><td class="entry"><a class="el" href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">EvalAll</a>(bool b, const Key &amp;key, cuda::std::span&lt; int4 &gt; ys)</td><td class="entry"><a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
+  <tr class="even"><td class="entry"><a class="el" href="classfss_1_1Dmpf.html#a66aa3b6e27358c78bd78b67cfa8f9890">Gen</a>(Key &amp;k0, Key &amp;k1, int4 &amp;sigma, cuda::std::span&lt; cuda::std::array&lt; int4, 2 &gt;, m &gt; s0s, cuda::std::span&lt; const In &gt; as, cuda::std::span&lt; const int4 &gt; b_bufs, int t, int ch_retry=1000, bool retry=true)</td><td class="entry"><a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
 </table></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -123,14 +124,13 @@ $(document).ready(function(){initNavTree('vdmpf_8cuh.html',''); initResizable();
 <code>#include &lt;<a class="el" href="util_8cuh_source.html">fss/util.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="vdpf_8cuh_source.html">fss/vdpf.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="cuckoo__hash_8cuh_source.html">fss/cuckoo_hash.cuh</a>&gt;</code><br />
-</div><table class="memberdecls">
+</div>
+<p><a href="vdmpf_8cuh_source.html">Go to the source code of this file.</a></p>
+<table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdmpf.html">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">2-party VDMPF scheme.  <a href="classfss_1_1Vdmpf.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdmpf_1_1BucketKey.html">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::BucketKey</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Per-bucket key containing the inner VDPF key data.  <a href="structfss_1_1Vdmpf_1_1BucketKey.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdmpf_1_1Key.html">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::Key</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">VDMPF key for one party.  <a href="structfss_1_1Vdmpf_1_1Key.html#details">More...</a><br /></td></tr>
@@ -140,8 +140,8 @@ Classes</h2></td></tr>
 <div class="textblock"><p>2-party verifiable distributed multi-point function (VDMPF). </p>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
-<p>The scheme is from the paper, <a href="https://eprint.iacr.org/2024/677"><em>Lightweight, Maliciously Secure Verifiable Function Secret Sharing</em></a> (<a class="el" href="vdmpf_8cuh.html#vdmpf">1: the published version</a>), Section 4.</p>
-<h2><a class="anchor" id="autotoc_md40"></a>
+<p>The scheme is from the paper, <a href="https://eprint.iacr.org/2021/580"><em>Lightweight, Maliciously Secure Verifiable Function Secret Sharing</em></a> (<a class="el" href="vdmpf_8cuh.html#vdmpf">1: the published version</a>), Section 4.</p>
+<h2><a class="anchor" id="autotoc_md38"></a>
 Definitions</h2>
 <p><b>Multi-point function</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, a set of \(t\) pairs \((a_j, b_j)\) where \(a_j \in \sG_{in}\) and \(b_j \in \sG_{out}\), a multi-point function \(f\) is a function that for any input \(x\), the output \(y\) has \(y = b_j\) when \(x = a_j\) for some \(j\), otherwise \(y = 0\).</p>
 <p><b>VDMPF</b>: extends DMPF with verifiability. Uses Cuckoo hashing to distribute point functions across buckets, then evaluates an inner VDPF per bucket.</p>
@@ -150,12 +150,12 @@ Definitions</h2>
 <li>Batch evaluation: \(BatchEval(k_i, \{x\}) \rightarrow (\{y_i\}, \pi_i)\).</li>
 <li>Verification: \(Verify(\pi_0, \pi_1) \rightarrow \{Accept, Reject\}\).</li>
 </ul>
-<h2><a class="anchor" id="autotoc_md41"></a>
+<h2><a class="anchor" id="autotoc_md39"></a>
 Implementation Details</h2>
 <p>We fix the output domain size at 16B and always set the last word's LSB to 0, corresponding to \(\lambda = 127\). See Groupable for more details.</p>
 <p>We limit the max input domain bit size to 128.</p>
 <p>The inner VDPF uses <code>uint</code> as its input type and <code>bucket_bits</code> as the domain bit size.</p>
-<h2><a class="anchor" id="autotoc_md42"></a>
+<h2><a class="anchor" id="autotoc_md40"></a>
 References</h2>
 <ol type="1">
 <li>Leo de Castro, Antigoni Polychroniadou: Lightweight, Maliciously Secure Verifiable Function Secret Sharing. EUROCRYPT 2022: 150-179. <a href="https://doi.org/10.1007/978-3-031-06944-4_6">https://doi.org/10.1007/978-3-031-06944-4_6</a>. <a class="anchor" id="vdmpf"></a></li>

@@ -38,11 +38,9 @@ var NAVTREE =
     ] ],
     [ "Benchmarks", "index.html#autotoc_md11", [
       [ "Comparison Curves", "index.html#autotoc_md12", null ],
-      [ "CPU Results", "index.html#autotoc_md13", null ],
-      [ "GPU Results", "index.html#autotoc_md14", null ],
-      [ "Flamegraph", "index.html#autotoc_md15", null ]
+      [ "Flamegraph", "index.html#autotoc_md13", null ]
     ] ],
-    [ "License", "index.html#autotoc_md16", null ],
+    [ "License", "index.html#autotoc_md14", null ],
     [ "Concepts", "concepts.html", "concepts" ],
     [ "Classes", "annotated.html", [
       [ "Class List", "annotated.html", "annotated_dup" ],

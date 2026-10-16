@@ -27,6 +27,7 @@ MathJax.Hub.Config({
 </script>
 <script type="text/javascript" async="async" src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js"></script>
 <link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen_extra.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 <div id="top"><!-- do not remove this div, it is closed by doxygen! -->
@@ -116,18 +117,21 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1HalfTreeDpf_1_1Cw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words, the output correction word, and the party's initial seed.  <a href="structfss_1_1HalfTreeDpf_1_1Key.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:ad0916b0c3ed9c52d118c2a8f3ba4afce" id="r_ad0916b0c3ed9c52d118c2a8f3ba4afce"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce">Gen</a> (<a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a> cws[], int4 &amp;ocw, const int4 s0s[2], In a, int4 b_buf)</td></tr>
-<tr class="memdesc:ad0916b0c3ed9c52d118c2a8f3ba4afce"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method.  <br /></td></tr>
-<tr class="separator:ad0916b0c3ed9c52d118c2a8f3ba4afce"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a47ba4e082e65fdaaeada4fa4329bf3c7" id="r_a47ba4e082e65fdaaeada4fa4329bf3c7"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a47ba4e082e65fdaaeada4fa4329bf3c7">Eval</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a> cws[], int4 ocw, In x)</td></tr>
-<tr class="memdesc:a47ba4e082e65fdaaeada4fa4329bf3c7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
-<tr class="separator:a47ba4e082e65fdaaeada4fa4329bf3c7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2571df91e531622bcf446a2ce7b05d58" id="r_a2571df91e531622bcf446a2ce7b05d58"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a2571df91e531622bcf446a2ce7b05d58">EvalAll</a> (bool b, int4 s0, const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a> cws[], int4 ocw, int4 ys[])</td></tr>
-<tr class="memdesc:a2571df91e531622bcf446a2ce7b05d58"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
-<tr class="separator:a2571df91e531622bcf446a2ce7b05d58"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a458d0e7407b70e149b0ca0dcc53807e6" id="r_a458d0e7407b70e149b0ca0dcc53807e6"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a458d0e7407b70e149b0ca0dcc53807e6">Gen</a> (<a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf)</td></tr>
+<tr class="memdesc:a458d0e7407b70e149b0ca0dcc53807e6"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html" title="A party&#39;s key: the correction words, the output correction word, and the party&#39;s initial seed.">Key</a> generation method.  <br /></td></tr>
+<tr class="separator:a458d0e7407b70e149b0ca0dcc53807e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abe1696ea792f12c1f031bb2aefb12b4b" id="r_abe1696ea792f12c1f031bb2aefb12b4b"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#abe1696ea792f12c1f031bb2aefb12b4b">Eval</a> (bool b, const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;key, In x)</td></tr>
+<tr class="memdesc:abe1696ea792f12c1f031bb2aefb12b4b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
+<tr class="separator:abe1696ea792f12c1f031bb2aefb12b4b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a360cd1684ed8369dd9e41fabee0bde9c" id="r_a360cd1684ed8369dd9e41fabee0bde9c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a360cd1684ed8369dd9e41fabee0bde9c">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys)</td></tr>
+<tr class="memdesc:a360cd1684ed8369dd9e41fabee0bde9c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
+<tr class="separator:a360cd1684ed8369dd9e41fabee0bde9c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
@@ -139,13 +143,13 @@ class fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt;</div><p>2-par
     <tr><td class="paramname">Group</td><td>Type for the output domain. See Groupable. </td></tr>
     <tr><td class="paramname">Prg</td><td>See Prgable. Requires mul=1 (CCR hash, 128-&gt;128 bits). </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1HalfTreeDpf.html#a2571df91e531622bcf446a2ce7b05d58" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1HalfTreeDpf.html#a2571df91e531622bcf446a2ce7b05d58" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1HalfTreeDpf.html#a360cd1684ed8369dd9e41fabee0bde9c" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1HalfTreeDpf.html#a360cd1684ed8369dd9e41fabee0bde9c" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
   </table>
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="a47ba4e082e65fdaaeada4fa4329bf3c7" name="a47ba4e082e65fdaaeada4fa4329bf3c7"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a47ba4e082e65fdaaeada4fa4329bf3c7">&#9670;&#160;</a></span>Eval()</h2>
+<a id="abe1696ea792f12c1f031bb2aefb12b4b" name="abe1696ea792f12c1f031bb2aefb12b4b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abe1696ea792f12c1f031bb2aefb12b4b">&#9670;&#160;</a></span>Eval()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -164,20 +168,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>ocw</em>, </td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -202,9 +194,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ocw</td><td>Output correction word returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#a458d0e7407b70e149b0ca0dcc53807e6" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">x</td><td>Evaluated input. </td></tr>
   </table>
   </dd>
@@ -213,8 +203,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 
 </div>
 </div>
-<a id="a2571df91e531622bcf446a2ce7b05d58" name="a2571df91e531622bcf446a2ce7b05d58"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2571df91e531622bcf446a2ce7b05d58">&#9670;&#160;</a></span>EvalAll()</h2>
+<a id="a360cd1684ed8369dd9e41fabee0bde9c" name="a360cd1684ed8369dd9e41fabee0bde9c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a360cd1684ed8369dd9e41fabee0bde9c">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -233,26 +223,14 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>s0</em>, </td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>ocw</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>ys</em>[]&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -272,9 +250,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">s0</td><td>Initial seed of the party. </td></tr>
-    <tr><td class="paramname">cws</td><td>Correction words returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ocw</td><td>Output correction word returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#ad0916b0c3ed9c52d118c2a8f3ba4afce" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#a458d0e7407b70e149b0ca0dcc53807e6" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits.</td></tr>
   </table>
   </dd>
@@ -283,8 +259,8 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 
 </div>
 </div>
-<a id="ad0916b0c3ed9c52d118c2a8f3ba4afce" name="ad0916b0c3ed9c52d118c2a8f3ba4afce"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ad0916b0c3ed9c52d118c2a8f3ba4afce">&#9670;&#160;</a></span>Gen()</h2>
+<a id="a458d0e7407b70e149b0ca0dcc53807e6" name="a458d0e7407b70e149b0ca0dcc53807e6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a458d0e7407b70e149b0ca0dcc53807e6">&#9670;&#160;</a></span>Gen()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -297,20 +273,20 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
         <tr>
           <td class="memname">void <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Gen </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
+          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k0</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int4 &amp;&#160;</td>
-          <td class="paramname"><em>ocw</em>, </td>
+          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>k1</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const int4&#160;</td>
-          <td class="paramname"><em>s0s</em>[2], </td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 2 &gt;&#160;</td>
+          <td class="paramname"><em>s0s</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -337,11 +313,10 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 </table>
 </div><div class="memdoc">
 
-<p>Key generation method. </p>
+<p><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html" title="A party&#39;s key: the correction words, the output correction word, and the party&#39;s initial seed.">Key</a> generation method. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">cws</td><td>Pre-allocated array of <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html" title="Correction word.">Cw</a> as returns. The array size must be in_bits. </td></tr>
-    <tr><td class="paramname">ocw</td><td>Output correction word (for the Convert step). </td></tr>
+    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
     <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
     <tr><td class="paramname">a</td><td>The special point alpha. </td></tr>
     <tr><td class="paramname">b_buf</td><td>The nonzero output value beta. Will be clamped and converted to the group element. </td></tr>

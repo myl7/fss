@@ -3,7 +3,13 @@ var annotated_dup =
     [ "fss", null, [
       [ "cuckoo_hash", null, [
         [ "Compact", "structfss_1_1cuckoo__hash_1_1Compact.html", "structfss_1_1cuckoo__hash_1_1Compact" ],
+        [ "LocateResult", "structfss_1_1cuckoo__hash_1_1LocateResult.html", "structfss_1_1cuckoo__hash_1_1LocateResult" ],
         [ "PrpHash", "structfss_1_1cuckoo__hash_1_1PrpHash.html", "structfss_1_1cuckoo__hash_1_1PrpHash" ]
+      ] ],
+      [ "gpu", null, [
+        [ "detail", null, [
+          [ "GrottoXorScanOp", "structfss_1_1gpu_1_1detail_1_1GrottoXorScanOp.html", null ]
+        ] ]
       ] ],
       [ "group", null, [
         [ "Bytes", "structfss_1_1group_1_1Bytes.html", null ],
@@ -20,7 +26,8 @@ var annotated_dup =
         [ "ChaCha", "classfss_1_1prg_1_1ChaCha.html", "classfss_1_1prg_1_1ChaCha" ]
       ] ],
       [ "prp", null, [
-        [ "Aes128Feistel", "classfss_1_1prp_1_1Aes128Feistel.html", "classfss_1_1prp_1_1Aes128Feistel" ]
+        [ "Aes128Feistel", "classfss_1_1prp_1_1Aes128Feistel.html", "classfss_1_1prp_1_1Aes128Feistel" ],
+        [ "ChaChaFeistel", "classfss_1_1prp_1_1ChaChaFeistel.html", "classfss_1_1prp_1_1ChaChaFeistel" ]
       ] ],
       [ "Dcf", "classfss_1_1Dcf.html", "classfss_1_1Dcf" ],
       [ "Dmpf", "classfss_1_1Dmpf.html", "classfss_1_1Dmpf" ],
