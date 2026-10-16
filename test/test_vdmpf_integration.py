@@ -163,6 +163,56 @@ class TestVdmpfValidation:
             vdmpf.verify(pi0, pi1.flatten())
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-    def test_rejects_cuda_tensors(self, vdmpf, key, alphas):
-        with pytest.raises(RuntimeError, match="on cpu"):
+    def test_rejects_mixed_devices(self, vdmpf, key, alphas):
+        with pytest.raises(RuntimeError, match="same device"):
             vdmpf.batch_eval(0, key, alphas.to("cuda"))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+    def test_rejects_cuda_tensors_with_default_prp(self, vdmpf, key, alphas):
+        with pytest.raises(RuntimeError, match="chacha_feistel"):
+            vdmpf.batch_eval(0, key.to("cuda"), alphas.to("cuda"))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+class TestVdmpfGpu:
+    @pytest.fixture
+    def gpu_vdmpf(self):
+        return fss_crypto.Vdmpf(in_bits=IN_BITS, max_points=MAX_POINTS,
+                                bucket_bits=BUCKET_BITS, group="bytes",
+                                prg="chacha", xor_hash="blake3",
+                                prp="chacha_feistel")
+
+    @pytest.fixture
+    def key_cpu(self, gpu_vdmpf, s0s, sigma, alphas, betas):
+        return gpu_vdmpf.gen(s0s, sigma, alphas, betas, t=T)
+
+    @pytest.fixture
+    def key_gpu(self, key_cpu):
+        return key_cpu.to("cuda")
+
+    def test_batch_eval_matches_cpu_outputs(self, gpu_vdmpf, key_cpu, key_gpu, alphas):
+        ys_cpu, _ = gpu_vdmpf.batch_eval(0, key_cpu, alphas)
+        ys_gpu, pi_gpu = gpu_vdmpf.batch_eval(0, key_gpu, alphas.to("cuda"))
+        assert ys_gpu.device.type == "cuda"
+        assert pi_gpu.device.type == "cuda"
+        assert torch.equal(ys_gpu.cpu(), ys_cpu)
+
+    def test_batch_eval_reconstructs_betas(self, gpu_vdmpf, key_gpu, alphas, betas):
+        ys0, _ = gpu_vdmpf.batch_eval(0, key_gpu, alphas.to("cuda"))
+        ys1, _ = gpu_vdmpf.batch_eval(1, key_gpu, alphas.to("cuda"))
+        assert torch.equal(torch.bitwise_xor(ys0.cpu(), ys1.cpu()), betas)
+
+    def test_merkle_fold_proofs_verify_on_device(self, gpu_vdmpf, key_gpu, alphas):
+        _, pi0 = gpu_vdmpf.batch_eval(0, key_gpu, alphas.to("cuda"))
+        _, pi1 = gpu_vdmpf.batch_eval(1, key_gpu, alphas.to("cuda"))
+        assert gpu_vdmpf.verify(pi0, pi1) is True
+        tampered = pi1.clone()
+        tampered[0, 0] ^= 1
+        assert gpu_vdmpf.verify(pi0, tampered) is False
+
+    def test_accumulators_are_device_local(self, gpu_vdmpf, key_cpu, key_gpu, alphas):
+        # CPU runs the sequential chains, CUDA the Merkle fold: identical
+        # outputs but proofs that must not be mixed across devices.
+        _, pi0_cpu = gpu_vdmpf.batch_eval(0, key_cpu, alphas)
+        _, pi1_gpu = gpu_vdmpf.batch_eval(1, key_gpu, alphas.to("cuda"))
+        assert gpu_vdmpf.verify(pi0_cpu, pi1_gpu.cpu()) is False

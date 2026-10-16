@@ -103,12 +103,24 @@ class VdmpfKey:
     sigma: torch.Tensor
     meta: torch.Tensor
 
+    def to(self, device) -> "VdmpfKey":
+        """Return a copy of the key with every tensor moved to device."""
+        return VdmpfKey(cws=self.cws.to(device), cs=self.cs.to(device),
+                        ocw=self.ocw.to(device), s0s=self.s0s.to(device),
+                        sigma=self.sigma.to(device), meta=self.meta.to(device))
+
 
 class Vdmpf:
     """2-party verifiable distributed multi-point function (VDMPF).
 
-    Host-only scheme: all tensors must live on CPU. This binding release keeps
-    alphas and xs in int64 tensors, so in_bits is limited to 63.
+    Gen runs on the host. With prp="chacha_feistel", batch_eval also accepts
+    CUDA tensors (move the key with VdmpfKey.to("cuda")) and runs the GPU
+    Merkle-fold pipeline; the default OpenSSL-backed PRP keeps every tensor
+    on CPU. The CPU path produces the paper-faithful sequential proof chains
+    and the CUDA path the Merkle-fold proofs: output shares are identical but
+    the proofs are not, so both parties must evaluate on the same device.
+    This binding release keeps alphas and xs in int64 tensors, so in_bits is
+    limited to 63.
 
     Args:
         in_bits: Input domain bit size (1..63).
@@ -118,7 +130,8 @@ class Vdmpf:
         prg: PRG type, "chacha" or "aes128_mmo".
         xor_hash: XorHash type (the paper's H), "blake3" or "sha256".
         hash: Hash type (the paper's H'); defaults to xor_hash.
-        prp: PRP type for Cuckoo hashing, "aes128_feistel".
+        prp: PRP type for Cuckoo hashing, "aes128_feistel" (CPU-only) or
+            "chacha_feistel" (CPU and CUDA).
     """
 
     # Verify() is key- and knob-independent: every VDMPF extension exposes the
@@ -233,13 +246,14 @@ class Vdmpf:
 
         Returns:
             (ys, pi): a (t, 4) int32 tensor of output shares and a (4, 4)
-            int32 proof. Verification compares the proofs of both parties.
+            int32 proof, both on the key's device. Verification compares the
+            proofs of both parties. CPU evaluation produces the sequential
+            chain proof and CUDA evaluation the Merkle-fold proof, so both
+            parties must evaluate on the same device.
         """
         validate_party(party)
         self._check_key(key)
         _validate_xs(xs)
-        validate_cpu_only(key.cws, key.cs, key.ocw, key.s0s, key.sigma, key.meta, xs,
-                          fn_name="batch_eval")
 
         return self._ext.batch_eval(party, key.cws, key.cs, key.ocw,
                                     key.s0s[party], key.sigma, key.meta, xs)
@@ -250,14 +264,14 @@ class Vdmpf:
 
         Args:
             pi0: (4, 4) int32 proof from party 0.
-            pi1: (4, 4) int32 proof from party 1.
+            pi1: (4, 4) int32 proof from party 1. Both proofs must come from
+            the same device; CUDA proofs are fetched for the comparison.
 
         Returns:
             True if the proofs match (Accept), False otherwise (Reject).
         """
         _validate_pi(pi0)
         _validate_pi(pi1)
-        validate_cpu_only(pi0, pi1, fn_name="verify")
         if Vdmpf._verify_ext is None:
             # No Vdmpf instance has been built yet; compile a minimal module.
             # Verify itself is knob-independent.

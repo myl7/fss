@@ -164,3 +164,46 @@ class TestDmpfValidation:
     def test_rejects_cuda_tensors(self, dmpf, s0s, sigma, alphas, betas):
         with pytest.raises(RuntimeError, match="on cpu"):
             dmpf.gen(s0s.to("cuda"), sigma, alphas, betas, t=T)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+class TestDmpfGpu:
+    @pytest.fixture
+    def gpu_dmpf(self):
+        return fss_crypto.Dmpf(in_bits=IN_BITS, max_points=MAX_POINTS,
+                               bucket_bits=BUCKET_BITS, group="bytes",
+                               prg="chacha", prp="chacha_feistel")
+
+    @pytest.fixture
+    def key_cpu(self, gpu_dmpf, s0s, sigma, alphas, betas):
+        return gpu_dmpf.gen(s0s, sigma, alphas, betas, t=T)
+
+    @pytest.fixture
+    def key_gpu(self, key_cpu):
+        return key_cpu.to("cuda")
+
+    def test_batch_eval_matches_cpu(self, gpu_dmpf, key_cpu, key_gpu, alphas):
+        ys_cpu = gpu_dmpf.batch_eval(0, key_cpu, alphas)
+        ys_gpu = gpu_dmpf.batch_eval(0, key_gpu, alphas.to("cuda"))
+        assert ys_gpu.device.type == "cuda"
+        assert torch.equal(ys_gpu.cpu(), ys_cpu)
+
+    def test_batch_eval_reconstructs_betas(self, gpu_dmpf, key_gpu, alphas, betas):
+        ys0 = gpu_dmpf.batch_eval(0, key_gpu, alphas.to("cuda")).cpu()
+        ys1 = gpu_dmpf.batch_eval(1, key_gpu, alphas.to("cuda")).cpu()
+        assert torch.equal(torch.bitwise_xor(ys0, ys1), betas)
+
+    def test_eval_all_matches_cpu_and_reconstructs(self, gpu_dmpf, key_cpu, key_gpu, alphas, betas):
+        ys_cpu = gpu_dmpf.eval_all(0, key_cpu)
+        ys_gpu = gpu_dmpf.eval_all(0, key_gpu)
+        assert ys_gpu.device.type == "cuda"
+        assert torch.equal(ys_gpu.cpu(), ys_cpu)
+        total = torch.bitwise_xor(gpu_dmpf.eval_all(0, key_gpu).cpu(),
+                                  gpu_dmpf.eval_all(1, key_gpu).cpu())
+        expected = torch.zeros(2**IN_BITS, 4, dtype=torch.int32)
+        expected[alphas] = betas
+        assert torch.equal(total, expected)
+
+    def test_default_prp_rejects_cuda_tensors(self, dmpf, key, alphas):
+        with pytest.raises(RuntimeError, match="chacha_feistel"):
+            dmpf.batch_eval(0, key.to("cuda"), alphas.to("cuda"))

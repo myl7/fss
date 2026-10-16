@@ -112,6 +112,10 @@ _PRP_MAP: dict[str, dict] = {
         "type": "fss::prp::Aes128Feistel",
         "include": "fss/prp/aes128_feistel.cuh",
     },
+    "chacha_feistel": {
+        "type": "fss::prp::ChaChaFeistel",
+        "include": "fss/prp/chacha_feistel.cuh",
+    },
 }
 
 _DCF_PRED_MAP: dict[str, str] = {

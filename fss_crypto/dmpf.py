@@ -90,12 +90,20 @@ class DmpfKey:
     sigma: torch.Tensor
     meta: torch.Tensor
 
+    def to(self, device) -> "DmpfKey":
+        """Return a copy of the key with every tensor moved to device."""
+        return DmpfKey(cws=self.cws.to(device), s0s=self.s0s.to(device),
+                       sigma=self.sigma.to(device), meta=self.meta.to(device))
+
 
 class Dmpf:
     """2-party distributed multi-point function (DMPF).
 
-    Host-only scheme: all tensors must live on CPU. This binding release keeps
-    alphas and xs in int64 tensors, so in_bits is limited to 63.
+    Gen runs on the host. With prp="chacha_feistel", batch_eval and eval_all
+    also accept CUDA tensors (move the key with DmpfKey.to("cuda")) and run
+    the GPU pipelines; the default OpenSSL-backed PRP keeps every tensor on
+    CPU. This binding release keeps alphas and xs in int64 tensors, so
+    in_bits is limited to 63.
 
     Args:
         in_bits: Input domain bit size (1..63).
@@ -103,7 +111,8 @@ class Dmpf:
         bucket_bits: Bit size of the inner DPF domain (per bucket).
         group: Output group type, "bytes" or "uint".
         prg: PRG type, "chacha" or "aes128_mmo".
-        prp: PRP type for Cuckoo hashing, "aes128_feistel".
+        prp: PRP type for Cuckoo hashing, "aes128_feistel" (CPU-only) or
+            "chacha_feistel" (CPU and CUDA).
     """
 
     def __init__(self, in_bits: int, max_points: int, bucket_bits: int,
@@ -198,8 +207,6 @@ class Dmpf:
         validate_party(party)
         self._check_key(key)
         _validate_xs(xs)
-        validate_cpu_only(key.cws, key.s0s, key.sigma, key.meta, xs,
-                          fn_name="batch_eval")
 
         return self._ext.batch_eval(party, key.cws, key.s0s[party],
                                     key.sigma, key.meta, xs)
@@ -216,8 +223,6 @@ class Dmpf:
         """
         validate_party(party)
         self._check_key(key)
-        validate_cpu_only(key.cws, key.s0s, key.sigma, key.meta,
-                          fn_name="eval_all")
 
         return self._ext.eval_all(party, key.cws, key.s0s[party],
                                   key.sigma, key.meta)

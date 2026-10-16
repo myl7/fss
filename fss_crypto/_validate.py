@@ -20,7 +20,7 @@ _VALID_PRGS_BY_SCHEME = {
 _VALID_PREDS = ("lt", "gt")
 _VALID_OUT_BITS = (1, 2, 4, 8, 16, 32, 64)
 _VALID_HASHES = ("blake3", "sha256")
-_VALID_PRPS = ("aes128_feistel",)
+_VALID_PRPS = ("aes128_feistel", "chacha_feistel")
 
 
 def validate_in_bits(in_bits: int) -> None:

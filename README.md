@@ -293,7 +293,8 @@ The CPU samples link OpenSSL, and `EvalAll` uses OpenMP when it is found.
 
 The `fss_crypto` package exposes PyTorch wrappers for every scheme: `Dpf`, `Dcf`, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, `Vdpf`, `Dmpf`, and `Vdmpf`.
 It is published on PyPI as `fss-crypto`.
-`eval` and full-domain `eval_all` accept CUDA tensors (where the scheme has a GPU path); key generation and the cuckoo-hashed multi-point schemes stay on CPU.
+`eval` and full-domain `eval_all` accept CUDA tensors (where the scheme has a GPU path); key generation stays on CPU.
+The cuckoo-hashed multi-point schemes (`Dmpf`, `Vdmpf`) evaluate on CUDA when constructed with `prp="chacha_feistel"`; a VDMPF proof comes from the CPU sequential chains or the CUDA Merkle fold, so both parties must evaluate on the same device.
 
 Install it with pip:
 
