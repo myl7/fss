@@ -196,6 +196,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reading seeds and check values for kernel launches (the single-point paths passed the
   seed by value after a host read, which faults over PCIe; seeds now travel as kernel
   argument pointers and scalars through explicit device-to-host copies).
+* `Vdmpf::BatchEval` deduplicated each located record by scanning every record already
+  collected in its bucket — an O(n^2/m) pass over the whole batch, while the Cuckoo PRP's
+  permutation property means distinct hash functions of one input never collide, so the scan
+  could never find a duplicate. The check now scans only the current input's located records,
+  as `Dmpf::EvalAll` already did (`Dmpf::BatchEval`, new in this release, carried the same
+  scan). Outputs and proofs are unchanged bit-for-bit; at n = 2^20 with t = 64 the scan was
+  ~91% (20.4 s) of the CPU full-domain evaluation routed through `BatchEval`.
 
 ## [1.2.0] - 2026-08-17
 

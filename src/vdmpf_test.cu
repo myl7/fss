@@ -159,6 +159,48 @@ protected:
 
     EXPECT_TRUE(VdmpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
   }
+
+  void TestBatchEvalDuplicates() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    VdmpfType vdmpf{prg, xor_hash, hash_, prp_};
+
+    // Duplicated inputs: every alpha and 50 random points appear multiple times,
+    // so several omegas locate the same within-bucket index and the 3 * m located
+    // records crowd the m buckets.
+    std::mt19937 gen(20261017);
+    std::uniform_int_distribution<uint16_t> dis(0, 0xFFFF);
+    std::vector<uint16_t> xs;
+    for (int rep = 0; rep < 3; ++rep) {
+      for (int i = 0; i < kT; ++i) xs.push_back(alphas[i]);
+    }
+    for (int i = 0; i < 100; ++i) xs.push_back(dis(gen));
+    for (int i = 0; i < 50; ++i) xs.push_back(xs[3 * kT + i]);
+
+    std::vector<int4> ys0(xs.size()), ys1(xs.size());
+    cuda::std::array<int4, 4> pi0, pi1;
+
+    vdmpf.BatchEval(false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0), pi0);
+    vdmpf.BatchEval(true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1), pi1);
+
+    EXPECT_TRUE(VdmpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
+
+    // Scalar reference: every duplicated position of an x yields the same value,
+    // beta_j when x is an alpha, 0 otherwise.
+    for (size_t i = 0; i < xs.size(); ++i) {
+      int4 e = {0, 0, 0, 0};
+      for (int j = 0; j < kT; ++j) {
+        if (xs[i] == alphas[j]) {
+          e = betas[j];
+          break;
+        }
+      }
+      e.w &= ~1;
+      auto result = Group::From(ys0[i]) + Group::From(ys1[i]);
+      int4 r = result.Into();
+      EXPECT_EQ(memcmp(&r, &e, sizeof(int4)), 0) << "Failed at x=" << xs[i] << " pos=" << i;
+    }
+  }
 };
 
 using VdmpfBytesChaChaTest = VdmpfChaChaTest<BytesGroup>;
@@ -173,6 +215,9 @@ TEST_F(VdmpfBytesChaChaTest, EvalAtNonAlpha) {
 TEST_F(VdmpfBytesChaChaTest, VerifyBatchEval) {
   TestVerifyBatchEval();
 }
+TEST_F(VdmpfBytesChaChaTest, BatchEvalDuplicates) {
+  TestBatchEvalDuplicates();
+}
 
 TEST_F(VdmpfUint128ChaChaTest, EvalAtAlpha) {
   TestEvalAtAlpha();
@@ -182,6 +227,9 @@ TEST_F(VdmpfUint128ChaChaTest, EvalAtNonAlpha) {
 }
 TEST_F(VdmpfUint128ChaChaTest, VerifyBatchEval) {
   TestVerifyBatchEval();
+}
+TEST_F(VdmpfUint128ChaChaTest, BatchEvalDuplicates) {
+  TestBatchEvalDuplicates();
 }
 
 TEST(CuckooHashTest, Compact) {

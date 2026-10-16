@@ -152,6 +152,45 @@ protected:
       EXPECT_EQ(memcmp(&r, &e, sizeof(int4)), 0) << "Failed at i=" << i;
     }
   }
+
+  void TestBatchEvalDuplicates() {
+    typename DmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    DmpfType dmpf{prg, prp_};
+
+    // Duplicated inputs: every alpha and 50 random points appear multiple times,
+    // so several omegas locate the same within-bucket index and the 3 * m located
+    // records crowd the m buckets.
+    std::mt19937 gen(20261017);
+    std::uniform_int_distribution<uint16_t> dis(0, 0xFFFF);
+    std::vector<uint16_t> xs;
+    for (int rep = 0; rep < 3; ++rep) {
+      for (int i = 0; i < kT; ++i) xs.push_back(alphas[i]);
+    }
+    for (int i = 0; i < 100; ++i) xs.push_back(dis(gen));
+    for (int i = 0; i < 50; ++i) xs.push_back(xs[3 * kT + i]);
+
+    std::vector<int4> ys0(xs.size()), ys1(xs.size());
+
+    dmpf.BatchEval(false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0));
+    dmpf.BatchEval(true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1));
+
+    // Scalar reference: every duplicated position of an x yields the same value,
+    // beta_j when x is an alpha, 0 otherwise.
+    for (size_t i = 0; i < xs.size(); ++i) {
+      int4 e = {0, 0, 0, 0};
+      for (int j = 0; j < kT; ++j) {
+        if (xs[i] == alphas[j]) {
+          e = betas[j];
+          break;
+        }
+      }
+      e.w &= ~1;
+      auto result = Group::From(ys0[i]) + Group::From(ys1[i]);
+      int4 r = result.Into();
+      EXPECT_EQ(memcmp(&r, &e, sizeof(int4)), 0) << "Failed at x=" << xs[i] << " pos=" << i;
+    }
+  }
 };
 
 using DmpfBytesChaChaTest = DmpfChaChaTest<BytesGroup>;
@@ -163,6 +202,9 @@ TEST_F(DmpfBytesChaChaTest, EvalAtAlpha) {
 TEST_F(DmpfBytesChaChaTest, EvalAtNonAlpha) {
   TestEvalAtNonAlpha();
 }
+TEST_F(DmpfBytesChaChaTest, BatchEvalDuplicates) {
+  TestBatchEvalDuplicates();
+}
 TEST_F(DmpfBytesChaChaTest, EvalAll) {
   TestEvalAll();
 }
@@ -172,6 +214,9 @@ TEST_F(DmpfUint128ChaChaTest, EvalAtAlpha) {
 }
 TEST_F(DmpfUint128ChaChaTest, EvalAtNonAlpha) {
   TestEvalAtNonAlpha();
+}
+TEST_F(DmpfUint128ChaChaTest, BatchEvalDuplicates) {
+  TestBatchEvalDuplicates();
 }
 TEST_F(DmpfUint128ChaChaTest, EvalAll) {
   TestEvalAll();

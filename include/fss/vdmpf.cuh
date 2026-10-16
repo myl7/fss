@@ -224,21 +224,27 @@ public:
     // inputs[i] = vector of (within_bucket_index, original_input_index).
     std::vector<std::vector<std::pair<uint, size_t>>> inputs(m);
     for (size_t omega = 0; omega < eta; ++omega) {
+      // store for easier deduplication for this omega
+      cuda::std::array<std::pair<int, uint>, kappa> seen{};
+      int num_seen = 0;
+
       for (int k = 0; k < kappa; ++k) {
         auto [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);
         if (bucket >= m) continue;
         uint j = static_cast<uint>(index);
         assert(j < (1u << bucket_bits));
-        // Deduplicate within each bucket (linear scan, fine for small kappa).
+        // Deduplicate among this omega's located records only. Permu is a permutation over
+        // [0, n * kappa), so distinct k never collide and the check is only a safeguard.
         bool dup = false;
-        for (auto &[existing_j, existing_omega] : inputs[bucket]) {
-          if (existing_j == j && existing_omega == omega) {
+        for (int s = 0; s < num_seen; ++s) {
+          if (seen[s].first == bucket && seen[s].second == j) {
             dup = true;
             break;
           }
         }
         if (!dup) {
           inputs[bucket].push_back({j, omega});
+          seen[num_seen++] = {bucket, j};
         }
       }
     }
