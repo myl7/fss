@@ -75,7 +75,9 @@ so the legends and the comparison site keep the difference visible.
 The two platforms drive the Cuckoo Locate with their own optimal PRP backend:
 GPU curves use the device-callable `ChaChaFeistel` while CPU curves keep the
 OpenSSL-backed `Aes128Feistel`, and the figures compare implementations within
-one platform, never across. Packed HalfTree DPF
+one platform, never across. The CPU DMPF and VDMPF panels additionally carry
+`AES-NI-rawprp` twins of all three operations — the same construction on the
+intrinsics `Aes128FeistelRaw` backend — beside the OpenSSL-PRP rows. Packed HalfTree DPF
 EvalAll emits `N/128` packed blocks for one-bit outputs. CPU benchmarks pin
 one CPU, which also pins the OpenMP team to one thread. DMPF EvalAll would
 otherwise pay one parallel-region spawn per bucket. The Servan-Schreiber VDPF
@@ -242,7 +244,11 @@ cs659b re-measurement runs on the integrated revision: the pipelined
 full-domain rows at n = 8, 10, and 16, the n = 10 DMPF / VDMPF / VDPF rows,
 the DPF and Half-Tree point-evaluation sweep with its packed-key rows, and the
 VDPF chain and Merkle-fold rows, each superseding the cells it re-measured
-through `merge --retry-inputs`. Use `export` on an individual
+through `merge --retry-inputs`. A second round of three runs covers the CPU
+scheme round: the VDMPF chain rows after the quadratic dedup scan fix, the DCF
+rows after the frontier pipelining, and the DMPF rows together with their
+`AES-NI-rawprp` PRP twins (the VDMPF twins were collected with the same run),
+each superseding its predecessors. Use `export` on an individual
 run to rebuild them from saved `case.json` files. `merge` combines completed
 run exports. For an explicit retry, pass its directory to `merge --retry-inputs`
 and retain the superseded attempt provenance. A nonzero exit status can
