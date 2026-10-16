@@ -609,12 +609,25 @@ def merge(directory, inputs, retry_inputs=(), drops=()):
                         entry["rows"] += 1
             records = [row for row in records if (row.get("library"), row.get("platform")) not in drop_specs]
         if is_retry:
-            fields = ("library", "platform", "operation", "domain_bits", "threads_per_block", "num_keys", "cpu_prg", "scan")
-            def key(row):
-                return tuple(row.get(field) for field in fields)
-            replaced = {key(row) for row in records}
-            superseded.extend(dict(record=row, replaced_by=str(source.resolve())) for row in rows if key(row) in replaced)
-            rows = [row for row in rows if key(row) not in replaced]
+            # The scheme and variant keep a retry scoped to the series it re-measured:
+            # without them a retried CPU sweep row would supersede every scheme's row
+            # at the same domain and operation. Rows without a benchmark name (a
+            # crashed attempt) have no meaningful variant, so they supersede by the
+            # case fields alone, as before.
+            case_fields = ("library", "platform", "operation", "domain_bits", "threads_per_block", "num_keys",
+                "cpu_prg", "scan")
+            name_fields = ("scheme", "variant")
+            def case_key(row):
+                return tuple(row.get(field) for field in case_fields)
+            def name_key(row):
+                return tuple(row.get(field) for field in name_fields)
+            replaced_cases = {case_key(row) for row in records}
+            replaced_names = {name_key(row) for row in records}
+            def superseded_by_retry(row):
+                return case_key(row) in replaced_cases and (not row.get("benchmark") or name_key(row) in replaced_names)
+            superseded.extend(dict(record=row, replaced_by=str(source.resolve())) for row in rows
+                if superseded_by_retry(row))
+            rows = [row for row in rows if not superseded_by_retry(row)]
         rows.extend(records)
     return write_export(directory, dict(runs=runs, superseded_records=superseded, dropped=dropped), rows)
 

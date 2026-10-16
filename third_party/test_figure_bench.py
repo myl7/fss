@@ -440,6 +440,22 @@ class FigureSweepTest(unittest.TestCase):
         self.assertEqual(result["metadata"]["superseded_records"][0]["record"]["raw_result"], "failed-raw")
         self.assertEqual(result["metadata"]["runs"][1]["retry"], True)
 
+    def test_retry_supersedes_only_the_same_scheme_and_variant(self):
+        original = self.directory / "original"
+        retry = self.directory / "retry"
+        dpf = sweep.normalize(self.case(operation="EvalAll"), "fss/CPU/DPF-bytes/EvalAll/8", 10, "old-dpf", {})
+        vdpf = sweep.normalize(self.case(operation="EvalAll"), "fss/CPU/VDPF-bytes/EvalAll/8", 20, "old-vdpf", {})
+        sweep.write_export(original, {}, [dpf, vdpf])
+        # The retry re-measures the DPF series at the same domain and operation; the
+        # retry key must keep it from superseding the VDPF row as well.
+        refreshed = sweep.normalize(self.case(operation="EvalAll"), "fss/CPU/DPF-bytes/EvalAll/8", 5, "new-dpf", {})
+        sweep.write_export(retry, {}, [refreshed])
+        self.assertEqual(sweep.merge(self.directory / "merged", [original], [retry]), 0)
+        result = json.loads((self.directory / "merged" / "chart-data.json").read_text())
+        by_raw = {row["raw_result"]: row for row in result["records"]}
+        self.assertEqual(set(by_raw), {"old-vdpf", "new-dpf"})
+        self.assertEqual(result["metadata"]["superseded_records"][0]["record"]["raw_result"], "old-dpf")
+
     def test_old_bench_parser_uses_configured_domain_and_key_count(self):
         raw = self.directory / "raw.json"
         raw.write_text(json.dumps({"benchmarks": [dict(name="fss/GPU/DPF/EvalAll", real_time=10, time_unit="ns")]}))
