@@ -7,6 +7,8 @@
 #include <fss/packed_half_tree_dpf.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
+#include <fss/prg/aes128_mmo_raw.cuh>
+#include <fss/prg/aes128_mmo.cuh>
 
 constexpr uint16_t kAlpha = 107;
 constexpr int kAlphaBits = 16;
@@ -375,6 +377,261 @@ TEST_F(PackedHalfTreeDpfOneLevel1BitTest, EvalAll) {
   TestEvalAll();
 }
 TEST_F(PackedHalfTreeDpfOneLevel64BitTest, EvalAll) {
+  TestEvalAll();
+}
+
+// Every PRG takes the level-order EvalAll() path when kDepth > kTopDepth (3);
+// Aes128MmoRaw adds the Gen8() pipelining behind detail::GenBatch(). These
+// tests pin the frontier path against the scalar Eval walk and the
+// XOR-reconstruction semantics of the scheme.
+class PackedHalfTreeDpfAesRawTest : public ::testing::Test {
+protected:
+  using Prg = fss::prg::Aes128MmoRaw<1>;
+  using DpfType = fss::PackedHalfTreeDpf<kAlphaBits, 1, Prg, uint16_t>;
+
+  static constexpr uint64_t kMaxBeta = 1;
+
+  int4 s0s[2];
+  typename DpfType::Key k0, k1;
+  uint8_t aes_key[1][16] = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
+  int4 hash_key;
+
+  void SetUp() override {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dis;
+
+    s0s[0] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
+    s0s[1] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
+    hash_key = {dis(gen), dis(gen), dis(gen), dis(gen)};
+  }
+
+  void TestEvalAll() {
+    Prg prg(aes_key);
+    DpfType dpf{prg, hash_key};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
+
+    constexpr size_t blocks = 1ULL << DpfType::kDepth;
+    std::vector<int4> ys0(blocks), ys1(blocks);
+
+    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+
+    size_t alpha_block = kAlpha / DpfType::kLanes;
+    int4 expected = DpfType::PackBeta(kAlpha, kMaxBeta);
+    int4 zero = {0, 0, 0, 0};
+
+    for (size_t j = 0; j < blocks; ++j) {
+      int4 diff = fss::util::Xor(ys0[j], ys1[j]);
+      if (j == alpha_block) {
+        EXPECT_TRUE(EqualInt4(diff, expected)) << "Failed at block " << j;
+      } else {
+        EXPECT_TRUE(EqualInt4(diff, zero)) << "Failed at block " << j;
+      }
+    }
+  }
+
+  void TestEvalMatchesEvalAll() {
+    Prg prg(aes_key);
+    DpfType dpf{prg, hash_key};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
+
+    constexpr size_t blocks = 1ULL << DpfType::kDepth;
+    std::vector<int4> ys0(blocks);
+    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dis(0, 0xFFFF);
+
+    for (int i = 0; i < 50; i++) {
+      uint16_t x = dis(gen);
+      int4 y0 = dpf.Eval(false, k0, x);
+      EXPECT_TRUE(EqualInt4(y0, ys0[x / DpfType::kLanes])) << "Failed at x=" << x;
+    }
+  }
+
+  void TestAlphaSweep() {
+    Prg prg(aes_key);
+    DpfType dpf{prg, hash_key};
+
+    constexpr size_t blocks = 1ULL << DpfType::kDepth;
+    constexpr size_t n = 1ULL << kAlphaBits;
+    std::vector<int4> ys0(blocks), ys1(blocks);
+
+    std::vector<uint16_t> alphas = {0, 1, static_cast<uint16_t>(DpfType::kLanes - 1),
+        static_cast<uint16_t>(DpfType::kLanes), static_cast<uint16_t>(2 * DpfType::kLanes - 1),
+        static_cast<uint16_t>(blocks * DpfType::kLanes / 2), kAlpha, static_cast<uint16_t>(n - 1)};
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> alpha_dis(0, static_cast<uint16_t>(n - 1));
+    for (int i = 0; i < 8; i++) alphas.push_back(alpha_dis(gen));
+
+    int4 zero = {0, 0, 0, 0};
+
+    for (uint16_t alpha : alphas) {
+      dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kMaxBeta);
+      dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+      dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+
+      size_t alpha_block = alpha / DpfType::kLanes;
+      int4 expected = DpfType::PackBeta(alpha, kMaxBeta);
+
+      for (size_t j = 0; j < blocks; ++j) {
+        int4 diff = fss::util::Xor(ys0[j], ys1[j]);
+        EXPECT_TRUE(EqualInt4(diff, j == alpha_block ? expected : zero))
+            << "alpha=" << alpha << " block=" << j;
+      }
+    }
+  }
+};
+
+TEST_F(PackedHalfTreeDpfAesRawTest, EvalAll) {
+  TestEvalAll();
+}
+TEST_F(PackedHalfTreeDpfAesRawTest, EvalMatchesEvalAll) {
+  TestEvalMatchesEvalAll();
+}
+TEST_F(PackedHalfTreeDpfAesRawTest, AlphaSweep) {
+  TestAlphaSweep();
+}
+
+// Boundary domains around the 8-wide frontier: kDepth 4 and 5 take the batched path with
+// the shallowest frontiers, kDepth 1..3 keep the per-block point walk.
+// Every alpha is swept so each block position is the correction target once.
+template <int InBits>
+class PackedHalfTreeDpfAesRawBoundaryTest : public ::testing::Test {
+protected:
+  using Prg = fss::prg::Aes128MmoRaw<1>;
+  using In = uint16_t;
+  using DpfType = fss::PackedHalfTreeDpf<InBits, 1, Prg, In>;
+  static_assert(InBits >= 8 && InBits <= 12);
+  // out_bits = 1 gives kLanes = 128 and kDepth = InBits - 7, so an 8-wide frontier
+  // forms for InBits >= 11 and shallower domains keep the point walk.
+
+  static constexpr uint64_t kMaxBeta = 1;
+  static constexpr size_t n = 1ULL << InBits;
+
+  int4 s0s[2] = {
+      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
+  uint8_t aes_key[1][16] = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
+  int4 hash_key = {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0};
+
+  void TestFullAlphaSweep() {
+    Prg prg(aes_key);
+    DpfType dpf{prg, hash_key};
+
+    constexpr size_t blocks = 1ULL << DpfType::kDepth;
+    int4 ys0[blocks], ys1[blocks];
+
+    int4 zero = {0, 0, 0, 0};
+
+    for (size_t alpha = 0; alpha < n; ++alpha) {
+      typename DpfType::Key k0, k1;
+      dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), static_cast<In>(alpha), kMaxBeta);
+
+      dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0, blocks));
+      dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1, blocks));
+
+      size_t alpha_block = alpha / DpfType::kLanes;
+      int4 expected = DpfType::PackBeta(static_cast<In>(alpha), kMaxBeta);
+
+      for (size_t j = 0; j < blocks; ++j) {
+        int4 diff = fss::util::Xor(ys0[j], ys1[j]);
+        EXPECT_TRUE(EqualInt4(diff, j == alpha_block ? expected : zero))
+            << "in_bits=" << InBits << " alpha=" << alpha << " block=" << j;
+
+        // The batched path must stay bit-exact with the scalar per-point walk.
+        int4 y0 = dpf.Eval(false, k0, static_cast<In>(j * DpfType::kLanes));
+        EXPECT_TRUE(EqualInt4(y0, ys0[j]))
+            << "in_bits=" << InBits << " alpha=" << alpha << " block=" << j;
+      }
+    }
+  }
+};
+
+using PackedHalfTreeDpfAesRawDepth1Test = PackedHalfTreeDpfAesRawBoundaryTest<8>;
+using PackedHalfTreeDpfAesRawDepth2Test = PackedHalfTreeDpfAesRawBoundaryTest<9>;
+using PackedHalfTreeDpfAesRawDepth3Test = PackedHalfTreeDpfAesRawBoundaryTest<10>;
+using PackedHalfTreeDpfAesRawDepth4Test = PackedHalfTreeDpfAesRawBoundaryTest<11>;
+using PackedHalfTreeDpfAesRawDepth5Test = PackedHalfTreeDpfAesRawBoundaryTest<12>;
+
+TEST_F(PackedHalfTreeDpfAesRawDepth1Test, FullAlphaSweep) {
+  TestFullAlphaSweep();
+}
+TEST_F(PackedHalfTreeDpfAesRawDepth2Test, FullAlphaSweep) {
+  TestFullAlphaSweep();
+}
+TEST_F(PackedHalfTreeDpfAesRawDepth3Test, FullAlphaSweep) {
+  TestFullAlphaSweep();
+}
+TEST_F(PackedHalfTreeDpfAesRawDepth4Test, FullAlphaSweep) {
+  TestFullAlphaSweep();
+}
+TEST_F(PackedHalfTreeDpfAesRawDepth5Test, FullAlphaSweep) {
+  TestFullAlphaSweep();
+}
+
+// Aes128Mmo has no Gen8(), so EvalAll() runs the frontier through the
+// detail::GenBatch() loop; this pins the OpenSSL PRG cell of the EvalAll matrix.
+class PackedHalfTreeDpfBytesAesTest : public ::testing::Test {
+protected:
+  using Prg = fss::prg::Aes128Mmo<1>;
+  using DpfType = fss::PackedHalfTreeDpf<kAlphaBits, 1, Prg, uint16_t>;
+
+  static constexpr uint64_t kMaxBeta = 1;
+
+  int4 s0s[2];
+  typename DpfType::Key k0, k1;
+  int4 hash_key;
+  cuda::std::array<EVP_CIPHER_CTX *, 1> ctxs;
+
+  void SetUp() override {
+    unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    const unsigned char *keys[1] = {key0};
+    ctxs = Prg::CreateCtxs(keys);
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dis;
+
+    s0s[0] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
+    s0s[1] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
+    hash_key = {dis(gen), dis(gen), dis(gen), dis(gen)};
+  }
+
+  void TearDown() override {
+    Prg::FreeCtxs(ctxs);
+  }
+
+  void TestEvalAll() {
+    Prg prg(ctxs);
+    DpfType dpf{prg, hash_key};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, kMaxBeta);
+
+    constexpr size_t blocks = 1ULL << DpfType::kDepth;
+    std::vector<int4> ys0(blocks), ys1(blocks);
+    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+
+    size_t alpha_block = kAlpha / DpfType::kLanes;
+    int4 expected = DpfType::PackBeta(kAlpha, kMaxBeta);
+    int4 zero = {0, 0, 0, 0};
+
+    for (size_t j = 0; j < blocks; ++j) {
+      int4 diff = fss::util::Xor(ys0[j], ys1[j]);
+      if (j == alpha_block) {
+        EXPECT_TRUE(EqualInt4(diff, expected)) << "Failed at block " << j;
+      } else {
+        EXPECT_TRUE(EqualInt4(diff, zero)) << "Failed at block " << j;
+      }
+    }
+  }
+};
+
+TEST_F(PackedHalfTreeDpfBytesAesTest, EvalAll) {
   TestEvalAll();
 }
 

@@ -190,6 +190,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flat curves (such as DMPF point evaluation) previously rendered with as few as two
   axis ticks, which hid the logarithmic scale.
 
+### Changed
+
+* The packed Half-Tree CPU `EvalAll` walks a level-order frontier below three scalar
+  levels, expanding eight parents per batched expansion and fusing a branchless final
+  conversion; outputs are bit-exact with the previous depth-first walk and the 2^20
+  full-domain evaluation moves from 4.8 to 16.5-32.9 G outputs/s.
 
 ## [1.2.0] - 2026-08-17
 

@@ -42,6 +42,16 @@
  * raw blocks; we do not). Its inputs are the level kDepth nodes, which are never expanded, so
  * expansion and conversion read disjoint PRG input sets, as in HalfTreeDpf.
  *
+ * EvalAll() runs in level order: a scalar top widens the root to an 8-node
+ * frontier, then every level advances 8 frontier nodes per batched expansion
+ * (pipelined through Gen8() via detail::GenBatch() when the PRG offers a
+ * batched entry) so the AES rounds of independent nodes interleave, the
+ * correction words apply through branchless masks, and the leaf conversion is
+ * fused into the final expansion so each output block is written once. The
+ * level-order node index equals the in-order leaf index the DFS walk produces,
+ * so the ys layout is identical. Domains with kDepth <= kTopDepth never fill a
+ * frontier and evaluate one point per block.
+ *
  * ## Complexity
  *
  * Gen makes 2 * (kDepth + 1) PRG calls, Eval kDepth + 1, and EvalAll under 2^(kDepth + 1).
@@ -58,6 +68,7 @@
 #include <type_traits>
 #include <cstddef>
 #include <cassert>
+#include <vector>
 #include <omp.h>
 #include <fss/prg.cuh>
 #include <fss/util.cuh>
@@ -110,6 +121,12 @@ public:
    * Largest beta that fits in out_bits bits.
    */
   static constexpr uint64_t kBetaMax = out_bits == 64 ? ~0ULL : (1ULL << out_bits) - 1;
+
+  /**
+   * Levels expanded scalarly at the top of the batched EvalAll() path: after kTopDepth
+   * expansions the frontier holds the first whole 8-node batch.
+   */
+  static constexpr int kTopDepth = 3;
 
   /**
    * Correction word, one per expanded tree level.
@@ -297,22 +314,120 @@ private:
   }
 
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 fcw, int4 ys[]) {
-    int4 node = util::SetLsb(s0, b);
+    if constexpr (kDepth > kTopDepth) {
+      EvalAllFrontier(b, s0, cws, fcw, ys);
+    } else {
+      // Domains too shallow to fill an 8-wide frontier evaluate one point per
+      // block through the tested point walk.
+      constexpr size_t blocks = size_t{1} << kDepth;
+#pragma omp parallel for
+      for (size_t j = 0; j < blocks; ++j) {
+        ys[j] = Eval(b, s0, cws, fcw, static_cast<In>(j * kLanes));
+      }
+    }
+  }
 
+  // lhs ^ (rhs & mask) with mask being 0 or -1 in every lane, so the per-node corrections
+  // controlled by the seed LSB apply branchlessly.
+  static __host__ __device__ int4 MaskXor(int4 lhs, int4 rhs, int mask) {
+    return {lhs.x ^ (rhs.x & mask), lhs.y ^ (rhs.y & mask), lhs.z ^ (rhs.z & mask), lhs.w ^ (rhs.w & mask)};
+  }
+
+  // Expands one node with a scalar PRG call: left = H_S(node) ^ (t ? cw : 0), right = left ^ node.
+  __host__ __device__ void ExpandNode(int4 node, int4 cw, int4 &left, int4 &right) {
+    int4 h = prg.Gen(util::Xor(hash_key, node))[0];
+    int t_mask = -static_cast<int>(util::GetLsb(node));
+    left = MaskXor(h, cw, t_mask);
+    right = util::Xor(left, node);
+  }
+
+  // Level-order full-domain evaluation over a batched frontier. The frontier of
+  // level i lives in bufs[i & 1]; the final expansion fuses the leaf conversion and writes
+  // each ys block exactly once, in the same order the DFS walk produces. The level-order
+  // node index equals the in-order leaf index, so the ys layout is unchanged.
+  void EvalAllFrontier(bool b, int4 s0, const Cw cws[], int4 fcw, int4 ys[]) {
     assert(kDepth < sizeof(size_t) * 8);
     size_t num_blocks = 1ULL << kDepth;
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
+    // Frontier ping-pong scratch, grown on demand and reused across calls of this thread.
+    // Two halves of num_blocks / 2 each: no frontier before the last level exceeds that size.
+    static thread_local std::vector<int4> scratch;
+    if (scratch.size() < num_blocks) scratch.resize(num_blocks);
+    int4 *bufs[2] = {scratch.data(), scratch.data() + num_blocks / 2};
 
-    // Phase 1: tree traversal for levels 1..kDepth, stores the level nodes in ys as scratch.
+    // Scalar top: the root becomes the 2^kTopDepth level-kTopDepth frontier in bufs[kTopDepth & 1].
+    bufs[0][0] = util::SetLsb(s0, b);
+    for (int i = 0; i < kTopDepth; ++i) {
+      size_t count = size_t{1} << i;
+      for (size_t j = 0; j < count; ++j) {
+        ExpandNode(bufs[i & 1][j], cws[i].s, bufs[(i + 1) & 1][2 * j], bufs[(i + 1) & 1][2 * j + 1]);
+      }
+    }
+
+    // Batched frontier descent, 8 parents per batched expansion. Each level is an OpenMP
+    // worksharing loop; the implicit barriers give the level-to-level synchronization.
 #pragma omp parallel
-#pragma omp single
-    EvalTree(node, cws, ys, 0, num_blocks, 0, par_depth_);
+    {
+      for (int i = kTopDepth; i < kDepth; ++i) {
+        const int4 *src = bufs[i & 1];
+        int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) & 1];
+        size_t batches = (size_t{1} << i) / 8;
+        if (i + 1 == kDepth) {
+#pragma omp for schedule(static)
+          for (size_t k = 0; k < batches; ++k) ExpandConvert8(src, dst, k, cws[i].s, fcw);
+        } else {
+#pragma omp for schedule(static)
+          for (size_t k = 0; k < batches; ++k) Expand8(src, dst, k, cws[i].s);
+        }
+      }
+    }
+  }
 
-    // Phase 2: in-place leaf conversion, one block per level node.
-#pragma omp parallel for
-    for (size_t j = 0; j < num_blocks; ++j) {
-      ys[j] = ConvertLeaf(ys[j], fcw);
+  // Expands the 8 frontier parents src[8k..8k+8) into their 16 children with one batch.
+  // Parent p has children 2p and 2p + 1, so the children of a batch interleave in pairs.
+  void Expand8(const int4 *src, int4 *dst, size_t k, int4 cw) {
+    int4 parents[8];
+    cuda::std::array<int4, 8> seeds;
+    for (int j = 0; j < 8; ++j) {
+      parents[j] = src[8 * k + j];
+      seeds[j] = util::Xor(hash_key, parents[j]);
+    }
+    auto hs = detail::GenBatch<1>(prg, seeds);
+    for (int j = 0; j < 8; ++j) {
+      int4 left = MaskXor(hs[j][0], cw, -static_cast<int>(util::GetLsb(parents[j])));
+      dst[16 * k + 2 * j] = left;
+      dst[16 * k + 2 * j + 1] = util::Xor(left, parents[j]);
+    }
+  }
+
+  // Last-level Expand8() with the leaf conversion fused in: the children are the level
+  // kDepth nodes, so they are hashed straight from registers into two more batches
+  // (even and odd children), fcw applies through the child LSB mask, and each final block
+  // is stored exactly once.
+  void ExpandConvert8(const int4 *src, int4 *ys, size_t k, int4 cw, int4 fcw) {
+    int4 parents[8];
+    cuda::std::array<int4, 8> seeds;
+    for (int j = 0; j < 8; ++j) {
+      parents[j] = src[8 * k + j];
+      seeds[j] = util::Xor(hash_key, parents[j]);
+    }
+    auto hs = detail::GenBatch<1>(prg, seeds);
+
+    int4 children[16];
+    cuda::std::array<int4, 8> conv_seeds[2];
+    for (int j = 0; j < 8; ++j) {
+      int4 left = MaskXor(hs[j][0], cw, -static_cast<int>(util::GetLsb(parents[j])));
+      children[2 * j] = left;
+      children[2 * j + 1] = util::Xor(left, parents[j]);
+      conv_seeds[0][j] = util::Xor(hash_key, children[2 * j]);
+      conv_seeds[1][j] = util::Xor(hash_key, children[2 * j + 1]);
+    }
+    auto leaves_even = detail::GenBatch<1>(prg, conv_seeds[0]);
+    auto leaves_odd = detail::GenBatch<1>(prg, conv_seeds[1]);
+    for (int j = 0; j < 8; ++j) {
+      ys[16 * k + 2 * j] = MaskXor(leaves_even[j][0], fcw, -static_cast<int>(util::GetLsb(children[2 * j])));
+      ys[16 * k + 2 * j + 1] =
+          MaskXor(leaves_odd[j][0], fcw, -static_cast<int>(util::GetLsb(children[2 * j + 1])));
     }
   }
 
@@ -320,40 +435,6 @@ private:
     int4 leaf = prg.Gen(util::Xor(hash_key, node))[0];
     if (util::GetLsb(node)) leaf = util::Xor(leaf, fcw);
     return leaf;
-  }
-
-  void EvalTree(int4 node, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_) {
-    // i is the level index (0-based), we traverse levels 0..kDepth-1.
-    // At level kDepth, we store the node.
-    if (i == kDepth) {
-      assert(l + 1 == r);
-      ys[l] = node;
-      return;
-    }
-
-    bool t = util::GetLsb(node);
-    int4 h = prg.Gen(util::Xor(hash_key, node))[0];
-
-    int4 zero4 = {0, 0, 0, 0};
-    int4 t_mask = t ? cws[i].s : zero4;
-
-    // Left child: left = H_S(parent) ^ (t ? cw : 0)
-    int4 left = util::Xor(h, t_mask);
-    // Right child: right = left ^ parent
-    int4 right = util::Xor(left, node);
-
-    size_t mid = (l + r) / 2;
-
-    if (i < par_depth_) {
-#pragma omp task
-      EvalTree(left, cws, ys, l, mid, i + 1, par_depth_);
-#pragma omp task
-      EvalTree(right, cws, ys, mid, r, i + 1, par_depth_);
-#pragma omp taskwait
-    } else {
-      EvalTree(left, cws, ys, l, mid, i + 1, par_depth_);
-      EvalTree(right, cws, ys, mid, r, i + 1, par_depth_);
-    }
   }
 };
 
