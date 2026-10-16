@@ -61,7 +61,7 @@ namespace fss {
  * @tparam Hash See Hashable. Paper's $H'$: maps $4\lambda$ bits to $2\lambda$ bits.
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
  * @tparam par_depth -1 is to use ceil(log(num of threads)), which should be good enough.
- * Only EvalAll() uses it. See EvalAll() for details.
+ * EvalAll(), EvalAllMerkle(), and ProveMerkle() use it. See EvalAll() for details.
  */
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In = uint,
     int par_depth = -1>
@@ -313,7 +313,8 @@ public:
    * leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the
    * same hash level by level (an odd trailing node carries to the next level unchanged). The
    * proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so Verify() is shared.
-   * Every level is an OpenMP parallel batch. See doc/vdpf_merkle_fold_security.md.
+   * Every level is an OpenMP parallel batch honoring par_depth, so a par_depth of 0 makes
+   * the fold sequential. See doc/vdpf_merkle_fold_security.md.
    *
    * @param pi_tildes Corrected per-point hashes returned by Eval().
    * @param cs Returned by Gen().
@@ -324,8 +325,10 @@ public:
     size_t count = pi_tildes.size();
     assert(count >= 1);
 
+    int par_depth_ = util::ResolveParDepth(par_depth);
+
     std::vector<cuda::std::array<int4, 2>> nodes(count);
-#pragma omp parallel for
+#pragma omp parallel for if (par_depth_ > 0)
     for (size_t i = 0; i < count; ++i) {
       nodes[i] = hash.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
     }
@@ -333,7 +336,7 @@ public:
     while (count > 1) {
       size_t pairs = count / 2;
       std::vector<cuda::std::array<int4, 2>> next(pairs + count % 2);
-#pragma omp parallel for
+#pragma omp parallel for if (par_depth_ > 0)
       for (size_t i = 0; i < pairs; ++i) {
         int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
         next[i] = hash.Hash(cuda::std::span<const int4, 4>(msg));
@@ -350,8 +353,8 @@ public:
    * Full domain evaluation method with the Merkle-fold proof.
    *
    * Same output shares as EvalAll(); the proof comes from ProveMerkle() over the corrected
-   * per-point hashes. The conversion phase and every fold level are OpenMP parallel, unlike
-   * EvalAll()'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.
+   * per-point hashes. The conversion phase and every fold level are OpenMP parallel honoring
+   * par_depth, unlike EvalAll()'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.
    *
    * @param b Party index. False for 0 and true for 1. $i$.
    * @param key The party's key returned by Gen().
@@ -381,7 +384,7 @@ public:
     assert((key.ocw.w & 1) == 0);
     auto ocw_group = Group::From(key.ocw);
     std::vector<cuda::std::array<int4, 4>> leaves(n);
-#pragma omp parallel for
+#pragma omp parallel for if (par_depth_ > 0)
     for (size_t j = 0; j < n; ++j) {
       int4 sj = ys[j];
       bool tj = util::GetLsb(sj);

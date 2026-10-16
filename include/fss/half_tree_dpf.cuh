@@ -283,7 +283,7 @@ private:
       // Domains too small to fill an 8-wide frontier evaluate per input; the
       // point walk is cheaper than the batched machinery at this size.
       constexpr size_t n = size_t{1} << in_bits;
-#pragma omp parallel for
+#pragma omp parallel for if (util::ResolveParDepth(par_depth) > 0)
       for (size_t x = 0; x < n; ++x) ys[x] = Eval(b, s0, cws, ocw, static_cast<In>(x));
       return;
     }

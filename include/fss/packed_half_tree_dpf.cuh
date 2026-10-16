@@ -320,7 +320,7 @@ private:
       // Domains too shallow to fill an 8-wide frontier evaluate one point per
       // block through the tested point walk.
       constexpr size_t blocks = size_t{1} << kDepth;
-#pragma omp parallel for
+#pragma omp parallel for if (util::ResolveParDepth(par_depth) > 0)
       for (size_t j = 0; j < blocks; ++j) {
         ys[j] = Eval(b, s0, cws, fcw, static_cast<In>(j * kLanes));
       }
@@ -351,6 +351,8 @@ private:
 
     // Frontier ping-pong scratch, grown on demand and reused across calls of this thread.
     // Two halves of num_blocks / 2 each: no frontier before the last level exceeds that size.
+    // thread_local isolates concurrent calls: each thread pays the first-call allocation and
+    // retains the peak 16 * 2 ** kDepth bytes, about one packed output buffer, until it exits.
     static thread_local std::vector<int4> scratch;
     if (scratch.size() < num_blocks) scratch.resize(num_blocks);
     int4 *bufs[2] = {scratch.data(), scratch.data() + num_blocks / 2};
@@ -366,7 +368,8 @@ private:
 
     // Batched frontier descent, 8 parents per batched expansion. Each level is an OpenMP
     // worksharing loop; the implicit barriers give the level-to-level synchronization.
-#pragma omp parallel
+    // par_depth resolving to 0 runs the descent sequentially, like the other schemes.
+#pragma omp parallel if (util::ResolveParDepth(par_depth) > 0)
     {
       for (int i = kTopDepth; i < kDepth; ++i) {
         const int4 *src = bufs[i & 1];

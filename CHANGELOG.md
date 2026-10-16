@@ -169,6 +169,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* `par_depth = 0` now keeps every CPU evaluation path sequential. The DPF, Half-Tree,
+  and packed Half-Tree small-domain branches, the packed frontier descent, and the
+  VDPF Merkle fold phases previously ran their OpenMP loops unconditionally.
 * The grid figures drew a rotated y-axis label on every panel, reaching past the 34px column
   gap into the neighboring plot. Each row (and block-size band) now carries one label on its
   leftmost existing panel, and a panel whose time unit differs from that label notes its unit

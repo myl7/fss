@@ -124,6 +124,10 @@ if(BUILD_TESTING)
     target_link_libraries(point_eval_cpu_test GTest::gtest_main fss)
     target_compile_options(point_eval_cpu_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
     gtest_discover_tests(point_eval_cpu_test)
+
+    add_executable(par_depth_test src/par_depth_test.cu)
+    target_link_libraries(par_depth_test GTest::gtest_main fss)
+    gtest_discover_tests(par_depth_test)
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
