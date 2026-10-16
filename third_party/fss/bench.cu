@@ -26,6 +26,7 @@
 #include <fss/prp/chacha_feistel.cuh>
 #ifdef FSS_BENCH_AES_NI
 #include <fss/prg/aes128_mmo_raw.cuh>
+#include <fss/prp/aes128_feistel_raw.cuh>
 #endif
 
 #ifndef FSS_BENCH_DOMAIN_BITS
@@ -668,6 +669,15 @@ constexpr int kDmpfNumPoints = 64;
 using DmpfT = fss::Dmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, CpuPrg<2>, fss::prp::Aes128Feistel, uint32_t>;
 using VdmpfT = fss::Vdmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, CpuPrg<2>, fss::hash::Blake3,
     fss::hash::Blake3, fss::prp::Aes128Feistel, uint32_t>;
+#ifdef FSS_BENCH_AES_NI
+// The AES-NI raw-PRP twins of the CPU DMPF/VDMPF rows: the bit-exact Aes128Feistel
+// construction with intrinsics round keys expanded once per key instead of one
+// OpenSSL EVP call per AES block.
+using DmpfRawPrpT =
+    fss::Dmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, CpuPrg<2>, fss::prp::Aes128FeistelRaw, uint32_t>;
+using VdmpfRawPrpT = fss::Vdmpf<kInBits, kDmpfMaxPoints, kDmpfBucketBits, BytesGroup, CpuPrg<2>, fss::hash::Blake3,
+    fss::hash::Blake3, fss::prp::Aes128FeistelRaw, uint32_t>;
+#endif
 // The GPU benchmarks evaluate DMPF with the device-callable PRP; the CPU curves
 // above keep Aes128Feistel as their own implementation.
 using GpuDmpfT =
@@ -745,11 +755,11 @@ static void CheckCpuDmpfFull(Scheme &scheme, const typename Scheme::Key &k0, con
   }
 }
 
+template <typename SchemeT>
 static void BM_CpuDmpfGen(benchmark::State &state) {
   AesCtx<2> ctx;
-  fss::prp::Aes128Feistel prp;
-  DmpfT dmpf{ctx.prg, prp};
-  typename DmpfT::Key k0, k1;
+  SchemeT dmpf{ctx.prg, {}};
+  typename SchemeT::Key k0, k1;
   GenDmpfKeys(dmpf, k0, k1);
   for (auto _ : state) {
     GenDmpfKeys(dmpf, k0, k1);
@@ -758,11 +768,11 @@ static void BM_CpuDmpfGen(benchmark::State &state) {
   }
 }
 
+template <typename SchemeT>
 static void BM_CpuDmpfEval(benchmark::State &state) {
   AesCtx<2> ctx;
-  fss::prp::Aes128Feistel prp;
-  DmpfT dmpf{ctx.prg, prp};
-  typename DmpfT::Key k0, k1;
+  SchemeT dmpf{ctx.prg, {}};
+  typename SchemeT::Key k0, k1;
   GenDmpfKeys(dmpf, k0, k1);
   uint32_t x = 0;
   for (auto _ : state) {
@@ -774,12 +784,12 @@ static void BM_CpuDmpfEval(benchmark::State &state) {
   }
 }
 
+template <typename SchemeT>
 static void BM_CpuDmpfEvalAll(benchmark::State &state) {
   constexpr size_t n = size_t{1} << kInBits;
   AesCtx<2> ctx;
-  fss::prp::Aes128Feistel prp;
-  DmpfT dmpf{ctx.prg, prp};
-  typename DmpfT::Key k0, k1;
+  SchemeT dmpf{ctx.prg, {}};
+  typename SchemeT::Key k0, k1;
   GenDmpfKeys(dmpf, k0, k1);
   CheckCpuDmpfFull(dmpf, k0, k1);
   std::vector<int4> ys(n);
@@ -790,7 +800,8 @@ static void BM_CpuDmpfEvalAll(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * n);
 }
 
-static void CheckCpuVdmpfBatch(VdmpfT &vdmpf, const typename VdmpfT::Key &k0, const typename VdmpfT::Key &k1) {
+template <typename SchemeT>
+static void CheckCpuVdmpfBatch(SchemeT &vdmpf, const typename SchemeT::Key &k0, const typename SchemeT::Key &k1) {
   std::vector<uint32_t> xs;
   for (int j = 0; j < kDmpfNumPoints; ++j) {
     uint32_t a = kDmpfPoints.as[j];
@@ -819,13 +830,13 @@ static void CheckCpuVdmpfBatch(VdmpfT &vdmpf, const typename VdmpfT::Key &k0, co
   }
 }
 
+template <typename SchemeT>
 static void BM_CpuVdmpfGen(benchmark::State &state) {
   AesCtx<2> ctx;
-  fss::prp::Aes128Feistel prp;
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
-  VdmpfT vdmpf{ctx.prg, xor_hash, hash, prp};
-  typename VdmpfT::Key k0, k1;
+  SchemeT vdmpf{ctx.prg, xor_hash, hash, {}};
+  typename SchemeT::Key k0, k1;
   GenDmpfKeys(vdmpf, k0, k1);
   for (auto _ : state) {
     GenDmpfKeys(vdmpf, k0, k1);
@@ -834,13 +845,13 @@ static void BM_CpuVdmpfGen(benchmark::State &state) {
   }
 }
 
+template <typename SchemeT>
 static void BM_CpuVdmpfEval(benchmark::State &state) {
   AesCtx<2> ctx;
-  fss::prp::Aes128Feistel prp;
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
-  VdmpfT vdmpf{ctx.prg, xor_hash, hash, prp};
-  typename VdmpfT::Key k0, k1;
+  SchemeT vdmpf{ctx.prg, xor_hash, hash, {}};
+  typename SchemeT::Key k0, k1;
   GenDmpfKeys(vdmpf, k0, k1);
   CheckCpuVdmpfBatch(vdmpf, k0, k1);
   uint32_t x = 0;
@@ -855,14 +866,14 @@ static void BM_CpuVdmpfEval(benchmark::State &state) {
   }
 }
 
+template <typename SchemeT>
 static void BM_CpuVdmpfEvalAll(benchmark::State &state) {
   constexpr size_t n = size_t{1} << kInBits;
   AesCtx<2> ctx;
-  fss::prp::Aes128Feistel prp;
   fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
   fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
-  VdmpfT vdmpf{ctx.prg, xor_hash, hash, prp};
-  typename VdmpfT::Key k0, k1;
+  SchemeT vdmpf{ctx.prg, xor_hash, hash, {}};
+  typename SchemeT::Key k0, k1;
   GenDmpfKeys(vdmpf, k0, k1);
   CheckCpuVdmpfBatch(vdmpf, k0, k1);
   std::vector<uint32_t> xs(n);
@@ -879,12 +890,20 @@ static void BM_CpuVdmpfEvalAll(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * n);
 }
 
-BENCHMARK(BM_CpuDmpfGen)->Name("fss/CPU/DMPF-bytes/Gen");
-BENCHMARK(BM_CpuDmpfEval)->Name("fss/CPU/DMPF-bytes/Eval");
-BENCHMARK(BM_CpuDmpfEvalAll)->Name("fss/CPU/DMPF-bytes/EvalAll");
-BENCHMARK(BM_CpuVdmpfGen)->Name("fss/CPU/VDMPF-bytes/Gen");
-BENCHMARK(BM_CpuVdmpfEval)->Name("fss/CPU/VDMPF-bytes/Eval");
-BENCHMARK(BM_CpuVdmpfEvalAll)->Name("fss/CPU/VDMPF-bytes/EvalAll");
+BENCHMARK(BM_CpuDmpfGen<DmpfT>)->Name("fss/CPU/DMPF-bytes/Gen");
+BENCHMARK(BM_CpuDmpfEval<DmpfT>)->Name("fss/CPU/DMPF-bytes/Eval");
+BENCHMARK(BM_CpuDmpfEvalAll<DmpfT>)->Name("fss/CPU/DMPF-bytes/EvalAll");
+BENCHMARK(BM_CpuVdmpfGen<VdmpfT>)->Name("fss/CPU/VDMPF-bytes/Gen");
+BENCHMARK(BM_CpuVdmpfEval<VdmpfT>)->Name("fss/CPU/VDMPF-bytes/Eval");
+BENCHMARK(BM_CpuVdmpfEvalAll<VdmpfT>)->Name("fss/CPU/VDMPF-bytes/EvalAll");
+#ifdef FSS_BENCH_AES_NI
+BENCHMARK(BM_CpuDmpfGen<DmpfRawPrpT>)->Name("fss/CPU/DMPF-bytes-AES-NI-rawprp/Gen");
+BENCHMARK(BM_CpuDmpfEval<DmpfRawPrpT>)->Name("fss/CPU/DMPF-bytes-AES-NI-rawprp/Eval");
+BENCHMARK(BM_CpuDmpfEvalAll<DmpfRawPrpT>)->Name("fss/CPU/DMPF-bytes-AES-NI-rawprp/EvalAll");
+BENCHMARK(BM_CpuVdmpfGen<VdmpfRawPrpT>)->Name("fss/CPU/VDMPF-bytes-AES-NI-rawprp/Gen");
+BENCHMARK(BM_CpuVdmpfEval<VdmpfRawPrpT>)->Name("fss/CPU/VDMPF-bytes-AES-NI-rawprp/Eval");
+BENCHMARK(BM_CpuVdmpfEvalAll<VdmpfRawPrpT>)->Name("fss/CPU/VDMPF-bytes-AES-NI-rawprp/EvalAll");
+#endif
 
 // ============================================================
 // CPU VDPF benchmarks (eprint 2021/580 point baseline)

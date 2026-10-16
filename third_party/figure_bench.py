@@ -119,12 +119,14 @@ def pattern(case):
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
         # The packed-key point evaluations and the CPU VDPF Merkle fold carry a
         # middle name segment, mirroring the GPU AesSoft variant; the optional
-        # segment keeps every plain name matching exactly as before.
+        # segment keeps every plain name matching exactly as before. The DMPF and
+        # VDMPF AES-NI raw-PRP twins append the backend to the scheme-group name.
         segment = "(PackedKeyOneShot|PackedKey|Merkle)/"
+        rawprp = "" if case.get("scheme") and case["scheme"] not in ("DMPF", "VDMPF") else "(-AES-NI-rawprp)?"
         if case.get("scheme"):
-            return f"^fss/CPU/{case['scheme']}-{groups}/({segment})?{operation}(/|$)"
-        return (f"^fss/CPU/((DPF|DCF|HalfTreeDPF|DMPF|VDMPF|VDPF)-{groups}|PackedHalfTreeDPF-bits1|GrottoDCF)"
-                f"/({segment})?{operation}(/|$)")
+            return f"^fss/CPU/{case['scheme']}-{groups}{rawprp}/({segment})?{operation}(/|$)"
+        return (f"^fss/CPU/((DPF|DCF|HalfTreeDPF|VDPF)-{groups}|(DMPF|VDMPF)-{groups}{rawprp}"
+                f"|PackedHalfTreeDPF-bits1|GrottoDCF)/({segment})?{operation}(/|$)")
     if case["library"] == "ezpc" and case["operation"] != "EvalAll":
         return f"^EzPC/GPU/(DPF|DCF)/{operation}/{case['num_keys']}(/|$)"
     prefix = "fss" if case["library"] == "fss" else ".*"
@@ -415,7 +417,8 @@ def polish_metadata(row):
     # Variant qualifiers keep the packed-key rows and the two proof accumulators
     # apart in every legend and on the site. Polish recomputes them at export
     # and merge time, so rows collected before a qualifier existed align with
-    # the current naming.
+    # the current naming. The raw-PRP qualifier stacks onto the base one so the
+    # CPU VDMPF chain row keeps its accumulator marker.
     qualifier = ""
     if library == "fss":
         if "PackedKeyOneShot" in benchmark:
@@ -426,6 +429,8 @@ def polish_metadata(row):
             qualifier = "-merkle" if row.get("implementation") == "merkle_fold_proof" else "-chains"
         elif scheme == "VDMPF":
             qualifier = "-merkle-fold" if device == "gpu" else "-chains"
+        if "AES-NI-rawprp" in benchmark:
+            qualifier += "-rawprp"
     variant_suffix = ("-simd8" if row.get("implementation") == "simd8_frontier" else "") + qualifier
     row["variant"] = scheme + "-" + row.get("group", "native") + "-" + row.get("prg", "native") + variant_suffix
     row["label"] = library + "/" + row["variant"]

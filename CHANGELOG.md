@@ -147,6 +147,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference implementation (sachaservan/vdpf, eprint 2021/580, pinned submodule with a
   benchmark adapter). Both include proof generation in the timed evaluation. Verification is
   an equality check outside timing.
+* `Aes128FeistelRaw` small-domain PRP backend: the `Aes128Feistel` construction bit-exact,
+  with the AES-128 block operations issued as AES-NI intrinsics instead of OpenSSL EVP calls
+  and the four per-round key schedules expanded once per seed and cached in the instance
+  (`Permu` keeps its seed parameter; a seed change re-expands). Host-only. The CPU DMPF /
+  VDMPF benchmark curves gain `DMPF-bytes-AES-NI-rawprp` / `VDMPF-bytes-AES-NI-rawprp`
+  twin rows beside the OpenSSL-PRP rows, wired through `figure_bench.py` as a `-rawprp`
+  variant qualifier. Tests cover bit-exactness against `Aes128Feistel` (exhaustive small
+  domains plus 2^20 samples on a 100-bit domain), determinism, seed switching through the
+  key cache, bucket balance, and DMPF + Cuckoo `Compact` end-to-end on the new backend.
 
 ### Changed
 

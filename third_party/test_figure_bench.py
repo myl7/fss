@@ -186,6 +186,36 @@ class FigureSweepTest(unittest.TestCase):
         self.assertEqual((refreshed["variant"], refreshed["label"]),
                          ("VDPF-bytes-AES-NI-chains", "fss/VDPF-bytes-AES-NI-chains"))
 
+    def test_rawprp_pattern_and_variant(self):
+        # The AES-NI raw-PRP DMPF/VDMPF twins join the plain rows in one CPU sweep.
+        case = self.case(platform="cpu", operation="EvalAll")
+        for name in ("fss/CPU/DMPF-bytes/EvalAll", "fss/CPU/DMPF-bytes-AES-NI-rawprp/EvalAll",
+                     "fss/CPU/VDMPF-bytes/EvalAll", "fss/CPU/VDMPF-bytes-AES-NI-rawprp/EvalAll"):
+            self.assertRegex(name, sweep.pattern(case))
+        # The suffix stays scoped to the two schemes that register raw-PRP rows.
+        self.assertNotRegex("fss/CPU/DPF-bytes-AES-NI-rawprp/EvalAll", sweep.pattern(case))
+        self.assertNotRegex("fss/CPU/VDMPF-bytes/Merkle-AES-NI-rawprp/EvalAll", sweep.pattern(case))
+        dmpf = sweep.normalize(self.case(platform="cpu", operation="Eval"), "fss/CPU/DMPF-bytes-AES-NI-rawprp/Eval", 1000, "raw", {})
+        self.assertEqual((dmpf["scheme"], dmpf["group"], dmpf["prg"], dmpf["num_points"]), ("DMPF", "bytes", "AES-NI", 64))
+        self.assertEqual((dmpf["variant"], dmpf["label"]), ("DMPF-bytes-AES-NI-rawprp", "fss/DMPF-bytes-AES-NI-rawprp"))
+        vdmpf = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                                "fss/CPU/VDMPF-bytes-AES-NI-rawprp/EvalAll", 1000, "raw", {})
+        self.assertEqual((vdmpf["variant"], vdmpf["implementation"]), ("VDMPF-bytes-AES-NI-chains-rawprp", "native"))
+        plain = sweep.normalize(self.case(platform="cpu", operation="EvalAll"), "fss/CPU/VDMPF-bytes/EvalAll", 1000, "raw", {})
+        self.assertEqual(plain["variant"], "VDMPF-bytes-AES-NI-chains")
+        # A --scheme DMPF sweep collects the plain and raw-PRP rows together.
+        scheme_case = self.case(platform="cpu", operation="Gen", scheme="DMPF")
+        self.assertRegex("fss/CPU/DMPF-bytes/Gen", sweep.pattern(scheme_case))
+        self.assertRegex("fss/CPU/DMPF-bytes-AES-NI-rawprp/Gen", sweep.pattern(scheme_case))
+        # Other schemes never match the suffix.
+        dpf_case = self.case(platform="cpu", operation="Gen", scheme="DPF")
+        self.assertNotRegex("fss/CPU/DPF-bytes-AES-NI-rawprp/Gen", sweep.pattern(dpf_case))
+        # Rows exported before the qualifier existed refresh at merge time.
+        legacy = sweep.normalize(self.case(platform="cpu", operation="Eval"), "fss/CPU/DMPF-bytes-AES-NI-rawprp/Eval", 10, "raw", {})
+        legacy.update(variant="DMPF-bytes-AES-NI", label="fss/DMPF-bytes-AES-NI")
+        refreshed = sweep.polish_metadata(legacy)
+        self.assertEqual((refreshed["variant"], refreshed["label"]), ("DMPF-bytes-AES-NI-rawprp", "fss/DMPF-bytes-AES-NI-rawprp"))
+
     def test_new_library_case_coverage_matches_registered_operations(self):
         cases = sweep.cases(self.args(libraries="dpf-cpp,dpfplusplus,mastic,plasma", platform="cpu"))
         seen = {(c["library"], c["operation"], c["domain_bits"]) for c in cases}
