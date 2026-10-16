@@ -137,6 +137,10 @@ jobs:
         with:
           path: ~/.cache/fss_crypto
           key: jit-${{ matrix.python }}-${{ matrix.torch }}-${{ matrix.cuda }}-${{ hashFiles('fss_crypto/**', 'include/fss/**') }}
+          # Fall back to the newest cache of the same axis so ninja rebuilds
+          # only the extensions whose sources changed.
+          restore-keys: |
+            jit-${{ matrix.python }}-${{ matrix.torch }}-${{ matrix.cuda }}-
 
       - name: Install
         run: |
