@@ -117,9 +117,14 @@ def pattern(case):
         operation = "EvalAllFull"
     if case["library"] == "fss" and case["platform"] == "cpu":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
+        # The packed-key point evaluations and the CPU VDPF Merkle fold carry a
+        # middle name segment, mirroring the GPU AesSoft variant; the optional
+        # segment keeps every plain name matching exactly as before.
+        segment = "(PackedKeyOneShot|PackedKey|Merkle)/"
         if case.get("scheme"):
-            return f"^fss/CPU/{case['scheme']}-{groups}/{operation}(/|$)"
-        return f"^fss/CPU/((DPF|DCF|HalfTreeDPF|DMPF|VDMPF|VDPF)-{groups}|PackedHalfTreeDPF-bits1|GrottoDCF)/{operation}(/|$)"
+            return f"^fss/CPU/{case['scheme']}-{groups}/({segment})?{operation}(/|$)"
+        return (f"^fss/CPU/((DPF|DCF|HalfTreeDPF|DMPF|VDMPF|VDPF)-{groups}|PackedHalfTreeDPF-bits1|GrottoDCF)"
+                f"/({segment})?{operation}(/|$)")
     if case["library"] == "ezpc" and case["operation"] != "EvalAll":
         return f"^EzPC/GPU/(DPF|DCF)/{operation}/{case['num_keys']}(/|$)"
     prefix = "fss" if case["library"] == "fss" else ".*"
@@ -285,6 +290,10 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
         # Merkle-fold proof accumulation computed on device; the paper-faithful
         # chain stays on the CPU curves (doc/vdpf_merkle_fold_security.md).
         row.update(implementation="merkle_fold_proof")
+    elif scheme == "VDPF" and case["platform"] == "cpu" and "Merkle" in name:
+        # CPU Merkle-fold row: the counterpart of the GPU row above, kept apart
+        # from the paper-faithful chain row by its variant qualifier.
+        row.update(implementation="merkle_fold_proof")
     elif scheme == "VDPF" and case["library"] == "servan_vdpf":
         # Single-point VDPF reference implementation (sachaservan/vdpf).
         row.update(logical_output_bits=1, storage_output_bits=128, output_storage="uint128_scalar", num_points=1)
@@ -344,6 +353,7 @@ def polish_metadata(row):
     row = dict(row)
     library, device, operation = row["library"], row["platform"], row["operation"]
     scheme = row.get("scheme", "DPF")
+    benchmark = row.get("benchmark", "")
     if library == "fss_v070" and device == "gpu":
         row["prg"] = "Salsa12"
     if library == "gpu_dpf":
@@ -397,7 +407,26 @@ def polish_metadata(row):
     else:
         row["timing_boundary"] = "wall_time_operation"
         row["timing_boundary_detail"] = "Native framework wall time per operation; setup outside the benchmark iteration is excluded"
-    variant_suffix = "-simd8" if row.get("implementation") == "simd8_frontier" else ""
+        if library == "fss":
+            if "PackedKeyOneShot" in benchmark:
+                row["timing_boundary_detail"] = "Native framework wall time per point evaluation; the one-time key pack is inside timing"
+            elif "PackedKey" in benchmark:
+                row["timing_boundary_detail"] = "Native framework wall time per prepared-key point evaluation; the one-time key pack is outside timing"
+    # Variant qualifiers keep the packed-key rows and the two proof accumulators
+    # apart in every legend and on the site. Polish recomputes them at export
+    # and merge time, so rows collected before a qualifier existed align with
+    # the current naming.
+    qualifier = ""
+    if library == "fss":
+        if "PackedKeyOneShot" in benchmark:
+            qualifier = "-packedkey-oneshot"
+        elif "PackedKey" in benchmark:
+            qualifier = "-packedkey"
+        elif scheme == "VDPF" and operation == "EvalAll":
+            qualifier = "-merkle" if row.get("implementation") == "merkle_fold_proof" else "-chains"
+        elif scheme == "VDMPF":
+            qualifier = "-merkle-fold" if device == "gpu" else "-chains"
+    variant_suffix = ("-simd8" if row.get("implementation") == "simd8_frontier" else "") + qualifier
     row["variant"] = scheme + "-" + row.get("group", "native") + "-" + row.get("prg", "native") + variant_suffix
     row["label"] = library + "/" + row["variant"]
     if row.get("scheme") == "PackedHalfTreeDPF":

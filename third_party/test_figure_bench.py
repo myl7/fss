@@ -119,6 +119,73 @@ class FigureSweepTest(unittest.TestCase):
         self.assertNotIn("num_points", ours)
         self.assertEqual(ours["output_storage"], "materialized")
 
+    def test_cpu_pattern_collects_packed_key_and_merkle_rows(self):
+        case = self.case(platform="cpu", operation="Eval")
+        for name in ("fss/CPU/DPF-bytes/Eval", "fss/CPU/DPF-bytes/PackedKey/Eval",
+                     "fss/CPU/DPF-bytes/PackedKeyOneShot/Eval", "fss/CPU/HalfTreeDPF-bytes/PackedKey/Eval",
+                     "fss/CPU/HalfTreeDPF-bytes/PackedKeyOneShot/Eval"):
+            self.assertRegex(name, sweep.pattern(case))
+        # The CPU AesSoft variant, EvalAll names, and the Merkle row stay
+        # outside a plain Eval sweep.
+        self.assertNotRegex("fss/CPU/DPF-bytes/AesSoft/Eval", sweep.pattern(case))
+        self.assertNotRegex("fss/CPU/DPF-bytes/EvalAll", sweep.pattern(case))
+        self.assertNotRegex("fss/CPU/VDPF-bytes/Merkle/EvalAll", sweep.pattern(case))
+        eval_all = self.case(platform="cpu", operation="EvalAll")
+        for name in ("fss/CPU/DPF-bytes/EvalAll", "fss/CPU/VDPF-bytes/EvalAll", "fss/CPU/VDPF-bytes/Merkle/EvalAll"):
+            self.assertRegex(name, sweep.pattern(eval_all))
+        scheme_case = self.case(platform="cpu", operation="EvalAll", scheme="VDPF")
+        self.assertRegex("fss/CPU/VDPF-bytes/Merkle/EvalAll", sweep.pattern(scheme_case))
+        self.assertRegex("fss/CPU/VDPF-bytes/EvalAll", sweep.pattern(scheme_case))
+        self.assertNotRegex("fss/CPU/VDMPF-bytes/EvalAll", sweep.pattern(scheme_case))
+
+    def test_packed_key_and_vdpf_merkle_variant_metadata(self):
+        prepared = sweep.normalize(self.case(platform="cpu", operation="Eval"),
+                                   "fss/CPU/DPF-bytes/PackedKey/Eval", 1000, "raw", {})
+        self.assertEqual((prepared["variant"], prepared["label"]),
+                         ("DPF-bytes-AES-NI-packedkey", "fss/DPF-bytes-AES-NI-packedkey"))
+        self.assertEqual(prepared["timing_boundary"], "wall_time_operation")
+        self.assertIn("outside timing", prepared["timing_boundary_detail"])
+        oneshot = sweep.normalize(self.case(platform="cpu", operation="Eval"),
+                                  "fss/CPU/DPF-bytes/PackedKeyOneShot/Eval", 1000, "raw", {})
+        self.assertEqual((oneshot["variant"], oneshot["label"]),
+                         ("DPF-bytes-AES-NI-packedkey-oneshot", "fss/DPF-bytes-AES-NI-packedkey-oneshot"))
+        self.assertIn("inside timing", oneshot["timing_boundary_detail"])
+        half = sweep.normalize(self.case(platform="cpu", operation="Eval"),
+                               "fss/CPU/HalfTreeDPF-bytes/PackedKey/Eval", 1000, "raw", {})
+        self.assertEqual(half["variant"], "HalfTreeDPF-bytes-AES-NI-packedkey")
+        plain = sweep.normalize(self.case(platform="cpu", operation="Eval"), "fss/CPU/DPF-bytes/Eval", 1000, "raw", {})
+        self.assertEqual(len({plain["variant"], prepared["variant"], oneshot["variant"], half["variant"]}), 4)
+        merkle = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                                 "fss/CPU/VDPF-bytes/Merkle/EvalAll", 1000, "raw", {})
+        self.assertEqual((merkle["variant"], merkle["implementation"]),
+                         ("VDPF-bytes-AES-NI-merkle", "merkle_fold_proof"))
+        chain = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                                "fss/CPU/VDPF-bytes/EvalAll", 1000, "raw", {})
+        self.assertEqual((chain["variant"], chain["implementation"]),
+                         ("VDPF-bytes-AES-NI-chains", "native"))
+        # Point VDPF operations keep their base variant.
+        self.assertEqual(sweep.normalize(self.case(platform="cpu", operation="Eval"), "fss/CPU/VDPF-bytes/Eval", 1000,
+                                         "raw", {})["variant"], "VDPF-bytes-AES-NI")
+
+    def test_accumulator_variants_and_old_row_refresh(self):
+        cpu_vdmpf = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                                    "fss/CPU/VDMPF-bytes/EvalAll", 1000, "raw", {})
+        self.assertEqual(cpu_vdmpf["variant"], "VDMPF-bytes-AES-NI-chains")
+        gpu_vdmpf = sweep.normalize(self.case(operation="EvalAll", num_keys=1),
+                                    "fss/GPU/VDMPF-bytes/EvalAll", 1000, "raw", {})
+        self.assertEqual(gpu_vdmpf["variant"], "VDMPF-bytes-ChaCha20-x2-merkle-fold")
+        gpu_vdpf = sweep.normalize(self.case(operation="EvalAll", num_keys=1),
+                                   "fss/GPU/VDPF-bytes/EvalAll", 1000, "raw", {})
+        self.assertEqual((gpu_vdpf["variant"], gpu_vdpf["implementation"]),
+                         ("VDPF-bytes-ChaCha20-x2-merkle", "merkle_fold_proof"))
+        # Rows exported before the qualifiers existed refresh at merge time.
+        legacy = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
+                                 "fss/CPU/VDPF-bytes/EvalAll", 1000, "raw", {})
+        legacy.update(variant="VDPF-bytes-AES-NI", label="fss/VDPF-bytes-AES-NI")
+        refreshed = sweep.polish_metadata(legacy)
+        self.assertEqual((refreshed["variant"], refreshed["label"]),
+                         ("VDPF-bytes-AES-NI-chains", "fss/VDPF-bytes-AES-NI-chains"))
+
     def test_new_library_case_coverage_matches_registered_operations(self):
         cases = sweep.cases(self.args(libraries="dpf-cpp,dpfplusplus,mastic,plasma", platform="cpu"))
         seen = {(c["library"], c["operation"], c["domain_bits"]) for c in cases}

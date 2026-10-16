@@ -14,6 +14,7 @@
 #include <array>
 #include <memory>
 #include <span>
+#include <fss/point_eval_cpu.cuh>
 #include <fss/point_eval_gpu.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/packed_half_tree_dpf.cuh>
@@ -441,6 +442,147 @@ static void BM_CpuPackedHalfTreeDpfEvalAll(benchmark::State &state) {
 BENCHMARK(BM_CpuPackedHalfTreeDpfEvalAll)->Name("fss/CPU/PackedHalfTreeDPF-bits1/EvalAll");
 
 // ============================================================
+// CPU packed-key point evaluation benchmarks (point_eval_cpu)
+// ============================================================
+
+// The packed-key fast path must stay bit-exact with the scheme Eval on both
+// parties before any timing runs; a mismatch skips the benchmark loudly.
+template <typename Scheme, typename PackPoint, typename EvalPoint>
+static bool CheckCpuPackedPoint(benchmark::State &state, Scheme &scheme, PackPoint pack_point, EvalPoint eval_point,
+    const typename Scheme::Key &k0, const typename Scheme::Key &k1) {
+  const auto p0 = pack_point(k0);
+  const auto p1 = pack_point(k1);
+  const uint32_t points[] = {0, kAlpha - 1, kAlpha, kAlpha + 1, (1u << kInBits) - 1};
+  for (uint32_t x : points) {
+    for (bool b : {false, true}) {
+      int4 expected = scheme.Eval(b, b ? k1 : k0, x);
+      int4 actual = eval_point(b, b ? p1 : p0, x);
+      if (!EqualInt4(expected, actual)) {
+        state.SkipWithError("packed-key point evaluation mismatch with the scheme Eval");
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// par_depth stays at its default because the pack helpers key on the default
+// Dpf / HalfTreeDpf type and par_depth only affects EvalAll, which these
+// point benchmarks never call.
+template <typename Group>
+static void BM_CpuDpfPackedKeyEval(benchmark::State &state) {
+  using DpfT = fss::Dpf<kInBits, Group, CpuPrg<2>, uint32_t>;
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename DpfT::Key k0, k1;
+  AesCtx<2> ctx;
+  DpfT dpf{ctx.prg};
+  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha, kBeta);
+  CheckCpuScheme<Group, false>(dpf, k0, k1);
+  if (!CheckCpuPackedPoint(state, dpf,
+          [](const typename DpfT::Key &key) { return fss::cpu::DpfPackPoint<kInBits, Group, CpuPrg<2>, uint32_t>(key); },
+          [&dpf](bool b, const fss::cpu::DpfPointKey<kInBits> &key, uint32_t x) {
+            return fss::cpu::DpfEvalPoint<kInBits, Group, CpuPrg<2>, uint32_t>(b, key, x, dpf.prg);
+          }, k0, k1)) {
+    return;
+  }
+  const fss::cpu::DpfPointKey<kInBits> p0 = fss::cpu::DpfPackPoint<kInBits, Group, CpuPrg<2>, uint32_t>(k0);
+  uint32_t x = 0;
+  for (auto _ : state) {
+    int4 y = fss::cpu::DpfEvalPoint<kInBits, Group, CpuPrg<2>, uint32_t>(false, p0, x, ctx.prg);
+    benchmark::DoNotOptimize(y);
+    x = (x + 1) & ((1u << kInBits) - 1);
+  }
+}
+
+template <typename Group>
+static void BM_CpuDpfPackedKeyOneShotEval(benchmark::State &state) {
+  using DpfT = fss::Dpf<kInBits, Group, CpuPrg<2>, uint32_t>;
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename DpfT::Key k0, k1;
+  AesCtx<2> ctx;
+  DpfT dpf{ctx.prg};
+  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha, kBeta);
+  CheckCpuScheme<Group, false>(dpf, k0, k1);
+  if (!CheckCpuPackedPoint(state, dpf,
+          [](const typename DpfT::Key &key) { return fss::cpu::DpfPackPoint<kInBits, Group, CpuPrg<2>, uint32_t>(key); },
+          [&dpf](bool b, const fss::cpu::DpfPointKey<kInBits> &key, uint32_t x) {
+            return fss::cpu::DpfEvalPoint<kInBits, Group, CpuPrg<2>, uint32_t>(b, key, x, dpf.prg);
+          }, k0, k1)) {
+    return;
+  }
+  uint32_t x = 0;
+  for (auto _ : state) {
+    const fss::cpu::DpfPointKey<kInBits> p0 = fss::cpu::DpfPackPoint<kInBits, Group, CpuPrg<2>, uint32_t>(k0);
+    int4 y = fss::cpu::DpfEvalPoint<kInBits, Group, CpuPrg<2>, uint32_t>(false, p0, x, ctx.prg);
+    benchmark::DoNotOptimize(y);
+    x = (x + 1) & ((1u << kInBits) - 1);
+  }
+}
+
+template <typename Group>
+static void BM_CpuHalfTreeDpfPackedKeyEval(benchmark::State &state) {
+  using DpfT = fss::HalfTreeDpf<kInBits, Group, CpuPrg<1>, uint32_t>;
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename DpfT::Key k0, k1;
+  AesCtx<1> ctx;
+  DpfT dpf{ctx.prg, kHalfTreeHashKey};
+  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha, kBeta);
+  CheckCpuSchemeWith<Group, false>(dpf, k0, k1);
+  if (!CheckCpuPackedPoint(state, dpf,
+          [](const typename DpfT::Key &key) {
+            return fss::cpu::HalfTreeDpfPackPoint<kInBits, Group, CpuPrg<1>, uint32_t>(key);
+          },
+          [&dpf](bool b, const fss::cpu::HalfTreeDpfPointKey<kInBits> &key, uint32_t x) {
+            return fss::cpu::HalfTreeDpfEvalPoint<kInBits, Group, CpuPrg<1>, uint32_t>(b, key, x, dpf.prg, dpf.hash_key);
+          }, k0, k1)) {
+    return;
+  }
+  const fss::cpu::HalfTreeDpfPointKey<kInBits> p0 =
+      fss::cpu::HalfTreeDpfPackPoint<kInBits, Group, CpuPrg<1>, uint32_t>(k0);
+  uint32_t x = 0;
+  for (auto _ : state) {
+    int4 y = fss::cpu::HalfTreeDpfEvalPoint<kInBits, Group, CpuPrg<1>, uint32_t>(false, p0, x, ctx.prg, kHalfTreeHashKey);
+    benchmark::DoNotOptimize(y);
+    x = (x + 1) & ((1u << kInBits) - 1);
+  }
+}
+
+template <typename Group>
+static void BM_CpuHalfTreeDpfPackedKeyOneShotEval(benchmark::State &state) {
+  using DpfT = fss::HalfTreeDpf<kInBits, Group, CpuPrg<1>, uint32_t>;
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename DpfT::Key k0, k1;
+  AesCtx<1> ctx;
+  DpfT dpf{ctx.prg, kHalfTreeHashKey};
+  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha, kBeta);
+  CheckCpuSchemeWith<Group, false>(dpf, k0, k1);
+  if (!CheckCpuPackedPoint(state, dpf,
+          [](const typename DpfT::Key &key) {
+            return fss::cpu::HalfTreeDpfPackPoint<kInBits, Group, CpuPrg<1>, uint32_t>(key);
+          },
+          [&dpf](bool b, const fss::cpu::HalfTreeDpfPointKey<kInBits> &key, uint32_t x) {
+            return fss::cpu::HalfTreeDpfEvalPoint<kInBits, Group, CpuPrg<1>, uint32_t>(b, key, x, dpf.prg, dpf.hash_key);
+          }, k0, k1)) {
+    return;
+  }
+  uint32_t x = 0;
+  for (auto _ : state) {
+    const fss::cpu::HalfTreeDpfPointKey<kInBits> p0 =
+        fss::cpu::HalfTreeDpfPackPoint<kInBits, Group, CpuPrg<1>, uint32_t>(k0);
+    int4 y = fss::cpu::HalfTreeDpfEvalPoint<kInBits, Group, CpuPrg<1>, uint32_t>(false, p0, x, ctx.prg, kHalfTreeHashKey);
+    benchmark::DoNotOptimize(y);
+    x = (x + 1) & ((1u << kInBits) - 1);
+  }
+}
+
+BENCHMARK(BM_CpuDpfPackedKeyEval<BytesGroup>)->Name("fss/CPU/DPF-bytes/PackedKey/Eval");
+BENCHMARK(BM_CpuDpfPackedKeyEval<UintGroup>)->Name("fss/CPU/DPF-uint/PackedKey/Eval");
+BENCHMARK(BM_CpuDpfPackedKeyOneShotEval<BytesGroup>)->Name("fss/CPU/DPF-bytes/PackedKeyOneShot/Eval");
+BENCHMARK(BM_CpuDpfPackedKeyOneShotEval<UintGroup>)->Name("fss/CPU/DPF-uint/PackedKeyOneShot/Eval");
+BENCHMARK(BM_CpuHalfTreeDpfPackedKeyEval<BytesGroup>)->Name("fss/CPU/HalfTreeDPF-bytes/PackedKey/Eval");
+BENCHMARK(BM_CpuHalfTreeDpfPackedKeyOneShotEval<BytesGroup>)->Name("fss/CPU/HalfTreeDPF-bytes/PackedKeyOneShot/Eval");
+
+// ============================================================
 // CPU Grotto DCF benchmarks
 // ============================================================
 
@@ -805,6 +947,33 @@ static void CheckCpuVdpfFull(const typename VdpfT::Key &k0, const typename VdpfT
   }
 }
 
+// EvalAllMerkle must reconstruct the same shares as EvalAll and both parties'
+// Merkle-fold proofs must verify; the accumulator differs from the chain, so
+// only Verify() is shared between the two rows.
+static void CheckCpuVdpfFullMerkle(const typename VdpfT::Key &k0, const typename VdpfT::Key &k1) {
+  constexpr size_t n = size_t{1} << kInBits;
+  AesCtx<2> ctx;
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  VdpfT vdpf{ctx.prg, xor_hash, hash};
+  std::vector<int4> first(n), second(n);
+  cuda::std::array<int4, 4> pi0, pi1;
+  vdpf.EvalAllMerkle(false, k0, cuda::std::span<int4>(first.data(), n), pi0);
+  vdpf.EvalAllMerkle(true, k1, cuda::std::span<int4>(second.data(), n), pi1);
+  if (!VdpfT::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1))) {
+    fprintf(stderr, "vdpf merkle full-domain proof rejected on honest shares\n");
+    exit(1);
+  }
+  for (size_t x = 0; x < n; ++x) {
+    int4 actual = (BytesGroup::From(first[x]) + BytesGroup::From(second[x])).Into();
+    int4 expected = GroupFromBeta(x == kAlpha);
+    if (actual.x != expected.x || actual.y != expected.y || actual.z != expected.z || actual.w != expected.w) {
+      fprintf(stderr, "vdpf merkle full reconstruction mismatch at input %zu\n", x);
+      exit(1);
+    }
+  }
+}
+
 static void BM_CpuVdpfGen(benchmark::State &state) {
   int4 seeds[2] = {kSeeds[0], kSeeds[1]};
   typename VdpfT::Key k0, k1;
@@ -872,9 +1041,37 @@ static void BM_CpuVdpfEvalAll(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * n);
 }
 
+// Same shape as BM_CpuVdpfEvalAll but with the Merkle-fold accumulator; the
+// proof is produced inside the timed loop and only compared outside it.
+static void BM_CpuVdpfEvalAllMerkle(benchmark::State &state) {
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename VdpfT::Key k0, k1;
+  constexpr size_t n = size_t{1} << kInBits;
+  std::vector<int4> ys(n);
+  AesCtx<2> ctx;
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kDmpfHashIv, 2)};
+  VdpfT vdpf{ctx.prg, xor_hash, hash};
+  if (vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), kAlpha, kBeta) != 0) {
+    fprintf(stderr, "vdpf gen failed after retries\n");
+    exit(1);
+  }
+  CheckCpuVdpfScheme(k0, k1);
+  CheckCpuVdpfFull(k0, k1);
+  CheckCpuVdpfFullMerkle(k0, k1);
+  cuda::std::array<int4, 4> pi;
+  for (auto _ : state) {
+    vdpf.EvalAllMerkle(false, k0, cuda::std::span<int4>(ys.data(), n), pi);
+    benchmark::DoNotOptimize(ys.data());
+    benchmark::DoNotOptimize(pi);
+  }
+  state.SetItemsProcessed(state.iterations() * n);
+}
+
 BENCHMARK(BM_CpuVdpfGen)->Name("fss/CPU/VDPF-bytes/Gen");
 BENCHMARK(BM_CpuVdpfEval)->Name("fss/CPU/VDPF-bytes/Eval");
 BENCHMARK(BM_CpuVdpfEvalAll)->Name("fss/CPU/VDPF-bytes/EvalAll");
+BENCHMARK(BM_CpuVdpfEvalAllMerkle)->Name("fss/CPU/VDPF-bytes/Merkle/EvalAll");
 
 // ============================================================
 // GPU DPF/DCF kernels (ChaCha PRG)

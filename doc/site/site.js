@@ -32,6 +32,12 @@ const TIMING_NAMES = {
 // can be set against each other.
 const comparablePool = family => family === 'dmpf' ? 'dmpf' : 'point';
 const PREFERRED_B = ['libdpf', 'google_dpf', 'ezpc', 'libfss', 'servan_vdpf', 'dpf-cpp', 'dpfplusplus', 'mastic', 'plasma', 'gpu_dpf', 'fss_v070', 'fss_v060', 'fss'];
+// Variant suffix qualifiers set by the sweep: the evaluation-path variants and
+// the two proof accumulators differ only there, so the options must say so.
+// Longer suffixes first so -packedkey-oneshot wins over -packedkey.
+const VARIANT_TAGS = [['-packedkey-oneshot', 'one-shot pack + point eval'], ['-packedkey', 'packed-key point eval'],
+  ['-merkle-fold', 'Merkle-fold proof'], ['-merkle', 'Merkle-fold proof'], ['-chains', 'sequential-chain proof']];
+const variantTag = variant => VARIANT_TAGS.find(([suffix]) => variant.endsWith(suffix))?.[1];
 
 let variants = new Map();
 const state = {platform: 'cpu', a: null, b: null, op: null};
@@ -92,7 +98,7 @@ function optionLabel(entry) {
   // Library prefix keeps variants apart when two libraries share a scheme and
   // PRG backend (FSS and FSS 0.7.0 both run AES-NI MMO DCF).
   return `${LIBRARY_SHORT[entry.library] ?? entry.library} ${SCHEME_NAMES[entry.scheme]} — ` +
-    `${[outputQualifier(entry.sample), PRG_NAMES[entry.sample.prg] ?? entry.sample.prg].filter(Boolean).join(', ')}`;
+    `${[outputQualifier(entry.sample), PRG_NAMES[entry.sample.prg] ?? entry.sample.prg, variantTag(entry.variant)].filter(Boolean).join(', ')}`;
 }
 
 function optionMarkup(entries, selected) {

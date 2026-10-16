@@ -64,6 +64,14 @@ proof included in the timing, while the CPU VDMPF curves time the
 paper-faithful sequential chains - the accumulator difference follows the
 per-platform-implementation split below, and proofs do not verify across the
 two accumulators.
+The CPU VDPF `Merkle/EvalAll` row joins the plain chain row with the other
+accumulator choice: its timed loop produces the Merkle-fold proof, and
+verification runs outside timing with the accumulator required to match
+between the two parties
+([the security doc](vdpf_merkle_fold_security.md)).
+VDMPF and VDPF variants carry the accumulator in their names, `-chains` for
+the CPU chain rows and `-merkle-fold` or `-merkle` for the Merkle-fold rows,
+so the legends and the comparison site keep the difference visible.
 The two platforms drive the Cuckoo Locate with their own optimal PRP backend:
 GPU curves use the device-callable `ChaChaFeistel` while CPU curves keep the
 OpenSSL-backed `Aes128Feistel`, and the figures compare implementations within
@@ -75,6 +83,13 @@ reference adapter follows upstream test usage: its MMO hash objects are
 stateful (AES-CTR), so each timed Gen, Eval, or EvalAll re-initializes them
 inside the timing region, and proof verification is an equality check
 outside timing.
+
+Plain DPF and HalfTree DPF add packed-key point evaluation rows while their
+Eval curves stay the unprepared default. `PackedKey/Eval` packs the key once
+outside timing and times only prepared-key point evaluations cycling over the
+domain. `PackedKeyOneShot/Eval` times the pack plus one point evaluation per
+iteration, which is the cost without key reuse. Both rows check bit-exact
+agreement with the scheme Eval for both parties outside timing.
 
 Current FSS GPU FullEval sets `z = min(17, n)` for DPF,
 `z = min(17, n - 1)` for HalfTreeDPF, and `b1 = z - log2(T)`.
@@ -117,7 +132,7 @@ can differ from those tables.
 | Current FSS and historical FSS 0.7 | 127-bit XOR byte group, 128-bit storage · optional integer group modulo 2^127 |
 | Current FSS Grotto DCF | One logical comparison bit · EvalAll returns N bool shares |
 | Current FSS packed HalfTree DPF (experimental) | One logical bit · EvalAll returns N/128 packed 128-bit blocks |
-| Current FSS VDPF GPU EvalAll | Merkle-fold proof accumulated on device · CPU VDPF EvalAll keeps the paper's sequential chain · analysis in [the security doc](vdpf_merkle_fold_security.md) |
+| Current FSS VDPF EvalAll | Merkle-fold proof accumulated on device and on the CPU `Merkle` row · the base CPU VDPF EvalAll row keeps the paper's sequential chain · analysis in [the security doc](vdpf_merkle_fold_security.md) |
 | Current FSS DMPF / VDMPF | 127-bit XOR byte group per point · t=64 points over m=112 Cuckoo buckets |
 | Servan-Schreiber VDPF (reference) | One logical bit · uint128 shares materialized per point · single point (t=1) |
 | Rust FSS 0.6 | 128-bit XOR bytes · optional integer group modulo 2^128 |
