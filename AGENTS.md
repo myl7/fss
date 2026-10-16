@@ -15,8 +15,7 @@
   - python: fss_crypto bindings and their tests
 - Before finishing work on unpushed commits, tidy the history: squash fix-ups into
   their original commits (commit --fixup plus rebase --autosquash), drop unpushed
-  change-and-revert pairs, fold README/CHANGELOG records into the feature commit they
-  document, and keep one logical change per commit.
+  change-and-revert pairs, and keep one logical change per commit.
 - Public library code belongs under `include/fss`. `src` contains tests and
   benchmarks.
 - When changing the public header layout, verify wheel packaging and JIT
