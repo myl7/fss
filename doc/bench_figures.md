@@ -204,13 +204,13 @@ python3 third_party/figure_bench.py run --platform cpu --sweep domain \
   --cpu 24 --cpu-prg aes-ni --governor performance --jobs 2 \
   --directory build/third_party/sweep/results/cpu-domain
 python3 third_party/figure_bench.py run --platform gpu --sweep domain \
-  --cpu 16 --gpu 1 --cuda-arch 120 --governor performance --jobs 2 \
+  --cpu 100 --gpu 1 --cuda-arch 86 --governor keep --jobs 2 \
   --directory build/third_party/sweep/results/gpu-domain
 python3 third_party/figure_bench.py run --platform gpu --libraries fss \
   --sweep block --operations Eval EvalAll --domain-bits 20 \
   --threads-per-block 16 32 64 128 256 512 1024 \
-  --num-keys 262144 --cpu 16 --gpu 1 --cuda-arch 120 \
-  --governor performance --jobs 2 \
+  --num-keys 262144 --cpu 100 --gpu 1 --cuda-arch 86 \
+  --governor keep --jobs 2 \
   --directory build/third_party/sweep/results/gpu-block
 python3 third_party/figure_bench.py export \
   --directory build/third_party/sweep/results/cpu-domain
@@ -221,9 +221,9 @@ python3 third_party/figure_bench.py merge \
   --directory build/third_party/sweep/results/merged
 ```
 
-`run` exports its `chart-data.json` and CSV. Use `export` on an individual run
-to rebuild them from saved `case.json` files. `merge` combines completed run
-exports. For an explicit retry, pass its directory to `merge --retry-inputs`
+`run` exports its `chart-data.json` and CSV. Use `export` on an individual
+run to rebuild them from saved `case.json` files. `merge` combines completed
+run exports. For an explicit retry, pass its directory to `merge --retry-inputs`
 and retain the superseded attempt provenance. A nonzero exit status can
 accompany a completed dataset containing recorded failures. Inspect the
 records and logs before continuing.
