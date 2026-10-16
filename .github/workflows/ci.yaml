@@ -134,6 +134,15 @@ jobs:
           echo "/usr/local/cuda-${CUDA}/bin" >> "$GITHUB_PATH"
           echo "LD_LIBRARY_PATH=/usr/local/cuda-${CUDA}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
+      # An empty CC/CXX/CUDAHOSTCXX export makes torch emit a bare -ccbin that
+      # breaks nvcc, so only export the vars when the matrix pins a compiler.
+      - name: Select host compiler
+        if: matrix.cxx != ''
+        run: |
+          echo "CC=${{ matrix.cc }}" >> "$GITHUB_ENV"
+          echo "CXX=${{ matrix.cxx }}" >> "$GITHUB_ENV"
+          echo "CUDAHOSTCXX=${{ matrix.cxx }}" >> "$GITHUB_ENV"
+
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -147,19 +156,12 @@ jobs:
           key: jit-${{ matrix.python }}-${{ matrix.torch }}-${{ matrix.cuda }}-${{ hashFiles('fss_crypto/**', 'include/fss/**') }}
 
       - name: Install
-        env:
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
         run: |
           pip install --upgrade pip setuptools wheel
           pip install ${{ matrix.torch }} ${{ matrix.index }}
           pip install --no-build-isolation -e '.[dev]'
 
       - name: Test
-        env:
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
-          CUDAHOSTCXX: ${{ matrix.cxx }}
         run: |
           python -m pytest test/ -q
 
