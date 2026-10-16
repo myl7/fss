@@ -5,12 +5,14 @@ on: [push, pull_request]
 jobs:
   cpp:
     # Endpoint testing: the oldest and newest CUDA toolkit that can build the
-    # C++/CUDA core on ubuntu-24.04 (the 12.4 toolkit is not published for
-    # 24.04; 12.6 is the oldest available series). Runners have no GPU, so
-    # device tests skip and the jobs verify compilation and host paths.
-    # Versions are pinned to major.minor; patches resolve on their own.
+    # C++/CUDA core (the 12.4 toolkit is not published for ubuntu-24.04; 12.6
+    # is the oldest available series). Runners have no GPU, so device tests
+    # skip and the jobs verify compilation and host paths.
+    # Ubuntu is pinned because ubuntu-latest flips to Ubuntu 26 on 2026-10-19
+    # and the NVIDIA apt repo is distro-specific.
+    # Versions are pinned to major.minor; apt resolves patches on its own.
     name: cpp (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -34,12 +36,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-12 g++-12
 
+      # Install straight from the NVIDIA network repo like
+      # Jimver/cuda-toolkit does: the action's strict-semver parser rejects
+      # major.minor pins and its version table does not know 13.4 yet.
       - name: Install CUDA
-        uses: Jimver/cuda-toolkit@v0.2.30
-        with:
-          method: network
-          cuda: ${{ matrix.cuda }}
-          sub-packages: '["nvcc"]'
+        env:
+          CUDA: ${{ matrix.cuda }}
+        run: |
+          repo=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64
+          wget -q "${repo}/cuda-keyring_1.1-1_all.deb" -O /tmp/cuda-keyring.deb
+          sudo dpkg -i /tmp/cuda-keyring.deb
+          wget -q "${repo}/cuda-ubuntu2404.pin" -O /tmp/cuda-pin
+          sudo mv /tmp/cuda-pin /etc/apt/preferences.d/cuda-repository-pin-600
+          sudo add-apt-repository "deb ${repo}/ /"
+          sudo apt-get update
+          sudo apt-get install -y "cuda-nvcc-$(echo "$CUDA" | tr . -)"
+          echo "CUDA_PATH=/usr/local/cuda-${CUDA}" >> "$GITHUB_ENV"
+          echo "/usr/local/cuda-${CUDA}/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=/usr/local/cuda-${CUDA}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Configure CMake
         env:
@@ -70,7 +84,7 @@ jobs:
     # torch.utils.cpp_extension. Runners have no GPU, so the JIT extension
     # compiles against TORCH_CUDA_ARCH_LIST=8.0 and CUDA tests skip.
     name: python (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -102,12 +116,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-12 g++-12
 
+      # Same direct NVIDIA repo install as the cpp job; see the comment there
+      # for why this does not use Jimver/cuda-toolkit.
       - name: Install CUDA
-        uses: Jimver/cuda-toolkit@v0.2.30
-        with:
-          method: network
-          cuda: ${{ matrix.cuda }}
-          sub-packages: '["nvcc"]'
+        env:
+          CUDA: ${{ matrix.cuda }}
+        run: |
+          repo=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64
+          wget -q "${repo}/cuda-keyring_1.1-1_all.deb" -O /tmp/cuda-keyring.deb
+          sudo dpkg -i /tmp/cuda-keyring.deb
+          wget -q "${repo}/cuda-ubuntu2404.pin" -O /tmp/cuda-pin
+          sudo mv /tmp/cuda-pin /etc/apt/preferences.d/cuda-repository-pin-600
+          sudo add-apt-repository "deb ${repo}/ /"
+          sudo apt-get update
+          sudo apt-get install -y "cuda-nvcc-$(echo "$CUDA" | tr . -)"
+          echo "CUDA_PATH=/usr/local/cuda-${CUDA}" >> "$GITHUB_ENV"
+          echo "/usr/local/cuda-${CUDA}/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=/usr/local/cuda-${CUDA}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Cache pip
         uses: actions/cache@v4
