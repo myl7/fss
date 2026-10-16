@@ -22,6 +22,12 @@ namespace fss::prg {
  *
  * Only for host side.
  *
+ * Concurrency: Gen() runs EVP_EncryptUpdate on the ctxs, and copies of an instance
+ * share the same ctxs. OpenSSL does not document one ctx as safe for concurrent
+ * updates even for full-block no-padding ECB, so Gen() must not run concurrently
+ * on instances sharing ctxs. Parallel host evaluation needs a PRG whose Gen() is
+ * safe to call concurrently, such as ChaCha or Aes128MmoRaw.
+ *
  * @tparam mul See Prgable mul.
  */
 template <int mul>
