@@ -198,6 +198,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loops `Gen` otherwise. At 2^20 the DPF bytes evaluation drops from 34 to 12 ms, the
   integer group from 22 to 7.6 ms, and the Half-Tree from 20 to 5 ms, bit-exact before
   and after. Every new loop honors `par_depth`, so 0 keeps the walk sequential.
+* The DCF CPU `EvalAll` path grows the same batched frontier: every frontier node carries
+  the running group value beside the seed, one batched expansion per eight nodes per level
+  applies the branchless seed correction plus the v-channel correction — in branchless
+  masked forms for the XOR and the clamped 127-bit integer groups — and 64-leaf groups
+  convert in local memory. Single-threaded pinned with the AES-NI raw PRG at 2^20 the
+  bytes evaluation drops from 36 to 14 ms and the 127-bit integer group from 49 to 19 ms
+  (13.8 and 18.3 ns per output), bit-exact before and after. Every new loop honors
+  `par_depth`, so 0 keeps the walk sequential.
 
 ### Fixed
 

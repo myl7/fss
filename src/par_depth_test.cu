@@ -14,6 +14,7 @@
 #include <cstring>
 #include <thread>
 #include <vector>
+#include <fss/dcf.cuh>
 #include <fss/dpf.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/packed_half_tree_dpf.cuh>
@@ -169,6 +170,23 @@ void RunDpfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &y
 }
 
 template <int in_bits, int par_depth>
+void RunDcfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
+  using DcfType = fss::Dcf<in_bits, BytesGroup, CountingPrg<4>, uint16_t, fss::DcfPred::kLt, par_depth>;
+  CountingPrg<4> prg{c};
+  DcfType dcf{prg};
+
+  int4 s0s[2];
+  FillSeeds(s0s);
+  typename DcfType::Key k0, k1;
+  dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
+
+  ys0.resize(size_t{1} << in_bits);
+  ys1.resize(size_t{1} << in_bits);
+  dcf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+  dcf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+}
+
+template <int in_bits, int par_depth>
 void RunHalfTreeEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
   using DpfType = fss::HalfTreeDpf<in_bits, BytesGroup, CountingPrg<1>, uint16_t, par_depth>;
   CountingPrg<1> prg{c};
@@ -236,6 +254,17 @@ void ExpectReconstruction(const std::vector<int4> &ys0, const std::vector<int4> 
   }
 }
 
+// Checks the DCF reconstruction with the lt predicate: the parties' shares add up to
+// beta below alpha and to zero everywhere else.
+void ExpectDcfLtReconstruction(const std::vector<int4> &ys0, const std::vector<int4> &ys1, uint16_t alpha) {
+  int4 expected = BytesGroup::From(kBeta).Into();
+  int4 zero = {0, 0, 0, 0};
+  for (size_t x = 0; x < ys0.size(); ++x) {
+    int4 sum = (BytesGroup::From(ys0[x]) + BytesGroup::From(ys1[x])).Into();
+    EXPECT_EQ(memcmp(&sum, x < alpha ? &expected : &zero, sizeof(int4)), 0) << "Failed at x=" << x;
+  }
+}
+
 }  // namespace
 
 TEST(ParDepthTest, CounterDetectsConcurrentCalls) {
@@ -275,6 +304,28 @@ TEST(ParDepthTest, DpfEvalAllHonorsZeroParDepth) {
   EXPECT_TRUE(EqualBuffers(ys0_large_seq, ys0_large_par));
   EXPECT_TRUE(EqualBuffers(ys1_large_seq, ys1_large_par));
   ExpectReconstruction(ys0_large_seq, ys1_large_seq, 107);
+}
+
+TEST(ParDepthTest, DcfEvalAllHonorsZeroParDepth) {
+  omp_set_num_threads(4);
+
+  // in_bits 5 takes the recursive tree branch, 12 the batched frontier.
+  CallCounters c_small_seq, c_small_par, c_large_seq, c_large_par;
+  std::vector<int4> ys0_small_seq, ys1_small_seq, ys0_small_par, ys1_small_par;
+  std::vector<int4> ys0_large_seq, ys1_large_seq, ys0_large_par, ys1_large_par;
+
+  RunDcfEvalAll<5, 0>(c_small_seq, ys0_small_seq, ys1_small_seq, 13);
+  RunDcfEvalAll<5, -1>(c_small_par, ys0_small_par, ys1_small_par, 13);
+  RunDcfEvalAll<12, 0>(c_large_seq, ys0_large_seq, ys1_large_seq, 107);
+  RunDcfEvalAll<12, 2>(c_large_par, ys0_large_par, ys1_large_par, 107);
+
+  EXPECT_EQ(c_small_seq.max_in_flight.load(), 1);
+  EXPECT_EQ(c_large_seq.max_in_flight.load(), 1);
+  EXPECT_TRUE(EqualBuffers(ys0_small_seq, ys0_small_par));
+  EXPECT_TRUE(EqualBuffers(ys1_small_seq, ys1_small_par));
+  EXPECT_TRUE(EqualBuffers(ys0_large_seq, ys0_large_par));
+  EXPECT_TRUE(EqualBuffers(ys1_large_seq, ys1_large_par));
+  ExpectDcfLtReconstruction(ys0_large_seq, ys1_large_seq, 107);
 }
 
 TEST(ParDepthTest, HalfTreeDpfEvalAllHonorsZeroParDepth) {
