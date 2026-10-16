@@ -9,6 +9,9 @@
  * Round keys are pre-expanded at construction time.
  * Each Gen() call issues one AES-NI encrypt sequence per output block
  * with no per-call context overhead.
+ * Gen8() applies the same construction to 8 independent seeds at once
+ * by interleaving 8 streams, one AES round key per 8 aesenc calls,
+ * to saturate the AES pipelines of modern x86 CPUs.
  *
  * Only for host side (x86-64 with AES-NI).
  */
@@ -103,6 +106,50 @@ public:
       b = _mm_aesenclast_si128(b, _mm_load_si128(rk + 10));
       b = _mm_xor_si128(b, s);
       _mm_storeu_si128(reinterpret_cast<__m128i *>(&out[i]), b);
+    }
+#endif
+
+    return out;
+  }
+
+  /**
+     * Batched 8-seed version of Gen().
+     *
+     * Applies the same MMO construction to 8 independent seeds under the same key schedules,
+     * so out[j] is bit-exact with Gen(seeds[j]).
+     * The 8 streams are interleaved as 8 x 128b lanes:
+     * each AES round key is loaded once and consumed by 8 consecutive aesenc calls.
+     *
+     * Only for host side.
+     *
+     * @param seeds 8 independent 16B seeds.
+     * @return For each seed j, the mul MMO output blocks out[j][i] = E_{keys[i]}(seeds[j]) ^ seeds[j].
+     */
+  __host__ __device__ cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(const cuda::std::array<int4, 8> &seeds) {
+    cuda::std::array<cuda::std::array<int4, mul>, 8> out{};
+
+#ifdef __CUDA_ARCH__
+    assert(false && "Aes128MmoRaw is not supported on device side");
+    __trap();
+#else
+    __m128i s[8];
+    __m128i b[8];
+    for (int j = 0; j < 8; ++j) s[j] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seeds[j]));
+
+    for (int i = 0; i < mul; ++i) {
+      const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i]);
+      __m128i k = _mm_load_si128(rk);
+      for (int j = 0; j < 8; ++j) b[j] = _mm_xor_si128(s[j], k);
+      for (int r = 1; r < 10; ++r) {
+        k = _mm_load_si128(rk + r);
+        for (int j = 0; j < 8; ++j) b[j] = _mm_aesenc_si128(b[j], k);
+      }
+      k = _mm_load_si128(rk + 10);
+      for (int j = 0; j < 8; ++j) {
+        b[j] = _mm_aesenclast_si128(b[j], k);
+        b[j] = _mm_xor_si128(b[j], s[j]);
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(&out[j][i]), b[j]);
+      }
     }
 #endif
 

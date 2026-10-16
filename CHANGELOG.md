@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   canonical per-bucket order from Locate records plus a stable radix sort, then runs the
   evaluation and fold passes fully parallel, bit-exact with the host fold; security analysis
   extended in doc/vdpf_merkle_fold_security.md.
+* `Aes128MmoRaw::Gen8`: the AES-NI MMO backend applies its round-key schedules to eight
+  seeds at once through the classic eight-stream `aesenc` interleave, bit-exact with eight
+  `Gen` calls. The internal `fss::detail::GenBatch` helper exposes the batch to callers:
+  it forwards to `Gen8` on PRGs that provide one and loops `Gen` otherwise.
 * GPU benchmark curves for DMPF batch `Eval` and `EvalAll`: the GPU Cuckoo `Locate` runs on the
   `ChaChaFeistel` PRP while the CPU curves keep OpenSSL-backed `Aes128Feistel` — each platform's
   own optimal backend, and the figures compare implementations within one platform. The refreshed
@@ -185,6 +189,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Comparison figures label narrow logarithmic time ranges with minor log ticks. Nearly
   flat curves (such as DMPF point evaluation) previously rendered with as few as two
   axis ticks, which hid the logarithmic scale.
+
 
 ## [1.2.0] - 2026-08-17
 
