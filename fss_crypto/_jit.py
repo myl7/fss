@@ -1,6 +1,7 @@
 """JIT compilation manager for FSS C++ extensions."""
 
 import hashlib
+import importlib.util
 import os
 import sysconfig
 import warnings
@@ -268,6 +269,14 @@ def _source_tree_hash(include_dir: str, csrc_dir: str) -> str:
     return digest
 
 
+def _import_built(name: str, path: str) -> object:
+    # Mirrors torch's _import_module_from_library.
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 # ---------------------------------------------------------------------------
 # Source generation
 # ---------------------------------------------------------------------------
@@ -360,9 +369,21 @@ def load(scheme: str, in_bits: int, group: str | None = None, prg: str = "chacha
 
     build_dir = os.path.join(
         os.path.expanduser("~"), ".cache", "fss_crypto",
-        f"{key}-{_source_tree_hash(include_dir, csrc_dir)}",
+        f"{key}-{torch.__version__}-{_source_tree_hash(include_dir, csrc_dir)}",
     )
     os.makedirs(build_dir, exist_ok=True)
+
+    # The dir name carries the source tree hash and the torch version, so an
+    # existing .so was built from identical inputs; import it directly.
+    # Going through ninja would demand a pointless rebuild after every fresh
+    # checkout: its deps log flags any dep mtime change, not only newer ones.
+    so_path = os.path.join(build_dir, f"{key}.so")
+    if os.path.exists(so_path):
+        try:
+            _EXT_CACHE[key] = _import_built(key, so_path)
+            return _EXT_CACHE[key]
+        except Exception:
+            pass  # fall through and let ninja rebuild
 
     src_path = os.path.join(build_dir, f"{key}.cu")
     # Write only when the content changes: an unconditional rewrite bumps the
