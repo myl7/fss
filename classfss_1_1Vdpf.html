@@ -164,7 +164,7 @@ class fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</div>
     <tr><td class="paramname">XorHash</td><td>See XorHashable. Paper's \(H\): maps \((x, s)\) to \(4\lambda\) bits. </td></tr>
     <tr><td class="paramname">Hash</td><td>See Hashable. Paper's \(H&#39;\): maps \(4\lambda\) bits to \(2\lambda\) bits. </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>, <a class="el" href="classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd" title="Full domain evaluation method with the Merkle-fold proof.">EvalAllMerkle()</a>, and <a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> use it. See <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
   </table>
   </dd>
 </dl>
@@ -336,7 +336,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </div><div class="memdoc">
 
 <p>Full domain evaluation method with the Merkle-fold proof. </p>
-<p>Same output shares as <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>; the proof comes from <a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> over the corrected per-point hashes. The conversion phase and every fold level are OpenMP parallel, unlike <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.</p>
+<p>Same output shares as <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>; the proof comes from <a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> over the corrected per-point hashes. The conversion phase and every fold level are OpenMP parallel honoring par_depth, unlike <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
@@ -524,7 +524,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </div><div class="memdoc">
 
 <p>Proof accumulation method (Merkle fold). </p>
-<p>Order-independent alternative to <a class="el" href="classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162" title="Proof accumulation method.">Prove()</a>: hashes the corrected per-point hashes into the leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the same hash level by level (an odd trailing node carries to the next level unchanged). The proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so <a class="el" href="classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8" title="Verification method.">Verify()</a> is shared. Every level is an OpenMP parallel batch. See doc/vdpf_merkle_fold_security.md.</p>
+<p>Order-independent alternative to <a class="el" href="classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162" title="Proof accumulation method.">Prove()</a>: hashes the corrected per-point hashes into the leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the same hash level by level (an odd trailing node carries to the next level unchanged). The proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so <a class="el" href="classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8" title="Verification method.">Verify()</a> is shared. Every level is an OpenMP parallel batch honoring par_depth, so a par_depth of 0 makes the fold sequential. See doc/vdpf_merkle_fold_security.md.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689" title="Evaluation method.">Eval()</a>. </td></tr>

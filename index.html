@@ -189,8 +189,8 @@ CPU</h2>
 <div class="ttc" id="aaes128__mmo_8cuh_html"><div class="ttname"><a href="aes128__mmo_8cuh.html">aes128_mmo.cuh</a></div></div>
 <div class="ttc" id="abytes_8cuh_html"><div class="ttname"><a href="bytes_8cuh.html">bytes.cuh</a></div></div>
 <div class="ttc" id="aclassfss_1_1Dcf_html"><div class="ttname"><a href="classfss_1_1Dcf.html">fss::Dcf</a></div><div class="ttdoc">2-party DCF scheme.</div><div class="ttdef"><b>Definition</b> dcf.cuh:78</div></div>
-<div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:64</div></div>
-<div class="ttc" id="aclassfss_1_1prg_1_1Aes128Mmo_html"><div class="ttname"><a href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a></div><div class="ttdoc">AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.cuh:28</div></div>
+<div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:66</div></div>
+<div class="ttc" id="aclassfss_1_1prg_1_1Aes128Mmo_html"><div class="ttname"><a href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a></div><div class="ttdoc">AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.cuh:34</div></div>
 <div class="ttc" id="adcf_8cuh_html"><div class="ttname"><a href="dcf_8cuh.html">dcf.cuh</a></div><div class="ttdoc">2-party distributed comparison function (DCF).</div></div>
 <div class="ttc" id="adpf_8cuh_html"><div class="ttname"><a href="dpf_8cuh.html">dpf.cuh</a></div><div class="ttdoc">2-party distributed point function (DPF).</div></div>
 <div class="ttc" id="astructfss_1_1group_1_1Bytes_html"><div class="ttname"><a href="structfss_1_1group_1_1Bytes.html">fss::group::Bytes</a></div><div class="ttdoc">Bytes with XOR as a group.</div><div class="ttdef"><b>Definition</b> bytes.cuh:19</div></div>
@@ -238,6 +238,16 @@ CPU</h2>
 <div class="line">target_link_libraries(your_target fss OpenSSL::Crypto)</div>
 </div><!-- fragment --><p>See <code>samples/dpf_dcf_cpu.cu</code> for the complete working example.</p>
 <h2><a class="anchor" id="autotoc_md6"></a>
+CPU Point Evaluation Fast Path</h2>
+<p><code><a class="el" href="point__eval__cpu_8cuh.html" title="CPU point evaluation of FSS keys in the lean packed-key layout.">include/fss/point_eval_cpu.cuh</a></code> provides an optional fast path for host-side point evaluation of DPF and Half-Tree DPF keys. <code><a class="el" href="point__eval__cpu_8cuh.html#a32473843e2c20bd4a19efc79e5e8392c" title="One-time compaction of a Dpf key into the layout consumed by DpfEvalPoint().">fss::cpu::DpfPackPoint()</a></code> and <code><a class="el" href="point__eval__cpu_8cuh.html#a91b70e18e1949c084dd9f3b815e01b20" title="One-time compaction of a HalfTree DPF key into the layout consumed by HalfTreeDpfEvalPoint().">fss::cpu::HalfTreeDpfPackPoint()</a></code> convert a key from <code>Gen()</code> into a packed point key, which keeps one 16 B correction word per level and the per-level control bits in a single word. <code><a class="el" href="point__eval__cpu_8cuh.html#aacbb2703a0c6539f23f1ee1290ed8001" title="CPU point evaluation of a packed DPF key: the output is bit-exact with Dpf::Eval(b,...">fss::cpu::DpfEvalPoint()</a></code> and <code><a class="el" href="point__eval__cpu_8cuh.html#a6e83ddabd57f70cd5348ff180cf54301" title="CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact with HalfTreeDpf::Eval(b,...">fss::cpu::HalfTreeDpfEvalPoint()</a></code> evaluate a packed key faster than the normal <code>Eval()</code>, with bit-exact outputs. The pack runs once per key, so the cost amortizes over repeated point evaluations of that key; a one-off evaluation gains nothing and should call <code>Eval()</code>, which remains the default interface.</p>
+<p>This path is host-only and requires x86-64 with SSE4.1. Compile with <code>-msse4.1</code>, plus <code>-maes</code> when the PRG itself uses AES-NI (e.g. <code>Aes128MmoRaw</code>); the repository compiles its tests with <code>-maes -msse4.2</code> for that reason. A plain PRG such as ChaCha needs no AES flag. A packed key must be used with the scheme configuration it was generated with: pass the same PRG instance, and for Half-Tree DPF also the same hash key.</p>
+<div class="fragment"><div class="line"><span class="comment">// Continuing the DPF setup from the CPU section above, after dpf.Gen(k0, k1, ...)</span></div>
+<div class="line"><span class="keyword">const</span> <a class="code hl_struct" href="structfss_1_1cpu_1_1DpfPointKey.html">fss::cpu::DpfPointKey&lt;kInBits&gt;</a> pk0 = fss::cpu::DpfPackPoint&lt;kInBits, Group, DpfPrg, In&gt;(k0);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Repeated point evaluations; bit-exact with dpf.Eval(false, k0, x)</span></div>
+<div class="line">int4 y0 = fss::cpu::DpfEvalPoint&lt;kInBits, Group, DpfPrg, In&gt;(<span class="keyword">false</span>, pk0, x, prg);</div>
+<div class="ttc" id="astructfss_1_1cpu_1_1DpfPointKey_html"><div class="ttname"><a href="structfss_1_1cpu_1_1DpfPointKey.html">fss::cpu::DpfPointKey</a></div><div class="ttdoc">A party's DPF key in the compact point-evaluation layout.</div><div class="ttdef"><b>Definition</b> point_eval_cpu.cuh:156</div></div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md7"></a>
 GPU</h2>
 <p>This walks through using DPF and DCF on the GPU with ChaCha PRG.</p>
 <ol type="1">
@@ -302,7 +312,7 @@ GPU</h2>
 </ol>
 <p>DCF follows the same pattern — use <code>DcfPrg</code> (mul=4) and <code>Dcf</code> with its own <code>Key</code>.</p>
 <p>See <code>samples/dpf_dcf_gpu.cu</code> for the complete working example.</p>
-<h2><a class="anchor" id="autotoc_md7"></a>
+<h2><a class="anchor" id="autotoc_md8"></a>
 Samples</h2>
 <p><code>samples/</code> holds a standalone program per scheme. They form their own CMake project:</p>
 <div class="fragment"><div class="line">cmake -B build/samples -S samples</div>
@@ -328,7 +338,7 @@ Samples</h2>
 <td class="markdownTableBodyNone"><code>dmpf_cpu.cu</code>   </td><td class="markdownTableBodyNone">DMPF   </td><td class="markdownTableBodyNone"><code>Gen</code>/<code>BatchEval</code> over cuckoo-hash packed points, without verification   </td></tr>
 </table>
 <p>The CPU samples link OpenSSL, and <code>EvalAll</code> uses OpenMP when it is found.</p>
-<h2><a class="anchor" id="autotoc_md8"></a>
+<h2><a class="anchor" id="autotoc_md9"></a>
 Python</h2>
 <p>The <code>fss_crypto</code> package exposes PyTorch wrappers for every scheme: <code>Dpf</code>, <code>Dcf</code>, <code>HalfTreeDpf</code>, <code>PackedHalfTreeDpf</code>, <code>GrottoDcf</code>, <code>Vdpf</code>, <code>Dmpf</code>, and <code>Vdmpf</code>. It is published on PyPI as <code>fss-crypto</code>. <code>eval</code> and full-domain <code>eval_all</code> accept CUDA tensors (where the scheme has a GPU path); key generation stays on CPU. The cuckoo-hashed multi-point schemes (<code>Dmpf</code>, <code>Vdmpf</code>) evaluate on CUDA when constructed with <code>prp="chacha_feistel"</code>; a VDMPF proof comes from the CPU sequential chains or the CUDA Merkle fold, so both parties must evaluate on the same device.</p>
 <p>Install it with pip:</p>
@@ -359,14 +369,14 @@ Python</h2>
 <p>To develop against a checkout instead, install the dev extra and run the tests:</p>
 <div class="fragment"><div class="line">uv sync --extra dev</div>
 <div class="line">uv run pytest</div>
-</div><!-- fragment --><h2><a class="anchor" id="autotoc_md9"></a>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md10"></a>
 Compiler Warnings</h2>
 <p>You may see warnings like "integer constant is so large that it is unsigned" during compilation. These cannot be easily suppressed but are harmless and can be safely ignored.</p>
-<h2><a class="anchor" id="autotoc_md10"></a>
+<h2><a class="anchor" id="autotoc_md11"></a>
 nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument</h2>
 <p>nvcc 12.8 fails to compile the stub file when <code><a class="el" href="structfss_1_1group_1_1Uint.html" title="Unsigned integers with arithmetic addition and optional modulo as a group.">fss::group::Uint</a>&lt;__uint128_t, ...&gt;</code> is used as a template argument to a <code>__global__</code> kernel — it emits a 128-bit integer literal that g++ cannot parse. <code>__device__</code> functions are not affected (no stub is generated for them).</p>
 <p>Workaround: wrap the type in a plain aggregate struct that satisfies <code>Groupable</code> but has no <code>__uint128_t</code> non-type template parameter in its name. The struct must have no user-declared constructors to remain an aggregate. See <code>third_party/fss/bench.cu</code> for an example.</p>
-<h1><a class="anchor" id="autotoc_md11"></a>
+<h1><a class="anchor" id="autotoc_md12"></a>
 Benchmarks</h1>
 <p>See benchmark methodology and comparison curves for the current full-output adapters and domain sweeps. The binaries below are built on <a href="https://github.com/google/benchmark">Google Benchmark</a> and time single operations. The benchmark coverage page lists what they measure and the GPU kernel register usage.</p>
 <p>Configure with <code>BUILD_BENCH=ON</code> and build the targets:</p>
@@ -388,7 +398,7 @@ Benchmarks</h1>
 <div class="line">  --cuda-arch 120 --repetitions 5 --min-time 1 --run-id readme-gpu</div>
 </div><!-- fragment --><p>Choose idle, allowed CPU and GPU indices on your host. Direct binary invocations above leave affinity and the governor to the caller.</p>
 <p><code>CUDA_ARCH</code> is only needed when CMake cannot infer the architecture. Two more targets support the sections below: <code>make ptx_info</code> rebuilds with <code>--ptxas-options=-v</code> and collects the register usage into <code>build/ptx_info.log</code>, and <code>make profile_gpu</code> records an Nsight Systems profile of one benchmark selected by <code>GPU_PROFILE_BENCH</code>.</p>
-<h2><a class="anchor" id="autotoc_md12"></a>
+<h2><a class="anchor" id="autotoc_md13"></a>
 Comparison Curves</h2>
 <p>The domain sweep measures domain sizes <code>N = 2^8, 2^10, ..., 2^20</code>. Each figure is one platform, one scheme family per row — DCF (including Grotto DCF), DPF with its verifiable VDPF counterparts, and DMPF with VDMPF — and one operation per column: <code>Gen</code>, <code>Eval</code>, <code>EvalAll</code>. Time axes are logarithmic and legends show each library's native output shape and PRG backend. Hardware, sampling, timing boundaries, and reproduction commands are in the curve methodology. The exact measured medians behind the curves, with per-domain values and pairwise library comparison, are on the <a href="https://myl7.github.io/fss/bench/">benchmark comparison site</a>. An implementation appears in a panel only where it provides that method on that platform.</p>
 <div class="image">
@@ -401,7 +411,7 @@ CPU benchmark operations</div></div>
 <div class="caption">
 GPU benchmark operations</div></div>
 <p>GPU <code>Gen</code> and point <code>Eval</code> report time amortized per key, in ns/key. <code>EvalAll</code> uses one key, in ms/key. The native GPU-DPF and packed EzPC adapters keep their native output configurations. GPU <code>EvalAll</code> covers DPF, HalfTree DPF, DCF, the one-bit packed HalfTree DPF, VDPF with the Merkle-fold proof computed on device, and Grotto DCF. The threads-per-block sweep lives in the <a href="doc/bench_figures.md#gpu-block-size-sensitivity">curve methodology</a>.</p>
-<h2><a class="anchor" id="autotoc_md13"></a>
+<h2><a class="anchor" id="autotoc_md14"></a>
 Flamegraph</h2>
 <p>Generate a CPU flamegraph with <code>perf</code> and <a href="https://github.com/brendangregg/FlameGraph">FlameGraph</a>:</p>
 <div class="fragment"><div class="line">perf record -g ./build/bench_cpu --benchmark_filter=BM_DpfEval_Uint_Aes/20</div>
@@ -409,7 +419,7 @@ Flamegraph</h2>
 </div><!-- fragment --><p><code>make flamegraph</code> runs the same steps, taking the FlameGraph checkout from <code>FLAMEGRAPH_DIR</code> (default <code>../FlameGraph</code>) and the benchmark from <code>FLAMEGRAPH_BENCH</code>:</p>
 <div class="fragment"><div class="line">FLAMEGRAPH_DIR=/path/to/FlameGraph FLAMEGRAPH_BENCH=BM_DcfGen_Uint_Aes/20 make flamegraph</div>
 </div><!-- fragment --><p>Open <code>build/flamegraph.svg</code> in a browser. The graph is interactive: click a frame to zoom in.</p>
-<h1><a class="anchor" id="autotoc_md14"></a>
+<h1><a class="anchor" id="autotoc_md15"></a>
 License</h1>
 <p>Apache License, Version 2.0</p>
 <p>Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a> </p>

@@ -102,7 +102,8 @@ $(document).ready(function(){initNavTree('prg_8cuh.html',''); initResizable(); }
 
 <div class="header">
   <div class="summary">
-<a href="#concepts">Concepts</a>  </div>
+<a href="#concepts">Concepts</a> &#124;
+<a href="#func-members">Functions</a>  </div>
   <div class="headertitle"><div class="title">prg.cuh File Reference</div></div>
 </div><!--header-->
 <div class="contents">
@@ -117,11 +118,61 @@ Concepts</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">concept &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="conceptPrgable.html">Prgable</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Pseudorandom generator (PRG) interface. <br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">concept &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="conceptfss_1_1detail_1_1HasGen8.html">fss::detail::HasGen8</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Detection of a Prgable PRG that also provides an 8-way batched Gen8(). <br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:a50870addadffbc01b7b66d1dde68a4d6" id="r_a50870addadffbc01b7b66d1dde68a4d6"><td class="memTemplParams" colspan="2">template&lt;int mul, typename Prg &gt; </td></tr>
+<tr class="memitem:a50870addadffbc01b7b66d1dde68a4d6"><td class="memTemplItemLeft" align="right" valign="top">cuda::std::array&lt; cuda::std::array&lt; int4, mul &gt;, 8 &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="prg_8cuh.html#a50870addadffbc01b7b66d1dde68a4d6">fss::detail::GenBatch</a> (Prg &amp;prg, const cuda::std::array&lt; int4, 8 &gt; &amp;seeds)</td></tr>
+<tr class="memdesc:a50870addadffbc01b7b66d1dde68a4d6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Expands 8 seeds at once: forwards to Gen8() when the PRG provides it and loops Gen() over the seeds otherwise.  <br /></td></tr>
+<tr class="separator:a50870addadffbc01b7b66d1dde68a4d6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a> </dd></dl>
-</div></div><!-- contents -->
+</div><h2 class="groupheader">Function Documentation</h2>
+<a id="a50870addadffbc01b7b66d1dde68a4d6" name="a50870addadffbc01b7b66d1dde68a4d6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a50870addadffbc01b7b66d1dde68a4d6">&#9670;&#160;</a></span>GenBatch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int mul, typename Prg &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname">cuda::std::array&lt; cuda::std::array&lt; int4, mul &gt;, 8 &gt; fss::detail::GenBatch </td>
+          <td>(</td>
+          <td class="paramtype">Prg &amp;&#160;</td>
+          <td class="paramname"><em>prg</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const cuda::std::array&lt; int4, 8 &gt; &amp;&#160;</td>
+          <td class="paramname"><em>seeds</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Expands 8 seeds at once: forwards to Gen8() when the PRG provides it and loops Gen() over the seeds otherwise. </p>
+<p>The two forms agree bit-exactly, so callers get 8-way batching without PRG capability dispatch.</p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">mul</td><td>See Prgable mul. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+</div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->
 <div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->

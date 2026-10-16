@@ -5,5 +5,6 @@ var searchData=
   ['evalall_2',['evalall',['../classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d',1,'fss::Dcf::EvalAll()'],['../classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b',1,'fss::Vdpf::EvalAll()'],['../classfss_1_1PackedHalfTreeDpf.html#a282a7026b5c13bc078920116fb0d90ff',1,'fss::PackedHalfTreeDpf::EvalAll()'],['../classfss_1_1HalfTreeDpf.html#a360cd1684ed8369dd9e41fabee0bde9c',1,'fss::HalfTreeDpf::EvalAll()'],['../classfss_1_1GrottoDcf.html#a0f7de68279f447b7b4a3ec680af85b73',1,'fss::GrottoDcf::EvalAll()'],['../classfss_1_1Dpf.html#aeffbb4264a25227fc5f067b84023891c',1,'fss::Dpf::EvalAll()'],['../classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761',1,'fss::Dmpf::EvalAll()']]],
   ['evalallmerkle_3',['EvalAllMerkle',['../classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd',1,'fss::Vdpf']]],
   ['evalresult_4',['EvalResult',['../structfss_1_1Vdpf_1_1EvalResult.html',1,'fss::Vdpf']]],
-  ['extract_5',['Extract',['../classfss_1_1PackedHalfTreeDpf.html#a077411720ce8d4adff098cb5705444d6',1,'fss::PackedHalfTreeDpf']]]
+  ['evaluation_20fast_20path_5',['CPU Point Evaluation Fast Path',['../index.html#autotoc_md6',1,'']]],
+  ['extract_6',['Extract',['../classfss_1_1PackedHalfTreeDpf.html#a077411720ce8d4adff098cb5705444d6',1,'fss::PackedHalfTreeDpf']]]
 ];

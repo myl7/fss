@@ -113,6 +113,7 @@ $(document).ready(function(){initNavTree('packed__half__tree__dpf_8cuh.html','')
 <code>#include &lt;type_traits&gt;</code><br />
 <code>#include &lt;cstddef&gt;</code><br />
 <code>#include &lt;cassert&gt;</code><br />
+<code>#include &lt;vector&gt;</code><br />
 <code>#include &lt;omp.h&gt;</code><br />
 <code>#include &lt;<a class="el" href="prg_8cuh_source.html">fss/prg.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="util_8cuh_source.html">fss/util.cuh</a>&gt;</code><br />
@@ -136,19 +137,20 @@ Classes</h2></td></tr>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
 <dl class="section warning"><dt>Warning</dt><dd>Experimental. No published paper describes this construction as a whole: it combines the Half-Tree expansion with truncated-tree packed outputs (the trick popularized by LibDPF) and a domain-separated leaf conversion. The composition has no standalone security proof. The API may change without notice.</dd></dl>
-<h2><a class="anchor" id="autotoc_md32"></a>
+<h2><a class="anchor" id="autotoc_md33"></a>
 Packed outputs</h2>
 <p>For the output width out_bits &lt; 128, full-domain evaluation can return one 16B block per 128 / out_bits consecutive inputs instead of one element per input: the expansion stops at tree depth in_bits - log2(kLanes), and the bits of each level node cover the kLanes outputs of the inputs under it. This removes the last log2(kLanes) levels of PRG calls and shrinks both the key and the output array by that factor, mirroring what LibDPF does for 1-bit outputs.</p>
 <p>A block is read as a little-endian 128-bit integer with x the low word and w the high word, matching util::Pack(). Lane j occupies bits [j * out_bits, (j + 1) * out_bits). The output share for input x is lane x &amp; (kLanes - 1) of block x &gt;&gt; log2(kLanes); see Extract().</p>
 <p>The output group is XOR only: the two parties' blocks XOR-reconstruct to beta at alpha's lane and to the zero block everywhere else. Additive groups cannot be packed into shared lanes, and comparison functions need per-leaf control bits, so no packed counterpart exists for DCF.</p>
-<h2><a class="anchor" id="autotoc_md33"></a>
+<h2><a class="anchor" id="autotoc_md34"></a>
 Implementation details</h2>
 <p>The tree levels follow Half-Tree: one mul=1 PRG call per expanded node yields both children (right = left XOR node), and the control bit rides in the node LSB. On the alpha path the two parties' nodes differ by a constant delta equal to the XOR of the two root seeds, and exactly one party has t = 1; off the path the nodes are identical.</p>
 <p>The leaf conversion is a hash: y = PRG(hash_key XOR node) XOR (t ? fcw : 0), with fcw = packed_beta XOR leaf_0 XOR leaf_1. The hash is required for privacy. Without it the output blocks would be the raw level nodes, and fcw = packed_beta XOR node_0 XOR node_1 would expose the constant path difference — the XOR of the two root seeds — to any key holder whenever beta is known (LibDPF accepts the milder one-bit version of this leak by returning raw blocks; we do not). Its inputs are the level kDepth nodes, which are never expanded, so expansion and conversion read disjoint PRG input sets, as in HalfTreeDpf.</p>
-<h2><a class="anchor" id="autotoc_md34"></a>
+<p>EvalAll() runs in level order: a scalar top widens the root to an 8-node frontier, then every level advances 8 frontier nodes per batched expansion (pipelined through Gen8() via detail::GenBatch() when the PRG offers a batched entry) so the AES rounds of independent nodes interleave, the correction words apply through branchless masks, and the leaf conversion is fused into the final expansion so each output block is written once. The level-order node index equals the in-order leaf index the DFS walk produces, so the ys layout is identical. Domains with kDepth &lt;= kTopDepth never fill a frontier and evaluate one point per block.</p>
+<h2><a class="anchor" id="autotoc_md35"></a>
 Complexity</h2>
 <p>Gen makes 2 * (kDepth + 1) PRG calls, Eval kDepth + 1, and EvalAll under 2^(kDepth + 1). A key is kDepth correction words plus fcw, i.e. 16 * (kDepth + 1) bytes.</p>
-<h2><a class="anchor" id="autotoc_md35"></a>
+<h2><a class="anchor" id="autotoc_md36"></a>
 References</h2>
 <ol type="1">
 <li>Xiaojie Guo, Kang Yang, Xiao Wang, Wenhao Zhang, Xiang Xie, Jiang Zhang, Zheli Liu: Half-Tree: Halving the Cost of Tree Expansion in COT and DPF. EUROCRYPT (1) 2023: 330-362. <a href="https://doi.org/10.1007/978-3-031-30545-0_12">https://doi.org/10.1007/978-3-031-30545-0_12</a>.<a class="anchor" id="packed_half_tree_dpf_ht"></a></li>

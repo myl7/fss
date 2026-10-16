@@ -8,7 +8,7 @@ var indexSectionsWithContent =
   5: "d",
   6: "k",
   7: "fm",
-  8: "ghpx"
+  8: "fghpx"
 };
 
 var indexSectionNames =

@@ -116,6 +116,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a535ec1cc5c662523a08abd6881df3d89" id="r_a535ec1cc5c662523a08abd6881df3d89"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128MmoRaw.html#a535ec1cc5c662523a08abd6881df3d89">Aes128MmoRaw</a> (const uint8_t keys[][16])</td></tr>
 <tr class="memdesc:a535ec1cc5c662523a08abd6881df3d89"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor.  <br /></td></tr>
 <tr class="separator:a535ec1cc5c662523a08abd6881df3d89"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab3bdd442e4389a0113e085b0bdac5b8b" id="r_ab3bdd442e4389a0113e085b0bdac5b8b"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; cuda::std::array&lt; int4, mul &gt;, 8 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128MmoRaw.html#ab3bdd442e4389a0113e085b0bdac5b8b">Gen8</a> (const cuda::std::array&lt; int4, 8 &gt; &amp;seeds)</td></tr>
+<tr class="memdesc:ab3bdd442e4389a0113e085b0bdac5b8b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Batched 8-seed version of Gen().  <br /></td></tr>
+<tr class="separator:ab3bdd442e4389a0113e085b0bdac5b8b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int mul&gt;<br />
@@ -161,6 +164,46 @@ template&lt;int mul&gt; </div>
   </table>
   </dd>
 </dl>
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
+<a id="ab3bdd442e4389a0113e085b0bdac5b8b" name="ab3bdd442e4389a0113e085b0bdac5b8b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab3bdd442e4389a0113e085b0bdac5b8b">&#9670;&#160;</a></span>Gen8()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int mul&gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cuda::std::array&lt; cuda::std::array&lt; int4, mul &gt;, 8 &gt; <a class="el" href="classfss_1_1prg_1_1Aes128MmoRaw.html">fss::prg::Aes128MmoRaw</a>&lt; mul &gt;::Gen8 </td>
+          <td>(</td>
+          <td class="paramtype">const cuda::std::array&lt; int4, 8 &gt; &amp;&#160;</td>
+          <td class="paramname"><em>seeds</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Batched 8-seed version of Gen(). </p>
+<p>Applies the same MMO construction to 8 independent seeds under the same key schedules, so out[j] is bit-exact with Gen(seeds[j]). The 8 streams are interleaved as 8 x 128b lanes: each AES round key is loaded once and consumed by 8 consecutive aesenc calls.</p>
+<p>Only for host side.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">seeds</td><td>8 independent 16B seeds. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>For each seed j, the mul MMO output blocks out[j][i] = E_{keys[i]}(seeds[j]) ^ seeds[j]. </dd></dl>
 
 </div>
 </div>

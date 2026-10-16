@@ -128,6 +128,7 @@ Static Public Member Functions</h2></td></tr>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int mul&gt;<br />
 class fss::prg::Aes128Mmo&lt; mul &gt;</div><p>AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG. </p>
 <p>Only for host side.</p>
+<p>Concurrency: Gen() runs EVP_EncryptUpdate on the ctxs, and copies of an instance share the same ctxs. OpenSSL does not document one ctx as safe for concurrent updates even for full-block no-padding ECB, so Gen() must not run concurrently on instances sharing ctxs. Parallel host evaluation needs a PRG whose Gen() is safe to call concurrently, such as <a class="el" href="classfss_1_1prg_1_1ChaCha.html" title="ChaCha as a PRG.">ChaCha</a> or <a class="el" href="classfss_1_1prg_1_1Aes128MmoRaw.html" title="AES-128 with Matyas-Meyer-Oseas and AES-NI intrinsics as a PRG.">Aes128MmoRaw</a>.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">mul</td><td>See Prgable mul. </td></tr>

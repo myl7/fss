@@ -128,7 +128,7 @@ Classes</h2></td></tr>
 <div class="textblock"><p>AES-128 MMO PRG using direct AES-NI intrinsics without OpenSSL overhead. </p>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
-<p>Round keys are pre-expanded at construction time. Each Gen() call issues one AES-NI encrypt sequence per output block with no per-call context overhead.</p>
+<p>Round keys are pre-expanded at construction time. Each Gen() call issues one AES-NI encrypt sequence per output block with no per-call context overhead. Gen8() applies the same construction to 8 independent seeds at once by interleaving 8 streams, one AES round key per 8 aesenc calls, to saturate the AES pipelines of modern x86 CPUs.</p>
 <p>Only for host side (x86-64 with AES-NI). </p>
 </div></div><!-- contents -->
 </div><!-- doc-content -->

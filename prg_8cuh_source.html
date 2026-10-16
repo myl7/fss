@@ -121,7 +121,33 @@ $(document).ready(function(){initNavTree('prg_8cuh_source.html',''); initResizab
 <div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>  { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
 <div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>};</div>
 </div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">namespace </span>fss::detail {</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
+<div class="foldopen" id="foldopen00034" data-start="{" data-end="}">
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno"><a class="line" href="conceptfss_1_1detail_1_1HasGen8.html">   34</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptfss_1_1detail_1_1HasGen8.html">HasGen8</a> = <span class="keyword">requires</span>(Prg prg, cuda::std::array&lt;int4, 8&gt; seeds) {</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>  { prg.Gen8(seeds) } -&gt; std::same_as&lt;cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt;&gt;;</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>};</div>
+</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span> </div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> mul, <span class="keyword">typename</span> Prg&gt;</div>
+<div class="foldopen" id="foldopen00046" data-start="{" data-end="}">
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno"><a class="line" href="prg_8cuh.html#a50870addadffbc01b7b66d1dde68a4d6">   46</a></span>cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt; <a class="code hl_function" href="prg_8cuh.html#a50870addadffbc01b7b66d1dde68a4d6">GenBatch</a>(Prg &amp;prg, <span class="keyword">const</span> cuda::std::array&lt;int4, 8&gt; &amp;seeds) {</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>  <span class="keywordflow">if</span> <span class="keyword">constexpr</span> (<a class="code hl_concept" href="conceptfss_1_1detail_1_1HasGen8.html">HasGen8&lt;Prg, mul&gt;</a>) {</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keywordflow">return</span> prg.Gen8(seeds);</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt; out{};</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) out[j] = prg.Gen(seeds[j]);</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keywordflow">return</span> out;</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>  }</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>}</div>
+</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>}  <span class="comment">// namespace fss::detail</span></div>
 <div class="ttc" id="aconceptPrgable_html"><div class="ttname"><a href="conceptPrgable.html">Prgable</a></div><div class="ttdoc">Pseudorandom generator (PRG) interface.</div><div class="ttdef"><b>Definition</b> prg.cuh:21</div></div>
+<div class="ttc" id="aconceptfss_1_1detail_1_1HasGen8_html"><div class="ttname"><a href="conceptfss_1_1detail_1_1HasGen8.html">fss::detail::HasGen8</a></div><div class="ttdoc">Detection of a Prgable PRG that also provides an 8-way batched Gen8().</div><div class="ttdef"><b>Definition</b> prg.cuh:34</div></div>
+<div class="ttc" id="aprg_8cuh_html_a50870addadffbc01b7b66d1dde68a4d6"><div class="ttname"><a href="prg_8cuh.html#a50870addadffbc01b7b66d1dde68a4d6">fss::detail::GenBatch</a></div><div class="ttdeci">cuda::std::array&lt; cuda::std::array&lt; int4, mul &gt;, 8 &gt; GenBatch(Prg &amp;prg, const cuda::std::array&lt; int4, 8 &gt; &amp;seeds)</div><div class="ttdoc">Expands 8 seeds at once: forwards to Gen8() when the PRG provides it and loops Gen() over the seeds o...</div><div class="ttdef"><b>Definition</b> prg.cuh:46</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

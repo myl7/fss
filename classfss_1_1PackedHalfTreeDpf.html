@@ -158,6 +158,10 @@ static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kLane
 static constexpr uint64_t&#160;</td><td class="memItemRight" valign="bottom"><b>kBetaMax</b> = out_bits == 64 ? ~0ULL : (1ULL &lt;&lt; out_bits) - 1</td></tr>
 <tr class="memdesc:ab4a1471b837e7792957b052a61f931b7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Largest beta that fits in out_bits bits. <br /></td></tr>
 <tr class="separator:ab4a1471b837e7792957b052a61f931b7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afda38df1a483e2b973eec79d50ef1c24" id="r_afda38df1a483e2b973eec79d50ef1c24"><td class="memItemLeft" align="right" valign="top"><a id="afda38df1a483e2b973eec79d50ef1c24" name="afda38df1a483e2b973eec79d50ef1c24"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kTopDepth</b> = 3</td></tr>
+<tr class="memdesc:afda38df1a483e2b973eec79d50ef1c24"><td class="mdescLeft">&#160;</td><td class="mdescRight">Levels expanded scalarly at the top of the batched <a class="el" href="classfss_1_1PackedHalfTreeDpf.html#a282a7026b5c13bc078920116fb0d90ff" title="Full domain evaluation method.">EvalAll()</a> path: after kTopDepth expansions the frontier holds the first whole 8-node batch. <br /></td></tr>
+<tr class="separator:afda38df1a483e2b973eec79d50ef1c24"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int out_bits, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
@@ -431,7 +435,7 @@ template&lt;int in_bits, int out_bits, typename Prg , typename In  = uint, int p
 <div class="line">    }</div>
 <div class="line">    <span class="keywordflow">return</span> r;</div>
 <div class="line">  }()</div>
-<div class="ttc" id="aclassfss_1_1PackedHalfTreeDpf_html_a3ebc2c2553e73f9f4430ab1b69409993"><div class="ttname"><a href="classfss_1_1PackedHalfTreeDpf.html#a3ebc2c2553e73f9f4430ab1b69409993">fss::PackedHalfTreeDpf::kLanes</a></div><div class="ttdeci">static constexpr int kLanes</div><div class="ttdoc">Number of consecutive inputs covered by one output block.</div><div class="ttdef"><b>Definition</b> packed_half_tree_dpf.cuh:93</div></div>
+<div class="ttc" id="aclassfss_1_1PackedHalfTreeDpf_html_a3ebc2c2553e73f9f4430ab1b69409993"><div class="ttname"><a href="classfss_1_1PackedHalfTreeDpf.html#a3ebc2c2553e73f9f4430ab1b69409993">fss::PackedHalfTreeDpf::kLanes</a></div><div class="ttdeci">static constexpr int kLanes</div><div class="ttdoc">Number of consecutive inputs covered by one output block.</div><div class="ttdef"><b>Definition</b> packed_half_tree_dpf.cuh:104</div></div>
 </div><!-- fragment -->
 <p>Tree depth that is actually expanded. </p>
 <p>The remaining log2(kLanes) levels never run. </p>
