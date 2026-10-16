@@ -236,7 +236,13 @@ python3 third_party/figure_bench.py merge \
   --directory build/third_party/sweep/results/merged
 ```
 
-`run` exports its `chart-data.json` and CSV. Use `export` on an individual
+`run` exports its `chart-data.json` and CSV. The current published curves merge
+the `figure-data-r5` baseline and the cs11369a DMPF / VDMPF cards with eight
+cs659b re-measurement runs on the integrated revision: the pipelined
+full-domain rows at n = 8, 10, and 16, the n = 10 DMPF / VDMPF / VDPF rows,
+the DPF and Half-Tree point-evaluation sweep with its packed-key rows, and the
+VDPF chain and Merkle-fold rows, each superseding the cells it re-measured
+through `merge --retry-inputs`. Use `export` on an individual
 run to rebuild them from saved `case.json` files. `merge` combines completed
 run exports. For an explicit retry, pass its directory to `merge --retry-inputs`
 and retain the superseded attempt provenance. A nonzero exit status can

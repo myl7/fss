@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* CPU comparison rows for the packed point-key fast path and the VDPF Merkle fold: the DPF and
+  Half-Tree Eval panels gain prepared-key and one-shot pack rows (bit-exactness gated against the
+  scheme `Eval`), the VDPF EvalAll panel carries the chain and Merkle rows side by side, and the
+  VDMPF variants label their CPU chains versus GPU Merkle-fold accumulators. The pipelined
+  full-domain rows and the n = 10 DMPF / VDMPF / VDPF cells are re-measured on the integrated
+  revision and supersede their previous samples through `merge --retry-inputs`.
 * Merkle-fold proof accumulation for VDMPF (`BatchEvalMerkle`, GPU `VdmpfBatchEvalGpu`): extends
   the VDPF fold to the multi-point scheme across the Cuckoo buckets. Per bucket the corrected
   per-point hashes fold pairwise in fixed 256-leaf chunks (odd trailing node carries), the chunk
