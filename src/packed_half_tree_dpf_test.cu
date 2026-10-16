@@ -231,6 +231,9 @@ protected:
   int4 s0s[2];
   typename DpfType::Key k0, k1;
   uint8_t aes_key[1][16] = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
+  // Aes128Soft borrows these tables, including after MakePrg() returns.
+  uint32_t te0[256];
+  uint8_t sbox[256];
   int4 hash_key;
 
   void SetUp() override {
@@ -244,8 +247,6 @@ protected:
   }
 
   Prg MakePrg() {
-    uint32_t te0[256];
-    uint8_t sbox[256];
     fss::prg::aes_detail::InitTe0(te0);
     fss::prg::aes_detail::InitSbox(sbox);
     return Prg(aes_key, te0, sbox);
@@ -279,6 +280,36 @@ protected:
 
 TEST_F(PackedHalfTreeDpfAesSoftTest, EvalAll) {
   TestEvalAll();
+}
+
+TEST_F(PackedHalfTreeDpfAesSoftTest, EvalMatchesEvalAll) {
+  // Fixed inputs make table lifetime and both parties' output shares reproducible.
+  s0s[0] = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
+  s0s[1] = {0x56789abc, 0x6789abcd, 0x789abcde, 0x12345679};
+  hash_key = {0x23456789, 0x3456789a, 0x456789ab, 0x56789abc};
+  Prg prg = MakePrg();
+  DpfType dpf{prg, hash_key};
+
+  constexpr size_t blocks = 1ULL << DpfType::kDepth;
+  std::vector<int4> ys0(blocks), ys1(blocks);
+  const uint16_t alphas[] = {0, DpfType::kLanes - 1, DpfType::kLanes, 0xffff};
+  const int4 zero = {0, 0, 0, 0};
+  for (uint16_t alpha : alphas) {
+    for (uint64_t beta : {0ULL, 1ULL}) {
+      SCOPED_TRACE(::testing::Message() << "alpha=" << alpha << " beta=" << beta);
+      dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+      dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+      dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+      for (size_t j = 0; j < blocks; ++j) {
+        uint16_t x = static_cast<uint16_t>(j * DpfType::kLanes);
+        ASSERT_TRUE(EqualInt4(dpf.Eval(false, k0, x), ys0[j])) << "block=" << j;
+        ASSERT_TRUE(EqualInt4(dpf.Eval(true, k1, x), ys1[j])) << "block=" << j;
+        int4 diff = fss::util::Xor(ys0[j], ys1[j]);
+        ASSERT_TRUE(EqualInt4(diff, j == alpha / DpfType::kLanes ? DpfType::PackBeta(alpha, beta) : zero))
+            << "block=" << j;
+      }
+    }
+  }
 }
 
 // Edge cases: kDepth == 1, the shallowest legal trees
