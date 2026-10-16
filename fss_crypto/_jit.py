@@ -1,5 +1,6 @@
 """JIT compilation manager for FSS C++ extensions."""
 
+import hashlib
 import os
 import sysconfig
 import warnings
@@ -237,6 +238,36 @@ def _cache_key(scheme: str, in_bits: int, knobs: dict) -> str:
     return "_".join(parts)
 
 
+_TREE_HASHES: dict[tuple[str, str], str] = {}
+
+
+def _source_tree_hash(include_dir: str, csrc_dir: str) -> str:
+    """Content hash of the header trees the generated sources include.
+
+    Build dirs are keyed by this hash so checkouts with different header
+    contents never share binaries: ninja's mtime check alone cannot tell a
+    cached .so built from a divergent checkout (for example a parallel
+    worktree writing the same cache root) from an up-to-date one.
+    """
+    cached = _TREE_HASHES.get((include_dir, csrc_dir))
+    if cached is not None:
+        return cached
+    h = hashlib.sha1()
+    for label, root in (("include", include_dir), ("csrc", csrc_dir)):
+        h.update(label.encode())
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames.sort()
+            for name in sorted(filenames):
+                path = os.path.join(dirpath, name)
+                h.update(os.path.relpath(path, root).encode())
+                with open(path, "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 16), b""):
+                        h.update(chunk)
+    digest = h.hexdigest()[:12]
+    _TREE_HASHES[(include_dir, csrc_dir)] = digest
+    return digest
+
+
 # ---------------------------------------------------------------------------
 # Source generation
 # ---------------------------------------------------------------------------
@@ -328,13 +359,22 @@ def load(scheme: str, in_bits: int, group: str | None = None, prg: str = "chacha
     csrc_dir = str(_CSRC_DIR)
 
     build_dir = os.path.join(
-        os.path.expanduser("~"), ".cache", "fss_crypto", key
+        os.path.expanduser("~"), ".cache", "fss_crypto",
+        f"{key}-{_source_tree_hash(include_dir, csrc_dir)}",
     )
     os.makedirs(build_dir, exist_ok=True)
 
     src_path = os.path.join(build_dir, f"{key}.cu")
-    with open(src_path, "w") as f:
-        f.write(source)
+    # Write only when the content changes: an unconditional rewrite bumps the
+    # mtime and makes ninja recompile the extension in every fresh process.
+    try:
+        with open(src_path, "r") as f:
+            existing = f.read()
+    except FileNotFoundError:
+        existing = None
+    if existing != source:
+        with open(src_path, "w") as f:
+            f.write(source)
 
     extra_cflags = ["-O3", "-std=c++20"]
     extra_cuda_cflags = ["-O3", "-std=c++20", "--extended-lambda"]
