@@ -99,6 +99,56 @@ TEST(Aes128MmoRawGenBatchTest, ForwardsToGen8Mul2) {
   TestGenBatchForwardsToGen8<2>(0x205);
 }
 
+namespace {
+
+// A PRG that provides only Gen() and no Gen8(): detail::GenBatch() must fall
+// back to looping Gen() over the seeds, so PRGs without a batched entry stay
+// usable through the batched interfaces.
+template <int mul>
+class PlainPrg {
+ public:
+  __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
+    cuda::std::array<int4, mul> out{};
+    for (int i = 0; i < mul; ++i) {
+      unsigned k = 0x9e3779b9u * static_cast<unsigned>(i);
+      out[i] = {static_cast<int>(static_cast<unsigned>(seed.x) ^ k),
+          static_cast<int>(static_cast<unsigned>(seed.y) + k),
+          static_cast<int>(static_cast<unsigned>(seed.z) ^ (k << 1)),
+          static_cast<int>(static_cast<unsigned>(seed.w) - k)};
+    }
+    return out;
+  }
+};
+
+template <int mul>
+void TestGenBatchFallsBackToGen(uint64_t seed) {
+  std::mt19937 gen(seed);
+  PlainPrg<mul> prg;
+
+  for (int trial = 0; trial < kTrials; ++trial) {
+    cuda::std::array<int4, 8> seeds;
+    for (auto &seed : seeds) seed = RandomInt4(gen);
+
+    auto batched = fss::detail::GenBatch<mul>(prg, seeds);
+    for (int j = 0; j < 8; ++j) {
+      auto scalar = prg.Gen(seeds[j]);
+      for (int i = 0; i < mul; ++i) {
+        EXPECT_EQ(memcmp(&batched[j][i], &scalar[i], sizeof(int4)), 0);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+TEST(DetailGenBatchTest, FallsBackToGenLoopMul1) {
+  TestGenBatchFallsBackToGen<1>(0x106);
+}
+
+TEST(DetailGenBatchTest, FallsBackToGenLoopMul2) {
+  TestGenBatchFallsBackToGen<2>(0x206);
+}
+
 // DPF-style both-children expansion: the frontier clamps the seed LSB before the
 // PRG call and takes the children LSBs as control bits. The batched path must
 // reproduce the scalar children bits and clamped bodies for mul=2 seeds.
