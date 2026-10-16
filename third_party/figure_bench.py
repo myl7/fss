@@ -608,6 +608,10 @@ def merge(directory, inputs, retry_inputs=(), drops=()):
                     else:
                         entry["rows"] += 1
             records = [row for row in records if (row.get("library"), row.get("platform")) not in drop_specs]
+        # Polish on load so the retry matching below compares both sides under the
+        # current naming: inputs exported before a variant qualifier existed carry
+        # the old variant, which would otherwise dodge a retry from a newer run.
+        records = [polish_metadata(row) for row in records]
         if is_retry:
             # The scheme and variant keep a retry scoped to the series it re-measured:
             # without them a retried CPU sweep row would supersede every scheme's row

@@ -456,6 +456,24 @@ class FigureSweepTest(unittest.TestCase):
         self.assertEqual(set(by_raw), {"old-vdpf", "new-dpf"})
         self.assertEqual(result["metadata"]["superseded_records"][0]["record"]["raw_result"], "old-dpf")
 
+    def test_retry_supersedes_rows_exported_before_variant_qualifiers(self):
+        # An input chart-data written before a qualifier existed keeps its old
+        # variant; polishing on load must let a qualified retry supersede it.
+        legacy = self.directory / "legacy"
+        legacy.mkdir()
+        cpu_case = self.case(operation="EvalAll") | {"platform": "cpu"}
+        row = sweep.polish_metadata(sweep.normalize(cpu_case, "fss/CPU/VDPF-bytes/EvalAll/8", 10, "legacy-raw", {}))
+        row["variant"] = row["variant"].replace("-chains", "")
+        row["label"] = "fss/" + row["variant"]
+        (legacy / "chart-data.json").write_text(json.dumps(dict(schema_version=1, metadata={}, records=[row])))
+        retry = self.directory / "retry"
+        sweep.write_export(retry, {}, [sweep.normalize(cpu_case, "fss/CPU/VDPF-bytes/EvalAll/8", 5, "new-raw", {})])
+        self.assertEqual(sweep.merge(self.directory / "merged", [legacy], [retry]), 0)
+        result = json.loads((self.directory / "merged" / "chart-data.json").read_text())
+        self.assertEqual([row["raw_result"] for row in result["records"]], ["new-raw"])
+        self.assertTrue(result["records"][0]["variant"].endswith("-chains"))
+        self.assertEqual(result["metadata"]["superseded_records"][0]["record"]["raw_result"], "legacy-raw")
+
     def test_old_bench_parser_uses_configured_domain_and_key_count(self):
         raw = self.directory / "raw.json"
         raw.write_text(json.dumps({"benchmarks": [dict(name="fss/GPU/DPF/EvalAll", real_time=10, time_unit="ns")]}))
