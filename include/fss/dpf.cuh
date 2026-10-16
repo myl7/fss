@@ -42,6 +42,8 @@
 #include <cstddef>
 #include <cassert>
 #include <omp.h>
+#include <vector>
+#include <cuda/std/array>
 #include <fss/group.cuh>
 #include <fss/prg.cuh>
 #include <fss/util.cuh>
@@ -136,6 +138,13 @@ public:
   }
 
 private:
+  // EvalAll() shape: a scalar prefix of kBatchPrefix levels grows the frontier to
+  // 8 nodes, detail::GenBatch() expands 8 parents per level (pipelined through
+  // Gen8() when the PRG offers a batched entry), and a kBatchTail-level tail
+  // converts each 8-subtree group of 8 << kBatchTail leaves in local memory.
+  static constexpr int kBatchPrefix = 3;
+  static constexpr int kBatchTail = 3;
+
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
     int4 s0 = s0s[0];
     s0 = util::SetLsb(s0, false);
@@ -252,75 +261,168 @@ private:
   }
 
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
-    int4 st = s0;
-    bool t = b;
-    st = util::SetLsb(st, t);
-
     assert(in_bits < sizeof(size_t) * 8);
-    size_t l = 0;
-    size_t r = 1ULL << in_bits;
-    int i = 0;
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
-
-#pragma omp parallel
-#pragma omp single
-    EvalTree(b, st, cws, ys, l, r, i, par_depth_);
-  }
-
-  void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_) {
-    bool t = util::GetLsb(st);
-    int4 s = st;
-    s = util::SetLsb(s, false);
-
-    if (i == in_bits) {
-      auto y = Group::From(s);
-      int4 v_cw_np1 = cws[in_bits].s;
-      assert((v_cw_np1.w & 1) == 0);
-      if (t) y = y + Group::From(v_cw_np1);
-      if (b) y = -y;
-      assert(l + 1 == r);
-      ys[l] = y.Into();
+    if constexpr (in_bits < kBatchPrefix + kBatchTail) {
+      // Domains too small to fill an 8-wide frontier evaluate per input; the
+      // point walk is cheaper than the batched machinery at this size.
+      constexpr size_t n = size_t{1} << in_bits;
+#pragma omp parallel for
+      for (size_t x = 0; x < n; ++x) ys[x] = Eval(b, s0, cws, static_cast<In>(x));
       return;
     }
 
-    Cw cw = cws[i];
-    int4 s_cw = cw.s;
-    bool tl_cw = util::GetLsb(s_cw);
-    s_cw = util::SetLsb(s_cw, false);
-    bool tr_cw = cw.tr;
+    int4 st = s0;
+    st = util::SetLsb(st, b);
 
-    auto [sl, sr] = prg.Gen(s);
+    int par_depth_ = util::ResolveParDepth(par_depth);
 
-    bool tl = util::GetLsb(sl);
-    sl = util::SetLsb(sl, false);
-    bool tr = util::GetLsb(sr);
-    sr = util::SetLsb(sr, false);
-
-    if (t) {
-      sl = util::Xor(sl, s_cw);
-      sr = util::Xor(sr, s_cw);
-      tl = tl ^ tl_cw;
-      tr = tr ^ tr_cw;
-    }
-
-    int4 stl = sl;
-    stl = util::SetLsb(stl, tl);
-    int4 str = sr;
-    str = util::SetLsb(str, tr);
-
-    size_t mid = (l + r) / 2;
-
-    if (i < par_depth_) {
-#pragma omp task
-      EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
-#pragma omp task
-      EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
-#pragma omp taskwait
+    int split_depth = par_depth_;
+    if (split_depth > in_bits - kBatchPrefix - kBatchTail) split_depth = in_bits - kBatchPrefix - kBatchTail;
+    if (split_depth > 0) {
+      // Split at a frontier of 2 ** split_depth subtree roots instead of per-node tasks,
+      // so the sequential batched walk stays the fast default path.
+      size_t num_tasks = size_t{1} << split_depth;
+      std::vector<int4> frontier(num_tasks);
+      frontier[0] = st;
+      for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(frontier.data(), 1 << lv, cws, lv);
+      size_t span = (size_t{1} << in_bits) / num_tasks;
+#pragma omp parallel for
+      for (size_t task = 0; task < num_tasks; ++task) {
+        EvalBatched8(b, frontier[task], cws, ys, task * span, split_depth);
+      }
     } else {
-      EvalTree(b, stl, cws, ys, l, mid, i + 1, par_depth_);
-      EvalTree(b, str, cws, ys, mid, r, i + 1, par_depth_);
+      EvalBatched8(b, st, cws, ys, 0, 0);
     }
+  }
+
+  // Expands w scalar frontier nodes (t in LSB) by one level with cws[lv].
+  // The children overwrite the frontier in place: iteration is in reverse so
+  // the writes at 2j, 2j+1 never clobber nodes still to be read.
+  void ExpandFrontier(int4 frontier[], int w, const Cw cws[], int lv) {
+    int4 s_cw = util::SetLsb(cws[lv].s, false);
+    bool tl_cw = util::GetLsb(cws[lv].s);
+    bool tr_cw = cws[lv].tr;
+
+    for (int j = w; j-- > 0;) {
+      bool t = util::GetLsb(frontier[j]);
+      int4 s = util::SetLsb(frontier[j], false);
+
+      auto [sl, sr] = prg.Gen(s);
+
+      bool tl = util::GetLsb(sl);
+      sl = util::SetLsb(sl, false);
+      bool tr = util::GetLsb(sr);
+      sr = util::SetLsb(sr, false);
+
+      if (t) {
+        sl = util::Xor(sl, s_cw);
+        sr = util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
+
+      frontier[2 * j] = util::SetLsb(sl, tl);
+      frontier[2 * j + 1] = util::SetLsb(sr, tr);
+    }
+  }
+
+  // Applies the level correction to one expanded child branchlessly.
+  // m is 0 or -1 from the parent control bit t, and t_cw is the cw control bit
+  // masked by t. The cw seed is clamped, so the XOR leaves the child LSB free
+  // for the packed control bit.
+  static int4 CorrectChild(int4 child, int4 s_cw, int m, int t_cw) {
+    int4 res = {child.x ^ (s_cw.x & m), child.y ^ (s_cw.y & m), child.z ^ (s_cw.z & m), child.w ^ (s_cw.w & m)};
+    res.w = (res.w & ~1) | ((child.w ^ t_cw) & 1);
+    return res;
+  }
+
+  // Full-domain evaluation of the subtree rooted at st (t in LSB) at level i through an
+  // 8-wide batched frontier: a kBatchPrefix-level scalar prefix, batched expansions, and
+  // a kBatchTail-level tail converted in local memory.
+  // Requires in_bits - i >= kBatchPrefix + kBatchTail.
+  void EvalBatched8(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, int i) {
+    int4 frontier[8];
+    frontier[0] = st;
+    for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(frontier, 1 << (lv - i), cws, lv);
+    EvalBatched8Group(b, frontier, cws, ys, l, i + kBatchPrefix);
+  }
+
+  // Evaluates a group of 8 consecutive frontier nodes (t in LSB) at level i, covering the
+  // leaves [l, l + 8 << (in_bits - i)) in order. Requires in_bits - i >= kBatchTail.
+  void EvalBatched8Group(bool b, const int4 (&frontier)[8], const Cw cws[], int4 ys[], size_t l, int i) {
+    if (i == in_bits - kBatchTail) {
+      // Expand the group to its 8 << kBatchTail leaves in local memory, then convert.
+      int4 bufs[2][8 << kBatchTail];
+      int4 *cur = bufs[0];
+      int4 *next = bufs[1];
+      for (int j = 0; j < 8; ++j) cur[j] = frontier[j];
+      int w = 8;
+      for (int lv = i; lv < in_bits; ++lv) {
+        int4 s_cw = util::SetLsb(cws[lv].s, false);
+        int tl_cw = util::GetLsb(cws[lv].s);
+        int tr_cw = cws[lv].tr;
+        for (int g = 0; g < w / 8; ++g) {
+          cuda::std::array<int4, 8> seeds;
+          int ts[8];
+          for (int j = 0; j < 8; ++j) {
+            ts[j] = static_cast<int>(util::GetLsb(cur[8 * g + j]));
+            seeds[j] = util::SetLsb(cur[8 * g + j], false);
+          }
+          auto out = detail::GenBatch<2>(prg, seeds);
+          for (int j = 0; j < 8; ++j) {
+            int m = -ts[j];
+            next[16 * g + 2 * j] = CorrectChild(out[j][0], s_cw, m, ts[j] & tl_cw);
+            next[16 * g + 2 * j + 1] = CorrectChild(out[j][1], s_cw, m, ts[j] & tr_cw);
+          }
+        }
+        int4 *swap = cur;
+        cur = next;
+        next = swap;
+        w *= 2;
+      }
+
+      int4 v_cw_np1 = cws[in_bits].s;
+      assert((v_cw_np1.w & 1) == 0);
+      Group v_cw = Group::From(v_cw_np1);
+      for (int j = 0; j < w; ++j) {
+        bool t = util::GetLsb(cur[j]);
+        int4 s = util::SetLsb(cur[j], false);
+        auto y = Group::From(s);
+        if (t) y = y + v_cw;
+        if (b) y = -y;
+        ys[l + j] = y.Into();
+      }
+      return;
+    }
+
+    int4 s_cw = util::SetLsb(cws[i].s, false);
+    int tl_cw = util::GetLsb(cws[i].s);
+    int tr_cw = cws[i].tr;
+
+    cuda::std::array<int4, 8> seeds;
+    int ts[8];
+    for (int j = 0; j < 8; ++j) {
+      ts[j] = static_cast<int>(util::GetLsb(frontier[j]));
+      seeds[j] = util::SetLsb(frontier[j], false);
+    }
+    auto out = detail::GenBatch<2>(prg, seeds);
+    // The 16 children interleave in leaf order: node j's children land at 2j, 2j+1 of the
+    // next level. De-interleave them into two consecutive groups of 8.
+    int4 low[8];
+    int4 high[8];
+    for (int j = 0; j < 4; ++j) {
+      int m = -ts[j];
+      low[2 * j] = CorrectChild(out[j][0], s_cw, m, ts[j] & tl_cw);
+      low[2 * j + 1] = CorrectChild(out[j][1], s_cw, m, ts[j] & tr_cw);
+      int m4 = -ts[j + 4];
+      high[2 * j] = CorrectChild(out[j + 4][0], s_cw, m4, ts[j + 4] & tl_cw);
+      high[2 * j + 1] = CorrectChild(out[j + 4][1], s_cw, m4, ts[j + 4] & tr_cw);
+    }
+
+    size_t half = size_t{8} << (in_bits - i - 1);
+    EvalBatched8Group(b, low, cws, ys, l, i + 1);
+    EvalBatched8Group(b, high, cws, ys, l + half, i + 1);
   }
 };
 

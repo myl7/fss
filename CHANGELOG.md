@@ -196,6 +196,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   levels, expanding eight parents per batched expansion and fusing a branchless final
   conversion; outputs are bit-exact with the previous depth-first walk and the 2^20
   full-domain evaluation moves from 4.8 to 16.5-32.9 G outputs/s.
+* The DPF and Half-Tree CPU `EvalAll` paths grow the same batched frontier for every PRG:
+  one batched expansion per eight nodes per level with branchless corrections, 64-leaf
+  conversion groups for the DPF, and a fused two-sigma-set last level for the Half-Tree;
+  `fss::detail::GenBatch` pipelines the batch through `Gen8` when the PRG offers one and
+  loops `Gen` otherwise. At 2^20 the DPF bytes evaluation drops from 34 to 12 ms, the
+  integer group from 22 to 7.6 ms, and the Half-Tree from 20 to 5 ms, bit-exact before
+  and after.
 
 ## [1.2.0] - 2026-08-17
 

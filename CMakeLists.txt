@@ -50,6 +50,7 @@ if(BUILD_TESTING)
 
     add_executable(dpf_bytes_test src/dpf_test.cu)
     target_link_libraries(dpf_bytes_test GTest::gtest_main fss OpenSSL::Crypto)
+    target_compile_options(dpf_bytes_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
     gtest_discover_tests(dpf_bytes_test)
 
     add_executable(dcf_bytes_test src/dcf_test.cu)
@@ -60,6 +61,7 @@ if(BUILD_TESTING)
     add_executable(dpf_u128_le_test src/dpf_test.cu)
     target_compile_definitions(dpf_u128_le_test PRIVATE TEST_GROUP_U128)
     target_link_libraries(dpf_u128_le_test GTest::gtest_main fss OpenSSL::Crypto)
+    target_compile_options(dpf_u128_le_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
     gtest_discover_tests(dpf_u128_le_test)
 
     add_executable(dcf_u128_le_test src/dcf_test.cu)
@@ -80,7 +82,8 @@ if(BUILD_TESTING)
     gtest_discover_tests(point_eval_gpu_test)
 
     add_executable(half_tree_dpf_test src/half_tree_dpf_test.cu)
-    target_link_libraries(half_tree_dpf_test GTest::gtest_main fss)
+    target_link_libraries(half_tree_dpf_test GTest::gtest_main fss OpenSSL::Crypto)
+    target_compile_options(half_tree_dpf_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
     gtest_discover_tests(half_tree_dpf_test)
 
     add_executable(grotto_dcf_test src/grotto_dcf_test.cu)

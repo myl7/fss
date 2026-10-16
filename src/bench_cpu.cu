@@ -573,12 +573,21 @@ static void BM_HalfTreeDpfEvalAll(benchmark::State &state) {
   constexpr size_t n = size_t{1} << in_bits;
   std::vector<int4> ys(n);
 
-  AesCtx<1> ctx;
-  HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-  for (auto _ : state) {
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys.data(), n));
-    benchmark::DoNotOptimize(ys.data());
+  if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<1>>) {
+    AesCtx<1> ctx;
+    HtDpfType dpf{ctx.prg, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    for (auto _ : state) {
+      dpf.EvalAll(false, k0, cuda::std::span<int4>(ys.data(), n));
+      benchmark::DoNotOptimize(ys.data());
+    }
+  } else {
+    HtDpfType dpf{Prg(kNonce0, kNonce1), {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
+    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
+    for (auto _ : state) {
+      dpf.EvalAll(false, k0, cuda::std::span<int4>(ys.data(), n));
+      benchmark::DoNotOptimize(ys.data());
+    }
   }
   state.SetItemsProcessed(state.iterations() * n);
 }
@@ -742,6 +751,8 @@ BENCHMARK(BM_DpfGen<20, UintGroup, DpfAes>)->Name("BM_DpfGen_Uint_Aes/20");
 BENCHMARK(BM_DpfEval<20, BytesGroup, DpfAes>)->Name("BM_DpfEval_Bytes_Aes/20");
 // 6. BM_DpfEvalAll_Uint_Aes/20
 BENCHMARK(BM_DpfEvalAll<20, UintGroup, DpfAes>)->Name("BM_DpfEvalAll_Uint_Aes/20");
+// ChaCha has no Gen8(), so its EvalAll runs the frontier through the detail::GenBatch() loop.
+BENCHMARK(BM_DpfEvalAll<20, UintGroup, DpfChaCha>)->Name("BM_DpfEvalAll_Uint_ChaCha/20");
 
 // 7. BM_DpfEval_Uint_ChaCha/20
 BENCHMARK(BM_DpfEval<20, UintGroup, DpfChaCha>)->Name("BM_DpfEval_Uint_ChaCha/20");
@@ -793,6 +804,7 @@ BENCHMARK(BM_HalfTreeDpfEval<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEval
 BENCHMARK(BM_HalfTreeDpfGen<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfGen_Uint_Aes/20");
 // 21. BM_HalfTreeDpfEvalAll_Uint_Aes/20
 BENCHMARK(BM_HalfTreeDpfEvalAll<20, UintGroup, HtDpfAes>)->Name("BM_HalfTreeDpfEvalAll_Uint_Aes/20");
+BENCHMARK(BM_HalfTreeDpfEvalAll<20, UintGroup, HtDpfChaCha>)->Name("BM_HalfTreeDpfEvalAll_Uint_ChaCha/20");
 // 25. BM_PackedHalfTreeDpfEvalAll_Aes/20
 BENCHMARK(BM_PackedHalfTreeDpfEvalAll<20, HtDpfAes>)->Name("BM_PackedHalfTreeDpfEvalAll_Aes/20");
 // 29. BM_PackedHalfTreeDpfEvalAll_ChaCha/20
