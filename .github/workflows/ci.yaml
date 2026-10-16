@@ -36,12 +36,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-12 g++-12
 
-      # Our cuda-toolkit fork, tagged v0.2.36-myl7.1 (upstream v0.2.36 base):
+      # Our cuda-toolkit fork, tagged v0.2.36-myl7.2 (upstream v0.2.36 base):
       # upstream rejects major.minor pins and its version table lacks CUDA 13.4
       # (Jimver/cuda-toolkit#448, #449). Fork tags are append-only; bump to a
-      # new fork tag when it gains a new CUDA series.
+      # new fork tag when it gains fixes or a new CUDA series.
       - name: Install CUDA
-        uses: myl7/cuda-toolkit@v0.2.36-myl7.1
+        uses: myl7/cuda-toolkit@v0.2.36-myl7.2
         with:
           method: network
           cuda: ${{ matrix.cuda }}
@@ -111,7 +111,7 @@ jobs:
       # Same forked cuda-toolkit action as the cpp job; see the comment there
       # for why it is not plain Jimver/cuda-toolkit.
       - name: Install CUDA
-        uses: myl7/cuda-toolkit@v0.2.36-myl7.1
+        uses: myl7/cuda-toolkit@v0.2.36-myl7.2
         with:
           method: network
           cuda: ${{ matrix.cuda }}
