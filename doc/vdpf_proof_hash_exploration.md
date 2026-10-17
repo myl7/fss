@@ -1,6 +1,34 @@
-# VDPF and VDMPF proof hash: requirements, AES constructions, and decision
+# The VDPF and VDMPF proof-hash replacement attempt: a complete record
 
-**Decision: reject the split-lane AES-MMO construction, but approve the exact two-step Hirose construction in Section 7 for implementation and benchmarking under the stated ideal-cipher assumption.**
+## Overview
+
+This document records the complete attempt to replace the Blake3 `Hash` role of the VDPF and VDMPF proof machinery — the 64B-to-32B compression called H' in [dCP22] — with an AES- or ChaCha-based construction.
+The attempt ran from an initial proposal, through three rounds of external security review, to measured primitive costs on both platforms, and closed without shipping: no library code from the attempt survives and Blake3 remains H'.
+The motivation was measured, not aesthetic: on the reference CPU host the chain `EvalAll` spends its roughly 246 ns per-point excess over a same-shape DPF walk on three Blake3 calls, and on the GPU the Merkle path measured 0.486 ms against the DPF walk's 0.156 ms at n = 2^20 (Section 10).
+The security analysis ended well — two constructions with reviewed bounds — and the measurements ended the attempt: in the two-step Hirose shape Blake3 runs at 0.057 ns per hash on the A6000 (17.6 GH/s) and 118.8-131.5 ns on the pinned CPU, and both approved candidates measure behind it on both platforms (Section 10.4).
+Everything from the decision preamble through the References is preserved verbatim from the analysis as it stood after each review; this reframing only added the Overview, the Timeline, and the Part groupings.
+
+## Timeline
+
+| When | Phase | Outcome |
+| --- | --- | --- |
+| 2026-10-16 | The direction opens | A research verdict recommends an AES-MMO replacement for H' on measured cost grounds; exploratory only. |
+| 2026-10-17 | First proposal, implementation starts | The split-lane AES-MMO construction is specified and its implementation begins in a branch worktree. |
+| 2026-10-17 | External review, round 1 | The construction is broken at exactly 64-bit collision security (Part II); the implementation is stopped mid-flight and fully reverted, and the analysis becomes the rejection record. |
+| 2026-10-17 | External review, round 2 | Feasibility restated: requirements, construction-family survey, and the two-step Hirose AES-256 selection, approved for implementation and measurement only (Part III). |
+| 2026-10-17 | External review, round 3 | The truncated RFC 8439 ChaCha20 instantiation joins as a conditional co-equal candidate with a direct random-function bound (Section 7.4). |
+| 2026-10-17 | Measurements on cs11369a | KAT-verified primitive costs in the exact shape: Blake3 0.057 ns/hash GPU and 118.8-131.5 ns CPU; ChaCha20 0.32 and 594.4-719.4; AES-256 T-table 1.7-12.0 GPU and 188.9-198.6 AES-NI CPU (Section 10.4). |
+| 2026-10-17 | Closure | The performance gate fails on both platforms; the direction closes with Blake3 as H'. |
+
+Measurement artifacts live outside the repository: the microbenchmark program, manifest, and raw logs are preserved at `cs11369a:~/tmp/fss-hirose-ab/scratch/`.
+No code from the attempt was merged; the reverted implementation left the working tree clean, verified at revert time.
+
+---
+
+
+**Decision: reject the split-lane AES-MMO construction and approve the exact two-step AES-256 Hirose construction and the ChaCha20 variant in Section 7 for implementation and benchmarking under their respective explicit assumptions.**
+The third review classifies ChaCha20 as **(a) a conditional candidate alongside AES-256**, without a GPU performance preference.
+Its random-function proof retains the approximately 2^128 constant-success collision work scale, with a separate bound rather than an application of the ideal-cipher theorem.
 Direction 3 is cryptographically feasible.
 A CPU speedup is unestablished and looks unlikely under the supplied key-schedule estimate.
 A GPU-focused deployment is valid if its measured performance justifies adoption and its host implementation computes the same function.
@@ -12,6 +40,9 @@ One-wayness alone does not imply collision resistance.
 Here H' must resist finding two distinct arbitrary 64B inputs with the same 32B output at approximately 2^128 classical work for constant success probability.
 It does not require the XOR-collision resistance separately assumed for H, which remains Blake3 `XorHash`.
 Astra independently reviewed the requirements, construction, reduction, and decision in this second review.
+Astra independently checked the third review's random-function proof and concrete ChaCha caveats.
+
+## Part I — The requirement
 
 ## 1. Required property and code scope
 The replacement must provide pairwise collision resistance for arbitrary distinct 64B inputs, with a target of about 2^128 classical work for constant success probability.
@@ -91,6 +122,8 @@ A hidden AES key can support a different PRF-based argument, with a birthday los
 Neither situation supplies an arbitrary-input public collision theorem for this H'.
 Introducing a new secret shared by the evaluators would change the protocol and key-management model.
 The existing Blake3 IV is public despite the implementation's `KEYED_HASH` flag.
+
+## Part II — First proposal and rejection
 
 ## 3. Earlier candidates: valid attacks and corrected claims
 
@@ -302,6 +335,8 @@ There is no cheap fixed-coordinate attack in that example.
 Thus shared expensive computation is a useful design feature, not a general necessary-condition theorem.
 Hirose supplies a concrete shared-key construction with a proof, rather than a claim based on visual mixing.
 
+## Part III — Survey and the selected constructions
+
 ## 6. Survey of suitable and unsuitable AES construction families
 
 A double-block-length (DBL) output has 2n bits.
@@ -434,7 +469,168 @@ The Blake3 baseline also rests on an unproved concrete collision-resistance assu
 The exact function above is approved for implementation and measurement under these explicit assumptions and the stated target.
 It is more than an unspecified future candidate.
 This approval does not certify unwritten code, a CPU/GPU speedup, or an immediate default switch.
-Abreast-DM, MJH, the three-call family, and modified Hirose variants remain candidates for a future instantiation review.
+Abreast-DM, MJH, the three-call family, and Hirose variants other than the Section 7.4 construction remain candidates for a future instantiation review.
+
+### 7.4 Third review: truncated ChaCha20 instantiation
+
+#### Exact primitive and scope
+
+Define a separate algorithm, `H'_Hirose-ChaCha20,V`, using the two-step equations, c, V, and output order in Section 7.1, with this replacement for E:
+
+```
+E_k(x) = ChaCha20_Block(k, LE32(x[12:16]), x[0:12])[0:16].
+```
+
+Slices denote bytes, with an exclusive end index.
+Use the RFC 8439 Section 2.3 block function: a 32-byte key, a 32-bit counter, a 12-byte nonce, the standard constants, 20 rounds, wordwise addition of the initial state modulo 2^32, and little-endian output [RFC8439].
+The initial words 12 through 15 are `LE32(x[12:16]), LE32(x[0:4]), LE32(x[4:8]), LE32(x[8:12])`.
+This maps all 128 input bits bijectively into the counter/nonce words.
+The key is all 32 bytes of `b || t`, without repetition or reduction.
+With the specified c, the second lane flips bit 0 of the first nonce byte.
+It does not increment the counter.
+The function evaluates one block at the specified counter, including 0 and `0xffffffff`, without stream state or counter advancement.
+Nonce uniqueness for secret-key stream encryption is not a requirement of this public hash experiment.
+
+Each H' evaluation uses four ChaCha20 blocks in two dependent stages.
+The two blocks within one stage share a key but have distinct inputs.
+They can execute in parallel.
+There is no expanded key schedule, but all four calls still perform their round computations.
+This definition specifies the standard block function, not the bare ChaCha permutation, HChaCha20, or the repository's current PRG wrapper.
+
+#### Where the AES proof uses a permutation
+
+The local collision extraction in Section 7.2 uses determinism and the injective initial-state encoding.
+It uses neither inversion nor distinct ciphertexts for distinct plaintexts.
+The primitive theorem it invokes does use the ideal-cipher model [FGL09, Appendix B]:
+
+| Proof step | Use of the permutation property | Status for ChaCha |
+| --- | --- | --- |
+| All-key forward/inverse transcript | An inverse query fixes a ciphertext and samples its unique unused plaintext | No inverse oracle exists for the truncated function |
+| Lazy sampling and companion queries | Fresh endpoints exclude previously used endpoints under that key | Random-function answers sample with replacement |
+| Non-matching pair collision bound | The two fresh-answer denominators are `N-(2i-2)` and `N-(2i-1)` | Replace with an independently proved `N^2` denominator |
+| Matching pair bound | Bound equality of the two feedforward labels using unused endpoints | Prove the event directly with probability `1/N` |
+| Two-step extraction and final verification | Equal final states expose a compression collision at one of the two steps | Retained, with at most eight extra primitive calls |
+
+Distinct raw cipher outputs do not imply distinct feedforward labels.
+The original matching-pair event already allowed equal labels and accounts for its linear term.
+The quoted theorem is inapplicable to a non-permutation as stated.
+Applying a PRP/PRF switching lemma would add a birthday-sized loss around 2^64 queries and would fail to establish the target.
+That loss would reflect an unsuitable reduction, not a collision attack on the new construction.
+
+#### A direct random-function bound
+
+This subsection proves a new forward-oracle statement for this exact variant.
+Let `R(k,x)` be an ideal random function from a 256-bit key and a 128-bit input to 128 bits, with independent uniform answers at distinct `(k,x)` pairs.
+Repeated queries return the same answer.
+Keys and inputs are public, arbitrary, related, and adaptively chosen.
+Set `N = 2^128` and `G(k,x) = R(k,x) XOR x`.
+All distinct G entries are also independent uniform n-bit values, where n = 128.
+
+Partition the query domain into two-element sets
+
+```
+O(k,x) = {(k,x), (k,x XOR c)}.
+```
+
+These sets are disjoint or identical because c is fixed and nonzero.
+Choose a canonical representative u for each set, for example the lexicographically smaller input byte string.
+Its label pair is `(U,W) = (G(k,u), G(k,u XOR c))`.
+The two possible compression inputs in this set return `(U,W)` and `(W,U)`.
+The bijection `k = b || t` ensures that there are no further compression inputs with the same oriented primitive queries.
+
+Strengthen the oracle by revealing both entries whenever the adversary first touches a set.
+This grants information and cannot reduce the adversary's success.
+After Q ordinary queries, including final verification, at most Q such sets have been touched.
+For each fresh set, condition on the entire augmented transcript and the next chosen set.
+Its pair consists of two fresh independent uniform n-bit values, even if the key occurred before.
+A later query to either entry of this set reveals no fresh pair.
+This accounts for adaptive strategies that inspect one lane before choosing which pairs to complete.
+
+A compression collision must have one of two forms:
+
+1. Within one set, the two orientations collide exactly when `U = W`, with probability `1/N` per fresh set.
+2. Between distinct sets, the fresh pair equals a previous pair or its reversal, with probability at most `2/N^2` per previous set, conditional on the transcript.
+
+A union bound therefore gives
+
+```
+Pr[compression collision among Q touched sets]
+    <= Q/N + sum_{i=1}^{Q} 2*(i-1)/N^2
+     = Q/N + Q*(Q-1)/N^2.
+
+Adv_H'_Hirose-ChaCha20,ideal^coll(q)
+    <= min(1, Q/N + Q*(Q-1)/N^2),  Q = q+8.
+```
+
+The last line applies Section 7.2's unchanged two-step extraction.
+All preprocessing, direct primitive queries, and shared-use oracle queries count toward q.
+It covers claimed messages whose evaluations were absent from the original transcript.
+For `Q <= N/4`, the bound is at most `5/16`, below 1/2.
+Thus constant-success collision finding requires Omega(2^128) classical primitive queries in this model.
+
+The matching attack still costs O(N): fix a, try distinct `k=b||t`, and test `G(k,a) = G(k,a XOR c)` using two queries per trial.
+Each trial succeeds with probability `1/N`.
+On success, the distinct messages
+
+```
+(a XOR V0)         || (b XOR V1) || t || m3
+((a XOR c) XOR V0) || (b XOR V1) || t || m3
+```
+
+have equal first-step states and therefore equal final hashes for any common m3.
+This establishes Theta(2^128) constant-success query complexity for the exact two-step random-function variant.
+Its advantage curve still has the order `q/2^128 + q^2/2^256`, rather than the pure birthday curve of an ideal 256-bit-output hash.
+The AES theorem's numerical expression also upper-bounds this new expression on its stated domain, but the justification is this separate proof.
+Neither result proves the same bound for concrete ChaCha20.
+
+A single-key birthday collision `R(k,x) = R(k,y)` with `x != y` does not even equate the corresponding G labels: their difference is `x XOR y`.
+A birthday collision of G equates only one coordinate of C.
+The second coordinate and the paired-input structure remain required, as the proof above accounts for.
+There is no additional `q^2/2^128` term from allowing repeated raw outputs.
+
+#### Truncation and concrete assumptions
+
+Projecting an ideal 512-bit-output random function onto its first 128 bits gives exactly the R model above.
+There is no extra reduction factor or truncation error.
+Even if the adversary sees all 512 bits for every query, the other 384 bits can be sampled independently and consistently per entry in that ideal model.
+They do not change the fresh-pair argument.
+The proof uses n = 128 throughout. It does not claim the collision strength of a 512-bit output.
+
+Concrete ChaCha20 is a fixed public algorithm, not a sampled random function.
+The necessary heuristic is that its specified 128-bit projection admits no structure-based collision strategy that materially beats this ideal-model work scale under adversarially chosen keys and inputs.
+Describing distinct `(key,input)` evaluations as random-function-like is shorthand for that heuristic.
+An ordinary secret-key PRF claim does not establish it.
+An oracle distinguishing game that also lets the adversary evaluate the known concrete algorithm locally would be trivial, so this review does not append an unspecified PRF advantage to turn the ideal bound into a concrete theorem.
+
+| Claim or assumption | Evidence and unproved part |
+| --- | --- |
+| Ideal random-function construction | The proof above covers adaptive all-key forward queries and arbitrary compression states |
+| Concrete full-round ChaCha20 projection | Assume resistance to chosen-key, related-key, and related-input collision strategies for this exact mapping. No concrete 128-bit lower bound or numerical failure bound has been proved |
+| Access beyond the projection | The public code exposes the full block and the invertible internal permutation. The ideal 512-bit-function extension covers the other output words, but not arbitrary raw-permutation/inverse-permutation access. Exploiting that structure is part of the unproved concrete assumption |
+| Reuse with repository PRGs/PRPs | Count equivalent same-state block evaluations as shared queries. Other wrappers expose related internal states and outputs. Independent behavior across wrappers does not follow from a class name, different nonce, or public XOR tweak |
+| Comparison with AES-256 | Both concrete instantiations require assumptions beyond secret-key security. AES has a published Hirose ideal-cipher theorem. The ChaCha variant has this local random-function proof and less construction-specific cryptanalytic evidence. Equal ideal work exponents do not establish equal concrete confidence |
+| Protocol and implementation | Retain H's CR/XOR-CR assumptions, common-material and nonzero-cs conditions, and the unresolved reference-chain induction. Byte correctness, side channels, and deployed code remain separate checks |
+
+Keep all 20 rounds and the standard constants and additive feedforward.
+Barbero, Bellini, and Makarim analyze rotational distinguishers through 17 rounds of the internal permutation, with attacker-controlled states beyond the standard fixed-constant slice [BBM23].
+They explicitly distinguish this result from an attack on the stream cipher.
+A later analysis studies rotational-XOR propagation with injected constants [BBB22].
+These results do not exhibit a collision attack on this full-round, truncated, two-step function.
+They remain relevant to the assumption: this hash adversary controls the key and input, and can seek relations that secret-key encryption experiments do not allow.
+An applicable attack would need to respect the fixed constants, input encoding, full rounds, projection, and both collision equations, or exploit them through another algorithm.
+A statistical distinguisher alone supplies neither that collision nor its cost.
+The retained four output words add back public constants, so an attacker can subtract those constants to recover four internal output words.
+This feedforward is part of the exact specification, not an extra secrecy claim.
+The outer XOR with x acts on nonce/counter bytes placed elsewhere in the initial state and has no direct wordwise cancellation with those constants.
+The cited papers do not constitute an exhaustive cryptanalysis of this variant, and full rounds do not prove its chosen-key security.
+Reduced-round ChaCha variants receive no approval here.
+
+**Third-review verdict: (a), conditional candidate alongside AES-256.**
+The loss of permutation structure does not lower the ideal-model constant-success target.
+The new proof supports implementation and measurement under the stated concrete heuristic.
+GPU preference requires performance evidence and implementation review. The measurements completed in Section 10.4 and resolved against a GPU preference: both variants measure slower than Blake3.
+
+## Part IV — Roads not taken
 
 ## 8. Protocol-specific weakening of H'
 
@@ -481,6 +677,8 @@ Resetting it to the same key and counter before each call makes the output indep
 Leaving it stateful makes the result depend on call history rather than only on the message.
 None of these observations yields the required stateless 64B-to-32B collision-resistant hash.
 The function names and MMO comment cannot override the selected CTR mode and the feedforward arithmetic.
+
+## Part V — Performance: estimates and measurements
 
 ## 10. Performance budget and measurement limits
 
@@ -569,9 +767,79 @@ Even removing H' cost entirely would leave H and the tree walk, giving about a 1
 For the chain, H' is only one of three proof-hash compressions per point.
 Thus a claim that H' alone removes 90% of EvalAll cost would confuse H' with the whole proof-hash phase.
 
+### 10.3 ChaCha20 cost estimate, without new measurements
+
+The new variant replaces four AES-256 encryptions and two expansions with four ChaCha20 block evaluations.
+Absence of a key schedule removes one cost, but does not imply a CPU win.
+An unpruned 20-round block has 80 quarter rounds, each with four additions, four XORs, and four rotations.
+Four blocks therefore require 320 quarter rounds, or 3,840 such word operations before initialization, feedforward, and data movement.
+Keeping only 16 output bytes can omit unused final stores, additions, and other proven dead operations.
+It does not reduce the core work to one quarter of a block.
+
+For a public scalar reference, HACL* Table 2 reports 6.37 cycles per byte for its reference ChaCha20 implementation on an Intel Xeon E5-1630 v4 at 3.70 GHz, using GCC 6.3 and 16 KiB messages [HACL17].
+That table measures stream-encryption throughput with amortized setup, not four fresh-key blocks in this hash.
+Use its rate only for a scale calculation:
+
+```
+4 * 64 bytes * 6.37 cycles/byte = 1,630.72 cycles
+at the Section 10.1 reference frequency of 2.0 GHz: about 815 ns
+at the source machine's 3.70 GHz: about 441 ns
+```
+
+The 256 bytes here count four full blocks of primitive work, not the 64-byte H' input or 32-byte digest.
+The calculation suggests hundreds of nanoseconds for scalar code, well above the 72-85 ns baseline estimate.
+It is neither a measurement nor a lower bound for this repository or a modern CPU.
+Fresh state setup, truncated stores, compiler scheduling, paired-call overlap, and two-stage dependencies can change the result.
+The historical paper's scalar stream rate cannot establish single-hash latency or the benefit of batching independent Merkle nodes.
+Use the actual same-machine baseline for adoption.
+
+On GPU, ChaCha's integer additions, XORs, and rotations avoid the T-table accesses and expanded-key storage of Section 10.2's AES implementation model.
+That is a reason to measure the variant.
+Four live 16-word states, or two states at a time with staged evaluation, can still impose substantial register and instruction costs.
+Occupancy and spills may reverse the expected benefit, and the unchanged Blake3 H work remains.
+Report isolated H' throughput, serial-chain latency, and complete proof workloads separately.
+The measurements have completed and are recorded in Section 10.4.
+
+### 10.4 Measured primitive costs (2026-10-17)
+
+A scratch benchmark on cs11369a (RTX A6000, sm_86, CUDA 12.6, `-O3 -arch=native`) ran the exact two-step
+Hirose shape of Section 7 with three E instantiations: a T-table AES-256 following the `Aes128Soft` pattern
+(constant-memory, shared-memory, and an interleaved shared-memory variant), the RFC 8439 ChaCha20 block function
+truncated to 128 bits, and the repository Blake3 compression as the baseline.
+Every implementation passed the FIPS-197 C.3 AES-256 and RFC 8439 Section 2.3.2 known-answer tests on host and
+device and agreed bit-for-bit across variants.
+The GPU timing evaluates one independent hash per thread over 2^20 threads with CUDA events, median of five
+repetitions; a contended GPU 0 and a quiet GPU 2 agreed within 4 percent.
+The CPU reference is one pinned Xeon Platinum 8352V core.
+
+| E (two-step Hirose shape) | GPU ns/hash (block 128/256) | CPU ns/hash |
+| --- | --- | --- |
+| Blake3 baseline, one compression | 0.057 / 0.057 (17.6 GH/s) | 118.8-131.5 |
+| ChaCha20, RFC 8439, truncated | 0.32 / 0.32 (3.1 GH/s) | 594.4-719.4 |
+| AES-256 T-table, shared memory | 2.4 / 2.2 | 716.7-719.1 (soft) |
+| AES-256 T-table, shared, interleaved | 1.9 / 1.7 | — |
+| AES-256 T-table, constant memory | 12.0 / 12.1 | 188.9-198.6 (AES-NI) |
+
+The ChaCha20 variant is 5.7x slower than Blake3 on the GPU and about 5x slower on the CPU;
+the AES-256 variants are 30x (shared or interleaved) to 210x (constant memory) slower on the GPU,
+and the AES-NI CPU cost of 188.9-198.6 ns confirms the Section 10.1 estimate band above the Blake3 baseline.
+The baseline itself runs near the throughput ceiling in this shape, so the Section 10.2 sensitivity ceiling of
+about 1.51x is unreachable through the H' primitive: with r at 5.7 or worse, the model's T_new exceeds the
+baseline outright.
+Limitations: an independent-hash microbenchmark is not the integrated fold kernel, and the AES-256 T-table
+adaptation is untuned (byte-level schedule in local memory, no bank-conflict treatment).
+Both gaps favor the Hirose variants, and they remain behind by the margins above.
+
+The performance gate therefore fails on both platforms: no implementation of either variant is warranted on
+performance grounds, and Blake3 stays as H'. The security sections stand as the record of what was analyzed
+and approved for measurement.
+
+## Part VI — Deployment and implementation requirements
+
 ## 11. Deployment and implementation requirements
 
 Both parties must agree on the hash function, byte encoding, IV, accumulator, ordering, and chunking.
+The hash choice now distinguishes Blake3, Hirose-AES-256, and Hirose-ChaCha20. AES and ChaCha instantiate different functions even with the same IV.
 `Verify` compares 64 proof bytes and contains no algorithm negotiation.
 It cannot enforce that agreement or guarantee rejection of every cross-configuration comparison.
 For example, an empty VDPF chain initialized from common cs has the same proof regardless of its unused hash choice.
@@ -579,10 +847,11 @@ Algorithm agreement must therefore be external to this equality check.
 
 | Deployment | Security-compatible shape | Performance requirement and present decision |
 | --- | --- | --- |
-| CPU-only | Both parties use the specified Hirose H', with H unchanged | **FEASIBLE on CPU** as a cryptographic implementation, but no CPU acceleration approved; measure against 72-85 ns and full EvalAll |
-| GPU-focused | Both parties use Hirose, GPU executes the expensive proof workload, CPU provides a correct reference or fallback | **FEASIBLE GPU-only** as a deployment direction, conditional on a measured GPU win; a slower CPU fallback is acceptable |
-| Mixed CPU/GPU evaluators | Both endpoints compute identical Hirose bytes with different backends | Correctness is feasible; the slower endpoint may determine verification latency, so GPU speed alone does not establish an end-to-end win |
-| Different hashes on different endpoints | One endpoint uses Blake3 and another Hirose | Not an approved configuration; byte equality is not algorithm negotiation |
+| CPU-only | Both parties choose the same specified AES or ChaCha H', with H unchanged | **FEASIBLE on CPU** under that candidate's assumptions. Neither has an approved CPU speedup. Retain the Blake3 baseline |
+| GPU-focused | Both parties choose the same variant, GPU executes the expensive proof workload, CPU provides a bit-identical reference or fallback | **FEASIBLE GPU-only** conditional on measured improvement. A slower CPU fallback is acceptable. ChaCha measurements are in progress |
+| Mixed CPU/GPU evaluators | Both endpoints compute identical bytes for the chosen hash, accumulator, ordering, and chunking | Correctness is feasible with those agreements. A shared primitive does not make the current CPU sequential chains and CUDA Merkle folds interchangeable |
+| Python/JIT callers | Generated extensions select the same hash variant and protocol path as native callers | Include the variant in specialization/cache identity and key/proof configuration. A Python device change must not silently change the algorithm |
+| Different hashes on different endpoints | Blake3 versus either Hirose variant, or AES-Hirose versus ChaCha-Hirose | Not an approved configuration. Byte equality is not algorithm negotiation |
 
 No universal slowdown allowance follows from the security proof.
 For an acceleration claim, require improvement on the chosen workload including setup, memory work, and all key schedules.
@@ -591,21 +860,51 @@ A CPU-heavy deployment should retain Blake3 unless its own measurements justify 
 
 Implementation must satisfy the following conditions before adoption:
 
-1. Implement the exact Section 7 equations, full AES-256 rounds, nonzero c, IV translation, key concatenation, and output order.
+1. Implement the exact Section 7 equations for the selected variant, full AES-256 or ChaCha20 rounds, nonzero c, IV translation, key concatenation, and output order.
 2. Keep H = `XorHash` on Blake3 and exercise every H' call site, including VDMPF anchors, chunk folds, bucket chains, and top folds.
-3. Check AES-256 known-answer vectors and H' vectors with zero, patterned, and arbitrary bytes, then host/device cross-tests and mixed-backend proof comparisons.
+3. Check AES-256 known-answer vectors or RFC 8439 ChaCha20 block vectors, followed by H' vectors with zero, patterned, and arbitrary bytes, then host/device cross-tests and mixed-backend proof comparisons with the same accumulator configuration.
 4. Keep the function stateless and thread-safe, with no CTR context or invocation-counter dependence.
 5. Count key schedules inside each measurement and distinguish hash latency, independent-hash throughput, complete operation latency, and batch latency.
 6. Record whether throughput counts keys or domain outputs, and save benchmark data under `build`.
 7. Review device register use, schedule storage, and secret-dependent table accesses if the deployment includes a timing/cache leakage adversary.
 8. Keep public library code under `include/fss`, obey the device-code assignment and `int4` conventions, and verify wheel/JIT header discovery if the public header layout changes.
 
-The ICM argument covers black-box functional attacks, not microarchitectural leakage.
+The ideal-model arguments cover black-box functional attacks, not microarchitectural leakage.
 Hash inputs can depend on evaluator seeds, so a table implementation must not claim constant-time behavior merely because its algorithm parameters are public.
 
 The sibling document's common-key-material condition, nonzero-cs caveat, and H collision/XOR-collision assumptions remain in force.
 Its Merkle-fold collision extraction applies with the new collision bound.
 This review does not turn the reference chain's inherited accumulation assertion into a complete induction.
+
+### 11.1 ChaCha implementation checks across native CPU, CUDA, and Python/JIT
+
+At the reviewed HEAD `3bcaac5`, the shared header is `include/fss/prg/chacha.cuh`, not `include/fss/chacha.cuh`.
+Its host/device annotations provide reusable implementation structure, but `ChaCha::Gen` computes another function:
+
+- It accepts one 128-bit seed and repeats it into both key halves.
+- It fixes both counter words to zero and places a 64-bit nonce in words 14 and 15.
+- For `mul <= 2` it uses the 16-byte-key constants, while `mul = 4` uses the 32-byte-key constants with the repeated seed.
+- It uses XOR feedforward and selects different output words depending on mul.
+
+Do not call this wrapper as the Section 7.4 primitive or change it globally to make it fit.
+A new 256-bit-key block function must preserve existing PRG/PRP behavior and pass independent RFC vectors.
+Its arithmetic must implement unsigned 32-bit wraparound. The existing signed `int` additions require review before reuse because ordinary C++ signed overflow is undefined.
+Keep the outer Hirose feedforward as XOR, distinct from the inner ChaCha word additions.
+
+| Surface | Required checks for the new implementation |
+| --- | --- |
+| Native CPU | Independent RFC block vectors, all 32 key bytes, nonce/counter word placement, first-four-word output order, and two-step hash vectors. Include counter 0 and `0xffffffff` and high-bit-set bytes |
+| CUDA device | Bit-identical vectors and proofs, defined wraparound and rotation semantics, no stateful counter, and register/spill inspection. Use plain assignments and `int4` storage conventions instead of device `memcpy`, `memset`, or `reinterpret_cast` |
+| Python/JIT | Make the selected variant explicit in generated types, cache/configuration identity, and compatible proof paths. Verify wheel contents and JIT include discovery if adding or moving public headers |
+
+Same-state reuse needs explicit accounting.
+For `mul = 4`, some repeated-key PRG states coincide with valid states of the new block function.
+Given its full output and initial state, an attacker can undo the PRG's XOR feedforward and apply the RFC additive feedforward.
+Such evaluations count as queries to the same primitive, not as an independent random function.
+Other constant choices and internal-state exposures remain part of Section 7.4's concrete shared-use assumption.
+The ideal collision proof does not constitute a joint proof of every ChaCha-based protocol component.
+
+## Part VII — Decision record
 
 ## 12. Decision record
 
@@ -613,15 +912,21 @@ This review does not turn the reference chain's inherited accumulation assertion
   Its ideal-cipher constant-success collision complexity remains Theta(2^64).
 - **FEASIBLE on CPU:** Section 7's exact two-step Hirose AES-256 function as a correct, assumption-based cryptographic replacement.
   A CPU speedup is unproved and doubtful under the supplied schedule estimate, so keep Blake3 as the performance baseline.
-- **FEASIBLE GPU-only:** the same function with a GPU implementation and a bit-identical CPU reference, conditional on measured GPU improvement.
+- **CHACHA VERDICT (a):** Section 7.4's exact two-step Hirose-ChaCha20 function is a conditional candidate alongside AES-256.
+  Its direct random-function bound is `min(1, Q/2^128 + Q*(Q-1)/2^256)`, with `Q=q+8`.
+  It retains the approximately 2^128 classical constant-success work target without an invertibility assumption or a truncation loss.
+  Concrete chosen-key security remains an explicit heuristic. The existing PRG wrapper is not this primitive.
+  No CPU win or GPU preference follows. The completed measurements (Section 10.4) put the variant 5.7x behind Blake3 on GPU and about 5x behind on CPU, closing the adoption gate on performance grounds.
+- **FEASIBLE GPU-only:** either approved variant with a GPU implementation and a bit-identical CPU reference, conditional on measured GPU improvement.
   CPU speed is not a compatibility or security prerequisite.
 - **FEASIBLE via protocol-specific analysis:** a legitimate research possibility requiring the new arguments in Section 8.
   No weakened-H' implementation receives approval through that route today.
 
 **DOC-APPROVE.**
-This review approves this requirements analysis, the retained rejection proof, and implementation/benchmarking of the exact Section 7 construction under its explicit assumptions.
-It does not approve reviving H'_split, claiming random-256-bit advantage bounds for Hirose, or shipping an unmeasured default replacement.
-Direction 3 remains open with a specific security-reviewed construction and a performance gate.
+This review approves this requirements analysis, the retained rejection proof, and implementation/benchmarking of both exact Section 7 variants under their respective explicit assumptions.
+The ChaCha approval includes the random-function proof, standard block-function encoding, and the implementation checks above.
+It does not certify concrete chosen-key security, direct reuse of `ChaCha::Gen`, reduced rounds, a GPU win, random-256-bit advantage bounds, or a default replacement.
+Blake3 remains the default. Adoption requires reviewed implementations and workload measurements.
 
 ## 13. References
 
@@ -660,3 +965,17 @@ Direction 3 remains open with a specific security-reviewed construction and a pe
   CRYPTO 2002, [paper](https://www.enseignement.polytechnique.fr/informatique/profs/Francois.Morain/Master1/Crypto/projects/Wagner02.pdf), Section 2.
 - [REF] Sacha Servan-Schreiber, VDPF reference implementation.
   [Pinned src/mmo.c](https://github.com/sachaservan/vdpf/blob/7c966eadd932ffcd06c996b165dd000965ece88b/src/mmo.c), inspected on 2026-10-17.
+- [RFC8439] Yoav Nir and Adam Langley.
+  *ChaCha20 and Poly1305 for IETF Protocols.*
+  [RFC 8439](https://www.rfc-editor.org/rfc/rfc8439.html), Sections 2.1, 2.3, and 2.3.2, June 2018.
+- [BBM23] Stefano Barbero, Emanuele Bellini, and Rusydi H. Makarim.
+  *Rotational Analysis of ChaCha Permutation.*
+  Advances in Mathematics of Communications 17(6), 2023, [published article](https://www.aimsciences.org/article/doi/10.3934/amc.2021057).
+  Use the published version when quoting results. The preprint's numerical bounds differ.
+- [BBB22] Stefano Barbero, Danilo Bazzanella, and Emanuele Bellini.
+  *Rotational Cryptanalysis on ChaCha Stream Cipher.*
+  Symmetry 14(6), 1087, 2022, [article](https://www.mdpi.com/2073-8994/14/6/1087).
+- [HACL17] Jean Karim Zinzindohoue, Karthikeyan Bhargavan, Jonathan Protzenko, and Benjamin Beurdouche.
+  *HACL\*: A Verified Modern Cryptographic Library.*
+  CCS 2017, [author manuscript](https://www.microsoft.com/en-us/research/uploads/prod/2018/08/tmp536.pdf), Table 2 and Section 7.
+  The ChaCha20 reference row is 6.37 cycles/byte. The adjacent 6.26 row is Salsa20.

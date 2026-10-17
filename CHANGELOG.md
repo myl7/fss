@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chart merges can drop a library-platform combination whose rows would otherwise survive every refresh
 - Endpoint CI matrix covering the oldest and newest CUDA toolkits and Python/torch pairs
 - README figures render on the Doxygen pages
-- Security analysis of replacing the VDPF/VDMPF proof hash with an AES construction (doc/vdpf_proof_hash_security.md): the two-lane MMO proposal is rejected and a two-step Hirose construction is specified as the candidate to implement and measure
+- Record of the attempt to replace the VDPF/VDMPF proof hash with an AES or ChaCha construction (doc/vdpf_proof_hash_exploration.md): the constructions were reviewed and measured, both approved candidates lost the performance comparison, and Blake3 stays
 
 ### Changed
 
