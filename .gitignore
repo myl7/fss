@@ -10,10 +10,12 @@ target
 # Doc outputs
 /doc/html
 
-# AI agents
+# Agents
+.agents/*
+!.agents/skills
+.codex
 .claude
-superpowers
-.worktrees
+.zcode
 .firecrawl
 
 # Benchmarks
@@ -23,5 +25,5 @@ perf.data.old
 # Bazel symlinks
 /third_party/distributed_point_functions/bazel-*
 
-__pycache__/
-.zcode/
+# Python
+__pycache__
