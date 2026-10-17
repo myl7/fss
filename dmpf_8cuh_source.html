@@ -242,113 +242,119 @@ $(document).ready(function(){initNavTree('dmpf_8cuh_source.html',''); initResiza
 <div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>    std::vector&lt;std::vector&lt;std::pair&lt;uint, size_t&gt;&gt;&gt; inputs(m);</div>
 <div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span> </div>
 <div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> omega = 0; omega &lt; eta; ++omega) {</div>
-<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
-<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);</div>
-<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span>        <span class="keywordflow">if</span> (bucket &gt;= m) <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>      <span class="comment">// store for easier deduplication for this omega</span></div>
+<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span>      std::array&lt;std::pair&lt;int, uint&gt;, kappa&gt; seen{};</div>
+<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span>      <span class="keywordtype">int</span> num_seen = 0;</div>
 <div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span> </div>
-<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
-<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
-<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span> </div>
-<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>        <span class="comment">// Deduplicate within each bucket (linear scan, fine for small kappa).</span></div>
-<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[existing_j, existing_omega] : inputs[bucket]) {</div>
-<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>          <span class="keywordflow">if</span> (existing_j == j &amp;&amp; existing_omega == omega) {</div>
-<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>            dup = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>            <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>          }</div>
-<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>        }</div>
-<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>        <span class="keywordflow">if</span> (!dup) {</div>
-<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>          inputs[bucket].push_back({j, omega});</div>
-<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>        }</div>
-<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>      }</div>
-<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>    }</div>
-<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span> </div>
-<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>    <span class="comment">// Initialize outputs.</span></div>
-<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; eta; ++i) {</div>
-<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>      ys[i] = {0, 0, 0, 0};</div>
-<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>    }</div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span> </div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>    <span class="comment">// Evaluate per bucket.</span></div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>    <a class="code hl_class" href="classfss_1_1Dpf.html">InnerDpf</a> inner_dpf{prg};</div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[j, omega] : inputs[i]) {</div>
-<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>        int4 y = inner_dpf.<a class="code hl_function" href="classfss_1_1Dpf.html#aa017eccd095104e06b19d701c7387442">Eval</a>(b, key.bks[i], j);</div>
+<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
+<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);</div>
+<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span>        <span class="keywordflow">if</span> (bucket &gt;= m) <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span> </div>
+<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
+<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
+<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span> </div>
+<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>        <span class="comment">// Deduplicate among this omega&#39;s located records only. Permu is a permutation over</span></div>
+<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>        <span class="comment">// [0, n * kappa), so distinct k never collide and the check is only a safeguard.</span></div>
+<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>        <span class="keywordflow">for</span> (<span class="keywordtype">int</span> s = 0; s &lt; num_seen; ++s) {</div>
+<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>          <span class="keywordflow">if</span> (seen[s].first == bucket &amp;&amp; seen[s].second == j) {</div>
+<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>            dup = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>            <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>          }</div>
+<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>        }</div>
+<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>        <span class="keywordflow">if</span> (!dup) {</div>
+<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>          inputs[bucket].push_back({j, omega});</div>
+<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>          seen[num_seen++] = {bucket, j};</div>
+<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>        }</div>
+<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>      }</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>    }</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span> </div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>    <span class="comment">// Initialize outputs.</span></div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; eta; ++i) {</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>      ys[i] = {0, 0, 0, 0};</div>
+<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>    }</div>
 <div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span> </div>
-<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>        <span class="comment">// Accumulate output.</span></div>
-<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>        ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();</div>
-<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>      }</div>
-<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>    }</div>
-<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>  }</div>
-</div>
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>    <span class="comment">// Evaluate per bucket.</span></div>
+<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>    <a class="code hl_class" href="classfss_1_1Dpf.html">InnerDpf</a> inner_dpf{prg};</div>
+<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
+<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[j, omega] : inputs[i]) {</div>
+<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>        int4 y = inner_dpf.<a class="code hl_function" href="classfss_1_1Dpf.html#aa017eccd095104e06b19d701c7387442">Eval</a>(b, key.bks[i], j);</div>
 <div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span> </div>
-<div class="foldopen" id="foldopen00265" data-start="{" data-end="}">
-<div class="line"><a id="l00265" name="l00265"></a><span class="lineno"><a class="line" href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">  265</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">EvalAll</a>(<span class="keywordtype">bool</span> b, <span class="keyword">const</span> <a class="code hl_struct" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt;int4&gt; ys) {</div>
-<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>    assert(ys.size() == n);</div>
-<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span> </div>
-<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>    <span class="keywordtype">int</span> bucket_count = key.<a class="code hl_variable" href="structfss_1_1Dmpf_1_1Key.html#aa7887d41f1e46dcca59a6b43e8484f05">m_rt</a>;</div>
-<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>    <span class="keywordtype">int</span> b_rt = key.<a class="code hl_variable" href="structfss_1_1Dmpf_1_1Key.html#aa2b446566bfdfaecbc6a39600e394eb3">b_size_rt</a>;</div>
-<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span> </div>
-<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>    <span class="comment">// build per-bucket input lists.</span></div>
-<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>    <span class="comment">// inputs[i] = vector of (within_bucket_index, original_input_index).</span></div>
-<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>    std::vector&lt;std::vector&lt;std::pair&lt;uint, size_t&gt;&gt;&gt; inputs(bucket_count);</div>
-<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>    <a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">cuckoo_hash::PrpHash&lt;Prp, In, kappa&gt;</a> prp_hash{prp};</div>
-<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span> </div>
-<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> omega = 0; omega &lt; n; ++omega) {</div>
-<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>      In x = <span class="keyword">static_cast&lt;</span>In<span class="keyword">&gt;</span>(omega);</div>
-<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span> </div>
-<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>      <span class="comment">// store for easier deduplication for this omega</span></div>
-<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>      std::array&lt;std::pair&lt;int, uint&gt;, kappa&gt; seen{};</div>
-<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>      <span class="keywordtype">int</span> num_seen = 0;</div>
-<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span> </div>
-<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
-<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.<a class="code hl_function" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a88240dd5822aa5a27a835b218fb1be56">Locate</a>(key.sigma, x, k, n, b_rt);</div>
-<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>        <span class="keywordflow">if</span> (bucket &gt;= bucket_count) <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span> </div>
-<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
-<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
-<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span> </div>
-<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>        <span class="comment">// Deduplicate within each bucket (linear scan, fine for small kappa).</span></div>
-<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>        <span class="comment">// Accumulate output.</span></div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>        ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>      }</div>
+<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>    }</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>  }</div>
+</div>
+<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span> </div>
+<div class="foldopen" id="foldopen00271" data-start="{" data-end="}">
+<div class="line"><a id="l00271" name="l00271"></a><span class="lineno"><a class="line" href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">  271</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">EvalAll</a>(<span class="keywordtype">bool</span> b, <span class="keyword">const</span> <a class="code hl_struct" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt;int4&gt; ys) {</div>
+<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>    assert(ys.size() == n);</div>
+<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span> </div>
+<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>    <span class="keywordtype">int</span> bucket_count = key.<a class="code hl_variable" href="structfss_1_1Dmpf_1_1Key.html#aa7887d41f1e46dcca59a6b43e8484f05">m_rt</a>;</div>
+<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>    <span class="keywordtype">int</span> b_rt = key.<a class="code hl_variable" href="structfss_1_1Dmpf_1_1Key.html#aa2b446566bfdfaecbc6a39600e394eb3">b_size_rt</a>;</div>
+<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span> </div>
+<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>    <span class="comment">// build per-bucket input lists.</span></div>
+<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>    <span class="comment">// inputs[i] = vector of (within_bucket_index, original_input_index).</span></div>
+<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>    std::vector&lt;std::vector&lt;std::pair&lt;uint, size_t&gt;&gt;&gt; inputs(bucket_count);</div>
+<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>    <a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">cuckoo_hash::PrpHash&lt;Prp, In, kappa&gt;</a> prp_hash{prp};</div>
+<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span> </div>
+<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> omega = 0; omega &lt; n; ++omega) {</div>
+<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>      In x = <span class="keyword">static_cast&lt;</span>In<span class="keyword">&gt;</span>(omega);</div>
+<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span> </div>
+<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>      <span class="comment">// store for easier deduplication for this omega</span></div>
+<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>      std::array&lt;std::pair&lt;int, uint&gt;, kappa&gt; seen{};</div>
+<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>      <span class="keywordtype">int</span> num_seen = 0;</div>
+<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span> </div>
+<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
+<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.<a class="code hl_function" href="structfss_1_1cuckoo__hash_1_1PrpHash.html#a88240dd5822aa5a27a835b218fb1be56">Locate</a>(key.sigma, x, k, n, b_rt);</div>
+<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>        <span class="keywordflow">if</span> (bucket &gt;= bucket_count) <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span> </div>
-<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>        <span class="keywordflow">for</span> (<span class="keywordtype">int</span> s = 0; s &lt; num_seen; ++s) {</div>
-<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>          <span class="keywordflow">if</span> (seen[s].first == bucket &amp;&amp; seen[s].second == j) {</div>
-<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>            dup = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>            <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>          }</div>
-<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>        }</div>
-<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span> </div>
-<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>        <span class="keywordflow">if</span> (!dup) {</div>
-<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>          inputs[bucket].push_back({j, omega});</div>
-<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>          seen[num_seen++] = {bucket, j};</div>
-<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>        }</div>
-<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>      }</div>
-<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>    }</div>
-<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span> </div>
-<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>    <span class="comment">// initialize outputs.</span></div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; n; ++i) {</div>
-<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>      ys[i] = {0, 0, 0, 0};</div>
-<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>    }</div>
-<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span> </div>
-<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>    <span class="comment">// evaluate per bucket and merge.</span></div>
-<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>    <a class="code hl_class" href="classfss_1_1Dpf.html">InnerDpf</a> inner_dpf{prg};</div>
-<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>    std::vector&lt;int4&gt; bucket_ys(1ULL &lt;&lt; bucket_bits, {0, 0, 0, 0});</div>
-<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; bucket_count; ++i) {</div>
-<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>      inner_dpf.<a class="code hl_function" href="classfss_1_1Dpf.html#aeffbb4264a25227fc5f067b84023891c">EvalAll</a>(b, key.bks[i], cuda::std::span&lt;int4&gt;(bucket_ys.data(), bucket_ys.size()));</div>
+<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
+<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
+<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span> </div>
+<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>        <span class="comment">// Deduplicate among this omega&#39;s located records (linear scan, fine for small kappa).</span></div>
+<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span> </div>
+<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>        <span class="keywordflow">for</span> (<span class="keywordtype">int</span> s = 0; s &lt; num_seen; ++s) {</div>
+<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>          <span class="keywordflow">if</span> (seen[s].first == bucket &amp;&amp; seen[s].second == j) {</div>
+<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>            dup = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>            <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>          }</div>
+<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>        }</div>
+<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span> </div>
+<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>        <span class="keywordflow">if</span> (!dup) {</div>
+<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>          inputs[bucket].push_back({j, omega});</div>
+<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>          seen[num_seen++] = {bucket, j};</div>
+<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>        }</div>
+<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>      }</div>
+<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>    }</div>
+<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span> </div>
+<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>    <span class="comment">// initialize outputs.</span></div>
+<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; n; ++i) {</div>
+<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>      ys[i] = {0, 0, 0, 0};</div>
+<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>    }</div>
 <div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span> </div>
-<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>      <span class="comment">// merge</span></div>
-<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[j, omega] : inputs[i]) {</div>
-<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>        ys[omega] = (Group::From(ys[omega]) + Group::From(bucket_ys[j])).Into();</div>
-<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>      }</div>
-<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>    }</div>
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>  }</div>
+<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>    <span class="comment">// evaluate per bucket and merge.</span></div>
+<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>    <a class="code hl_class" href="classfss_1_1Dpf.html">InnerDpf</a> inner_dpf{prg};</div>
+<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>    std::vector&lt;int4&gt; bucket_ys(1ULL &lt;&lt; bucket_bits, {0, 0, 0, 0});</div>
+<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; bucket_count; ++i) {</div>
+<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>      inner_dpf.<a class="code hl_function" href="classfss_1_1Dpf.html#aeffbb4264a25227fc5f067b84023891c">EvalAll</a>(b, key.bks[i], cuda::std::span&lt;int4&gt;(bucket_ys.data(), bucket_ys.size()));</div>
+<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span> </div>
+<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>      <span class="comment">// merge</span></div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[j, omega] : inputs[i]) {</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>        ys[omega] = (Group::From(ys[omega]) + Group::From(bucket_ys[j])).Into();</div>
+<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>      }</div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>    }</div>
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>  }</div>
 </div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>};</div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>};</div>
 </div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>}  <span class="comment">// namespace fss</span></div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>}  <span class="comment">// namespace fss</span></div>
 <div class="ttc" id="aclassfss_1_1Dmpf_html"><div class="ttname"><a href="classfss_1_1Dmpf.html">fss::Dmpf</a></div><div class="ttdoc">2-party DMPF scheme.</div><div class="ttdef"><b>Definition</b> dmpf.cuh:78</div></div>
 <div class="ttc" id="aclassfss_1_1Dmpf_html_a66aa3b6e27358c78bd78b67cfa8f9890"><div class="ttname"><a href="classfss_1_1Dmpf.html#a66aa3b6e27358c78bd78b67cfa8f9890">fss::Dmpf::Gen</a></div><div class="ttdeci">int Gen(Key &amp;k0, Key &amp;k1, int4 &amp;sigma, cuda::std::span&lt; cuda::std::array&lt; int4, 2 &gt;, m &gt; s0s, cuda::std::span&lt; const In &gt; as, cuda::std::span&lt; const int4 &gt; b_bufs, int t, int ch_retry=1000, bool retry=true)</div><div class="ttdoc">Key generation method.</div><div class="ttdef"><b>Definition</b> dmpf.cuh:128</div></div>
 <div class="ttc" id="aclassfss_1_1Dmpf_html_a83f9598521140a74d45d72a488eb9325"><div class="ttname"><a href="classfss_1_1Dmpf.html#a83f9598521140a74d45d72a488eb9325">fss::Dmpf::BatchEval</a></div><div class="ttdeci">void BatchEval(bool b, const Key &amp;key, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys)</div><div class="ttdoc">Batch evaluation method.</div><div class="ttdef"><b>Definition</b> dmpf.cuh:206</div></div>
-<div class="ttc" id="aclassfss_1_1Dmpf_html_ae89cb39dee4fbf15e802dd37699c5761"><div class="ttname"><a href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">fss::Dmpf::EvalAll</a></div><div class="ttdeci">void EvalAll(bool b, const Key &amp;key, cuda::std::span&lt; int4 &gt; ys)</div><div class="ttdoc">Evaluate the DMPF on all input points.</div><div class="ttdef"><b>Definition</b> dmpf.cuh:265</div></div>
+<div class="ttc" id="aclassfss_1_1Dmpf_html_ae89cb39dee4fbf15e802dd37699c5761"><div class="ttname"><a href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">fss::Dmpf::EvalAll</a></div><div class="ttdeci">void EvalAll(bool b, const Key &amp;key, cuda::std::span&lt; int4 &gt; ys)</div><div class="ttdoc">Evaluate the DMPF on all input points.</div><div class="ttdef"><b>Definition</b> dmpf.cuh:271</div></div>
 <div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:66</div></div>
 <div class="ttc" id="aclassfss_1_1Dpf_html_aa017eccd095104e06b19d701c7387442"><div class="ttname"><a href="classfss_1_1Dpf.html#aa017eccd095104e06b19d701c7387442">fss::Dpf::Eval</a></div><div class="ttdeci">int4 Eval(bool b, const Key &amp;key, In x)</div><div class="ttdoc">Evaluation method.</div><div class="ttdef"><b>Definition</b> dpf.cuh:117</div></div>
 <div class="ttc" id="aclassfss_1_1Dpf_html_aeffbb4264a25227fc5f067b84023891c"><div class="ttname"><a href="classfss_1_1Dpf.html#aeffbb4264a25227fc5f067b84023891c">fss::Dpf::EvalAll</a></div><div class="ttdeci">void EvalAll(bool b, const Key &amp;key, cuda::std::span&lt; int4 &gt; ys)</div><div class="ttdoc">Full domain evaluation method.</div><div class="ttdef"><b>Definition</b> dpf.cuh:136</div></div>

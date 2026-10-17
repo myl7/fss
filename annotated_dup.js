@@ -31,6 +31,7 @@ var annotated_dup =
       ] ],
       [ "prp", null, [
         [ "Aes128Feistel", "classfss_1_1prp_1_1Aes128Feistel.html", "classfss_1_1prp_1_1Aes128Feistel" ],
+        [ "Aes128FeistelRaw", "classfss_1_1prp_1_1Aes128FeistelRaw.html", "classfss_1_1prp_1_1Aes128FeistelRaw" ],
         [ "ChaChaFeistel", "classfss_1_1prp_1_1ChaChaFeistel.html", "classfss_1_1prp_1_1ChaChaFeistel" ]
       ] ],
       [ "Dcf", "classfss_1_1Dcf.html", "classfss_1_1Dcf" ],

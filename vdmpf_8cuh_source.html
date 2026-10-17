@@ -242,157 +242,163 @@ $(document).ready(function(){initNavTree('vdmpf_8cuh_source.html',''); initResiz
 <div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>    <span class="comment">// inputs[i] = vector of (within_bucket_index, original_input_index).</span></div>
 <div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>    std::vector&lt;std::vector&lt;std::pair&lt;uint, size_t&gt;&gt;&gt; inputs(m);</div>
 <div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> omega = 0; omega &lt; eta; ++omega) {</div>
-<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
-<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);</div>
-<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>        <span class="keywordflow">if</span> (bucket &gt;= m) <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
-<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
-<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>        <span class="comment">// Deduplicate within each bucket (linear scan, fine for small kappa).</span></div>
-<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[existing_j, existing_omega] : inputs[bucket]) {</div>
-<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>          <span class="keywordflow">if</span> (existing_j == j &amp;&amp; existing_omega == omega) {</div>
-<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>            dup = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>            <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>          }</div>
-<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>        }</div>
-<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>        <span class="keywordflow">if</span> (!dup) {</div>
-<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>          inputs[bucket].push_back({j, omega});</div>
-<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>        }</div>
-<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>      }</div>
-<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>    }</div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span> </div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>    <span class="comment">// Initialize outputs and proof.</span></div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; eta; ++i) {</div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>      ys[i] = {0, 0, 0, 0};</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>    }</div>
-<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>    pi = {int4{0, 0, 0, 0}, int4{0, 0, 0, 0}, int4{0, 0, 0, 0}, int4{0, 0, 0, 0}};</div>
+<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>      <span class="comment">// store for easier deduplication for this omega</span></div>
+<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>      cuda::std::array&lt;std::pair&lt;int, uint&gt;, kappa&gt; seen{};</div>
+<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>      <span class="keywordtype">int</span> num_seen = 0;</div>
+<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span> </div>
+<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
+<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);</div>
+<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>        <span class="keywordflow">if</span> (bucket &gt;= m) <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
+<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
+<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>        <span class="comment">// Deduplicate among this omega&#39;s located records only. Permu is a permutation over</span></div>
+<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>        <span class="comment">// [0, n * kappa), so distinct k never collide and the check is only a safeguard.</span></div>
+<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>        <span class="keywordflow">for</span> (<span class="keywordtype">int</span> s = 0; s &lt; num_seen; ++s) {</div>
+<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>          <span class="keywordflow">if</span> (seen[s].first == bucket &amp;&amp; seen[s].second == j) {</div>
+<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>            dup = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>            <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>          }</div>
+<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>        }</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>        <span class="keywordflow">if</span> (!dup) {</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>          inputs[bucket].push_back({j, omega});</div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>          seen[num_seen++] = {bucket, j};</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>        }</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>      }</div>
+<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>    }</div>
 <div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span> </div>
-<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>    <span class="comment">// Evaluate per bucket.</span></div>
-<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>    <a class="code hl_class" href="classfss_1_1Vdpf.html">InnerVdpf</a> inner_vdpf{prg, xor_hash, hash};</div>
-<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
-<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>      <span class="comment">// Initialize per-bucket proof from this bucket&#39;s cs.</span></div>
-<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>      cuda::std::array&lt;int4, 4&gt; pi_bucket = {key.bks[i].cs[0], key.bks[i].cs[1], key.bks[i].cs[2], key.bks[i].cs[3]};</div>
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>    <span class="comment">// Initialize outputs and proof.</span></div>
+<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; eta; ++i) {</div>
+<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>      ys[i] = {0, 0, 0, 0};</div>
+<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>    }</div>
+<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>    pi = {int4{0, 0, 0, 0}, int4{0, 0, 0, 0}, int4{0, 0, 0, 0}, int4{0, 0, 0, 0}};</div>
 <div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span> </div>
-<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[j, omega] : inputs[i]) {</div>
-<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>        <span class="keyword">auto</span> [y, pi_tilde] = inner_vdpf.Eval(b, key.bks[i], j);</div>
-<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span> </div>
-<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>        <span class="comment">// Accumulate output.</span></div>
-<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>        ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>    <span class="comment">// Evaluate per bucket.</span></div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>    <a class="code hl_class" href="classfss_1_1Vdpf.html">InnerVdpf</a> inner_vdpf{prg, xor_hash, hash};</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
+<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>      <span class="comment">// Initialize per-bucket proof from this bucket&#39;s cs.</span></div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>      cuda::std::array&lt;int4, 4&gt; pi_bucket = {key.bks[i].cs[0], key.bks[i].cs[1], key.bks[i].cs[2], key.bks[i].cs[3]};</div>
 <div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span> </div>
-<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>        <span class="comment">// Accumulate per-bucket proof (same as Vdpf::Prove logic).</span></div>
-<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>        cuda::std::array&lt;int4, 4&gt; h_input =</div>
-<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>            util::Xor(cuda::std::span&lt;const int4, 4&gt;(pi_bucket), cuda::std::span&lt;const int4, 4&gt;(pi_tilde));</div>
-<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>        <span class="keyword">auto</span> h_out = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(h_input));</div>
-<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>        pi_bucket[0] = util::Xor(pi_bucket[0], h_out[0]);</div>
-<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>        pi_bucket[1] = util::Xor(pi_bucket[1], h_out[1]);</div>
-<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>      }</div>
-<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span> </div>
-<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>      <span class="comment">// Cross-bucket proof accumulation: pi = pi XOR H&#39;(pi XOR pi_bucket).</span></div>
-<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>      cuda::std::array&lt;int4, 4&gt; cross_input =</div>
-<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>          util::Xor(cuda::std::span&lt;const int4, 4&gt;(pi), cuda::std::span&lt;const int4, 4&gt;(pi_bucket));</div>
-<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>      <span class="keyword">auto</span> cross_out = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(cross_input));</div>
-<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>      pi[0] = util::Xor(pi[0], cross_out[0]);</div>
-<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>      pi[1] = util::Xor(pi[1], cross_out[1]);</div>
-<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>    }</div>
-<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>  }</div>
+<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[j, omega] : inputs[i]) {</div>
+<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>        <span class="keyword">auto</span> [y, pi_tilde] = inner_vdpf.Eval(b, key.bks[i], j);</div>
+<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span> </div>
+<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>        <span class="comment">// Accumulate output.</span></div>
+<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>        ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();</div>
+<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span> </div>
+<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>        <span class="comment">// Accumulate per-bucket proof (same as Vdpf::Prove logic).</span></div>
+<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>        cuda::std::array&lt;int4, 4&gt; h_input =</div>
+<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>            util::Xor(cuda::std::span&lt;const int4, 4&gt;(pi_bucket), cuda::std::span&lt;const int4, 4&gt;(pi_tilde));</div>
+<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>        <span class="keyword">auto</span> h_out = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(h_input));</div>
+<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>        pi_bucket[0] = util::Xor(pi_bucket[0], h_out[0]);</div>
+<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>        pi_bucket[1] = util::Xor(pi_bucket[1], h_out[1]);</div>
+<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>      }</div>
+<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span> </div>
+<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>      <span class="comment">// Cross-bucket proof accumulation: pi = pi XOR H&#39;(pi XOR pi_bucket).</span></div>
+<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>      cuda::std::array&lt;int4, 4&gt; cross_input =</div>
+<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>          util::Xor(cuda::std::span&lt;const int4, 4&gt;(pi), cuda::std::span&lt;const int4, 4&gt;(pi_bucket));</div>
+<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>      <span class="keyword">auto</span> cross_out = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(cross_input));</div>
+<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>      pi[0] = util::Xor(pi[0], cross_out[0]);</div>
+<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>      pi[1] = util::Xor(pi[1], cross_out[1]);</div>
+<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>    }</div>
+<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>  }</div>
 </div>
-<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span> </div>
-<div class="foldopen" id="foldopen00286" data-start="{" data-end="}">
-<div class="line"><a id="l00286" name="l00286"></a><span class="lineno"><a class="line" href="classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c">  286</a></span>  <span class="keyword">static</span> <span class="keywordtype">bool</span> <a class="code hl_function" href="classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c">Verify</a>(cuda::std::span&lt;const int4, 4&gt; pi0, cuda::std::span&lt;const int4, 4&gt; pi1) {</div>
-<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>    <span class="keywordflow">return</span> InnerVdpf::Verify(pi0, pi1);</div>
-<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>  }</div>
+<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span> </div>
+<div class="foldopen" id="foldopen00292" data-start="{" data-end="}">
+<div class="line"><a id="l00292" name="l00292"></a><span class="lineno"><a class="line" href="classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c">  292</a></span>  <span class="keyword">static</span> <span class="keywordtype">bool</span> <a class="code hl_function" href="classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c">Verify</a>(cuda::std::span&lt;const int4, 4&gt; pi0, cuda::std::span&lt;const int4, 4&gt; pi1) {</div>
+<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>    <span class="keywordflow">return</span> InnerVdpf::Verify(pi0, pi1);</div>
+<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>  }</div>
 </div>
-<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span> </div>
-<div class="line"><a id="l00295" name="l00295"></a><span class="lineno"><a class="line" href="classfss_1_1Vdmpf.html#a58ccbe7fe153d4912b8105b4ab3f0682">  295</a></span>  <span class="keyword">static</span> <span class="keyword">constexpr</span> <span class="keywordtype">int</span> kMerkleChunkSize = 256;</div>
-<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span> </div>
-<div class="foldopen" id="foldopen00323" data-start="{" data-end="}">
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno"><a class="line" href="classfss_1_1Vdmpf.html#aeb76f7eec60b9081b5a858ed3ca71bde">  323</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="classfss_1_1Vdmpf.html#aeb76f7eec60b9081b5a858ed3ca71bde">BatchEvalMerkle</a>(<span class="keywordtype">bool</span> b, <span class="keyword">const</span> <a class="code hl_struct" href="structfss_1_1Vdmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt;const In&gt; xs, cuda::std::span&lt;int4&gt; ys,</div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>      cuda::std::array&lt;int4, 4&gt; &amp;pi) {</div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>    <span class="keywordtype">size_t</span> eta = xs.size();</div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>    assert(ys.size() &gt;= eta);</div>
-<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span> </div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>    <span class="keywordtype">int</span> m_ = key.<a class="code hl_variable" href="structfss_1_1Vdmpf_1_1Key.html#a01ba1444ba6f4ca55e2bcce87b0708bf">m_rt</a>;</div>
-<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>    <span class="keywordtype">int</span> b_rt = key.<a class="code hl_variable" href="structfss_1_1Vdmpf_1_1Key.html#aa0a3d3e3cf82da9f8c578a7c3f8129f0">b_size_rt</a>;</div>
-<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span> </div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>    <a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">cuckoo_hash::PrpHash&lt;Prp, In, kappa&gt;</a> prp_hash{prp};</div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span> </div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>    <span class="comment">// Build per-bucket input lists in the canonical (input, hash) order: the</span></div>
-<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>    <span class="comment">// GPU path reproduces this order through a stable sort of the same</span></div>
-<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>    <span class="comment">// per-(input, hash) records.</span></div>
-<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>    std::vector&lt;std::vector&lt;std::pair&lt;uint, size_t&gt;&gt;&gt; inputs(m);</div>
-<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span> </div>
-<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> omega = 0; omega &lt; eta; ++omega) {</div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);</div>
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>        <span class="keywordflow">if</span> (bucket &gt;= m) <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
-<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
-<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>        inputs[bucket].push_back({j, omega});</div>
-<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>      }</div>
-<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>    }</div>
-<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span> </div>
-<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; eta; ++i) {</div>
-<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>      ys[i] = {0, 0, 0, 0};</div>
-<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>    }</div>
-<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span> </div>
-<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>    <a class="code hl_class" href="classfss_1_1Vdpf.html">InnerVdpf</a> inner_vdpf{prg, xor_hash, hash};</div>
-<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>    std::vector&lt;cuda::std::array&lt;int4, 2&gt;&gt; bucket_nodes(m);</div>
-<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>    std::vector&lt;cuda::std::array&lt;int4, 2&gt;&gt; nodes;</div>
-<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
-<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>      <span class="comment">// The bucket&#39;s node starts at its hashed cs and absorbs every chunk</span></div>
-<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>      <span class="comment">// root of its leaf sequence left to right.</span></div>
-<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>      cuda::std::array&lt;int4, 2&gt; bucket_node = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(key.bks[i].cs));</div>
-<div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span>      <span class="keywordtype">size_t</span> consumed = 0;</div>
-<div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>      <span class="keywordflow">while</span> (consumed &lt; inputs[i].size()) {</div>
-<div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span>        <span class="keywordtype">size_t</span> take = inputs[i].size() - consumed;</div>
-<div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>        <span class="keywordflow">if</span> (take &gt; <span class="keyword">static_cast&lt;</span><span class="keywordtype">size_t</span><span class="keyword">&gt;</span>(kMerkleChunkSize)) take = kMerkleChunkSize;</div>
-<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>        nodes.clear();</div>
-<div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>        nodes.reserve(take);</div>
-<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>        <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> c = 0; c &lt; take; ++c) {</div>
-<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>          <span class="keyword">auto</span> [j, omega] = inputs[i][consumed + c];</div>
-<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>          <span class="keyword">auto</span> [y, pi_tilde] = inner_vdpf.Eval(b, key.bks[i], j);</div>
-<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>          ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();</div>
-<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>          nodes.push_back(hash.Hash(cuda::std::span&lt;const int4, 4&gt;(pi_tilde)));</div>
-<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>        }</div>
-<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>        cuda::std::array&lt;int4, 2&gt; root = FoldNodes(nodes);</div>
-<div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>        int4 msg[4] = {bucket_node[0], bucket_node[1], root[0], root[1]};</div>
-<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>        bucket_node = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(msg));</div>
-<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>        consumed += take;</div>
-<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>      }</div>
-<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>      bucket_nodes[i] = bucket_node;</div>
-<div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span>    }</div>
-<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span> </div>
-<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>    cuda::std::array&lt;int4, 2&gt; root = FoldNodes(bucket_nodes);</div>
-<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>    pi = {root[0], root[1], int4{0, 0, 0, 0}, int4{0, 0, 0, 0}};</div>
-<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>  }</div>
+<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span> </div>
+<div class="line"><a id="l00301" name="l00301"></a><span class="lineno"><a class="line" href="classfss_1_1Vdmpf.html#a58ccbe7fe153d4912b8105b4ab3f0682">  301</a></span>  <span class="keyword">static</span> <span class="keyword">constexpr</span> <span class="keywordtype">int</span> kMerkleChunkSize = 256;</div>
+<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span> </div>
+<div class="foldopen" id="foldopen00329" data-start="{" data-end="}">
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno"><a class="line" href="classfss_1_1Vdmpf.html#aeb76f7eec60b9081b5a858ed3ca71bde">  329</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="classfss_1_1Vdmpf.html#aeb76f7eec60b9081b5a858ed3ca71bde">BatchEvalMerkle</a>(<span class="keywordtype">bool</span> b, <span class="keyword">const</span> <a class="code hl_struct" href="structfss_1_1Vdmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt;const In&gt; xs, cuda::std::span&lt;int4&gt; ys,</div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>      cuda::std::array&lt;int4, 4&gt; &amp;pi) {</div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>    <span class="keywordtype">size_t</span> eta = xs.size();</div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>    assert(ys.size() &gt;= eta);</div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span> </div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>    <span class="keywordtype">int</span> m_ = key.<a class="code hl_variable" href="structfss_1_1Vdmpf_1_1Key.html#a01ba1444ba6f4ca55e2bcce87b0708bf">m_rt</a>;</div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>    <span class="keywordtype">int</span> b_rt = key.<a class="code hl_variable" href="structfss_1_1Vdmpf_1_1Key.html#aa0a3d3e3cf82da9f8c578a7c3f8129f0">b_size_rt</a>;</div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span> </div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>    <a class="code hl_struct" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">cuckoo_hash::PrpHash&lt;Prp, In, kappa&gt;</a> prp_hash{prp};</div>
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span> </div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>    <span class="comment">// Build per-bucket input lists in the canonical (input, hash) order: the</span></div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>    <span class="comment">// GPU path reproduces this order through a stable sort of the same</span></div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>    <span class="comment">// per-(input, hash) records.</span></div>
+<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>    std::vector&lt;std::vector&lt;std::pair&lt;uint, size_t&gt;&gt;&gt; inputs(m);</div>
+<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span> </div>
+<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> omega = 0; omega &lt; eta; ++omega) {</div>
+<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> k = 0; k &lt; kappa; ++k) {</div>
+<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>        <span class="keyword">auto</span> [bucket, index] = prp_hash.Locate(key.sigma, xs[omega], k, n, b_rt);</div>
+<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>        <span class="keywordflow">if</span> (bucket &gt;= m) <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>        uint j = <span class="keyword">static_cast&lt;</span>uint<span class="keyword">&gt;</span>(index);</div>
+<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>        assert(j &lt; (1u &lt;&lt; bucket_bits));</div>
+<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>        inputs[bucket].push_back({j, omega});</div>
+<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>      }</div>
+<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>    }</div>
+<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span> </div>
+<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; eta; ++i) {</div>
+<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>      ys[i] = {0, 0, 0, 0};</div>
+<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>    }</div>
+<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span> </div>
+<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>    <a class="code hl_class" href="classfss_1_1Vdpf.html">InnerVdpf</a> inner_vdpf{prg, xor_hash, hash};</div>
+<div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span>    std::vector&lt;cuda::std::array&lt;int4, 2&gt;&gt; bucket_nodes(m);</div>
+<div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>    std::vector&lt;cuda::std::array&lt;int4, 2&gt;&gt; nodes;</div>
+<div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; m; ++i) {</div>
+<div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>      <span class="comment">// The bucket&#39;s node starts at its hashed cs and absorbs every chunk</span></div>
+<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>      <span class="comment">// root of its leaf sequence left to right.</span></div>
+<div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>      cuda::std::array&lt;int4, 2&gt; bucket_node = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(key.bks[i].cs));</div>
+<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>      <span class="keywordtype">size_t</span> consumed = 0;</div>
+<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>      <span class="keywordflow">while</span> (consumed &lt; inputs[i].size()) {</div>
+<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>        <span class="keywordtype">size_t</span> take = inputs[i].size() - consumed;</div>
+<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>        <span class="keywordflow">if</span> (take &gt; <span class="keyword">static_cast&lt;</span><span class="keywordtype">size_t</span><span class="keyword">&gt;</span>(kMerkleChunkSize)) take = kMerkleChunkSize;</div>
+<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>        nodes.clear();</div>
+<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>        nodes.reserve(take);</div>
+<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>        <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> c = 0; c &lt; take; ++c) {</div>
+<div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>          <span class="keyword">auto</span> [j, omega] = inputs[i][consumed + c];</div>
+<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>          <span class="keyword">auto</span> [y, pi_tilde] = inner_vdpf.Eval(b, key.bks[i], j);</div>
+<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>          ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();</div>
+<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>          nodes.push_back(hash.Hash(cuda::std::span&lt;const int4, 4&gt;(pi_tilde)));</div>
+<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>        }</div>
+<div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span>        cuda::std::array&lt;int4, 2&gt; root = FoldNodes(nodes);</div>
+<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span>        int4 msg[4] = {bucket_node[0], bucket_node[1], root[0], root[1]};</div>
+<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>        bucket_node = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(msg));</div>
+<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>        consumed += take;</div>
+<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>      }</div>
+<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>      bucket_nodes[i] = bucket_node;</div>
+<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>    }</div>
+<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span> </div>
+<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>    cuda::std::array&lt;int4, 2&gt; root = FoldNodes(bucket_nodes);</div>
+<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>    pi = {root[0], root[1], int4{0, 0, 0, 0}, int4{0, 0, 0, 0}};</div>
+<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>  }</div>
 </div>
-<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span> </div>
-<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span><span class="keyword">private</span>:</div>
-<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>  <span class="comment">// Level-by-level pairwise fold with an odd trailing node carrying to the</span></div>
-<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>  <span class="comment">// next level unchanged, as in Vdpf::ProveMerkle.</span></div>
-<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>  cuda::std::array&lt;int4, 2&gt; FoldNodes(std::vector&lt;cuda::std::array&lt;int4, 2&gt;&gt; &amp;nodes) {</div>
-<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>    <span class="keywordtype">size_t</span> count = nodes.size();</div>
-<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span>    assert(count &gt;= 1);</div>
-<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span>    <span class="keywordflow">while</span> (count &gt; 1) {</div>
-<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>      <span class="keywordtype">size_t</span> pairs = count / 2;</div>
-<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span>      <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; pairs; ++i) {</div>
-<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>        int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};</div>
-<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>        nodes[i] = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(msg));</div>
-<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>      }</div>
-<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>      <span class="keywordflow">if</span> (count % 2 != 0) nodes[pairs] = nodes[count - 1];</div>
-<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>      count = pairs + count % 2;</div>
-<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span>    }</div>
-<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>    <span class="keywordflow">return</span> nodes[0];</div>
-<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>  }</div>
-<div class="line"><a id="l00400" name="l00400"></a><span class="lineno">  400</span>};</div>
+<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span> </div>
+<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span><span class="keyword">private</span>:</div>
+<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>  <span class="comment">// Level-by-level pairwise fold with an odd trailing node carrying to the</span></div>
+<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span>  <span class="comment">// next level unchanged, as in Vdpf::ProveMerkle.</span></div>
+<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>  cuda::std::array&lt;int4, 2&gt; FoldNodes(std::vector&lt;cuda::std::array&lt;int4, 2&gt;&gt; &amp;nodes) {</div>
+<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>    <span class="keywordtype">size_t</span> count = nodes.size();</div>
+<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>    assert(count &gt;= 1);</div>
+<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>    <span class="keywordflow">while</span> (count &gt; 1) {</div>
+<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>      <span class="keywordtype">size_t</span> pairs = count / 2;</div>
+<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span>      <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; pairs; ++i) {</div>
+<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>        int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};</div>
+<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>        nodes[i] = hash.Hash(cuda::std::span&lt;const int4, 4&gt;(msg));</div>
+<div class="line"><a id="l00400" name="l00400"></a><span class="lineno">  400</span>      }</div>
+<div class="line"><a id="l00401" name="l00401"></a><span class="lineno">  401</span>      <span class="keywordflow">if</span> (count % 2 != 0) nodes[pairs] = nodes[count - 1];</div>
+<div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span>      count = pairs + count % 2;</div>
+<div class="line"><a id="l00403" name="l00403"></a><span class="lineno">  403</span>    }</div>
+<div class="line"><a id="l00404" name="l00404"></a><span class="lineno">  404</span>    <span class="keywordflow">return</span> nodes[0];</div>
+<div class="line"><a id="l00405" name="l00405"></a><span class="lineno">  405</span>  }</div>
+<div class="line"><a id="l00406" name="l00406"></a><span class="lineno">  406</span>};</div>
 </div>
-<div class="line"><a id="l00401" name="l00401"></a><span class="lineno">  401</span> </div>
-<div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span>}  <span class="comment">// namespace fss</span></div>
+<div class="line"><a id="l00407" name="l00407"></a><span class="lineno">  407</span> </div>
+<div class="line"><a id="l00408" name="l00408"></a><span class="lineno">  408</span>}  <span class="comment">// namespace fss</span></div>
 <div class="ttc" id="aclassfss_1_1Vdmpf_html"><div class="ttname"><a href="classfss_1_1Vdmpf.html">fss::Vdmpf</a></div><div class="ttdoc">2-party VDMPF scheme.</div><div class="ttdef"><b>Definition</b> vdmpf.cuh:84</div></div>
 <div class="ttc" id="aclassfss_1_1Vdmpf_html_a1e1c9f2f89ad7a023ceb4dbeb703b716"><div class="ttname"><a href="classfss_1_1Vdmpf.html#a1e1c9f2f89ad7a023ceb4dbeb703b716">fss::Vdmpf::BatchEval</a></div><div class="ttdeci">void BatchEval(bool b, const Key &amp;key, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</div><div class="ttdoc">Batch verifiable evaluation method.</div><div class="ttdef"><b>Definition</b> vdmpf.cuh:213</div></div>
-<div class="ttc" id="aclassfss_1_1Vdmpf_html_ab1ec01f63d0bf30755594f283a9a6b5c"><div class="ttname"><a href="classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c">fss::Vdmpf::Verify</a></div><div class="ttdeci">static bool Verify(cuda::std::span&lt; const int4, 4 &gt; pi0, cuda::std::span&lt; const int4, 4 &gt; pi1)</div><div class="ttdoc">Verification method.</div><div class="ttdef"><b>Definition</b> vdmpf.cuh:286</div></div>
+<div class="ttc" id="aclassfss_1_1Vdmpf_html_ab1ec01f63d0bf30755594f283a9a6b5c"><div class="ttname"><a href="classfss_1_1Vdmpf.html#ab1ec01f63d0bf30755594f283a9a6b5c">fss::Vdmpf::Verify</a></div><div class="ttdeci">static bool Verify(cuda::std::span&lt; const int4, 4 &gt; pi0, cuda::std::span&lt; const int4, 4 &gt; pi1)</div><div class="ttdoc">Verification method.</div><div class="ttdef"><b>Definition</b> vdmpf.cuh:292</div></div>
 <div class="ttc" id="aclassfss_1_1Vdmpf_html_ab8e113b90b77ca2bf9a567d5a8a6742d"><div class="ttname"><a href="classfss_1_1Vdmpf.html#ab8e113b90b77ca2bf9a567d5a8a6742d">fss::Vdmpf::Gen</a></div><div class="ttdeci">int Gen(Key &amp;k0, Key &amp;k1, int4 &amp;sigma, cuda::std::span&lt; cuda::std::array&lt; int4, 2 &gt;, m &gt; s0s, cuda::std::span&lt; const In &gt; as, cuda::std::span&lt; const int4 &gt; b_bufs, int t, int ch_retry=1000, bool retry=true)</div><div class="ttdoc">Key generation method.</div><div class="ttdef"><b>Definition</b> vdmpf.cuh:136</div></div>
-<div class="ttc" id="aclassfss_1_1Vdmpf_html_aeb76f7eec60b9081b5a858ed3ca71bde"><div class="ttname"><a href="classfss_1_1Vdmpf.html#aeb76f7eec60b9081b5a858ed3ca71bde">fss::Vdmpf::BatchEvalMerkle</a></div><div class="ttdeci">void BatchEvalMerkle(bool b, const Key &amp;key, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</div><div class="ttdoc">Batch evaluation method with the Merkle-fold proof.</div><div class="ttdef"><b>Definition</b> vdmpf.cuh:323</div></div>
+<div class="ttc" id="aclassfss_1_1Vdmpf_html_aeb76f7eec60b9081b5a858ed3ca71bde"><div class="ttname"><a href="classfss_1_1Vdmpf.html#aeb76f7eec60b9081b5a858ed3ca71bde">fss::Vdmpf::BatchEvalMerkle</a></div><div class="ttdeci">void BatchEvalMerkle(bool b, const Key &amp;key, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</div><div class="ttdoc">Batch evaluation method with the Merkle-fold proof.</div><div class="ttdef"><b>Definition</b> vdmpf.cuh:329</div></div>
 <div class="ttc" id="aclassfss_1_1Vdpf_html"><div class="ttname"><a href="classfss_1_1Vdpf.html">fss::Vdpf</a></div><div class="ttdoc">2-party VDPF scheme.</div><div class="ttdef"><b>Definition</b> vdpf.cuh:70</div></div>
 <div class="ttc" id="aconceptGroupable_html"><div class="ttname"><a href="conceptGroupable.html">Groupable</a></div><div class="ttdoc">Group interface.</div><div class="ttdef"><b>Definition</b> group.cuh:40</div></div>
 <div class="ttc" id="aconceptHashable_html"><div class="ttname"><a href="conceptHashable.html">Hashable</a></div><div class="ttdoc">Collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:19</div></div>

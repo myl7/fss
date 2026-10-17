@@ -8,7 +8,7 @@ var searchData=
   ['packedhalftreedpfevalallgpubatch_5',['PackedHalfTreeDpfEvalAllGpuBatch',['../eval__all__gpu_8cuh.html#a6b7b60ba54fbf1da9ad3089eafe6e54e',1,'fss::gpu']]],
   ['paritytree_6',['ParityTree',['../structfss_1_1GrottoDcf_1_1ParityTree.html',1,'fss::GrottoDcf']]],
   ['path_7',['CPU Point Evaluation Fast Path',['../index.html#autotoc_md6',1,'']]],
-  ['permu_8',['permu',['../classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba',1,'fss::prp::Aes128Feistel::Permu()'],['../classfss_1_1prp_1_1ChaChaFeistel.html#a0be3afecbca97bef37d616e511a22bee',1,'fss::prp::ChaChaFeistel::Permu()']]],
+  ['permu_8',['permu',['../classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba',1,'fss::prp::Aes128Feistel::Permu()'],['../classfss_1_1prp_1_1Aes128FeistelRaw.html#a82609e44548ea62a14709fe5e421d6ab',1,'fss::prp::Aes128FeistelRaw::Permu()'],['../classfss_1_1prp_1_1ChaChaFeistel.html#a0be3afecbca97bef37d616e511a22bee',1,'fss::prp::ChaChaFeistel::Permu()']]],
   ['permutable_9',['Permutable',['../conceptPermutable.html',1,'']]],
   ['pi_5ftilde_10',['pi_tilde',['../structfss_1_1Vdpf_1_1EvalResult.html#a1f7c685d6d08a3978ddcc8a1e9fadda7',1,'fss::Vdpf::EvalResult']]],
   ['point_20evaluation_20fast_20path_11',['CPU Point Evaluation Fast Path',['../index.html#autotoc_md6',1,'']]],
