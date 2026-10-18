@@ -2,6 +2,7 @@
 
 import importlib
 import inspect
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -161,6 +162,7 @@ def mock_jit(monkeypatch, tmp_path):
     _jit._EXT_CACHE.clear()
 
     def build(**kwargs):
+        kwargs["torch_arch_env"] = os.environ.get("TORCH_CUDA_ARCH_LIST")
         calls["build"].append(kwargs)
         (Path(kwargs["build_directory"]) / (kwargs["name"] + ".so")).touch()
         return object()
@@ -211,6 +213,10 @@ def test_jit_headless_architecture_does_not_change_environment(mock_jit, monkeyp
     _jit.load("dpf", 8, "bytes")
     assert "TORCH_CUDA_ARCH_LIST" not in _jit.os.environ
     assert "-gencode=arch=compute_80,code=sm_80" in mock_jit["build"][0]["extra_cuda_cflags"]
+    # Torch releases before 2.7 resolve their own arch list inside load() from
+    # the environment or the visible devices, so the build call must see the
+    # resolved headless value even though the caller's environment is restored.
+    assert mock_jit["build"][0]["torch_arch_env"] == "8.0"
 
 
 def test_jit_header_changes_invalidate_same_process(mock_jit):

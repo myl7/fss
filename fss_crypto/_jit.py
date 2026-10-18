@@ -38,6 +38,10 @@ except (ImportError, OSError, RuntimeError):
 
 _EXT_CACHE: dict[str, object] = {}
 
+# Serializes the temporary TORCH_CUDA_ARCH_LIST export below across threads
+# that build different extensions in one process.
+_BUILD_ENV_LOCK = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -261,8 +265,12 @@ def _source_tree_hash(include_dir: str, csrc_dir: str) -> str:
     return h.hexdigest()
 
 
-# Resolve these flags without assigning TORCH_CUDA_ARCH_LIST. Passing the
-# explicit flags also prevents PyTorch from repeating its environment lookup.
+# Resolve these flags without assigning TORCH_CUDA_ARCH_LIST: the build
+# identity must record the effective architectures even when the caller
+# leaves the environment unset. Torch releases before 2.7 still resolve
+# their own arch list inside load() from the environment or the visible
+# devices and never inspect extra_cuda_cflags for arch flags, so load()
+# additionally exports the resolved value around the build call only.
 _NAMED_ARCHES = {
     "Kepler+Tesla": "3.7", "Kepler": "3.5+PTX", "Maxwell+Tegra": "5.3",
     "Maxwell": "5.0;5.2+PTX", "Pascal": "6.0;6.1+PTX", "Volta+Tegra": "7.2",
@@ -272,27 +280,30 @@ _NAMED_ARCHES = {
 }
 
 
-def _cuda_arch_flags() -> list[str]:
+def _resolved_arches() -> list[str]:
     arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST", "").strip()
     if arch_list:
         for name, arches in _NAMED_ARCHES.items():
             arch_list = arch_list.replace(name, arches)
-        arches = arch_list.replace(" ", ";").split(";")
+        return [arch for arch in arch_list.replace(" ", ";").split(";") if arch]
+    arches = []
+    supported = [int(a.split("_")[1]) for a in torch.cuda.get_arch_list()
+                 if re.fullmatch(r"sm_[0-9]+", a)]
+    for device in range(torch.cuda.device_count()):
+        major, minor = torch.cuda.get_device_capability(device)
+        capability = min(10 * major + minor, max(supported)) if supported else 10 * major + minor
+        arches.append(f"{capability // 10}.{capability % 10}")
+    arches = sorted(set(arches), key=lambda a: tuple(map(int, a.split("."))))
+    if arches:
+        arches[-1] += "+PTX"
     else:
-        arches = []
-        supported = [int(a.split("_")[1]) for a in torch.cuda.get_arch_list()
-                     if re.fullmatch(r"sm_[0-9]+", a)]
-        for device in range(torch.cuda.device_count()):
-            major, minor = torch.cuda.get_device_capability(device)
-            capability = min(10 * major + minor, max(supported)) if supported else 10 * major + minor
-            arches.append(f"{capability // 10}.{capability % 10}")
-        arches = sorted(set(arches), key=lambda a: tuple(map(int, a.split("."))))
-        if arches:
-            arches[-1] += "+PTX"
-        else:
-            arches = ["8.0"]
+        arches = ["8.0"]
+    return arches
+
+
+def _cuda_arch_flags() -> list[str]:
     flags = set()
-    for arch in filter(None, arches):
+    for arch in _resolved_arches():
         match = re.fullmatch(r"([0-9]+)\.([0-9]+[a-z]?)(\+PTX)?", arch)
         if not match:
             raise ValueError(f"unsupported CUDA architecture {arch!r}")
@@ -514,15 +525,28 @@ def load(scheme: str, in_bits: int, group: str | None = None, prg: str = "chacha
     if not src_path.exists() or src_path.read_text() != source:
         src_path.write_text(source)
     cflags, cuda_flags, ldflags = options
-    ext = _cpp_load(
-        name=key,
-        sources=[str(src_path)],
-        extra_include_paths=[include_dir, csrc_dir],
-        extra_cflags=cflags,
-        extra_cuda_cflags=cuda_flags,
-        extra_ldflags=ldflags or None,
-        build_directory=str(build_dir),
-    )
+    # Torch releases before 2.7 crash in their own arch resolution when
+    # TORCH_CUDA_ARCH_LIST is unset and no device is visible, regardless of
+    # the arch flags passed above. Export the resolved list for the duration
+    # of the build call and restore the caller's environment afterwards.
+    arch_env = ";".join(_resolved_arches())
+    with _BUILD_ENV_LOCK:
+        saved_arch_env = os.environ.get("TORCH_CUDA_ARCH_LIST")
+        if saved_arch_env is None:
+            os.environ["TORCH_CUDA_ARCH_LIST"] = arch_env
+        try:
+            ext = _cpp_load(
+                name=key,
+                sources=[str(src_path)],
+                extra_include_paths=[include_dir, csrc_dir],
+                extra_cflags=cflags,
+                extra_cuda_cflags=cuda_flags,
+                extra_ldflags=ldflags or None,
+                build_directory=str(build_dir),
+            )
+        finally:
+            if saved_arch_env is None:
+                os.environ.pop("TORCH_CUDA_ARCH_LIST", None)
     # Publish the manifest only after a successful build. PyTorch retains its
     # build lock and performs source dependency checks on the compile path.
     temporary = manifest_path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
