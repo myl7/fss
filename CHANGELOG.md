@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `*RepackGpu` preparation names alongside the released `*RelayoutGpu` entry points
 - The DPF, Half-Tree, and DCF CPU full-domain evaluations walk a batched frontier, honoring `par_depth` throughout
 - `par_depth=0` executes on the calling thread; positive depths bound work partitions. DMPF forwards the option to its inner DPF
-- The `fss-crypto` package requires Python >= 3.10
+- The `fss-crypto` package supports Python >= 3.10 instead of >= 3.13
 - Historical FSS curves moved from the figures to the comparison site, and the GPU benchmark curves moved to the cs11369a reference host
 - Benchmark figures separate five scheme families and prepared-key, proof, PRP, and output-group comparisons, with distinct labels and styles
 - Benchmark records distinguish independent keys, single-key query batches, and logical domain outputs; setup preparation is measured separately
@@ -42,19 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The Python bindings' CUDA paths no longer dereference device seed tensors on the host before kernel launches
-- Python CUDA scalar and metadata copies follow the current PyTorch stream before evaluation
-- Restored v1.2.0 overloads, VDMPF `BucketKey` layout, legacy GPU query strides, and deferred ChaCha nonce-pointer reads
-- Configured CPU and GPU helpers accept nondefault `par_depth` and Cuckoo security parameters
-- Preserve DPF parallel-root initialization on affected GCC 12 toolchains
-- Python AES uses the OpenSSL MMO implementation with independent thread-local contexts; JIT cache fingerprints include source, compiler, ABI, architecture, and options
-- Python backend and domain validation rejects unsupported device combinations, invalid queries, oversized bucket domains, and unsafe full-domain allocations before evaluation
-- Reject overflowing DMPF and VDMPF compile-time bucket capacities before multiplication
-- Complete 64-bit beta handling and defined unsigned retry increments
 - Define ChaCha and BLAKE3 round additions as unsigned arithmetic modulo 2^32
 - Preserve all 64/128-bit scalar input bits across Python's signed native argument boundary
-- GPU scratch allocations have per-device ownership and explicit release; empty multi-point batches preserve proof semantics without invalid kernel launches
-- Installed CMake packages discover their OpenMP dependency, and Python wheels include internal public-header dependencies
-- `Vdmpf::BatchEval` no longer scans every collected record for duplicates, a quadratic pass the Cuckoo PRP's permutation property can never trigger (`Dmpf::BatchEval` carried the same scan)
+- Python full-domain evaluation rejects domain sizes whose outputs would not fit before allocating
+- Reject overflowing VDMPF bucket capacities before computing sizes
+- Installed CMake packages discover their OpenMP dependency
+- `Vdmpf::BatchEval` no longer scans every collected record for duplicates, a quadratic pass the Cuckoo PRP's permutation property can never trigger
 
 ### Removed
 
