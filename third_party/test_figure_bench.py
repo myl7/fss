@@ -28,6 +28,100 @@ class FigureSweepTest(unittest.TestCase):
     def case(self, **extra):
         return sweep.cases(self.args(libraries="fss", platform="gpu", domain_bits=[12]))[0] | extra
 
+    def test_prepare_collected_with_eval_and_not_counted_as_query(self):
+        case = self.case(platform="cpu", num_keys=1, operation="Eval")
+        name = "fss/CPU/DPF-bytes/PackedKey/Prepare"
+        self.assertRegex(name, sweep.pattern(case))
+        row = sweep.normalize(case, name, 20, "absent", {})
+        self.assertEqual((row["operation"], row["timed_operation"], row["time_denominator"]), ("Prepare", "Prepare", "key"))
+        self.assertEqual((row["query_count"], row["key_count"], row["ns_per_unit"], row["setup_included"]), (0, 1, 20, True))
+        self.assertTrue(row["variant"].endswith("-packedkey-setup"))
+        self.assertIn("all point queries are outside timing", row["timing_boundary_detail"])
+
+    def test_vdpf_point_times_the_single_element_chain_proof(self):
+        case = self.case(platform="cpu", operation="Eval", num_keys=1)
+        row = sweep.normalize(case, "fss/CPU/VDPF-bytes/Eval", 500, "absent", {})
+        self.assertEqual((row["variant"], row["proof_accumulator"], row["proof_generation_included"]), ("VDPF-bytes-AES-NI-chains", "chain", True))
+        self.assertIn("one-element chain proof", row["timing_boundary_detail"])
+        generation = sweep.normalize(dict(case, operation="Gen"), "fss/CPU/VDPF-bytes/Gen", 500, "absent", {})
+        self.assertEqual((generation["proof_accumulator"], generation["proof_generation_included"]), ("none", False))
+        legacy = dict(row, variant="VDPF-bytes-AES-NI")
+        self.assertEqual(sweep.polish_metadata(legacy)["variant"], row["variant"])
+        self.assertEqual(sweep.polish_metadata(legacy)["median_ns"], 500)
+
+    def test_packed_gpu_prg_metadata_matches_one_block_wrapper(self):
+        row = sweep.normalize(self.case(operation="EvalAll", num_keys=1), "fss/GPU/PackedHalfTreeDPF-bits1/EvalAll", 1000, "absent", {})
+        self.assertEqual((row["prg"], row["prg_output_blocks"]), ("ChaCha20-x1", 1))
+        legacy = dict(row, prg="ChaCha20-x2", prg_output_blocks=2)
+        repaired = sweep.polish_metadata(legacy)
+        self.assertEqual((repaired["prg"], repaired["variant"]), ("ChaCha20-x1", "PackedHalfTreeDPF-bits1-ChaCha20-x1"))
+        self.assertEqual(repaired["median_ns"], legacy["median_ns"])
+
+    def test_specialty_scheme_selection_uses_native_names_and_supported_ops(self):
+        for platform in ("cpu", "gpu"):
+            selected = sweep.cases(self.args(platform=platform, libraries="fss", scheme="PackedHalfTreeDPF", domain_bits=[12]))
+            self.assertEqual(len(selected), 1)
+            self.assertEqual(selected[0]["operation"], "EvalAll")
+            self.assertRegex(f"fss/{platform.upper()}/PackedHalfTreeDPF-bits1/EvalAll", sweep.pattern(selected[0]))
+            grotto = sweep.cases(self.args(platform=platform, libraries="fss", scheme="GrottoDCF", domain_bits=[12]))
+            for case in grotto:
+                self.assertRegex(f"fss/{platform.upper()}/GrottoDCF/{case['operation']}", sweep.pattern(case))
+
+    def test_explicit_quantity_denominators_and_receipt_launch(self):
+        raw = self.directory / "quantities.json"
+        name = "fss/GPU/VDMPF-bytes/Eval/manual_time"
+        raw.write_text(json.dumps({"benchmarks": [dict(name=name, key_count=1, query_count=4,
+                                                       threads_per_block=256)]}))
+        row = sweep.normalize(self.case(operation="Eval", num_keys=4, configured_num_keys=4,
+                                        threads_per_block=128), name, 2000, raw, {})
+        self.assertEqual((row["key_count"], row["query_count"], row["time_denominator"], row["ns_per_unit"]),
+                         (1, 4, "query", 500))
+        self.assertEqual((row["requested_threads_per_block"], row["threads_per_block"]), (128, 256))
+        self.assertEqual(row["workload"], "single_key_batch")
+        self.assertNotIn("metadata_status", row)
+        self.assertFalse(row["block_size_tunable"])
+        full = sweep.normalize(self.case(operation="EvalAll", num_keys=1), "fss/GPU/DPF-bytes/EvalAll", 1000, "absent", {})
+        self.assertEqual((full["key_count"], full["domain_output_count"], full["ns_per_unit"]), (1, 4096, 1000))
+        cpu = sweep.normalize(self.case(platform="cpu", num_keys=1, operation="Eval"), "fss/CPU/DPF-bytes/Eval", 100, "absent", {})
+        self.assertEqual((cpu["query_count"], cpu["time_denominator"], cpu["ns_per_unit"]), (1, "query", 100))
+        independent = sweep.normalize(self.case(operation="Eval", num_keys=4), "fss/GPU/DPF-bytes/Eval", 2000, "absent", {})
+        self.assertEqual((independent["key_count"], independent["query_count"], independent["ns_per_unit"]), (4, 4, 500))
+
+    def test_full_multi_point_receipt_keys_per_launch_is_authoritative(self):
+        raw = self.directory / "full-quantities.json"
+        name = "fss/GPU/DMPF-bytes/EvalAll/manual_time"
+        raw.write_text(json.dumps({"benchmarks": [dict(name=name, keys_per_launch=1, domain_outputs=4096, threads_per_block=256)]}))
+        row = sweep.normalize(self.case(operation="EvalAll", num_keys=1, threads_per_block=128), name, 4096, raw, {})
+        self.assertNotIn("metadata_status", row)
+        self.assertEqual((row["key_count"], row["domain_output_count"], row["ns_per_domain_output"]), (1, 4096, 1))
+        self.assertEqual((row["quantity_source"], row["threads_per_block"]), ("raw_counter", 256))
+
+    def test_unknown_batch_metadata_requires_recollection(self):
+        row = sweep.normalize(self.case(operation="Eval"), "fss/GPU/DMPF-bytes/Eval", 1000, "absent", {})
+        self.assertEqual(row["metadata_status"], "requires_recollection")
+        known = sweep.normalize(self.case(operation="Eval", threads_per_block=128), "fss/GPU/DMPF-bytes/Eval", 1000,
+                                "absent", {"third_party/fss/bench.cu": next(iter(sweep.LEGACY_BATCH_WRAPPERS))})
+        self.assertEqual((known["key_count"], known["query_count"], known["threads_per_block"]), (1, 262144, 256))
+
+    def test_default_gpu_point_collection_includes_all_supported_schemes(self):
+        case = self.case(operation="Eval")
+        args = argparse.Namespace(cpu=100, repetitions=5, min_time=.1, warmup=.1)
+        filters = []
+        def execute(command, **unused):
+            selected = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--benchmark_filter="))
+            filters.append(selected)
+            raw = Path(next(arg.split("=", 1)[1] for arg in command if arg.startswith("--benchmark_out=")))
+            name = selected.removeprefix("^").removesuffix("(/|$)")
+            raw.write_text(json.dumps({"benchmarks": [dict(name=name, real_time=100, time_unit="ns", key_count=1 if "DMPF" in name else 262144, query_count=262144, threads_per_block=256)]}))
+        with mock.patch.object(sweep, "environment", return_value={}), mock.patch.object(sweep, "executables", return_value=[Path("bench")]), mock.patch.object(sweep.bench, "execute", side_effect=execute):
+            rows = sweep.collect(args, case, self.directory / "case", {})
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(len(set(filters)), 5)
+        self.assertTrue(any("DMPF-bytes" in pattern for pattern in filters))
+        self.assertTrue(any("VDMPF-bytes" in pattern for pattern in filters))
+        self.assertEqual(sweep.cases(self.args(platform="gpu", sweep="block", scheme="DMPF")), [])
+        self.assertNotRegex("fss/GPU/VDMPF-bytes/EvalAll", sweep.pattern(self.case(operation="EvalAll", sweep="block")))
+
     def test_pilot_endpoint_and_slow_full_subset(self):
         cases = sweep.cases(self.args())
         self.assertEqual(cases[0]["domain_bits"], 20)
@@ -57,6 +151,48 @@ class FigureSweepTest(unittest.TestCase):
         for operation in ("Eval", "EvalAll"):
             self.assertEqual({c["threads_per_block"] for c in cases if c["operation"] == operation}, set(sweep.BLOCKS))
         self.assertIn("AesSoft", sweep.pattern(next(c for c in cases if c["operation"] == "Eval")))
+
+    def test_block_scheme_selection_preserves_isolation(self):
+        for scheme, operations in sweep.FSS_GPU_OPERATIONS.items():
+            selected = sweep.cases(self.args(libraries="fss", platform="gpu", sweep="block", scheme=scheme))
+            expected = set(operations) - {"Gen"}
+            if scheme in ("DMPF", "VDMPF"):
+                expected = set()
+            elif scheme != "DPF":
+                expected.discard("Eval")
+            self.assertEqual({case["operation"] for case in selected}, expected, scheme)
+            for case in selected:
+                native = "PackedHalfTreeDPF-bits1" if scheme == "PackedHalfTreeDPF" else "GrottoDCF" if scheme == "GrottoDCF" else scheme + "-bytes"
+                middle = "AesSoft/" if case["operation"] == "Eval" else ""
+                self.assertRegex(f"fss/GPU/{native}/{middle}{case['operation']}", sweep.pattern(case))
+                if scheme != "DPF":
+                    self.assertNotRegex("fss/GPU/DPF-bytes/AesSoft/Eval", sweep.pattern(case))
+
+    def test_default_filters_follow_supported_operation_registry(self):
+        for operation in ("Gen", "Eval", "EvalAll"):
+            pattern = sweep.pattern(self.case(operation=operation))
+            for scheme, operations in sweep.FSS_GPU_OPERATIONS.items():
+                native = "PackedHalfTreeDPF-bits1" if scheme == "PackedHalfTreeDPF" else "GrottoDCF" if scheme == "GrottoDCF" else scheme + "-bytes"
+                assertion = self.assertRegex if operation in operations else self.assertNotRegex
+                assertion(f"fss/GPU/{native}/{operation}", pattern)
+
+    def test_native_work_counters_reject_stale_configuration(self):
+        raw = self.directory / "counts.json"
+        def validate(case, name, **counters):
+            raw.write_text(json.dumps({"benchmarks": [dict(name=name, **counters)]}))
+            sweep.validate_native_configuration(case, raw)
+        full = self.case(operation="EvalAll", num_keys=1)
+        validate(full, "fss/GPU/VDMPF-bytes/EvalAll", key_count=1, query_count=4096, domain_outputs=4096, keys_per_launch=1)
+        for field, value in (("domain_outputs", 1024), ("keys_per_launch", 4), ("query_count", 262144)):
+            with self.assertRaisesRegex(ValueError, field):
+                validate(full, "fss/GPU/VDMPF-bytes/EvalAll", **{field: value})
+        point = self.case(operation="Eval")
+        validate(point, "fss/GPU/DMPF-bytes/Eval", key_count=1, query_count=262144)
+        validate(point, "fss/GPU/DPF-bytes/Eval", key_count=262144, query_count=262144)
+        for field, value in (("key_count", 1), ("query_count", 1024)):
+            with self.assertRaisesRegex(ValueError, field):
+                validate(point, "fss/GPU/DPF-bytes/Eval", **{field: value})
+        validate(self.case(platform="cpu", operation="Eval", num_keys=1), "fss/CPU/DPF-bytes/PackedKey/Prepare", key_count=1, query_count=0)
 
     def test_google_median_prefers_aggregate_over_repetitions(self):
         raw = self.directory / "raw.json"
@@ -165,7 +301,7 @@ class FigureSweepTest(unittest.TestCase):
                          ("VDPF-bytes-AES-NI-chains", "native"))
         # Point VDPF operations keep their base variant.
         self.assertEqual(sweep.normalize(self.case(platform="cpu", operation="Eval"), "fss/CPU/VDPF-bytes/Eval", 1000,
-                                         "raw", {})["variant"], "VDPF-bytes-AES-NI")
+                                         "raw", {})["variant"], "VDPF-bytes-AES-NI-chains")
 
     def test_accumulator_variants_and_old_row_refresh(self):
         cpu_vdmpf = sweep.normalize(self.case(platform="cpu", operation="EvalAll"),
@@ -282,6 +418,40 @@ class FigureSweepTest(unittest.TestCase):
         self.assertIsNone(rows[0]["median_ns"])
         self.assertEqual(Path(rows[0]["raw_result"]).read_text(), '{"benchmarks": [')
         self.assertEqual(len(rows[0]["raw_result_sha256"]), 64)
+
+    def test_full_case_resource_failure_does_not_invent_point_variant(self):
+        case = self.case(operation="EvalAll", sweep="block", threads_per_block=1024)
+        args = argparse.Namespace(cpu=100, repetitions=5, min_time=.1, warmup=.1)
+        def execute(command, **kwargs):
+            raw = Path(next(argument.split("=", 1)[1] for argument in command if argument.startswith("--benchmark_out=")))
+            raw.write_text('{"benchmarks": [')
+            kwargs["log"].write_text("cuda error: too many resources requested for launch\n")
+            raise RuntimeError("command exited with status -6")
+        with mock.patch.object(sweep, "environment", return_value={}), \
+             mock.patch.object(sweep, "executables", return_value=[Path("bench")]), \
+             mock.patch.object(sweep.bench, "execute", side_effect=execute):
+            row, = sweep.collect(args, case, self.directory / "full-case", {})
+        self.assertEqual((row["failure_scope"], row["operation"], row["timed_operation"]), ("case", "EvalAll", "EvalAll"))
+        self.assertEqual(row["original_benchmark"], sweep.pattern(case))
+        self.assertEqual(row["failure_config_id"], sweep.case_id(case))
+        for field in ("benchmark", "scheme", "variant", "prg", "key_count", "query_count", "domain_output_count", "ns_per_unit"):
+            self.assertIsNone(row[field], field)
+        # Apply the same explicit correction when loading an old fallback row.
+        legacy = dict(row, benchmark="fss/GPU/DPF-bytes/AesSoft/Eval", scheme="DPF", failure_scope="benchmark")
+        legacy.pop("original_benchmark")
+        repaired = sweep.polish_metadata(legacy)
+        self.assertEqual(repaired["original_benchmark"], legacy["benchmark"])
+        self.assertIsNone(repaired["benchmark"])
+        for field in ("raw_result", "raw_result_sha256", "source_sha256", "command", "error", "median_ns"):
+            self.assertEqual(repaired[field], legacy[field])
+        self.assertEqual(sweep.polish_metadata(repaired), repaired)
+        point_case = dict(case, operation="Eval")
+        repeated = [sweep.normalize(point_case, "fss/GPU/DPF-bytes/AesSoft/Eval/manual_time", None,
+                                   "native-error-receipt", {}, "unsupported",
+                                   "unsupported: insufficient software AES kernel resources for the block size")
+                    for _ in range(5)]
+        self.assertEqual({item["failure_config_id"] for item in repeated}, {sweep.case_id(point_case)})
+        self.assertTrue(all(item["failure_scope"] == "benchmark" for item in repeated))
 
     def test_criterion_variant_failure_preserves_other_medians(self):
         target = self.directory / "target"

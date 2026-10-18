@@ -8,6 +8,7 @@ import argparse
 import csv
 import datetime
 import hashlib
+from functools import lru_cache
 import json
 import math
 import os
@@ -28,6 +29,22 @@ BUILD = bench.BUILD / "sweep"
 DOMAINS = (8, 10, 12, 14, 16, 18, 20)
 SLOW_DOMAINS = (8, 12, 14, 18, 20)
 BLOCKS = (16, 32, 64, 128, 256, 512, 1024)
+# GPU Eval cases use the same registry for default and per-scheme collections.
+FSS_GPU_OPERATIONS = {
+    "DPF": ("Gen", "Eval", "EvalAll"), "DCF": ("Gen", "Eval", "EvalAll"),
+    "HalfTreeDPF": ("EvalAll",), "PackedHalfTreeDPF": ("EvalAll",),
+    "GrottoDCF": ("EvalAll",), "VDPF": ("EvalAll",),
+    "DMPF": ("Eval", "EvalAll"), "VDMPF": ("Eval", "EvalAll"),
+}
+FSS_CPU_OPERATIONS = {scheme: ("EvalAll",) if scheme == "PackedHalfTreeDPF" else ("Gen", "Eval", "EvalAll") for scheme in FSS_GPU_OPERATIONS}
+GPU_POINT_SCHEMES = tuple(scheme for scheme, ops in FSS_GPU_OPERATIONS.items() if "Eval" in ops)
+# These preserved wrappers use one key and kN queries, with fixed 256-thread
+# kernels. Their raw receipts predate explicit batch counters. The hashes were
+# verified against e25a42c and 84b93e5, respectively.
+LEGACY_BATCH_WRAPPERS = {
+    "2e9a30754964d05df3522d72a30c3174d6b57a6f8c683375c3facd638b52c534",
+    "e09d80c6f73f093847b3d6b6d154df5aa2920b60bb02318e177790dd3fdf9049",
+}
 CPU_LIBRARIES = ("fss", "libdpf", "libfss", "google_dpf", "gpu_dpf", "fss_v060", "fss_v070", "servan_vdpf",
                  "mastic", "plasma", "dpf-cpp", "dpfplusplus")
 TARGETS = {"fss": "bench_fss", "libfss": "bench_dpf_libfss", "gpu_dpf": "bench_dpf_gpu_dpf",
@@ -67,6 +84,10 @@ def cases(args):
                 else:
                     operations = requested or ("Gen", "Eval", "EvalAll")
                 for operation in operations:
+                    scheme = getattr(args, "scheme", None)
+                    registry = FSS_GPU_OPERATIONS if device == "gpu" else FSS_CPU_OPERATIONS
+                    if name == "fss" and scheme and operation not in registry.get(scheme, ()):
+                        continue
                     if device == "gpu" and name == "gpu_dpf" and operation != "EvalAll":
                         continue
                     if operation == "EvalAll" and device == "cpu" and name in ("libfss", "gpu_dpf") and n not in SLOW_DOMAINS:
@@ -75,7 +96,8 @@ def cases(args):
                         continue
                     if args.sweep == "block" and (device != "gpu" or name != "fss" or n != 20):
                         continue
-                    if args.sweep == "block" and operation == "Gen":
+                    if args.sweep == "block" and (operation == "Gen" or scheme in ("DMPF", "VDMPF")
+                                                  or operation == "Eval" and scheme not in (None, "DPF")):
                         continue
                     blocks = args.threads_per_block or (BLOCKS if args.sweep == "block" else (128 if operation == "EvalAll" else 256,))
                     for t in blocks:
@@ -93,7 +115,7 @@ def cases(args):
     if libraries and set(libraries) - set(CPU_LIBRARIES) - {"ezpc"}:
         raise ValueError("unknown sweep library")
     scheme = getattr(args, "scheme", None)
-    if scheme and scheme not in ("DPF", "DCF", "HalfTreeDPF", "DMPF", "VDMPF", "VDPF"):
+    if scheme and scheme not in FSS_GPU_OPERATIONS:
         raise ValueError("unknown sweep scheme")
     return result
 
@@ -117,6 +139,8 @@ def pattern(case):
         operation = "EvalAllFull"
     if case["library"] == "fss" and case["platform"] == "cpu":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
+        # Preparation is collected alongside Eval without changing CLI defaults.
+        operation = "(Eval|Prepare)" if operation == "Eval" else operation
         # The packed-key point evaluations and the CPU VDPF Merkle fold carry a
         # middle name segment, mirroring the GPU AesSoft variant; the optional
         # segment keeps every plain name matching exactly as before. The DMPF and
@@ -124,6 +148,9 @@ def pattern(case):
         segment = "(PackedKeyOneShot|PackedKey|Merkle)/"
         rawprp = "" if case.get("scheme") and case["scheme"] not in ("DMPF", "VDMPF") else "(-AES-NI-rawprp)?"
         if case.get("scheme"):
+            if case["scheme"] in ("PackedHalfTreeDPF", "GrottoDCF"):
+                native = "PackedHalfTreeDPF-bits1" if case["scheme"] == "PackedHalfTreeDPF" else "GrottoDCF"
+                return f"^fss/CPU/{native}/{operation}(/|$)"
             return f"^fss/CPU/{case['scheme']}-{groups}{rawprp}/({segment})?{operation}(/|$)"
         return (f"^fss/CPU/((DPF|DCF|HalfTreeDPF|VDPF)-{groups}|(DMPF|VDMPF)-{groups}{rawprp}"
                 f"|PackedHalfTreeDPF-bits1|GrottoDCF)/({segment})?{operation}(/|$)")
@@ -135,9 +162,15 @@ def pattern(case):
     if case["library"] == "fss":
         groups = "(bytes|uint)" if case["include_uint"] else "bytes"
         if case.get("scheme"):
+            if case["scheme"] in ("PackedHalfTreeDPF", "GrottoDCF"):
+                native = "PackedHalfTreeDPF-bits1" if case["scheme"] == "PackedHalfTreeDPF" else "GrottoDCF"
+                return f"^fss/GPU/{native}/{operation}(/|$)"
             return f"^fss/GPU/{case['scheme']}-{groups}/(AesSoft/)?{operation}(/|$)"
-        return (f"^fss/GPU/((DPF|DCF|HalfTreeDPF|VDPF|VDMPF|DMPF)-{groups}"
-                f"|PackedHalfTreeDPF-bits1|GrottoDCF)/(AesSoft/)?{operation}(/|$)")
+        selected = [scheme for scheme, operations in FSS_GPU_OPERATIONS.items() if operation in operations
+                    and not (case["sweep"] == "block" and scheme in ("DMPF", "VDMPF"))]
+        native = ["PackedHalfTreeDPF-bits1" if scheme == "PackedHalfTreeDPF" else "GrottoDCF"
+                  if scheme == "GrottoDCF" else f"{scheme}-{groups}" for scheme in selected]
+        return f"^fss/GPU/({'|'.join(native)})/(AesSoft/)?{operation}(/|$)"
     if case["library"] in ("dpf-cpp", "dpfplusplus"):
         # Their benchmarks register several domain sizes under one operation,
         # so the filter must pin the requested case; otherwise one raw file
@@ -249,6 +282,8 @@ def parse_google(path):
 
 
 def normalize(case, name, time, raw, sources, status="ok", error=None):
+    if "/Prepare" in name:
+        case = dict(case, requested_operation=case["operation"], operation="Prepare")
     if case["library"] == "google_dpf":
         case = dict(case, google_dcf_group="additive_mod_2^128")
     row = dict(case, benchmark=name, status=status, median_ns=time, time_ns=time,
@@ -264,7 +299,7 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
     prg = "AES-software" if "AesSoft" in name else ("ChaCha12" if case["library"] == "gpu_dpf" and case["platform"] == "gpu" else
           "AES-NI" if case["platform"] == "cpu" and case["library"] == "fss" and case["cpu_prg"] == "aes-ni" else
           "OpenSSL-AES" if case["platform"] == "cpu" and case["library"] == "fss" else
-          ("ChaCha20-x1" if scheme == "HalfTreeDPF" else "ChaCha20-x4" if scheme == "DCF" else "ChaCha20-x2") if case["library"] == "fss" else "AES128" if case["library"] in ("gpu_dpf", "ezpc", "google_dpf") else "native")
+          ("ChaCha20-x1" if scheme in ("HalfTreeDPF", "PackedHalfTreeDPF") else "ChaCha20-x4" if scheme == "DCF" else "ChaCha20-x2") if case["library"] == "fss" else "AES128" if case["library"] in ("gpu_dpf", "ezpc", "google_dpf") else "native")
     if case["library"] == "fss_v070":
         prg = "AES128-MMO-NI" if case["platform"] == "cpu" else "Salsa12"
     if case["library"] in ("dpf-cpp", "mastic"):
@@ -350,9 +385,115 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
     return polish_metadata(row)
 
 
+@lru_cache(maxsize=1024)
+def native_receipts(raw, expected_hash):
+    path = Path(raw)
+    if not path.is_file() and "/build/" in raw:
+        path = ROOT / "build" / raw.split("/build/", 1)[1]
+    if not path.is_file():
+        return {}
+    content = path.read_bytes()
+    if expected_hash and hashlib.sha256(content).hexdigest() != expected_hash:
+        raise ValueError(f"raw result hash mismatch: {path}")
+    try:
+        values = json.loads(content).get("benchmarks", [])
+    except (ValueError, UnicodeDecodeError):
+        return {}
+    return {value.get("run_name", value["name"]): value for value in values
+            if not value.get("error_occurred") and value.get("aggregate_name") in (None, "median")}
+
+
+def measurement_metadata(row):
+    """Recover work quantities from receipts and documented wrapper contracts."""
+    row = dict(row)
+    receipt = native_receipts(str(row.get("raw_result", "")), row.get("raw_result_sha256")).get(row.get("benchmark"), {})
+    fields = ("key_count", "query_count", "domain_outputs", "keys_per_launch", "threads_per_block")
+    counters = {field: int(receipt[field]) for field in fields if field in receipt}
+    row["native_counters"] = counters or row.get("native_counters", {})
+    counters = row["native_counters"]
+    row.setdefault("requested_threads_per_block", row.get("config", row).get("threads_per_block"))
+    if "threads_per_block" in counters:
+        row["threads_per_block"] = counters["threads_per_block"]
+        row["launch_metadata_source"] = "raw_counter"
+    batch = row["library"] == "fss" and row["platform"] == "gpu" and row.get("scheme") in ("DMPF", "VDMPF")
+    legacy_batch = row.get("source_sha256", {}).get("third_party/fss/bench.cu") in LEGACY_BATCH_WRAPPERS
+    if batch and legacy_batch and not counters.get("threads_per_block"):
+        row.update(threads_per_block=256, launch_metadata_source="verified_wrapper_source")
+    if batch:
+        row["block_size_tunable"] = False
+    else:
+        row.setdefault("block_size_tunable", True)
+    keys = counters.get("key_count", counters.get("keys_per_launch"))
+    if keys is None:
+        keys = 1 if row["operation"] == "EvalAll" or row["platform"] == "cpu" else row.get("num_keys", 1)
+    if batch:
+        if counters.get("key_count", counters.get("keys_per_launch")) == 1 or legacy_batch:
+            keys = 1
+            row["quantity_source"] = "raw_counter" if counters.get("key_count", counters.get("keys_per_launch")) else "verified_wrapper_source"
+            if row.get("metadata_status") == "requires_recollection":
+                row.pop("metadata_status")
+        else:
+            # Single-key batch semantics cannot be established from an old
+            # num_keys field alone. Keep the receipt but omit it from plots.
+            row["metadata_status"] = "requires_recollection"
+    row["key_count"] = keys
+    op = row["operation"]
+    query_count = counters.get("query_count")
+    if query_count is None:
+        query_count = (row.get("configured_num_keys", row.get("num_keys", 1)) if batch else keys) if op == "Eval" else row["domain_size"] if batch and row.get("scheme") == "VDMPF" and op == "EvalAll" and legacy_batch else 0
+    row["query_count"] = query_count
+    row["domain_output_count"] = counters.get("domain_outputs", keys * row["domain_size"] if op == "EvalAll" else 0)
+    row["ns_per_domain_output"] = row.get("median_ns", row.get("time_ns")) / row["domain_output_count"] if row.get("median_ns", row.get("time_ns")) is not None and row["domain_output_count"] else None
+    row["legacy_quantity_fields"] = {field: row[field] for field in ("num_keys", "ns_per_key") if field in row}
+    row["timed_operation"] = op
+    row["time_denominator"] = "query" if op == "Eval" else "key"
+    count = query_count if op == "Eval" else keys
+    time = row.get("median_ns", row.get("time_ns"))
+    row["ns_per_unit"] = time / count if time is not None and count else None
+    row["ns_per_query"] = time / query_count if time is not None and query_count else None
+    # Keep num_keys and historical ns_per_key for provenance. New consumers
+    # use explicit counts and ns_per_unit.
+    row["setup_included"] = op == "Prepare" or "PackedKeyOneShot" in row.get("benchmark", "") or row.get("scheme") == "GrottoDCF" and op == "EvalAll"
+    row["workload"] = "single_key_batch" if batch and op == "Eval" else "independent_keys" if op == "Eval" and keys > 1 else "single_key"
+    return row
+
+
+def failure_metadata(row):
+    """Describe a failed collection without inventing a successful variant."""
+    resource_failure = row.get("failure_kind") == "kernel_resources_exhausted" or \
+        "too many resources requested for launch" in str(row.get("error", "")) or \
+        "kernel resources" in str(row.get("error", ""))
+    if row.get("status") != "unsupported" or not resource_failure:
+        return row
+    row = dict(row)
+    case = row.get("config", row)
+    selected_filter = next((arg.split("=", 1)[1] for arg in row.get("command", ())
+                            if arg.startswith("--benchmark_filter=")), "")
+    expression = selected_filter.removesuffix("(/|$)")
+    case_level = row.get("failure_scope") == "case" or "(" in expression or \
+        str(row.get("benchmark", "")).startswith("^")
+    row.update(operation=case["operation"], timed_operation=case["operation"],
+               failure_scope="case" if case_level else "benchmark", failure_config_id=case_id(case))
+    if not case_level:
+        return row
+    row.setdefault("original_benchmark", row.get("benchmark"))
+    row.update(benchmark=None, scheme=None, variant=None, group=None, prg=None,
+               logical_output_bits=None, storage_output_bits=None, output_storage=None,
+               prg_output_blocks=None, implementation=None, key_count=None, query_count=None,
+               domain_output_count=None, ns_per_unit=None, ns_per_query=None, ns_per_domain_output=None,
+               setup_included=None, workload=None,
+               time_denominator="query" if case["operation"] == "Eval" else "key",
+               label=f"{row['library']}/{row['platform']}/{case['operation']} case",
+               timing_boundary_detail="collection failed before a variant-level result was available")
+    row["metadata_correction"] = "case-level resource failure has no identified benchmark variant"
+    return row
+
+
 def polish_metadata(row):
     """Refresh descriptive fields without changing preserved measurements."""
-    row = dict(row)
+    row = failure_metadata(dict(row))
+    if row.get("failure_scope") == "case":
+        return row
     library, device, operation = row["library"], row["platform"], row["operation"]
     scheme = row.get("scheme", "DPF")
     benchmark = row.get("benchmark", "")
@@ -374,7 +515,7 @@ def polish_metadata(row):
                    prg_backend_detail="OpenSSL EVP AES-128: ECB for the PRG expansion and CTR for the MMO hash; "
                                       "research-purposes-only upstream code")
     if library == "fss" and device == "gpu" and "AesSoft" not in row.get("benchmark", ""):
-        blocks = 4 if scheme == "DCF" else 1 if scheme == "HalfTreeDPF" else 2
+        blocks = 4 if scheme == "DCF" else 1 if scheme in ("HalfTreeDPF", "PackedHalfTreeDPF") else 2
         row.update(prg=f"ChaCha20-x{blocks}", prg_output_blocks=blocks)
     if library == "google_dpf" and scheme == "DPF":
         row.update(group="xor_128", logical_output_bits=128, storage_output_bits=128)
@@ -412,6 +553,8 @@ def polish_metadata(row):
         if library == "fss":
             if "PackedKeyOneShot" in benchmark:
                 row["timing_boundary_detail"] = "Native framework wall time per point evaluation; the one-time key pack is inside timing"
+            elif "/Prepare" in benchmark:
+                row["timing_boundary_detail"] = "Native framework wall time per key preparation; key generation and all point queries are outside timing"
             elif "PackedKey" in benchmark:
                 row["timing_boundary_detail"] = "Native framework wall time per prepared-key point evaluation; the one-time key pack is outside timing"
     # Variant qualifiers keep the packed-key rows and the two proof accumulators
@@ -423,20 +566,27 @@ def polish_metadata(row):
     if library == "fss":
         if "PackedKeyOneShot" in benchmark:
             qualifier = "-packedkey-oneshot"
+        elif "/Prepare" in benchmark:
+            qualifier = "-packedkey-setup"
         elif "PackedKey" in benchmark:
             qualifier = "-packedkey"
-        elif scheme == "VDPF" and operation == "EvalAll":
+        elif scheme == "VDPF" and operation in ("Eval", "EvalAll"):
             qualifier = "-merkle" if row.get("implementation") == "merkle_fold_proof" else "-chains"
         elif scheme == "VDMPF":
             qualifier = "-merkle-fold" if device == "gpu" else "-chains"
         if "AES-NI-rawprp" in benchmark:
             qualifier += "-rawprp"
+    if library == "fss" and scheme in ("VDPF", "VDMPF"):
+        row["proof_accumulator"] = "none" if operation == "Gen" else "merkle" if "-merkle" in qualifier else "chain"
+        row["proof_generation_included"] = operation in ("Eval", "EvalAll")
+        if scheme == "VDPF" and device == "cpu" and operation == "Eval":
+            row["timing_boundary_detail"] = "Native framework wall time per point evaluation plus a one-element chain proof; key generation and validation are outside timing"
     variant_suffix = ("-simd8" if row.get("implementation") == "simd8_frontier" else "") + qualifier
     row["variant"] = scheme + "-" + row.get("group", "native") + "-" + row.get("prg", "native") + variant_suffix
     row["label"] = library + "/" + row["variant"]
     if row.get("scheme") == "PackedHalfTreeDPF":
         row["label"] += " (experimental)"
-    return row
+    return measurement_metadata(row)
 
 
 def validate_native_configuration(case, raw):
@@ -449,6 +599,21 @@ def validate_native_configuration(case, raw):
             match = re.search(r"/(Gen|Eval|EvalAll8?)/(\d+)$", value.get("name", ""))
             if match and int(match.group(2)) != case["domain_bits"]:
                 raise ValueError(f"benchmark id {value['name']} does not match the configured domain {case['domain_bits']}")
+        if case["library"] == "fss":
+            name = value.get("run_name", value.get("name", ""))
+            match = re.search(r"/(Gen|Prepare|Eval|EvalAll)(/|$)", name)
+            operation = match.group(1) if match else case["operation"]
+            batch = case["platform"] == "gpu" and "DMPF" in name
+            keys = 1 if case["platform"] == "cpu" or operation in ("Prepare", "EvalAll") or batch else case["num_keys"]
+            queries = (case["num_keys"] if case["platform"] == "gpu" else 1) if operation == "Eval" else 0
+            if batch and "VDMPF" in name and operation == "EvalAll":
+                queries = case["domain_size"]
+            expected_counts = {"key_count": keys, "query_count": queries,
+                               "domain_outputs": case["domain_size"] if operation == "EvalAll" else 0,
+                               "keys_per_launch": keys}
+            for field, expected in expected_counts.items():
+                if field in value and value[field] != expected:
+                    raise ValueError(f"benchmark {field} {value[field]} does not match configured {expected}")
         for field, expected in (("domain_bits", case["domain_bits"]), ("keys", case["num_keys"]),
                                 ("threads_per_block", case["threads_per_block"])):
             if expected is None or field not in value or value[field] == expected:
@@ -524,7 +689,7 @@ def collect(args, case, directory, sources):
         if case["library"] == "fss" and case["platform"] == "gpu" and case["operation"] == "Eval" and case["sweep"] != "block" \
                 and not case.get("scheme"):
             groups = ("bytes", "uint") if case["include_uint"] else ("bytes",)
-            filters = [f"^fss/GPU/{scheme}-{group}/Eval(/|$)" for group in groups for scheme in ("DPF", "DCF")]
+            filters = [f"^fss/GPU/{scheme}-{group}/Eval(/|$)" for group in groups for scheme in GPU_POINT_SCHEMES if group == "bytes" or scheme not in ("DMPF", "VDMPF")]
             filters.append("^fss/GPU/DPF-bytes/AesSoft/Eval(/|$)")
             units = [(binary, selected_filter) for binary in executables(args, case) for selected_filter in filters]
         for index, (binary, selected_filter) in enumerate(units):
@@ -540,12 +705,13 @@ def collect(args, case, directory, sources):
                 process_error = str(error)
                 log_text = (directory / f"run-{index}.log").read_text()
                 if "too many resources requested for launch" in log_text:
-                    name = "fss/GPU/DPF-bytes/AesSoft/Eval" if "AesSoft" in selected_filter else selected_filter
+                    exact_point = "^fss/GPU/DPF-bytes/AesSoft/Eval(/|$)"
+                    name = "fss/GPU/DPF-bytes/AesSoft/Eval" if selected_filter == exact_point else selected_filter
                     row = normalize(case, name, None, raw, sources, "unsupported", "too many resources requested for launch")
                     row["failure_kind"] = "kernel_resources_exhausted"
                     row["command"] = command
                     row["log"] = str(directory / f"run-{index}.log")
-                    rows.append(row)
+                    rows.append(failure_metadata(row))
                     continue
                 if not raw.exists():
                     raise

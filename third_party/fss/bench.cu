@@ -467,9 +467,7 @@ static bool CheckCpuPackedPoint(benchmark::State &state, Scheme &scheme, PackPoi
   return true;
 }
 
-// par_depth stays at its default because the pack helpers key on the default
-// Dpf / HalfTreeDpf type and par_depth only affects EvalAll, which these
-// point benchmarks never call.
+// These point benchmarks do not call full-domain evaluation.
 template <typename Group>
 static void BM_CpuDpfPackedKeyEval(benchmark::State &state) {
   using DpfT = fss::Dpf<kInBits, Group, CpuPrg<2>, uint32_t>;
@@ -513,11 +511,38 @@ static void BM_CpuDpfPackedKeyOneShotEval(benchmark::State &state) {
   }
   uint32_t x = 0;
   for (auto _ : state) {
+    benchmark::DoNotOptimize(k0);
     const fss::cpu::DpfPointKey<kInBits> p0 = fss::cpu::DpfPackPoint<kInBits, Group, CpuPrg<2>, uint32_t>(k0);
     int4 y = fss::cpu::DpfEvalPoint<kInBits, Group, CpuPrg<2>, uint32_t>(false, p0, x, ctx.prg);
     benchmark::DoNotOptimize(y);
     x = (x + 1) & ((1u << kInBits) - 1);
   }
+}
+
+template <typename Group>
+static void BM_CpuDpfPackedKeyPrepare(benchmark::State &state) {
+  using DpfT = fss::Dpf<kInBits, Group, CpuPrg<2>, uint32_t>;
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename DpfT::Key k0, k1;
+  AesCtx<2> ctx;
+  DpfT dpf{ctx.prg};
+  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha, kBeta);
+  CheckCpuScheme<Group, false>(dpf, k0, k1);
+  if (!CheckCpuPackedPoint(state, dpf,
+          [](const typename DpfT::Key &key) { return fss::cpu::DpfPackPoint<kInBits, Group, CpuPrg<2>, uint32_t>(key); },
+          [&dpf](bool b, const fss::cpu::DpfPointKey<kInBits> &key, uint32_t x) {
+            return fss::cpu::DpfEvalPoint<kInBits, Group, CpuPrg<2>, uint32_t>(b, key, x, dpf.prg);
+          }, k0, k1)) {
+    return;
+  }
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(k0);
+    const auto packed = fss::cpu::DpfPackPoint<kInBits, Group, CpuPrg<2>, uint32_t>(k0);
+    benchmark::DoNotOptimize(packed);
+    benchmark::ClobberMemory();
+  }
+  state.counters["key_count"] = 1;
+  state.counters["query_count"] = 0;
 }
 
 template <typename Group>
@@ -568,6 +593,7 @@ static void BM_CpuHalfTreeDpfPackedKeyOneShotEval(benchmark::State &state) {
   }
   uint32_t x = 0;
   for (auto _ : state) {
+    benchmark::DoNotOptimize(k0);
     const fss::cpu::HalfTreeDpfPointKey<kInBits> p0 =
         fss::cpu::HalfTreeDpfPackPoint<kInBits, Group, CpuPrg<1>, uint32_t>(k0);
     int4 y = fss::cpu::HalfTreeDpfEvalPoint<kInBits, Group, CpuPrg<1>, uint32_t>(false, p0, x, ctx.prg, kHalfTreeHashKey);
@@ -576,12 +602,44 @@ static void BM_CpuHalfTreeDpfPackedKeyOneShotEval(benchmark::State &state) {
   }
 }
 
+template <typename Group>
+static void BM_CpuHalfTreeDpfPackedKeyPrepare(benchmark::State &state) {
+  using DpfT = fss::HalfTreeDpf<kInBits, Group, CpuPrg<1>, uint32_t>;
+  int4 seeds[2] = {kSeeds[0], kSeeds[1]};
+  typename DpfT::Key k0, k1;
+  AesCtx<1> ctx;
+  DpfT dpf{ctx.prg, kHalfTreeHashKey};
+  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds), kAlpha, kBeta);
+  CheckCpuSchemeWith<Group, false>(dpf, k0, k1);
+  if (!CheckCpuPackedPoint(state, dpf,
+          [](const typename DpfT::Key &key) {
+            return fss::cpu::HalfTreeDpfPackPoint<kInBits, Group, CpuPrg<1>, uint32_t>(key);
+          },
+          [&dpf](bool b, const fss::cpu::HalfTreeDpfPointKey<kInBits> &key, uint32_t x) {
+            return fss::cpu::HalfTreeDpfEvalPoint<kInBits, Group, CpuPrg<1>, uint32_t>(b, key, x, dpf.prg, dpf.hash_key);
+          }, k0, k1)) {
+    return;
+  }
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(k0);
+    const auto packed = fss::cpu::HalfTreeDpfPackPoint<kInBits, Group, CpuPrg<1>, uint32_t>(k0);
+    benchmark::DoNotOptimize(packed);
+    benchmark::ClobberMemory();
+  }
+  state.counters["key_count"] = 1;
+  state.counters["query_count"] = 0;
+}
+
 BENCHMARK(BM_CpuDpfPackedKeyEval<BytesGroup>)->Name("fss/CPU/DPF-bytes/PackedKey/Eval");
 BENCHMARK(BM_CpuDpfPackedKeyEval<UintGroup>)->Name("fss/CPU/DPF-uint/PackedKey/Eval");
 BENCHMARK(BM_CpuDpfPackedKeyOneShotEval<BytesGroup>)->Name("fss/CPU/DPF-bytes/PackedKeyOneShot/Eval");
 BENCHMARK(BM_CpuDpfPackedKeyOneShotEval<UintGroup>)->Name("fss/CPU/DPF-uint/PackedKeyOneShot/Eval");
 BENCHMARK(BM_CpuHalfTreeDpfPackedKeyEval<BytesGroup>)->Name("fss/CPU/HalfTreeDPF-bytes/PackedKey/Eval");
 BENCHMARK(BM_CpuHalfTreeDpfPackedKeyOneShotEval<BytesGroup>)->Name("fss/CPU/HalfTreeDPF-bytes/PackedKeyOneShot/Eval");
+
+BENCHMARK(BM_CpuDpfPackedKeyPrepare<BytesGroup>)->Name("fss/CPU/DPF-bytes/PackedKey/Prepare");
+BENCHMARK(BM_CpuDpfPackedKeyPrepare<UintGroup>)->Name("fss/CPU/DPF-uint/PackedKey/Prepare");
+BENCHMARK(BM_CpuHalfTreeDpfPackedKeyPrepare<BytesGroup>)->Name("fss/CPU/HalfTreeDPF-bytes/PackedKey/Prepare");
 
 // ============================================================
 // CPU Grotto DCF benchmarks
@@ -722,7 +780,8 @@ static void GenDmpfKeys(Scheme &scheme, typename Scheme::Key &k0, typename Schem
   }
   int4 sigma = kDmpfSigma;
   if (scheme.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
-      cuda::std::span<const uint32_t>(kDmpfPoints.as), cuda::std::span<const int4>(kDmpfPoints.bs), kDmpfNumPoints) != 0) {
+      cuda::std::span<const uint32_t>(kDmpfPoints.as), cuda::std::span<const int4>(kDmpfPoints.bs), kDmpfNumPoints,
+          1000, true) != 0) {
     fprintf(stderr, "dmpf/vdmpf gen failed after retries\n");
     exit(EXIT_FAILURE);
   }
@@ -1294,6 +1353,9 @@ static void BM_GpuDpfGen(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
   }
   state.SetItemsProcessed(state.iterations() * kN);
+  state.counters["key_count"] = kN;
+  state.counters["query_count"] = 0;
+  state.counters["threads_per_block"] = kThreadsPerBlock;
   CUDA_CHECK(cudaFree(d_cws));
 }
 
@@ -1325,6 +1387,9 @@ static void BM_GpuDpfEval(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
   }
   state.SetItemsProcessed(state.iterations() * kN);
+  state.counters["key_count"] = kN;
+  state.counters["query_count"] = kN;
+  state.counters["threads_per_block"] = kThreadsPerBlock;
   CUDA_CHECK(cudaFree(d_cws));
 }
 
@@ -1356,6 +1421,9 @@ static void BM_GpuDcfGen(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
   }
   state.SetItemsProcessed(state.iterations() * kN);
+  state.counters["key_count"] = kN;
+  state.counters["query_count"] = 0;
+  state.counters["threads_per_block"] = kThreadsPerBlock;
   CUDA_CHECK(cudaFree(d_cws));
 }
 
@@ -1387,6 +1455,9 @@ static void BM_GpuDcfEval(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
   }
   state.SetItemsProcessed(state.iterations() * kN);
+  state.counters["key_count"] = kN;
+  state.counters["query_count"] = kN;
+  state.counters["threads_per_block"] = kThreadsPerBlock;
   CUDA_CHECK(cudaFree(d_cws));
 }
 
@@ -1953,6 +2024,9 @@ static void BM_GpuDmpfEval(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
   }
   state.SetItemsProcessed(state.iterations() * kN);
+  state.counters["key_count"] = 1;
+  state.counters["query_count"] = kN;
+  state.counters["threads_per_block"] = 256;
   CUDA_CHECK(cudaFree(d_xs));
   CUDA_CHECK(cudaFree(d_ys1));
 }
@@ -2154,6 +2228,9 @@ static void RunGpuVdmpfBatch(benchmark::State &state, const uint32_t *h_xs, int 
     CUDA_CHECK(cudaEventDestroy(stop));
   }
   state.SetItemsProcessed(state.iterations() * n);
+  state.counters["key_count"] = 1;
+  state.counters["query_count"] = n;
+  state.counters["threads_per_block"] = 256;
   CUDA_CHECK(cudaFree(d_ys[0]));
   CUDA_CHECK(cudaFree(d_ys[1]));
   CUDA_CHECK(cudaFree(d_pi[0]));
@@ -2302,6 +2379,9 @@ static void BM_GpuAesSoftEval(benchmark::State &state) {
     CUDA_CHECK(cudaEventDestroy(stop));
   }
   state.SetItemsProcessed(state.iterations() * kN);
+  state.counters["key_count"] = kN;
+  state.counters["query_count"] = kN;
+  state.counters["threads_per_block"] = kThreadsPerBlock;
   CUDA_CHECK(cudaFree(d_cws));
 }
 
