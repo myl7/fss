@@ -2,9 +2,18 @@
 
 import hashlib
 import importlib.util
+import json
 import os
+import platform
+import re
+import shlex
+import shutil
+import subprocess
+import sys
 import sysconfig
+import threading
 import warnings
+from functools import lru_cache
 from pathlib import Path
 
 import torch
@@ -21,7 +30,7 @@ try:
             "will fail. Install the CUDA toolkit or set CUDA_HOME.",
             stacklevel=2,
         )
-except Exception:
+except (ImportError, OSError, RuntimeError):
     warnings.warn(
         "Could not check for CUDA toolkit. JIT compilation may fail.",
         stacklevel=2,
@@ -140,7 +149,7 @@ _SCHEMES: dict[str, dict] = {
         "knobs": (),
         "header": "fss/dpf.cuh",
         "inst": "DpfInst",
-        "inst_fmt": "fss::Dpf<kInBits, GroupType, PrgType, InType>",
+        "inst_fmt": "fss::Dpf<kInBits, GroupType, PrgType, InType, kParDepth>",
         "impl": "dpf_binding_impl.cuh",
     },
     "dcf": {
@@ -149,7 +158,7 @@ _SCHEMES: dict[str, dict] = {
         "knobs": ("pred",),
         "header": "fss/dcf.cuh",
         "inst": "DcfInst",
-        "inst_fmt": "fss::Dcf<kInBits, GroupType, PrgType, InType, kPred>",
+        "inst_fmt": "fss::Dcf<kInBits, GroupType, PrgType, InType, kPred, kParDepth>",
         "impl": "dcf_binding_impl.cuh",
     },
     "half_tree_dpf": {
@@ -158,7 +167,7 @@ _SCHEMES: dict[str, dict] = {
         "knobs": (),
         "header": "fss/half_tree_dpf.cuh",
         "inst": "HtDpfInst",
-        "inst_fmt": "fss::HalfTreeDpf<kInBits, GroupType, PrgType, InType>",
+        "inst_fmt": "fss::HalfTreeDpf<kInBits, GroupType, PrgType, InType, kParDepth>",
         "impl": "half_tree_dpf_binding_impl.cuh",
     },
     "packed_half_tree_dpf": {
@@ -167,7 +176,7 @@ _SCHEMES: dict[str, dict] = {
         "knobs": ("out_bits",),
         "header": "fss/packed_half_tree_dpf.cuh",
         "inst": "PackedInst",
-        "inst_fmt": "fss::PackedHalfTreeDpf<kInBits, kOutBits, PrgType, InType>",
+        "inst_fmt": "fss::PackedHalfTreeDpf<kInBits, kOutBits, PrgType, InType, kParDepth>",
         "impl": "packed_half_tree_dpf_binding_impl.cuh",
     },
     "grotto_dcf": {
@@ -176,7 +185,7 @@ _SCHEMES: dict[str, dict] = {
         "knobs": (),
         "header": "fss/grotto_dcf.cuh",
         "inst": "GrottoInst",
-        "inst_fmt": "fss::GrottoDcf<kInBits, PrgType, InType>",
+        "inst_fmt": "fss::GrottoDcf<kInBits, PrgType, InType, kParDepth>",
         "impl": "grotto_dcf_binding_impl.cuh",
     },
     "vdpf": {
@@ -185,7 +194,7 @@ _SCHEMES: dict[str, dict] = {
         "knobs": ("xor_hash", "hash"),
         "header": "fss/vdpf.cuh",
         "inst": "VdpfInst",
-        "inst_fmt": "fss::Vdpf<kInBits, GroupType, PrgType, XorHashType, HashType, InType>",
+        "inst_fmt": "fss::Vdpf<kInBits, GroupType, PrgType, XorHashType, HashType, InType, kParDepth>",
         "impl": "vdpf_binding_impl.cuh",
     },
     "dmpf": {
@@ -194,7 +203,7 @@ _SCHEMES: dict[str, dict] = {
         "knobs": ("max_points", "bucket_bits", "prp"),
         "header": "fss/dmpf.cuh",
         "inst": "DmpfInst",
-        "inst_fmt": "fss::Dmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, PrpType, InType>",
+        "inst_fmt": "fss::Dmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, PrpType, InType, 3, 80, kParDepth>",
         "impl": "dmpf_binding_impl.cuh",
     },
     "vdmpf": {
@@ -216,7 +225,7 @@ def _prg_type(prg: str, scheme: str) -> str:
     mul = _SCHEMES[scheme]["prg_mul"]
     if prg == "chacha":
         return f"fss::prg::ChaCha<{mul}>"
-    return f"fss::prg::Aes128Mmo<{mul}>"
+    return f"fss::python::ThreadLocalAes128Mmo<{mul}>"
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +234,7 @@ def _prg_type(prg: str, scheme: str) -> str:
 
 # Knobs that participate in the cache key, in a fixed order. All values must
 # be str()able; None knobs of schemes that do not use them are skipped.
-_KNOB_ORDER = ("group", "prg", "pred", "out_bits", "max_points", "bucket_bits", "xor_hash", "hash", "prp")
+_KNOB_ORDER = ("group", "prg", "pred", "out_bits", "max_points", "bucket_bits", "xor_hash", "hash", "prp", "par_depth")
 
 
 def _cache_key(scheme: str, in_bits: int, knobs: dict) -> str:
@@ -234,39 +243,147 @@ def _cache_key(scheme: str, in_bits: int, knobs: dict) -> str:
         value = knobs.get(knob)
         if value is None:
             continue
-        parts.append(f"{knob}{value}")
+        parts.append(f"{knob}{str(value).replace('-', 'minus')}")
     parts.append(_in_type(in_bits).replace(" ", ""))
     return "_".join(parts)
 
 
-_TREE_HASHES: dict[tuple[str, str], str] = {}
-
-
 def _source_tree_hash(include_dir: str, csrc_dir: str) -> str:
-    """Content hash of the header trees the generated sources include.
-
-    Build dirs are keyed by this hash so checkouts with different header
-    contents never share binaries: ninja's mtime check alone cannot tell a
-    cached .so built from a divergent checkout (for example a parallel
-    worktree writing the same cache root) from an up-to-date one.
-    """
-    cached = _TREE_HASHES.get((include_dir, csrc_dir))
-    if cached is not None:
-        return cached
-    h = hashlib.sha1()
+    """Hash included files on every request, including edits in this process."""
+    h = hashlib.sha256()
     for label, root in (("include", include_dir), ("csrc", csrc_dir)):
         h.update(label.encode())
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames.sort()
-            for name in sorted(filenames):
-                path = os.path.join(dirpath, name)
-                h.update(os.path.relpath(path, root).encode())
-                with open(path, "rb") as f:
-                    for chunk in iter(lambda: f.read(1 << 16), b""):
-                        h.update(chunk)
-    digest = h.hexdigest()[:12]
-    _TREE_HASHES[(include_dir, csrc_dir)] = digest
-    return digest
+        for path in sorted(Path(root).rglob("*")):
+            if not path.is_file() or path.suffix not in (".cuh", ".h", ".hpp"):
+                continue
+            h.update(path.relative_to(root).as_posix().encode())
+            h.update(path.read_bytes())
+    return h.hexdigest()
+
+
+# Resolve these flags without assigning TORCH_CUDA_ARCH_LIST. Passing the
+# explicit flags also prevents PyTorch from repeating its environment lookup.
+_NAMED_ARCHES = {
+    "Kepler+Tesla": "3.7", "Kepler": "3.5+PTX", "Maxwell+Tegra": "5.3",
+    "Maxwell": "5.0;5.2+PTX", "Pascal": "6.0;6.1+PTX", "Volta+Tegra": "7.2",
+    "Volta": "7.0+PTX", "Turing": "7.5+PTX", "Ampere+Tegra": "8.7",
+    "Ampere": "8.0;8.6+PTX", "Ada": "8.9+PTX", "Hopper": "9.0+PTX",
+    "Blackwell+Tegra": "11.0", "Blackwell": "10.0;12.0+PTX",
+}
+
+
+def _cuda_arch_flags() -> list[str]:
+    arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST", "").strip()
+    if arch_list:
+        for name, arches in _NAMED_ARCHES.items():
+            arch_list = arch_list.replace(name, arches)
+        arches = arch_list.replace(" ", ";").split(";")
+    else:
+        arches = []
+        supported = [int(a.split("_")[1]) for a in torch.cuda.get_arch_list()
+                     if re.fullmatch(r"sm_[0-9]+", a)]
+        for device in range(torch.cuda.device_count()):
+            major, minor = torch.cuda.get_device_capability(device)
+            capability = min(10 * major + minor, max(supported)) if supported else 10 * major + minor
+            arches.append(f"{capability // 10}.{capability % 10}")
+        arches = sorted(set(arches), key=lambda a: tuple(map(int, a.split("."))))
+        if arches:
+            arches[-1] += "+PTX"
+        else:
+            arches = ["8.0"]
+    flags = set()
+    for arch in filter(None, arches):
+        match = re.fullmatch(r"([0-9]+)\.([0-9]+[a-z]?)(\+PTX)?", arch)
+        if not match:
+            raise ValueError(f"unsupported CUDA architecture {arch!r}")
+        target = match[1] + match[2]
+        flags.add(f"-gencode=arch=compute_{target},code=sm_{target}")
+        if match[3]:
+            flags.add(f"-gencode=arch=compute_{target},code=compute_{target}")
+    if not flags:
+        raise ValueError("TORCH_CUDA_ARCH_LIST must contain a CUDA architecture")
+    return sorted(flags)
+
+
+@lru_cache(maxsize=32)
+def _compiler_version(command: tuple[str, ...], stamp: tuple | None) -> str:
+    try:
+        result = subprocess.run([*command, "--version"], capture_output=True,
+                                text=True, timeout=10, check=False)
+        return result.stdout.strip() + result.stderr.strip()
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"unavailable: {type(exc).__name__}"
+
+
+def _compiler_identity(command: str) -> dict:
+    argv = shlex.split(command)
+    resolved = shutil.which(argv[0]) or argv[0]
+    try:
+        stat = Path(resolved).stat()
+        stamp = (stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        stamp = None
+    return {"command": [resolved, *argv[1:]], "stamp": stamp,
+            "version": _compiler_version((resolved, *argv[1:]), stamp)}
+
+
+@lru_cache(maxsize=32)
+def _require_openmp(command: tuple[str, ...], version: str) -> None:
+    try:
+        probe = subprocess.run(
+            [*command, "-fopenmp", "-x", "c++", "-o", os.devnull, "-"],
+            input="#include <omp.h>\nint main() { return omp_get_max_threads() == 0; }\n",
+            text=True, capture_output=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("par_depth requires an available OpenMP host compiler") from exc
+    if probe.returncode:
+        raise RuntimeError(
+            "par_depth requires OpenMP compiler and linker support: " + probe.stderr.strip()[-500:]
+        )
+
+
+def _build_options(knobs: dict) -> tuple[list[str], list[str], list[str]]:
+    cflags = ["-O3", "-std=c++20"]
+    cuda_flags = ["-O3", "-std=c++20", "--extended-lambda", *_cuda_arch_flags()]
+    ldflags = []
+    if knobs.get("par_depth", 0) != 0:
+        compiler = _compiler_identity(os.environ.get("CXX", "c++"))
+        _require_openmp(tuple(compiler["command"]), compiler["version"])
+        if os.environ.get("CC"):
+            host_compiler = _compiler_identity(os.environ["CC"])
+            _require_openmp(tuple(host_compiler["command"]), host_compiler["version"])
+        cflags.append("-fopenmp")
+        cuda_flags.append("-Xcompiler=-fopenmp")
+        ldflags.append("-fopenmp")
+    if (knobs["prg"] == "aes128_mmo" or knobs.get("prp") == "aes128_feistel"
+            or "sha256" in (knobs.get("xor_hash"), knobs.get("hash"))):
+        ldflags.extend(["-lssl", "-lcrypto"])
+    return cflags, cuda_flags, ldflags
+
+
+def _build_manifest(source: str, include_dir: str, csrc_dir: str,
+                    options: tuple[list[str], list[str], list[str]]) -> dict:
+    from torch.utils import cpp_extension
+
+    cuda_home = cpp_extension.CUDA_HOME or os.environ.get("CUDA_HOME")
+    nvcc = os.environ.get("PYTORCH_NVCC") or (str(Path(cuda_home) / "bin/nvcc") if cuda_home else "nvcc")
+    return {
+        "schema": 1, "source": source,
+        "headers": _source_tree_hash(include_dir, csrc_dir),
+        "python": {"version": sys.version, "soabi": sysconfig.get_config_var("SOABI"),
+                   "platform": platform.platform(), "executable": sys.executable},
+        "torch": {"version": str(torch.__version__), "cuda": torch.version.cuda,
+                  "cxx11_abi": getattr(torch._C, "_GLIBCXX_USE_CXX11_ABI", None),
+                  "pybind_abi": [getattr(torch._C, name, None) for name in
+                                 ("_PYBIND11_COMPILER_TYPE", "_PYBIND11_STDLIB", "_PYBIND11_BUILD_ABI")]},
+        "compilers": {"cxx": _compiler_identity(os.environ.get("CXX", "c++")),
+                      "nvcc": _compiler_identity(nvcc),
+                      "cc": _compiler_identity(os.environ.get("CC", "cc"))},
+        "environment": {key: os.environ.get(key) for key in
+                        ("CUDAHOSTCXX", "NVCC_CCBIN", "NVCC_PREPEND_FLAGS", "NVCC_APPEND_FLAGS")},
+        "options": options,
+    }
 
 
 def _import_built(name: str, path: str) -> object:
@@ -316,9 +433,15 @@ def _generate_source(scheme: str, in_bits: int, knobs: dict) -> str:
     if "bucket_bits" in spec["knobs"]:
         aliases.append(f"constexpr int kBucketBits = {knobs['bucket_bits']};")
 
+    aliases.append(f"constexpr int kParDepth = {knobs.get('par_depth', 0)};")
+    aliases.append(f"constexpr bool kGpuPrg = {str(knobs['prg'] == 'chacha').lower()};")
+    aliases.append(f"constexpr bool kGpuXorHash = {str(knobs.get('xor_hash', 'blake3') == 'blake3').lower()};")
+    aliases.append(f"constexpr bool kGpuHash = {str(knobs.get('hash', 'blake3') == 'blake3').lower()};")
     aliases.append(f"using {spec['inst']} = {inst};")
 
     lines = [f"#include <{path}>" for path in includes]
+    if knobs["prg"] == "aes128_mmo":
+        lines.append('#include "binding_prg.cuh"')
     lines.append("")
     lines.extend(aliases)
     lines.append("")
@@ -335,103 +458,75 @@ def load(scheme: str, in_bits: int, group: str | None = None, prg: str = "chacha
          pred: str | None = None, *, out_bits: int | None = None,
          max_points: int | None = None, bucket_bits: int | None = None,
          xor_hash: str | None = None, hash: str | None = None,
-         prp: str | None = None) -> object:
+         prp: str | None = None, par_depth: int = 0) -> object:
     """Load (or return cached) JIT-compiled extension module."""
     if scheme not in _SCHEMES:
         raise ValueError(f"unsupported scheme {scheme!r}")
 
+    if isinstance(par_depth, bool) or not isinstance(par_depth, int) or par_depth < -1:
+        raise ValueError("par_depth must be an integer >= -1")
+    # Larger depths resolve to the same clamped partition count in C++.
+    par_depth = min(par_depth, (1 << 31) - 1)
+    if scheme == "vdmpf" and par_depth != 0:
+        raise ValueError("vdmpf does not expose par_depth")
     spec = _SCHEMES[scheme]
     if spec["has_group"] and group is None:
         raise ValueError(f"scheme {scheme!r} requires a group")
     knobs = {"group": group, "prg": prg, "pred": pred, "out_bits": out_bits,
              "max_points": max_points, "bucket_bits": bucket_bits,
-             "xor_hash": xor_hash, "hash": hash, "prp": prp}
-    for knob in spec["knobs"]:
-        if knobs.get(knob) is None:
-            if knob not in ("prp",):  # prp defaults below
-                raise ValueError(f"scheme {scheme!r} requires {knob}")
-    if "prp" in spec["knobs"] and prp is None:
-        knobs["prp"] = "aes128_feistel"
+             "xor_hash": xor_hash, "hash": hash, "prp": prp,
+             "par_depth": par_depth}
     if "hash" in spec["knobs"] and xor_hash is not None and hash is None:
         knobs["hash"] = xor_hash
+    for knob in spec["knobs"]:
+        if knobs.get(knob) is None and knob != "prp":
+            raise ValueError(f"scheme {scheme!r} requires {knob}")
+    if "prp" in spec["knobs"] and prp is None:
+        knobs["prp"] = "aes128_feistel"
     # Drop knobs the scheme does not use so they cannot leak into the key.
     knobs = {knob: value for knob, value in knobs.items()
-             if value is not None and (knob in ("group", "prg") or knob in spec["knobs"])}
+             if value is not None and (knob in ("group", "prg", "par_depth") or knob in spec["knobs"])}
 
-    key = _cache_key(scheme, in_bits, knobs)
+    source = _generate_source(scheme, in_bits, knobs)
+    include_dir = _find_include_dir()
+    csrc_dir = str(_CSRC_DIR)
+    options = _build_options(knobs)
+    manifest = _build_manifest(source, include_dir, csrc_dir, options)
+    manifest_text = json.dumps(manifest, sort_keys=True, indent=2)
+    fingerprint = hashlib.sha256(manifest_text.encode()).hexdigest()[:20]
+    key = f"{_cache_key(scheme, in_bits, knobs)}_{fingerprint}"
     if key in _EXT_CACHE:
         return _EXT_CACHE[key]
 
-    source = _generate_source(scheme, in_bits, knobs)
-
-    include_dir = _find_include_dir()
-    csrc_dir = str(_CSRC_DIR)
-
-    build_dir = os.path.join(
-        os.path.expanduser("~"), ".cache", "fss_crypto",
-        f"{key}-{torch.__version__}-{_source_tree_hash(include_dir, csrc_dir)}",
-    )
-    os.makedirs(build_dir, exist_ok=True)
-
-    # The dir name carries the source tree hash and the torch version, so an
-    # existing .so was built from identical inputs; import it directly.
-    # Going through ninja would demand a pointless rebuild after every fresh
-    # checkout: its deps log flags any dep mtime change, not only newer ones.
-    so_path = os.path.join(build_dir, f"{key}.so")
-    if os.path.exists(so_path):
+    build_dir = Path.home() / ".cache" / "fss_crypto" / key
+    build_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = build_dir / "build_inputs.json"
+    so_path = build_dir / f"{key}.so"
+    if so_path.exists() and manifest_path.exists() and manifest_path.read_text() == manifest_text:
         try:
-            _EXT_CACHE[key] = _import_built(key, so_path)
-            return _EXT_CACHE[key]
-        except Exception:
-            pass  # fall through and let ninja rebuild
+            ext = _import_built(key, str(so_path))
+            _EXT_CACHE[key] = ext
+            return ext
+        except (ImportError, OSError):
+            pass
 
-    src_path = os.path.join(build_dir, f"{key}.cu")
-    # Write only when the content changes: an unconditional rewrite bumps the
-    # mtime and makes ninja recompile the extension in every fresh process.
-    try:
-        with open(src_path, "r") as f:
-            existing = f.read()
-    except FileNotFoundError:
-        existing = None
-    if existing != source:
-        with open(src_path, "w") as f:
-            f.write(source)
-
-    extra_cflags = ["-O3", "-std=c++20"]
-    extra_cuda_cflags = ["-O3", "-std=c++20", "--extended-lambda"]
-    extra_ldflags: list[str] = []
-
-    needs_crypto = (
-        prg == "aes128_mmo"
-        or knobs.get("prp") == "aes128_feistel"
-        or knobs.get("xor_hash") == "sha256"
-        or knobs.get("hash") == "sha256"
-    )
-    if prg == "aes128_mmo":
-        extra_cflags.append("-fopenmp")
-    if needs_crypto:
-        extra_ldflags.extend(["-lssl", "-lcrypto"])
-    if prg == "aes128_mmo":
-        extra_ldflags.append("-lgomp")
-
-    # PyTorch's arch-flag detection crashes when no GPU is present and
-    # TORCH_CUDA_ARCH_LIST is unset (it tries arch_list[-1] on an empty list).
-    # Set a safe fallback so nvcc has a target even on headless machines.
-    _arch_list_env = "TORCH_CUDA_ARCH_LIST"
-    if not os.environ.get(_arch_list_env):
-        import torch as _torch
-        if _torch.cuda.device_count() == 0:
-            os.environ[_arch_list_env] = "8.0"
-
+    src_path = build_dir / f"{key}.cu"
+    if not src_path.exists() or src_path.read_text() != source:
+        src_path.write_text(source)
+    cflags, cuda_flags, ldflags = options
     ext = _cpp_load(
         name=key,
-        sources=[src_path],
+        sources=[str(src_path)],
         extra_include_paths=[include_dir, csrc_dir],
-        extra_cflags=extra_cflags,
-        extra_cuda_cflags=extra_cuda_cflags,
-        extra_ldflags=extra_ldflags if extra_ldflags else None,
-        build_directory=build_dir,
+        extra_cflags=cflags,
+        extra_cuda_cflags=cuda_flags,
+        extra_ldflags=ldflags or None,
+        build_directory=str(build_dir),
     )
-
+    # Publish the manifest only after a successful build. PyTorch retains its
+    # build lock and performs source dependency checks on the compile path.
+    temporary = manifest_path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
+    temporary.write_text(manifest_text)
+    temporary.replace(manifest_path)
     _EXT_CACHE[key] = ext
     return ext

@@ -9,20 +9,23 @@ from fss_crypto._validate import (
     validate_beta,
     validate_cpu_only,
     validate_cs,
+    validate_cuda_backends,
     validate_device_match,
     validate_domain_value,
+    validate_full_domain_size,
     validate_group,
     validate_hash,
     validate_in_bits,
     validate_ocw,
+    validate_par_depth,
     validate_party,
-    validate_pi,
     validate_pi_tildes,
     validate_prg,
     validate_retry,
     validate_s0,
     validate_s0s,
     validate_vdpf_cws,
+    verify_proofs,
 )
 
 
@@ -37,12 +40,15 @@ class Vdpf:
         in_bits: Input domain bit size (1..128).
         group: Output group type, "bytes" or "uint".
         prg: PRG type, "chacha" or "aes128_mmo".
+        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
+            automatically, and positive values bound the split depth.
         xor_hash: XOR-collision-resistant hash, "blake3" or "sha256".
         hash: Proof hash, "blake3" or "sha256"; defaults to xor_hash.
     """
 
     def __init__(self, in_bits: int, group: str = "bytes", prg: str = "chacha",
-                 xor_hash: str = "blake3", hash: str | None = None):
+                 xor_hash: str = "blake3", hash: str | None = None, *, par_depth: int = 0):
+        validate_par_depth(par_depth)
         validate_in_bits(in_bits)
         validate_group(group)
         validate_prg(prg, "vdpf")
@@ -51,12 +57,13 @@ class Vdpf:
             hash = xor_hash
         validate_hash(hash)
 
+        self.par_depth = int(par_depth)
         self.in_bits = in_bits
         self.group = group
         self.prg = prg
         self.xor_hash = xor_hash
         self.hash = hash
-        self._ext = load("vdpf", in_bits, group, prg, xor_hash=xor_hash, hash=hash)
+        self._ext = load("vdpf", in_bits, group, prg, xor_hash=xor_hash, hash=hash, par_depth=self.par_depth)
 
     def gen(self, s0s: torch.Tensor, alpha: int, beta: torch.Tensor,
             retry: bool = True) -> tuple:
@@ -137,6 +144,7 @@ class Vdpf:
         validate_ocw(ocw)
         validate_cpu_only(s0, cws, cs, ocw, fn_name="eval_all")
 
+        validate_full_domain_size(self.in_bits)
         return self._ext.eval_all(party, s0, cws, cs, ocw)
 
     def eval_all_merkle(self, party: int, s0: torch.Tensor,
@@ -166,13 +174,9 @@ class Vdpf:
         validate_ocw(ocw)
         validate_device_match(s0, cws, cs, ocw)
 
+        validate_full_domain_size(self.in_bits, cuda=s0.device.type == "cuda", cuda_limit=22)
         if s0.device.type == "cuda":
             self._check_cpu_only_hashes(s0)
-            if self.in_bits > 22:
-                raise RuntimeError(
-                    f"vdpf GPU eval_all_merkle supports in_bits <= 22, "
-                    f"got {self.in_bits}"
-                )
 
         return self._ext.eval_all_merkle(party, s0, cws, cs, ocw)
 
@@ -185,8 +189,8 @@ class Vdpf:
                 from eval(), one per evaluated input, in input order for the
                 sequential chain. L must be at least 1.
             cs: (4, 4) int32 tensor from gen().
-            merkle: Fold with the order-independent Merkle tree instead of
-                the sequential chain. Both folds produce the same 64B proof
+            merkle: Fold adjacent nodes of the fixed input sequence in parallel
+                instead of using the sequential chain. Both folds produce the same 64B proof
                 shape, so verify() is shared. Parties must accumulate with
                 the same flag.
 
@@ -203,7 +207,8 @@ class Vdpf:
 
         return self._ext.prove(pi_tildes, cs, merkle)
 
-    def verify(self, pi0: torch.Tensor, pi1: torch.Tensor) -> bool:
+    @staticmethod
+    def verify(pi0: torch.Tensor, pi1: torch.Tensor) -> bool:
         """Verify a pair of accumulated proofs.
 
         Stateless: does not use key material or the instance configuration.
@@ -215,18 +220,7 @@ class Vdpf:
         Returns:
             True if the proofs match (Accept), False otherwise (Reject).
         """
-        validate_pi(pi0, "pi0")
-        validate_pi(pi1, "pi1")
-        validate_cpu_only(pi0, pi1, fn_name="verify")
-
-        return self._ext.verify(pi0, pi1)
+        return verify_proofs(pi0, pi1)
 
     def _check_cpu_only_hashes(self, t: torch.Tensor) -> None:
-        if t.device.type != "cuda":
-            return
-        if self.xor_hash != "blake3" or self.hash != "blake3":
-            raise RuntimeError(
-                "expected all tensors to be on cpu "
-                "(sha256 is CPU-only), "
-                f"but found tensor on {t.device}"
-            )
+        validate_cuda_backends(t, prg=self.prg, xor_hash=self.xor_hash, hash=self.hash)

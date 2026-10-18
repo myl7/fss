@@ -6,11 +6,12 @@ from fss_crypto._int import split_uint128
 from fss_crypto._jit import load
 from fss_crypto._validate import (
     validate_alpha,
-    validate_cws,
     validate_cpu_only,
+    validate_cws,
     validate_device_match,
     validate_domain_value,
     validate_in_bits,
+    validate_par_depth,
     validate_party,
     validate_prg,
     validate_s0,
@@ -26,15 +27,19 @@ class GrottoDcf:
     Args:
         in_bits: Input domain bit size (1..128).
         prg: PRG type, "chacha" or "aes128_mmo".
+        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
+            automatically, and positive values bound the split depth.
     """
 
-    def __init__(self, in_bits: int, prg: str = "chacha"):
+    def __init__(self, in_bits: int, prg: str = "chacha", *, par_depth: int = 0):
+        validate_par_depth(par_depth)
         validate_in_bits(in_bits)
         validate_prg(prg, "grotto_dcf")
 
+        self.par_depth = int(par_depth)
         self.in_bits = in_bits
         self.prg = prg
-        self._ext = load("grotto_dcf", in_bits, prg=prg)
+        self._ext = load("grotto_dcf", in_bits, prg=prg, par_depth=self.par_depth)
 
     def gen(self, s0s: torch.Tensor, alpha: int) -> torch.Tensor:
         """Generate DCF keys.
@@ -74,15 +79,15 @@ class GrottoDcf:
 
         return self._ext.preprocess(party, s0, cws)
 
-    def eval(self, tree: torch.Tensor, x: int, party: int) -> bool:
+    def eval(self, party: int, tree: torch.Tensor, x: int) -> bool:
         """Evaluate a preprocessed tree on a single input (CPU only).
 
         The tree must come from preprocess() of the same party.
 
         Args:
+            party: Party index the tree was preprocessed for, 0 or 1.
             tree: (2*2^in_bits-1,) bool tensor from preprocess().
             x: Input to evaluate.
-            party: Party index the tree was preprocessed for, 0 or 1.
 
         Returns:
             bool share such that share_0 XOR share_1 = 1[alpha <= x].

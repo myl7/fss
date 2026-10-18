@@ -9,15 +9,19 @@ from fss_crypto._validate import (
     _ch_bucket,
     validate_bucket_bits,
     validate_cpu_only,
+    validate_cuda_backends,
+    validate_device_match,
     validate_group,
     validate_hash,
     validate_in_bits,
     validate_max_points,
     validate_party,
-    validate_prp,
     validate_prg,
+    validate_prp,
+    validate_query_domain,
     validate_retry,
     validate_t,
+    verify_proofs,
 )
 
 
@@ -70,14 +74,6 @@ def _validate_xs(xs: torch.Tensor) -> None:
         raise TypeError(
             f"xs must be a 1-D int64 tensor, "
             f"got shape {tuple(xs.shape)} dtype {xs.dtype}"
-        )
-
-
-def _validate_pi(pi: torch.Tensor) -> None:
-    if pi.shape != (4, 4) or pi.dtype != torch.int32:
-        raise TypeError(
-            f"pi must be a (4, 4) int32 tensor, "
-            f"got shape {tuple(pi.shape)} dtype {pi.dtype}"
         )
 
 
@@ -134,10 +130,6 @@ class Vdmpf:
             "chacha_feistel" (CPU and CUDA).
     """
 
-    # Verify() is key- and knob-independent: every VDMPF extension exposes the
-    # same check, so any compiled module works.
-    _verify_ext: object | None = None
-
     def __init__(self, in_bits: int, max_points: int, bucket_bits: int,
                  group: str = "bytes", prg: str = "chacha",
                  xor_hash: str = "blake3", hash: str | None = None,
@@ -162,6 +154,7 @@ class Vdmpf:
         self.bucket_bits = bucket_bits
         self.group = group
         self.prg = prg
+        self.prp = prp
         self.xor_hash = xor_hash
         self.hash = hash
         # Number of Cuckoo-hash buckets, mirroring fss::cuckoo_hash::ChBucket.
@@ -169,7 +162,6 @@ class Vdmpf:
         self._ext = load("vdmpf", in_bits, group, prg, max_points=max_points,
                          bucket_bits=bucket_bits, xor_hash=xor_hash,
                          hash=hash, prp=prp)
-        Vdmpf._verify_ext = self._ext
 
     def gen(self, s0s: torch.Tensor, sigma: torch.Tensor,
             alphas: torch.Tensor, betas: torch.Tensor, t: int,
@@ -254,9 +246,30 @@ class Vdmpf:
         validate_party(party)
         self._check_key(key)
         _validate_xs(xs)
+        validate_device_match(key.cws, key.s0s, key.sigma, key.meta, xs, key.cs, key.ocw)
+        validate_cuda_backends(xs, prg=self.prg, prp=self.prp, xor_hash=self.xor_hash, hash=self.hash)
+        validate_query_domain(xs, self.in_bits)
+        xs = xs.contiguous()
 
         return self._ext.batch_eval(party, key.cws, key.cs, key.ocw,
                                     key.s0s[party], key.sigma, key.meta, xs)
+
+    def batch_eval_merkle(self, party: int, key: VdmpfKey,
+                          xs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Evaluate a fixed ordered query sequence with Merkle proofs on CPU or CUDA.
+
+        Both parties must use this accumulator and the same query order.
+        Duplicate and empty queries are supported.
+        """
+        validate_party(party)
+        self._check_key(key)
+        _validate_xs(xs)
+        validate_device_match(key.cws, key.s0s, key.sigma, key.meta, xs, key.cs, key.ocw)
+        validate_cuda_backends(xs, prg=self.prg, prp=self.prp, xor_hash=self.xor_hash, hash=self.hash)
+        validate_query_domain(xs, self.in_bits)
+        return self._ext.batch_eval_merkle(party, key.cws, key.cs, key.ocw,
+                                           key.s0s[party], key.sigma, key.meta,
+                                           xs.contiguous())
 
     @staticmethod
     def verify(pi0: torch.Tensor, pi1: torch.Tensor) -> bool:
@@ -264,18 +277,10 @@ class Vdmpf:
 
         Args:
             pi0: (4, 4) int32 proof from party 0.
-            pi1: (4, 4) int32 proof from party 1. Both proofs must come from
-            the same device; CUDA proofs are fetched for the comparison.
+            pi1: (4, 4) int32 proof from party 1. Both proofs must use the
+                same accumulator, query order, and device.
 
         Returns:
             True if the proofs match (Accept), False otherwise (Reject).
         """
-        _validate_pi(pi0)
-        _validate_pi(pi1)
-        if Vdmpf._verify_ext is None:
-            # No Vdmpf instance has been built yet; compile a minimal module.
-            # Verify itself is knob-independent.
-            Vdmpf._verify_ext = load("vdmpf", 1, "bytes", "chacha", max_points=30,
-                                     bucket_bits=1, xor_hash="blake3",
-                                     hash="blake3", prp="aes128_feistel")
-        return bool(Vdmpf._verify_ext.verify(pi0, pi1))
+        return verify_proofs(pi0, pi1)

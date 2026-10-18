@@ -11,6 +11,7 @@ from fss_crypto._validate import (
     validate_domain_value,
     validate_in_bits,
     validate_out_bits,
+    validate_par_depth,
     validate_party,
     validate_prg,
     validate_s0,
@@ -49,6 +50,8 @@ class PackedHalfTreeDpf:
             that the tree has at least one level.
         out_bits: Output width in bits, one of (1, 2, 4, 8, 16, 32, 64).
         prg: PRG type, "chacha" or "aes128_mmo".
+        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
+            automatically, and positive values bound the split depth.
 
     Attributes:
         lanes: Number of consecutive inputs covered by one output block.
@@ -56,11 +59,13 @@ class PackedHalfTreeDpf:
         k_beta_max: Largest beta that fits in out_bits bits.
     """
 
-    def __init__(self, in_bits: int, out_bits: int, prg: str = "chacha"):
+    def __init__(self, in_bits: int, out_bits: int, prg: str = "chacha", *, par_depth: int = 0):
+        validate_par_depth(par_depth)
         validate_in_bits(in_bits)
         validate_out_bits(out_bits)
         validate_prg(prg, "packed_half_tree_dpf")
 
+        self.par_depth = int(par_depth)
         self.in_bits = in_bits
         self.out_bits = out_bits
         self.prg = prg
@@ -73,7 +78,7 @@ class PackedHalfTreeDpf:
                 f"has at least one level, got in_bits={in_bits} "
                 f"out_bits={out_bits}"
             )
-        self._ext = load("packed_half_tree_dpf", in_bits, prg=prg, out_bits=out_bits)
+        self._ext = load("packed_half_tree_dpf", in_bits, prg=prg, out_bits=out_bits, par_depth=self.par_depth)
 
     def gen(self, s0s: torch.Tensor, alpha: int,
             beta: int) -> tuple[torch.Tensor, torch.Tensor]:

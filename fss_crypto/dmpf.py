@@ -9,12 +9,16 @@ from fss_crypto._validate import (
     _ch_bucket,
     validate_bucket_bits,
     validate_cpu_only,
+    validate_cuda_backends,
+    validate_device_match,
     validate_group,
     validate_in_bits,
     validate_max_points,
+    validate_par_depth,
     validate_party,
-    validate_prp,
     validate_prg,
+    validate_prp,
+    validate_query_domain,
     validate_retry,
     validate_t,
 )
@@ -111,13 +115,16 @@ class Dmpf:
         bucket_bits: Bit size of the inner DPF domain (per bucket).
         group: Output group type, "bytes" or "uint".
         prg: PRG type, "chacha" or "aes128_mmo".
+        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
+            automatically, and positive values bound the split depth.
         prp: PRP type for Cuckoo hashing, "aes128_feistel" (CPU-only) or
             "chacha_feistel" (CPU and CUDA).
     """
 
     def __init__(self, in_bits: int, max_points: int, bucket_bits: int,
                  group: str = "bytes", prg: str = "chacha",
-                 prp: str = "aes128_feistel"):
+                 prp: str = "aes128_feistel", *, par_depth: int = 0):
+        validate_par_depth(par_depth)
         validate_in_bits(in_bits)
         if in_bits > 63:
             raise ValueError(
@@ -129,15 +136,17 @@ class Dmpf:
         validate_group(group)
         validate_prg(prg, "dmpf")
         validate_prp(prp)
+        self.par_depth = int(par_depth)
         self.in_bits = in_bits
         self.max_points = max_points
         self.bucket_bits = bucket_bits
         self.group = group
         self.prg = prg
+        self.prp = prp
         # Number of Cuckoo-hash buckets, mirroring fss::cuckoo_hash::ChBucket.
         self.m = _ch_bucket(max_points)
         self._ext = load("dmpf", in_bits, group, prg, max_points=max_points,
-                         bucket_bits=bucket_bits, prp=prp)
+                         bucket_bits=bucket_bits, prp=prp, par_depth=self.par_depth)
 
     def gen(self, s0s: torch.Tensor, sigma: torch.Tensor,
             alphas: torch.Tensor, betas: torch.Tensor, t: int,
@@ -207,6 +216,10 @@ class Dmpf:
         validate_party(party)
         self._check_key(key)
         _validate_xs(xs)
+        validate_device_match(key.cws, key.s0s, key.sigma, key.meta, xs)
+        validate_cuda_backends(xs, prg=self.prg, prp=self.prp)
+        validate_query_domain(xs, self.in_bits)
+        xs = xs.contiguous()
 
         return self._ext.batch_eval(party, key.cws, key.s0s[party],
                                     key.sigma, key.meta, xs)
@@ -224,5 +237,6 @@ class Dmpf:
         validate_party(party)
         self._check_key(key)
 
+        validate_cuda_backends(key.cws, prg=self.prg, prp=self.prp)
         return self._ext.eval_all(party, key.cws, key.s0s[party],
                                   key.sigma, key.meta)

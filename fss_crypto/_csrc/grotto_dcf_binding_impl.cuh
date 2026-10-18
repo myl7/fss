@@ -26,7 +26,7 @@ static torch::Tensor grotto_gen(torch::Tensor s0s, int64_t alpha_lo, int64_t alp
   auto cws_tensor = torch::zeros({kInBits + 1, 8}, torch::kInt32);
   auto *cws = reinterpret_cast<typename GrottoInst::Cw *>(cws_tensor.data_ptr<int32_t>());
 
-  GrottoInst grotto{PrgType(g_nonce0, g_nonce1)};
+  GrottoInst grotto{MakePrg()};
   typename GrottoInst::Key k0, k1;
   grotto.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s_ptr, 2), alpha);
   for (int i = 0; i <= kInBits; ++i) cws[i] = k0.cws[i];
@@ -39,54 +39,63 @@ static torch::Tensor grotto_gen(torch::Tensor s0s, int64_t alpha_lo, int64_t alp
 // ---------------------------------------------------------------------------
 
 static torch::Tensor grotto_preprocess(int64_t party, torch::Tensor s0, torch::Tensor cws) {
-  TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
-  TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
-  TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
-  TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
-  TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits + 1, 8}), "cws must have shape (kInBits+1, 8)");
-  TORCH_CHECK(s0.device() == cws.device(), "s0 and cws must be on the same device");
+  if constexpr (kInBits > kMaxEvalAllBits) {
+    TORCH_CHECK(false, "grotto_dcf.preprocess cannot represent its full-domain size for expanded bits=", kInBits);
+    return {};
+  } else {
+    TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
+    TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
+    TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
+    TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
+    TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits + 1, 8}), "cws must have shape (kInBits+1, 8)");
+    TORCH_CHECK(s0.device() == cws.device(), "s0 and cws must be on the same device");
 
-  EnsureNonce();
-  bool b = (party == 1);
+    EnsureNonce();
+    c10::cuda::OptionalCUDAGuard device_guard;
+    if (s0.is_cuda()) device_guard.set_device(s0.device());
+    CheckCudaPrg(s0);
+    bool b = (party == 1);
 
-  // The widest preprocess parity level launches 2^(in_bits-8) blocks, so the
-  // grid.x index width caps the CUDA paths at 38 bits.
-  constexpr int kMaxGrottoCudaBits = 38;
-  int64_t n = 0;
-  if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
-  else TORCH_CHECK(false, "grotto_dcf.preprocess cannot represent the 2^", kInBits, "-entry tree size");
-  if (s0.is_cuda())
-    TORCH_CHECK(kInBits <= kMaxGrottoCudaBits, "grotto_dcf.preprocess on CUDA supports in_bits <= ",
-        kMaxGrottoCudaBits, " (grid index width), got ", kInBits);
+    // The widest preprocess parity level launches 2^(in_bits-8) blocks, so the
+    // grid.x index width caps the CUDA paths at 38 bits.
+    constexpr int kMaxGrottoCudaBits = 38;
+    int64_t n = 0;
+    if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
+    else TORCH_CHECK(false, "grotto_dcf.preprocess cannot represent the 2^", kInBits, "-entry tree size");
+    if (s0.is_cuda())
+      TORCH_CHECK(kInBits <= kMaxGrottoCudaBits,
+          "grotto_dcf.preprocess on CUDA supports in_bits <= ", kMaxGrottoCudaBits, " (grid index width), got ",
+          kInBits);
 
-  auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
-  int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
-  auto *cws_ptr = reinterpret_cast<const typename GrottoInst::Cw *>(cws.data_ptr<int32_t>());
+    auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
+    int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
+    auto *cws_ptr = reinterpret_cast<const typename GrottoInst::Cw *>(cws.data_ptr<int32_t>());
 
-  GrottoInst grotto{PrgType(g_nonce0, g_nonce1)};
+    GrottoInst grotto{MakePrg()};
 
-  if (s0.is_cuda()) {
-    constexpr int kZ = WideDomainEvalAllZ(kInBits), kB1 = WideDomainEvalAllB1(kInBits),
-        kBS = WideDomainEvalAllBS(kInBits);
-    auto tree = torch::zeros({2 * n - 1}, torch::dtype(torch::kBool).device(s0.device()));
-    auto *p_ptr = tree.data_ptr<bool>();
-    fss::gpu::GrottoDcfPreprocessGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, p_ptr, grotto, CurrentStream());
-    auto err = cudaGetLastError();
-    TORCH_CHECK(err == cudaSuccess, "grotto preprocess launch failed: ", cudaGetErrorString(err));
+    if (s0.is_cuda()) {
+      constexpr int kZ = WideDomainEvalAllZ(kInBits), kB1 = WideDomainEvalAllB1(kInBits),
+                    kBS = WideDomainEvalAllBS(kInBits);
+      auto tree = torch::zeros({2 * n - 1}, torch::dtype(torch::kBool).device(s0.device()));
+      auto *p_ptr = tree.data_ptr<bool>();
+      fss::gpu::GrottoDcfPreprocessGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, p_ptr, grotto, CurrentStream());
+      auto err = cudaGetLastError();
+      TORCH_CHECK(err == cudaSuccess, "grotto preprocess launch failed: ", cudaGetErrorString(err));
+      return tree;
+    }
+
+    // CPU path.
+    typename GrottoInst::Key key;
+    key.s0 = s0_val;
+    for (int i = 0; i <= kInBits; ++i) key.cws[i] = cws_ptr[i];
+
+    auto pre = grotto.Preprocess(b, key);
+    auto tree = torch::zeros({2 * n - 1}, torch::kBool);
+    auto *tree_ptr = tree.data_ptr<bool>();
+    const bool *src = pre.p.get();
+    for (int64_t i = 0; i < 2 * n - 1; ++i) tree_ptr[i] = src[i];
     return tree;
   }
-
-  // CPU path.
-  typename GrottoInst::Key key;
-  key.s0 = s0_val;
-  for (int i = 0; i <= kInBits; ++i) key.cws[i] = cws_ptr[i];
-
-  auto pre = grotto.Preprocess(b, key);
-  auto tree = torch::zeros({2 * n - 1}, torch::kBool);
-  auto *tree_ptr = tree.data_ptr<bool>();
-  const bool *src = pre.p.get();
-  for (int64_t i = 0; i < 2 * n - 1; ++i) tree_ptr[i] = src[i];
-  return tree;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,17 +107,22 @@ static torch::Tensor grotto_preprocess(int64_t party, torch::Tensor s0, torch::T
 // The party bit matters at preprocess time (it picks the tree); here it only
 // tags the view, since Eval() itself reads no party state.
 static bool grotto_eval(int64_t party, torch::Tensor tree, int64_t x_lo, int64_t x_hi) {
-  TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
-  TORCH_CHECK(tree.is_cpu(), "tree must be on CPU for eval");
-  TORCH_CHECK(tree.dtype() == torch::kBool, "tree must be bool");
+  if constexpr (kInBits > kMaxEvalAllBits) {
+    TORCH_CHECK(false, "grotto_dcf.eval cannot represent its full-domain size for expanded bits=", kInBits);
+    return {};
+  } else {
+    TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
+    TORCH_CHECK(tree.is_cpu(), "tree must be on CPU for eval");
+    TORCH_CHECK(tree.dtype() == torch::kBool, "tree must be bool");
 
-  int64_t n = 1LL << kInBits;
-  TORCH_CHECK(tree.dim() == 1 && tree.numel() == 2 * n - 1, "tree must have shape (2*2^in_bits-1,)");
+    int64_t n = 1LL << kInBits;
+    TORCH_CHECK(tree.dim() == 1 && tree.numel() == 2 * n - 1, "tree must have shape (2*2^in_bits-1,)");
 
-  InType x = BuildInput<InType>(x_lo, x_hi);
+    InType x = BuildInput<InType>(x_lo, x_hi);
 
-  typename GrottoInst::ParityTree pt{tree.data_ptr<bool>(), party == 1};
-  return GrottoInst::Eval(pt, x);
+    typename GrottoInst::ParityTree pt{tree.data_ptr<bool>(), party == 1};
+    return GrottoInst::Eval(pt, x);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -116,48 +130,56 @@ static bool grotto_eval(int64_t party, torch::Tensor tree, int64_t x_lo, int64_t
 // ---------------------------------------------------------------------------
 
 static torch::Tensor grotto_eval_all(int64_t party, torch::Tensor s0, torch::Tensor cws) {
-  TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
-  TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
-  TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
-  TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
-  TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits + 1, 8}), "cws must have shape (kInBits+1, 8)");
-  TORCH_CHECK(s0.device() == cws.device(), "s0 and cws must be on the same device");
+  if constexpr (kInBits > kMaxEvalAllBits) {
+    TORCH_CHECK(false, "grotto_dcf.eval_all cannot represent its full-domain size for expanded bits=", kInBits);
+    return {};
+  } else {
+    TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
+    TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
+    TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
+    TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
+    TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits + 1, 8}), "cws must have shape (kInBits+1, 8)");
+    TORCH_CHECK(s0.device() == cws.device(), "s0 and cws must be on the same device");
 
-  EnsureNonce();
-  bool b = (party == 1);
+    EnsureNonce();
+    c10::cuda::OptionalCUDAGuard device_guard;
+    if (s0.is_cuda()) device_guard.set_device(s0.device());
+    CheckCudaPrg(s0);
+    bool b = (party == 1);
 
-  constexpr int kMaxGrottoCudaBits = 38;
-  int64_t n = 0;
-  if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
-  else TORCH_CHECK(false, "grotto_dcf.eval_all cannot represent the 2^", kInBits, "-entry output size");
-  if (s0.is_cuda())
-    TORCH_CHECK(kInBits <= kMaxGrottoCudaBits, "grotto_dcf.eval_all on CUDA supports in_bits <= ",
-        kMaxGrottoCudaBits, " (grid index width), got ", kInBits);
+    constexpr int kMaxGrottoCudaBits = 38;
+    int64_t n = 0;
+    if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
+    else TORCH_CHECK(false, "grotto_dcf.eval_all cannot represent the 2^", kInBits, "-entry output size");
+    if (s0.is_cuda())
+      TORCH_CHECK(kInBits <= kMaxGrottoCudaBits, "grotto_dcf.eval_all on CUDA supports in_bits <= ", kMaxGrottoCudaBits,
+          " (grid index width), got ", kInBits);
 
-  auto ys = torch::zeros({n}, torch::dtype(torch::kBool).device(s0.device()));
+    auto ys = torch::zeros({n}, torch::dtype(torch::kBool).device(s0.device()));
 
-  GrottoInst grotto{PrgType(g_nonce0, g_nonce1)};
-  auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
-  int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
-  auto *cws_ptr = reinterpret_cast<const typename GrottoInst::Cw *>(cws.data_ptr<int32_t>());
-  auto *ys_ptr = ys.data_ptr<bool>();
+    GrottoInst grotto{MakePrg()};
+    auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
+    int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
+    auto *cws_ptr = reinterpret_cast<const typename GrottoInst::Cw *>(cws.data_ptr<int32_t>());
+    auto *ys_ptr = ys.data_ptr<bool>();
 
-  if (s0.is_cuda()) {
-    constexpr int kZ = WideDomainEvalAllZ(kInBits), kB1 = WideDomainEvalAllB1(kInBits),
-        kBS = WideDomainEvalAllBS(kInBits);
-    fss::gpu::GrottoDcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, grotto, CurrentStream());
-    auto err = cudaGetLastError();
-    TORCH_CHECK(err == cudaSuccess, "grotto eval_all launch failed: ", cudaGetErrorString(err));
+    if (s0.is_cuda()) {
+      constexpr int kZ = WideDomainEvalAllZ(kInBits), kB1 = WideDomainEvalAllB1(kInBits),
+                    kBS = WideDomainEvalAllBS(kInBits);
+      fss::gpu::GrottoDcfEvalAllGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, ys_ptr, grotto, CurrentStream());
+      auto err = cudaGetLastError();
+      TORCH_CHECK(err == cudaSuccess, "grotto eval_all launch failed: ", cudaGetErrorString(err));
+      return ys;
+    }
+
+    // CPU path.
+    typename GrottoInst::Key key;
+    key.s0 = s0_val;
+    for (int i = 0; i <= kInBits; ++i) key.cws[i] = cws_ptr[i];
+    grotto.EvalAll(b, key, cuda::std::span<bool>(ys_ptr, n));
+
     return ys;
   }
-
-  // CPU path.
-  typename GrottoInst::Key key;
-  key.s0 = s0_val;
-  for (int i = 0; i <= kInBits; ++i) key.cws[i] = cws_ptr[i];
-  grotto.EvalAll(b, key, cuda::std::span<bool>(ys_ptr, n));
-
-  return ys;
 }
 
 // ---------------------------------------------------------------------------

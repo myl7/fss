@@ -79,8 +79,7 @@ std::pair<int, int> FetchMeta(const torch::Tensor &meta) {
   const auto *meta_ptr = meta.data_ptr<int32_t>();
   int v[2];
   if (meta.is_cuda()) {
-    auto err = cudaMemcpy(v, meta_ptr, 2 * sizeof(int), cudaMemcpyDeviceToHost);
-    TORCH_CHECK(err == cudaSuccess, "device-to-host meta copy failed: ", cudaGetErrorString(err));
+    CopyDeviceToHost(v, meta_ptr, sizeof(v), "meta");
   } else {
     v[0] = meta_ptr[0];
     v[1] = meta_ptr[1];
@@ -115,8 +114,8 @@ void CheckEvalTensors(const torch::Tensor &cws, const torch::Tensor &cs, const t
   TORCH_CHECK(sigma.dtype() == torch::kInt32, "sigma must be int32");
   TORCH_CHECK(meta.dtype() == torch::kInt32, "meta must be int32");
   TORCH_CHECK(xs.dtype() == torch::kInt64, "xs must be int64");
-  TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kM, kBucketBits, 8}), "cws must have shape (", kM, ", ", kBucketBits,
-      ", 8)");
+  TORCH_CHECK(
+      cws.sizes() == torch::IntArrayRef({kM, kBucketBits, 8}), "cws must have shape (", kM, ", ", kBucketBits, ", 8)");
   TORCH_CHECK(cs.sizes() == torch::IntArrayRef({kM, 4, 4}), "cs must have shape (", kM, ", 4, 4)");
   TORCH_CHECK(ocw.sizes() == torch::IntArrayRef({kM, 4}), "ocw must have shape (", kM, ", 4)");
   TORCH_CHECK(s0.sizes() == torch::IntArrayRef({kM, 4}), "s0 must have shape (", kM, ", 4)");
@@ -124,13 +123,22 @@ void CheckEvalTensors(const torch::Tensor &cws, const torch::Tensor &cs, const t
   TORCH_CHECK(meta.sizes() == torch::IntArrayRef({2}), "meta must have shape (2,)");
   TORCH_CHECK(xs.dim() == 1, "xs must be 1-dimensional");
   for (const torch::Tensor *t : {&cws, &cs, &ocw, &s0, &sigma, &meta, &xs}) {
-    CheckContiguous(*t, t == &cws ? "cws" : t == &cs ? "cs" : t == &ocw ? "ocw" : t == &s0 ? "s0"
-        : t == &sigma ? "sigma" : t == &meta ? "meta" : "xs");
+    CheckContiguous(*t,
+        t == &cws         ? "cws"
+            : t == &cs    ? "cs"
+            : t == &ocw   ? "ocw"
+            : t == &s0    ? "s0"
+            : t == &sigma ? "sigma"
+            : t == &meta  ? "meta"
+                          : "xs");
     TORCH_CHECK(t->device() == cws.device(), "all tensors must be on the same device");
   }
+  CheckCudaPrg(cws);
+  CheckCudaHashes(cws);
   if (cws.is_cuda() && !kGpuPrp) {
     TORCH_CHECK(false, "CUDA tensors require a device-callable prp (prp='chacha_feistel')");
   }
+  CheckQueryDomain(xs);
 }
 
 }  // namespace
@@ -156,6 +164,7 @@ static std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, to
   TORCH_CHECK(betas.sizes() == torch::IntArrayRef({t, 4}), "betas must have shape (", t, ", 4)");
   TORCH_CHECK(t >= 30 && t <= kMaxPoints, "t must be in [30, ", kMaxPoints, "], got ", t);
 
+  CheckQueryDomain(alphas);
   EnsureNonce();
 
   // Local copies: Gen perturbs sigma and the seeds on each retry, and the keys
@@ -181,7 +190,7 @@ static std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, to
   auto sigma_tensor = torch::zeros({4}, torch::kInt32);
   auto meta = torch::zeros({2}, torch::kInt32);
 
-  VdmpfInst vdmpf{PrgType(g_nonce0, g_nonce1), MakeHash<XorHashType>(), MakeHash<HashType>(), PrpType{}};
+  VdmpfInst vdmpf{MakePrg(), MakeHash<XorHashType>(), MakeHash<HashType>(), PrpType{}};
   typename VdmpfInst::Key k0, k1;
   TORCH_CHECK(vdmpf.Gen(k0, k1, sigma_local, cuda::std::span<cuda::std::array<int4, 2>, kM>(seeds),
                   cuda::std::span<const InType>(as), b_bufs, static_cast<int>(t), 1000, retry) == 0,
@@ -213,13 +222,18 @@ static std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, to
 // vdmpf_batch_eval
 // ---------------------------------------------------------------------------
 
-static std::tuple<torch::Tensor, torch::Tensor> vdmpf_batch_eval(int64_t party, torch::Tensor cws, torch::Tensor cs,
-    torch::Tensor ocw, torch::Tensor s0, torch::Tensor sigma, torch::Tensor meta, torch::Tensor xs) {
+static std::tuple<torch::Tensor, torch::Tensor> vdmpf_batch_eval_impl(int64_t party, torch::Tensor cws,
+    torch::Tensor cs, torch::Tensor ocw, torch::Tensor s0, torch::Tensor sigma, torch::Tensor meta, torch::Tensor xs,
+    bool merkle) {
   TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
   TORCH_CHECK(kInBits <= 63, "this binding supports in_bits <= 63, got ", kInBits);
+  c10::cuda::OptionalCUDAGuard device_guard;
+  if (s0.is_cuda()) device_guard.set_device(s0.device());
+  xs = xs.contiguous();
   CheckEvalTensors(cws, cs, ocw, s0, sigma, meta, xs);
 
   EnsureNonce();
+  CheckCudaPrg(s0);
   bool b = (party == 1);
   const int64_t n = xs.size(0);
 
@@ -235,19 +249,21 @@ static std::tuple<torch::Tensor, torch::Tensor> vdmpf_batch_eval(int64_t party, 
       // layout the batch kernel consumes; cs and ocws need no repack.
       auto dev_i32 = torch::dtype(torch::kInt32).device(s0.device());
       auto cw_s = torch::empty({static_cast<int64_t>(kBucketBits) * m_rt, 4}, dev_i32);
-      auto extra = torch::empty({static_cast<int64_t>(m_rt) * static_cast<int64_t>(sizeof(fss::gpu::ExtBits<kBucketBits>) / sizeof(int32_t))},
+      auto extra = torch::empty(
+          {static_cast<int64_t>(m_rt) * static_cast<int64_t>(sizeof(fss::gpu::ExtBits<kBucketBits>) / sizeof(int32_t))},
           dev_i32);
-      fss::gpu::VdpfRepackGpu<kBucketBits, GroupType, PrgType, XorHashType, HashType, InType>(
-          reinterpret_cast<const typename VdmpfInst::InnerVdpf::Cw *>(cws.data_ptr<int32_t>()), m_rt,
-          reinterpret_cast<int4 *>(cw_s.data_ptr<int32_t>()),
-          reinterpret_cast<fss::gpu::ExtBits<kBucketBits> *>(extra.data_ptr<int32_t>()), CurrentStream());
+      if (n > 0)
+        fss::gpu::VdpfRepackGpu<kBucketBits, GroupType, PrgType, XorHashType, HashType, uint>(
+            reinterpret_cast<const typename VdmpfInst::InnerVdpf::Cw *>(cws.data_ptr<int32_t>()), m_rt,
+            reinterpret_cast<int4 *>(cw_s.data_ptr<int32_t>()),
+            reinterpret_cast<fss::gpu::ExtBits<kBucketBits> *>(extra.data_ptr<int32_t>()), CurrentStream());
 
-      VdmpfInst vdmpf{PrgType(g_nonce0, g_nonce1), MakeHash<XorHashType>(), MakeHash<HashType>(), PrpType{}};
-      if (n > 0) {
-        fss::gpu::VdmpfBatchEvalGpu(b, reinterpret_cast<const InType *>(xs_wide.data_ptr()),
+      VdmpfInst vdmpf{MakePrg(), MakeHash<XorHashType>(), MakeHash<HashType>(), PrpType{}};
+      {
+        fss::gpu::VdmpfBatchEvalMerkleGpu(b, n > 0 ? reinterpret_cast<const InType *>(xs_wide.data_ptr()) : nullptr,
             reinterpret_cast<int4 *>(ys.data_ptr<int32_t>()),
-            reinterpret_cast<cuda::std::array<int4, 4> *>(pi.data_ptr<int32_t>()), static_cast<int>(n), sigma_val,
-            m_rt, b_rt, reinterpret_cast<const int4 *>(s0.data_ptr<int32_t>()),
+            reinterpret_cast<cuda::std::array<int4, 4> *>(pi.data_ptr<int32_t>()), static_cast<int>(n), sigma_val, m_rt,
+            b_rt, reinterpret_cast<const int4 *>(s0.data_ptr<int32_t>()),
             reinterpret_cast<const int4 *>(cw_s.data_ptr<int32_t>()),
             reinterpret_cast<const fss::gpu::ExtBits<kBucketBits> *>(extra.data_ptr<int32_t>()),
             reinterpret_cast<const cuda::std::array<int4, 4> *>(cs.data_ptr<int32_t>()),
@@ -269,14 +285,28 @@ static std::tuple<torch::Tensor, torch::Tensor> vdmpf_batch_eval(int64_t party, 
   auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
 
   cuda::std::array<int4, 4> pi;
-  VdmpfInst vdmpf{PrgType(g_nonce0, g_nonce1), MakeHash<XorHashType>(), MakeHash<HashType>(), PrpType{}};
-  vdmpf.BatchEval(b, key, cuda::std::span<const InType>(xs_local), cuda::std::span<int4>(ys_ptr, n), pi);
+  VdmpfInst vdmpf{MakePrg(), MakeHash<XorHashType>(), MakeHash<HashType>(), PrpType{}};
+  if (merkle) {
+    vdmpf.BatchEvalMerkle(b, key, cuda::std::span<const InType>(xs_local), cuda::std::span<int4>(ys_ptr, n), pi);
+  } else {
+    vdmpf.BatchEval(b, key, cuda::std::span<const InType>(xs_local), cuda::std::span<int4>(ys_ptr, n), pi);
+  }
 
   auto pi_tensor = torch::zeros({4, 4}, torch::kInt32);
   auto *pi_ptr = reinterpret_cast<int4 *>(pi_tensor.data_ptr<int32_t>());
   for (int i = 0; i < 4; ++i) pi_ptr[i] = pi[i];
 
   return {ys, pi_tensor};
+}
+
+static std::tuple<torch::Tensor, torch::Tensor> vdmpf_batch_eval(int64_t party, torch::Tensor cws, torch::Tensor cs,
+    torch::Tensor ocw, torch::Tensor s0, torch::Tensor sigma, torch::Tensor meta, torch::Tensor xs) {
+  return vdmpf_batch_eval_impl(party, cws, cs, ocw, s0, sigma, meta, xs, false);
+}
+
+static std::tuple<torch::Tensor, torch::Tensor> vdmpf_batch_eval_merkle(int64_t party, torch::Tensor cws,
+    torch::Tensor cs, torch::Tensor ocw, torch::Tensor s0, torch::Tensor sigma, torch::Tensor meta, torch::Tensor xs) {
+  return vdmpf_batch_eval_impl(party, cws, cs, ocw, s0, sigma, meta, xs, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -292,13 +322,13 @@ static bool vdmpf_verify(torch::Tensor pi0, torch::Tensor pi1) {
   TORCH_CHECK(pi1.sizes() == torch::IntArrayRef({4, 4}), "pi1 must have shape (4, 4)");
   TORCH_CHECK(pi0.device() == pi1.device(), "pi0 and pi1 must be on the same device");
 
+  c10::cuda::OptionalCUDAGuard device_guard;
+  if (pi0.is_cuda()) device_guard.set_device(pi0.device());
+
   // Verify() compares 64B proofs on the host, so CUDA proofs are fetched.
-  cuda::std::array<int4, 4> h0 =
-      FetchCs(reinterpret_cast<const int4 *>(pi0.data_ptr<int32_t>()), pi0.is_cuda());
-  cuda::std::array<int4, 4> h1 =
-      FetchCs(reinterpret_cast<const int4 *>(pi1.data_ptr<int32_t>()), pi1.is_cuda());
-  return VdmpfInst::Verify(cuda::std::span<const int4, 4>(h0.data(), 4),
-      cuda::std::span<const int4, 4>(h1.data(), 4));
+  cuda::std::array<int4, 4> h0 = FetchCs(reinterpret_cast<const int4 *>(pi0.data_ptr<int32_t>()), pi0.is_cuda());
+  cuda::std::array<int4, 4> h1 = FetchCs(reinterpret_cast<const int4 *>(pi1.data_ptr<int32_t>()), pi1.is_cuda());
+  return VdmpfInst::Verify(cuda::std::span<const int4, 4>(h0.data(), 4), cuda::std::span<const int4, 4>(h1.data(), 4));
 }
 
 // ---------------------------------------------------------------------------
@@ -308,5 +338,6 @@ static bool vdmpf_verify(torch::Tensor pi0, torch::Tensor pi1) {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("gen", &vdmpf_gen, "VDMPF key generation");
   m.def("batch_eval", &vdmpf_batch_eval, "VDMPF batch evaluation");
+  m.def("batch_eval_merkle", &vdmpf_batch_eval_merkle, "VDMPF Merkle batch evaluation");
   m.def("verify", &vdmpf_verify, "VDMPF proof verification");
 }

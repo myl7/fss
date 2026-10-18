@@ -145,6 +145,11 @@ if(BUILD_TESTING)
     target_link_libraries(word_arithmetic_test GTest::gtest_main fss)
     gtest_discover_tests(word_arithmetic_test)
 
+    add_executable(binding_prg_test test/binding_prg_test.cu)
+    target_include_directories(binding_prg_test PRIVATE fss_crypto/_csrc)
+    target_link_libraries(binding_prg_test PRIVATE fss OpenSSL::Crypto)
+    add_test(NAME binding_prg_test COMMAND binding_prg_test)
+
     # Keep these released consumers unchanged so API repairs cannot update the
     # expected calls together with the library implementation.
     foreach(sample dpf_dcf_cpu half_tree_dpf_cpu grotto_dcf_cpu vdpf_cpu)

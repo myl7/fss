@@ -12,6 +12,7 @@ from fss_crypto._validate import (
     validate_domain_value,
     validate_group,
     validate_in_bits,
+    validate_par_depth,
     validate_party,
     validate_prg,
     validate_s0,
@@ -42,18 +43,22 @@ class HalfTreeDpf:
         in_bits: Input domain bit size (1..128).
         group: Output group type, "bytes" or "uint".
         prg: PRG type, "chacha" or "aes128_mmo".
+        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
+            automatically, and positive values bound the split depth.
     """
 
     def __init__(self, in_bits: int, group: str = "bytes",
-                 prg: str = "chacha"):
+                 prg: str = "chacha", *, par_depth: int = 0):
+        validate_par_depth(par_depth)
         validate_in_bits(in_bits)
         validate_group(group)
         validate_prg(prg, "half_tree_dpf")
 
+        self.par_depth = int(par_depth)
         self.in_bits = in_bits
         self.group = group
         self.prg = prg
-        self._ext = load("half_tree_dpf", in_bits, group, prg)
+        self._ext = load("half_tree_dpf", in_bits, group, prg, par_depth=self.par_depth)
 
     def gen(self, s0s: torch.Tensor, alpha: int,
             beta: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

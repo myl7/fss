@@ -15,8 +15,8 @@ namespace {
 
 // Device paths require both hashes to be Blake3: the Merkle fold calls
 // Hash::Hash on the GPU, and Sha256 traps under __CUDA_ARCH__.
-constexpr bool kGpuHashes = std::is_same_v<XorHashType, fss::hash::Blake3> &&
-    std::is_same_v<HashType, fss::hash::Blake3>;
+constexpr bool kGpuHashes =
+    std::is_same_v<XorHashType, fss::hash::Blake3> && std::is_same_v<HashType, fss::hash::Blake3>;
 
 // Build a verifiable-scheme hash instance: Blake3 copies a 2x int4 IV by
 // value, Sha256 takes a single int4 key.
@@ -30,7 +30,7 @@ H MakeHash() {
 }
 
 VdpfInst MakeVdpf() {
-  return VdpfInst{PrgType(g_nonce0, g_nonce1), MakeHash<XorHashType>(), MakeHash<HashType>()};
+  return VdpfInst{MakePrg(), MakeHash<XorHashType>(), MakeHash<HashType>()};
 }
 
 }  // namespace
@@ -89,9 +89,9 @@ static std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> vd
   VdpfInst vdpf = MakeVdpf();
   typename VdpfInst::Key k0, k1;
   int ret = vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), alpha, b_buf, retry);
-  TORCH_CHECK(
-      ret == 0, "vdpf Gen failed: bad seeds (all-zero cs or equal control bits); "
-                "pass retry=true or resample s0s");
+  TORCH_CHECK(ret == 0,
+      "vdpf Gen failed: bad seeds (all-zero cs or equal control bits); "
+      "pass retry=true or resample s0s");
 
   auto *cws_ptr = reinterpret_cast<typename VdpfInst::Cw *>(cws_tensor.data_ptr<int32_t>());
   for (int i = 0; i < kInBits; ++i) cws_ptr[i] = k0.cws[i];
@@ -128,6 +128,10 @@ static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval(int64_t party, torch::
   TORCH_CHECK(s0.device() == ocw.device(), "s0 and ocw must be on the same device");
 
   EnsureNonce();
+  c10::cuda::OptionalCUDAGuard device_guard;
+  if (s0.is_cuda()) device_guard.set_device(s0.device());
+  CheckCudaPrg(s0);
+  CheckCudaHashes(s0);
   bool b = (party == 1);
 
   auto y = torch::zeros({4}, torch::dtype(torch::kInt32).device(s0.device()));
@@ -176,118 +180,142 @@ static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval(int64_t party, torch::
 // vdpf_eval_all (chain proof, CPU only)
 // ---------------------------------------------------------------------------
 
-static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval_all(int64_t party, torch::Tensor s0, torch::Tensor cws,
-    torch::Tensor cs, torch::Tensor ocw) {
-  TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
-  TORCH_CHECK(s0.is_cpu(), "vdpf eval_all (chain proof) is CPU-only");
-  TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
-  TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
-  TORCH_CHECK(cs.dtype() == torch::kInt32, "cs must be int32");
-  TORCH_CHECK(ocw.dtype() == torch::kInt32, "ocw must be int32");
-  TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
-  TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits, 8}), "cws must have shape (kInBits, 8)");
-  TORCH_CHECK(cs.sizes() == torch::IntArrayRef({4, 4}), "cs must have shape (4, 4)");
-  TORCH_CHECK(ocw.sizes() == torch::IntArrayRef({4}), "ocw must have shape (4,)");
+static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval_all(
+    int64_t party, torch::Tensor s0, torch::Tensor cws, torch::Tensor cs, torch::Tensor ocw) {
+  if constexpr (kInBits > kMaxEvalAllBits) {
+    TORCH_CHECK(false, "vdpf.eval_all cannot represent its full-domain size for expanded bits=", kInBits);
+    return {};
+  } else {
+    TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
+    TORCH_CHECK(s0.is_cpu(), "vdpf eval_all (chain proof) is CPU-only");
+    TORCH_CHECK(cws.is_cpu() && cs.is_cpu() && ocw.is_cpu(), "vdpf eval_all (chain proof) is CPU-only");
+    TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
+    TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
+    TORCH_CHECK(cs.dtype() == torch::kInt32, "cs must be int32");
+    TORCH_CHECK(ocw.dtype() == torch::kInt32, "ocw must be int32");
+    TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
+    TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits, 8}), "cws must have shape (kInBits, 8)");
+    TORCH_CHECK(cs.sizes() == torch::IntArrayRef({4, 4}), "cs must have shape (4, 4)");
+    TORCH_CHECK(ocw.sizes() == torch::IntArrayRef({4}), "ocw must have shape (4,)");
 
-  EnsureNonce();
-  bool b = (party == 1);
+    EnsureNonce();
+    c10::cuda::OptionalCUDAGuard device_guard;
+    if (s0.is_cuda()) device_guard.set_device(s0.device());
+    CheckCudaPrg(s0);
+    CheckCudaHashes(s0);
+    bool b = (party == 1);
 
-  int64_t n = 1LL << kInBits;
-  auto ys = torch::zeros({n, 4}, torch::kInt32);
-  auto pi_tensor = torch::zeros({4, 4}, torch::kInt32);
+    int64_t n = 0;
+    if constexpr (kInBits <= kMaxEvalAllBits) n = int64_t{1} << kInBits;
+    else TORCH_CHECK(false, "vdpf full-domain evaluation cannot represent the 2^", kInBits, "-entry output size");
+    auto ys = torch::zeros({n, 4}, torch::kInt32);
+    auto pi_tensor = torch::zeros({4, 4}, torch::kInt32);
 
-  VdpfInst vdpf = MakeVdpf();
-  auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
-  int4 s0_val = s0_ptr[0];
-  auto *cws_ptr = reinterpret_cast<const typename VdpfInst::Cw *>(cws.data_ptr<int32_t>());
-  auto *cs_ptr = reinterpret_cast<int4 *>(cs.data_ptr<int32_t>());
-  auto *ocw_ptr = reinterpret_cast<int4 *>(ocw.data_ptr<int32_t>());
-  auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
+    VdpfInst vdpf = MakeVdpf();
+    auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
+    int4 s0_val = s0_ptr[0];
+    auto *cws_ptr = reinterpret_cast<const typename VdpfInst::Cw *>(cws.data_ptr<int32_t>());
+    auto *cs_ptr = reinterpret_cast<int4 *>(cs.data_ptr<int32_t>());
+    auto *ocw_ptr = reinterpret_cast<int4 *>(ocw.data_ptr<int32_t>());
+    auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
 
-  typename VdpfInst::Key key;
-  key.s0 = s0_val;
-  for (int i = 0; i < kInBits; ++i) key.cws[i] = cws_ptr[i];
-  for (int i = 0; i < 4; ++i) key.cs[i] = cs_ptr[i];
-  key.ocw = ocw_ptr[0];
+    typename VdpfInst::Key key;
+    key.s0 = s0_val;
+    for (int i = 0; i < kInBits; ++i) key.cws[i] = cws_ptr[i];
+    for (int i = 0; i < 4; ++i) key.cs[i] = cs_ptr[i];
+    key.ocw = ocw_ptr[0];
 
-  cuda::std::array<int4, 4> pi;
-  vdpf.EvalAll(b, key, cuda::std::span<int4>(ys_ptr, n), pi);
-  auto *pi_ptr = reinterpret_cast<int4 *>(pi_tensor.data_ptr<int32_t>());
-  for (int i = 0; i < 4; ++i) pi_ptr[i] = pi[i];
+    cuda::std::array<int4, 4> pi;
+    vdpf.EvalAll(b, key, cuda::std::span<int4>(ys_ptr, n), pi);
+    auto *pi_ptr = reinterpret_cast<int4 *>(pi_tensor.data_ptr<int32_t>());
+    for (int i = 0; i < 4; ++i) pi_ptr[i] = pi[i];
 
-  return std::make_tuple(ys, pi_tensor);
+    return std::make_tuple(ys, pi_tensor);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // vdpf_eval_all_merkle
 // ---------------------------------------------------------------------------
 
-static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval_all_merkle(int64_t party, torch::Tensor s0,
-    torch::Tensor cws, torch::Tensor cs, torch::Tensor ocw) {
-  TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
-  TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
-  TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
-  TORCH_CHECK(cs.dtype() == torch::kInt32, "cs must be int32");
-  TORCH_CHECK(ocw.dtype() == torch::kInt32, "ocw must be int32");
-  TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
-  TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits, 8}), "cws must have shape (kInBits, 8)");
-  TORCH_CHECK(cs.sizes() == torch::IntArrayRef({4, 4}), "cs must have shape (4, 4)");
-  TORCH_CHECK(ocw.sizes() == torch::IntArrayRef({4}), "ocw must have shape (4,)");
-  TORCH_CHECK(s0.device() == cws.device(), "s0 and cws must be on the same device");
-  TORCH_CHECK(s0.device() == cs.device(), "s0 and cs must be on the same device");
-  TORCH_CHECK(s0.device() == ocw.device(), "s0 and ocw must be on the same device");
+static std::tuple<torch::Tensor, torch::Tensor> vdpf_eval_all_merkle(
+    int64_t party, torch::Tensor s0, torch::Tensor cws, torch::Tensor cs, torch::Tensor ocw) {
+  if constexpr (kInBits > kMaxEvalAllBits) {
+    TORCH_CHECK(false, "vdpf.eval_all_merkle cannot represent its full-domain size for expanded bits=", kInBits);
+    return {};
+  } else {
+    TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
+    TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
+    TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
+    TORCH_CHECK(cs.dtype() == torch::kInt32, "cs must be int32");
+    TORCH_CHECK(ocw.dtype() == torch::kInt32, "ocw must be int32");
+    TORCH_CHECK(s0.sizes() == torch::IntArrayRef({4}), "s0 must have shape (4,)");
+    TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kInBits, 8}), "cws must have shape (kInBits, 8)");
+    TORCH_CHECK(cs.sizes() == torch::IntArrayRef({4, 4}), "cs must have shape (4, 4)");
+    TORCH_CHECK(ocw.sizes() == torch::IntArrayRef({4}), "ocw must have shape (4,)");
+    TORCH_CHECK(s0.device() == cws.device(), "s0 and cws must be on the same device");
+    TORCH_CHECK(s0.device() == cs.device(), "s0 and cs must be on the same device");
+    TORCH_CHECK(s0.device() == ocw.device(), "s0 and ocw must be on the same device");
 
-  EnsureNonce();
-  bool b = (party == 1);
+    EnsureNonce();
+    c10::cuda::OptionalCUDAGuard device_guard;
+    if (s0.is_cuda()) device_guard.set_device(s0.device());
+    CheckCudaPrg(s0);
+    CheckCudaHashes(s0);
+    bool b = (party == 1);
+    TORCH_CHECK(!s0.is_cuda() || kInBits <= 22, "GPU eval_all_merkle supports in_bits <= 22, got ", kInBits);
 
-  int64_t n = 1LL << kInBits;
-  auto ys = torch::zeros({n, 4}, torch::dtype(torch::kInt32).device(s0.device()));
-  auto pi = torch::zeros({4, 4}, torch::dtype(torch::kInt32).device(s0.device()));
+    int64_t n = 0;
+    if constexpr (kInBits <= kMaxEvalAllBits) n = int64_t{1} << kInBits;
+    else TORCH_CHECK(false, "vdpf full-domain evaluation cannot represent the 2^", kInBits, "-entry output size");
+    auto ys = torch::zeros({n, 4}, torch::dtype(torch::kInt32).device(s0.device()));
+    auto pi = torch::zeros({4, 4}, torch::dtype(torch::kInt32).device(s0.device()));
 
-  auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
-  int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
-  auto *cws_ptr = reinterpret_cast<const typename VdpfInst::Cw *>(cws.data_ptr<int32_t>());
-  auto *cs_ptr = reinterpret_cast<int4 *>(cs.data_ptr<int32_t>());
-  cuda::std::array<int4, 4> cs_val = FetchCs(cs_ptr, s0.is_cuda());
-  auto *ocw_ptr = reinterpret_cast<int4 *>(ocw.data_ptr<int32_t>());
-  int4 ocw_val = FetchInt4(ocw_ptr, s0.is_cuda());
+    auto *s0_ptr = reinterpret_cast<int4 *>(s0.data_ptr<int32_t>());
+    int4 s0_val = FetchInt4(s0_ptr, s0.is_cuda());
+    auto *cws_ptr = reinterpret_cast<const typename VdpfInst::Cw *>(cws.data_ptr<int32_t>());
+    auto *cs_ptr = reinterpret_cast<int4 *>(cs.data_ptr<int32_t>());
+    cuda::std::array<int4, 4> cs_val = FetchCs(cs_ptr, s0.is_cuda());
+    auto *ocw_ptr = reinterpret_cast<int4 *>(ocw.data_ptr<int32_t>());
+    int4 ocw_val = FetchInt4(ocw_ptr, s0.is_cuda());
 
-  if (s0.is_cuda()) {
-    if constexpr (kGpuHashes) {
-      if constexpr (kInBits <= 22) {
-        // VDPF-specific tiling: the frontier depth caps at 14 so the single
-        // block folding the per-block roots stays within (1 << Z) <= bs * bs.
-        constexpr int kZ = kInBits < 14 ? kInBits : 14;
-        constexpr int kB1 = kZ >= 7 ? kZ - 7 : 0;
-        constexpr int kBS = 1 << (kZ - kB1);
-        VdpfInst vdpf = MakeVdpf();
-        fss::gpu::VdpfEvalAllMerkleGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, cs_val, ocw_val,
-            reinterpret_cast<int4 *>(ys.data_ptr<int32_t>()),
-            reinterpret_cast<cuda::std::array<int4, 4> *>(pi.data_ptr<int32_t>()), vdpf, CurrentStream());
-        auto err = cudaGetLastError();
-        TORCH_CHECK(err == cudaSuccess, "vdpf eval_all_merkle launch failed: ", cudaGetErrorString(err));
+    if (s0.is_cuda()) {
+      if constexpr (kGpuHashes) {
+        if constexpr (kInBits <= 22) {
+          // VDPF-specific tiling: the frontier depth caps at 14 so the single
+          // block folding the per-block roots stays within (1 << Z) <= bs * bs.
+          constexpr int kZ = kInBits < 14 ? kInBits : 14;
+          constexpr int kB1 = kZ >= 7 ? kZ - 7 : 0;
+          constexpr int kBS = 1 << (kZ - kB1);
+          VdpfInst vdpf = MakeVdpf();
+          fss::gpu::VdpfEvalAllMerkleGpu<kZ, kB1, kBS>(b, s0_val, cws_ptr, cs_val, ocw_val,
+              reinterpret_cast<int4 *>(ys.data_ptr<int32_t>()),
+              reinterpret_cast<cuda::std::array<int4, 4> *>(pi.data_ptr<int32_t>()), vdpf, CurrentStream());
+          auto err = cudaGetLastError();
+          TORCH_CHECK(err == cudaSuccess, "vdpf eval_all_merkle launch failed: ", cudaGetErrorString(err));
+        } else {
+          TORCH_CHECK(false, "GPU eval_all_merkle supports in_bits <= 22, got ", kInBits);
+        }
       } else {
-        TORCH_CHECK(false, "GPU eval_all_merkle supports in_bits <= 22, got ", kInBits);
+        TORCH_CHECK(false, "sha256 is CPU-only");
       }
-    } else {
-      TORCH_CHECK(false, "sha256 is CPU-only");
+      return std::make_tuple(ys, pi);
     }
+
+    // CPU path.
+    VdpfInst vdpf = MakeVdpf();
+    typename VdpfInst::Key key;
+    key.s0 = s0_val;
+    for (int i = 0; i < kInBits; ++i) key.cws[i] = cws_ptr[i];
+    key.cs = cs_val;
+    key.ocw = ocw_val;
+
+    auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
+    auto *pi_out = reinterpret_cast<cuda::std::array<int4, 4> *>(pi.data_ptr<int32_t>());
+    vdpf.EvalAllMerkle(b, key, cuda::std::span<int4>(ys_ptr, n), pi_out[0]);
+
     return std::make_tuple(ys, pi);
   }
-
-  // CPU path.
-  VdpfInst vdpf = MakeVdpf();
-  typename VdpfInst::Key key;
-  key.s0 = s0_val;
-  for (int i = 0; i < kInBits; ++i) key.cws[i] = cws_ptr[i];
-  key.cs = cs_val;
-  key.ocw = ocw_val;
-
-  auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
-  auto *pi_out = reinterpret_cast<cuda::std::array<int4, 4> *>(pi.data_ptr<int32_t>());
-  vdpf.EvalAllMerkle(b, key, cuda::std::span<int4>(ys_ptr, n), pi_out[0]);
-
-  return std::make_tuple(ys, pi);
 }
 
 // ---------------------------------------------------------------------------
@@ -299,8 +327,8 @@ static torch::Tensor vdpf_prove(torch::Tensor pi_tildes, torch::Tensor cs, bool 
   TORCH_CHECK(cs.is_cpu(), "cs must be on CPU for prove");
   TORCH_CHECK(pi_tildes.dtype() == torch::kInt32, "pi_tildes must be int32");
   TORCH_CHECK(cs.dtype() == torch::kInt32, "cs must be int32");
-  TORCH_CHECK(pi_tildes.dim() == 3 && pi_tildes.size(1) == 4 && pi_tildes.size(2) == 4,
-      "pi_tildes must have shape (L, 4, 4)");
+  TORCH_CHECK(
+      pi_tildes.dim() == 3 && pi_tildes.size(1) == 4 && pi_tildes.size(2) == 4, "pi_tildes must have shape (L, 4, 4)");
   TORCH_CHECK(pi_tildes.size(0) >= 1, "pi_tildes must contain at least one per-point hash");
   TORCH_CHECK(cs.sizes() == torch::IntArrayRef({4, 4}), "cs must have shape (4, 4)");
 

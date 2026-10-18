@@ -3,8 +3,13 @@
 This document analyzes the modification to the 2-party VDPF of de Castro and Polychroniadou
 ([dCP22], EUROCRYPT 2022, eprint 2021/580) implemented in this library: `Gen`, `Eval`, and
 `Verify` are kept exactly as in the paper/implementation, and only the `Prove` accumulation is
-replaced by an order-independent binary Merkle fold. The new algorithm ships as `ProveMerkle`, `EvalAllMerkle`, and `VdpfEvalAllMerkleGpu`, with the VDMPF extension shipping as `BatchEvalMerkle` and `VdmpfBatchEvalGpu` (Section 8); the paper-faithful chains `Prove` and VDMPF `BatchEval` remain implemented as the references. Both parties must switch jointly — proofs from the two accumulators are not
-compatible, and `Verify` compares within one version only.
+replaced by a parallel binary Merkle fold over a fixed ordered sequence. The new algorithm
+ships as `ProveMerkle`, `EvalAllMerkle`, and `VdpfEvalAllMerkleGpu`, with the VDMPF extension
+shipping as `BatchEvalMerkle` and `VdmpfBatchEvalMerkleGpu` (Section 8). The existing
+`VdmpfBatchEvalGpu` name remains available. The paper-faithful chains `Prove` and VDMPF
+`BatchEval` remain implemented as the references. Both parties must select the same
+accumulator and input order. Chain and Merkle proofs differ, and `Verify` compares proofs
+within one accumulator only.
 
 The document is self-contained for a reader with [dCP22] at hand. It states what is proven here,
 what is inherited from the paper verbatim, and what is assumed of the hashes. Where the paper

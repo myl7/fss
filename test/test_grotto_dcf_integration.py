@@ -60,13 +60,13 @@ class TestGrottoDcfPreprocessEval:
             full = dcf.eval_all(party=party, s0=s0s[party], cws=cws)
             tree = dcf.preprocess(party=party, s0=s0s[party], cws=cws)
             for x in (0, 1, alpha - 1, alpha, alpha + 1, 2**16 - 1):
-                assert dcf.eval(tree, x, party=party) == bool(full[x])
+                assert dcf.eval(party, tree, x) == bool(full[x])
 
     def test_rejects_out_of_domain_x(self, dcf, s0s):
         cws = dcf.gen(s0s, alpha=107)
         tree = dcf.preprocess(party=0, s0=s0s[0], cws=cws)
         with pytest.raises(ValueError, match="x must be"):
-            dcf.eval(tree, 2**16, party=0)
+            dcf.eval(0, tree, 2**16)
 
 
 class TestGrottoDcfCuda:

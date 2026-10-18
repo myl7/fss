@@ -159,7 +159,7 @@ class TestVdmpfValidation:
     def test_rejects_bad_proof_shape(self, vdmpf, key, alphas):
         _, pi0 = vdmpf.batch_eval(0, key, alphas)
         _, pi1 = vdmpf.batch_eval(1, key, alphas)
-        with pytest.raises(TypeError, match="pi must be a"):
+        with pytest.raises(TypeError, match="pi1 must be a"):
             vdmpf.verify(pi0, pi1.flatten())
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")

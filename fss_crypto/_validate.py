@@ -72,8 +72,8 @@ def _ch_bucket(t: int, ch_lambda: int = 80) -> int:
 def validate_bucket_bits(in_bits: int, max_points: int, bucket_bits: int) -> None:
     """Check the bucket domain fits: with the smallest bucket count (t = 30)
     the runtime bucket size must fit 2 ** bucket_bits, as the C++ assert does."""
-    if not (1 <= bucket_bits <= 64):
-        raise ValueError(f"bucket_bits must be between 1 and 64, got {bucket_bits}")
+    if not (1 <= bucket_bits <= 30):
+        raise ValueError(f"bucket_bits must be between 1 and 30, got {bucket_bits}")
     b_size = (2 ** in_bits * 3 + _ch_bucket(30) - 1) // _ch_bucket(30)
     if b_size > 2 ** bucket_bits:
         raise ValueError(
@@ -212,3 +212,51 @@ def validate_cpu_only(*tensors: torch.Tensor, fn_name: str = "") -> None:
                 f"{prefix} all tensors to be on cpu, "
                 f"but found tensor on {t.device}"
             )
+
+
+def validate_par_depth(par_depth: int) -> None:
+    if isinstance(par_depth, bool) or not isinstance(par_depth, Integral):
+        raise TypeError(f"par_depth must be an integer, got {type(par_depth).__name__}")
+    if par_depth < -1:
+        raise ValueError(f"par_depth must be >= -1, got {par_depth}")
+
+
+def validate_query_domain(xs: torch.Tensor, in_bits: int) -> None:
+    if xs.numel() == 0:
+        return
+    lo, hi = int(xs.min()), int(xs.max())
+    if lo < 0 or (in_bits < 63 and hi >= (1 << in_bits)):
+        raise ValueError(f"xs must be in [0, 2^{in_bits}), got [{lo}, {hi}]")
+
+
+def verify_proofs(pi0: torch.Tensor, pi1: torch.Tensor) -> bool:
+    """Compare the fixed proof representation without constructing a scheme."""
+    validate_pi(pi0, "pi0")
+    validate_pi(pi1, "pi1")
+    validate_device_match(pi0, pi1)
+    return torch.equal(pi0, pi1)
+
+
+def validate_full_domain_size(in_bits: int, *, cuda: bool = False,
+                              cuda_limit: int = 60) -> int:
+    if in_bits > 60:
+        raise RuntimeError(f"full-domain evaluation cannot represent the 2^{in_bits}-entry output size")
+    if cuda and in_bits > cuda_limit:
+        raise RuntimeError(f"CUDA full-domain evaluation supports in_bits <= {cuda_limit}, got {in_bits}")
+    return 1 << in_bits
+
+
+def validate_cuda_backends(tensor: torch.Tensor, *, prg: str,
+                           prp: str | None = None,
+                           xor_hash: str | None = None,
+                           hash: str | None = None) -> None:
+    if tensor.device.type != "cuda":
+        return
+    if prg == "aes128_mmo":
+        raise RuntimeError("aes128_mmo is CPU-only")
+    if prp == "aes128_feistel":
+        raise RuntimeError("CUDA tensors require prp='chacha_feistel'")
+    if xor_hash == "sha256":
+        raise RuntimeError("xor_hash='sha256' is CPU-only")
+    if hash == "sha256":
+        raise RuntimeError("hash='sha256' is CPU-only")
