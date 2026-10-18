@@ -100,6 +100,7 @@ select {
 }
 
 .panel svg { display: block; width: 100%; height: auto; }
+.panel-title svg.swatch { display: inline-block; width: 48px; height: 12px; vertical-align: middle; margin-right: 4px; }
 .panel-title { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
 .panel-title .series { font-weight: 400; }
 .panel-title .series-a { color: var(--a); }

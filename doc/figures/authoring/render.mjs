@@ -1,23 +1,16 @@
 // Browser-side D3 authoring. Exported SVGs contain no JavaScript dependencies.
 export function renderFigures(d3, figures, metadata) {
-  const colors = ['#bd7656', '#739b7a', '#947fa9', '#a39250', '#608b92', '#a8728a', '#747b83'];
-  const fssColors = ['#1670b8', '#164a79', '#4392cc', '#276ca6', '#405ec4', '#2c649c'];
   const symbols = [d3.symbolCircle, d3.symbolSquare, d3.symbolTriangle, d3.symbolDiamond, d3.symbolCross, d3.symbolStar];
-  const methods = [...new Set(figures.flatMap(f => f.panels.flatMap(p => p.rows.map(r => r.method))))].sort((a, b) => {
-    const priority = value => /^fss:/.test(value) ? 0 : 1;
-    return priority(a) - priority(b) || a.localeCompare(b);
-  });
+  const methods = [...new Set(figures.flatMap(f => f.panels.flatMap(p => p.rows.map(r => r.method))))].sort();
   const methodIndex = method => methods.indexOf(method);
-  const ownMethods = methods.filter(method => /^fss:/.test(method));
-  const baselineColors = {fss_v060: '#7d8796', fss_v070: '#a685b4', ezpc: '#c07852',
-    gpu_dpf: '#729875', libdpf: '#ac9861', libfss: '#688e99', google_dpf: '#877a67', servan_vdpf: '#c2564a'};
-  const color = method => /^fss:/.test(method) ? fssColors[ownMethods.indexOf(method) % fssColors.length] :
-    method.startsWith('libfss:additive') ? '#9b657d' : baselineColors[method.split(':')[0]] ?? colors[methodIndex(method) % colors.length];
-  const symbol = method => symbols[methodIndex(method) % symbols.length];
+  const style = new Map(figures.flatMap(f => f.panels.flatMap(p => p.rows.map(r => [r.method, r.style]))));
+  const color = method => style.get(method).color;
+  const dash = method => style.get(method).dash;
+  const symbol = method => symbols[style.get(method).marker];
   const W = 980, gap = 86, left = 70, right = 20, top = 40;
   for (const figure of figures) {
     const grid = !figure.isThreads;
-    const cols = grid ? 3 : Math.min(2, figure.panels.length);
+    const cols = grid ? Math.max(...figure.panels.map(panel => panel.column)) + 1 : Math.min(2, figure.panels.length);
     const colGap = grid ? 34 : gap;
     const panelW = (W - left - right - colGap * (cols - 1)) / cols;
     const panelH = figure.panels.length === 1 ? 370 : grid ? 292 : 310;
@@ -27,10 +20,12 @@ export function renderFigures(d3, figures, metadata) {
     const legendColumns = 3;
     const rowLayouts = rowIndices.map(rowIndex => {
       const panels = figure.panels.filter(panel => (grid ? panel.row : 0) === rowIndex);
-      const entries = [...new Map(panels.flatMap(panel => panel.rows).map(row => [row.method, row])).values()]
-        .map(row => ({row, lines: wrap(`${legendName(row)}  ·  ${compactConfig(row)}`, 46)}))
+      const entries = figure.rowLegends.find(legend => legend.rowIndex === rowIndex).entries
+        .map(entry => ({...entry, lines: wrap(entry.label, (W - left - right) / legendColumns - 70)}))
         .sort((a, b) => methodIndex(a.row.method) - methodIndex(b.row.method));
-      const height = entries.length ? Math.ceil(entries.reduce((sum, entry) => sum + entry.lines.length, 0) / legendColumns) * 19 + 14 : 0;
+      const slots = Array.from({length: legendColumns}, () => 0);
+      for (const entry of entries) slots[slots.indexOf(Math.min(...slots))] += entry.lines.length * 19;
+      const height = Math.max(...slots) + 14;
       return {rowIndex, panels, entries, height};
     });
     const legendStarts = [];
@@ -59,7 +54,7 @@ export function renderFigures(d3, figures, metadata) {
     if (grid) for (const panel of figure.panels) {
       rowMinColumn.set(panel.row, Math.min(rowMinColumn.get(panel.row) ?? Infinity, panel.column));
     }
-    const unitOf = panel => panel.operation !== 'eval_all' ? (figure.id.startsWith('gpu') ? 'ns' : 'µs') : 'ms';
+    const unitOf = panel => panel.operation === 'prepare' ? 'ns' : panel.operation !== 'eval_all' ? (figure.id.startsWith('gpu') ? 'ns' : 'µs') : 'ms';
     // The unit of the label each row/band carries, from its leftmost panel.
     const bandUnit = new Map();
     figure.panels.forEach((panel, index) => {
@@ -67,14 +62,14 @@ export function renderFigures(d3, figures, metadata) {
       if (leftmost) bandUnit.set(grid ? panel.row : Math.floor(index / cols), unitOf(panel));
     });
     figure.panels.forEach((panel, index) => {
-      const timeUnit = panel.operation !== 'eval_all' ? (figure.id.startsWith('gpu') ? 'ns' : 'µs') : 'ms';
+      const timeUnit = unitOf(panel);
       const timeMultiplier = {ns: 1e6, 'µs': 1e3, ms: 1}[timeUnit];
       const x0 = left + (grid ? panel.column : index % cols) * (panelW + colGap);
       const y0 = grid ? legendStarts[panel.row] - panelH - 6 : top + Math.floor(index / cols) * (panelH + 18);
       const plotH = panelH - 96;
       const g = svg.append('g').attr('data-panel', `${panel.family}-${panel.operation}`).attr('transform', `translate(${x0},${y0})`);
       const xValue = row => figure.isThreads ? Number(row.threads_per_block) : row.log_n;
-      const values = panel.rows.map(xValue);
+      const values = [...new Set(panel.rows.flatMap(row => row.expected_coordinates ?? [xValue(row)]))];
       if (values.some(value => !(value > 0))) throw new Error('invalid x coordinate');
       const xExtent = figure.isThreads ? [16, 1024] : d3.extent(values);
       if (xExtent[0] === xExtent[1]) { xExtent[0] -= 0.5; xExtent[1] += 0.5; }
@@ -82,8 +77,9 @@ export function renderFigures(d3, figures, metadata) {
       if (figure.isThreads) { xExtent[0] /= 2 ** xPadding; xExtent[1] *= 2 ** xPadding; }
       else { xExtent[0] -= xPadding; xExtent[1] += xPadding; }
       const x = (figure.isThreads ? d3.scaleLog().base(2) : d3.scaleLinear()).domain(xExtent).range([0, panelW]);
-      const timeValue = row => row.ms_per_key * timeMultiplier;
+      const timeValue = row => figure.isSpeedup ? row.speedup : row.ms_per_unit * timeMultiplier;
       const yExtent = d3.extent(panel.rows, timeValue);
+      if (figure.isSpeedup) { yExtent[0] = Math.min(yExtent[0], 1); yExtent[1] = Math.max(yExtent[1], 1); }
       // Pad in log coordinates so wide-range plots retain marker clearance.
       const logMin = Math.log10(yExtent[0]), logMax = Math.log10(yExtent[1]);
       const logSpan = Math.max(logMax - logMin, 0.15);
@@ -130,25 +126,25 @@ export function renderFigures(d3, figures, metadata) {
       // unit differs from the unit that label states notes its own unit in the
       // panel label instead.
       const leftmost = grid ? panel.column === rowMinColumn.get(panel.row) : index % cols === 0;
-      const unitNote = leftmost || timeUnit === bandUnit.get(grid ? panel.row : Math.floor(index / cols))
-        ? '' : ` (${timeUnit}/key)`;
+      const unitNote = figure.isSpeedup ? '' : !leftmost && (timeUnit !== bandUnit.get(grid ? panel.row : Math.floor(index / cols)) || panel.denominator !== 'key') ? ` (${timeUnit}/${panel.denominator})` : '';
       if (leftmost) {
         g.append('text').attr('data-name', 'y-label').attr('transform', `translate(-52,${plotH / 2}) rotate(-90)`)
-          .attr('text-anchor', 'middle').text(`Time (${timeUnit}/key)`);
+          .attr('text-anchor', 'middle').text(figure.isSpeedup ? 'Direct / variant time' : `Time (${timeUnit}/${panel.denominator})`);
       }
+      if (figure.isSpeedup) g.append('line').attr('data-name', 'direct-reference').attr('x2', panelW).attr('y1', y(1)).attr('y2', y(1)).attr('stroke', '#777').attr('stroke-dasharray', '3,3');
       const series = d3.group(panel.rows, row => row.method);
       for (const [method, points] of series) {
         points.sort((a, b) => xValue(a) - xValue(b));
         const layer = g.append('g').attr('data-series', method);
-        layer.append('path').attr('data-layer', 'curve').attr('d', d3.line().x(row => x(xValue(row))).y(row => y(timeValue(row)))(points))
-          .attr('fill', 'none').attr('stroke', color(method)).attr('stroke-width', /^fss:/.test(method) ? 2.6 : 1.8);
+        layer.append('path').attr('data-layer', 'curve').attr('d', d3.line().defined(row => row !== undefined).x(row => x(xValue(row))).y(row => y(timeValue(row)))([...new Set(values)].sort((a, b) => a - b).map(value => points.find(row => xValue(row) === value))))
+          .attr('fill', 'none').attr('stroke', color(method)).attr('stroke-dasharray', dash(method)).attr('stroke-width', /^fss:/.test(method) ? 2.6 : 1.8);
         layer.selectAll('path.point').data(points).join('path').attr('class', 'point').attr('data-point-id', row => xValue(row))
           .attr('transform', row => `translate(${x(xValue(row))},${y(timeValue(row))})`)
           .attr('d', d3.symbol().type(symbol(method)).size(45)).attr('fill', color(method)).attr('stroke', '#fff').attr('stroke-width', 0.6);
       }
-      const operation = {gen: 'Gen', eval: 'Eval', eval_all: 'EvalAll'}[panel.operation];
+      const operation = {gen: 'Gen', eval: 'Eval', eval_all: 'EvalAll', prepare: 'Prepare'}[panel.operation];
       g.append('text').attr('data-name', 'panel-label').attr('x', panelW / 2).attr('y', plotH + 69)
-        .attr('text-anchor', 'middle').attr('font-size', 15).attr('font-weight', 600)
+        .attr('text-anchor', 'middle').attr('font-size', 13).attr('font-weight', 600)
         .text(`(${String.fromCharCode(97 + index)}) ${panel.familyLabel} ${operation}${unitNote}`);
     });
     rowLayouts.forEach(rowLayout => {
@@ -157,27 +153,27 @@ export function renderFigures(d3, figures, metadata) {
       // Each entry lands in the column whose next free slot is highest, so
       // multi-line entries never overlap the entries below them.
       const columnY = Array.from({length: legendColumns}, () => legendTop);
-      rowLayout.entries.forEach(({row, lines}) => {
+      rowLayout.entries.forEach(({row, label, lines, methods}) => {
         const column = columnY.indexOf(Math.min(...columnY));
         const y = columnY[column];
         columnY[column] = y + lines.length * 19;
-        const legend = svg.append('g').attr('data-legend-item', row.label).attr('transform', `translate(${left + column * columnWidth},${y + 4})`);
-        legend.append('line').attr('x2', 25).attr('stroke', color(row.method)).attr('stroke-width', 2);
-        legend.append('path').attr('transform', 'translate(12,0)').attr('d', d3.symbol().type(symbol(row.method)).size(45)).attr('fill', color(row.method));
-        const text = legend.append('text').attr('x', 35).attr('y', 4).attr('fill', '#333');
-        lines.forEach((line, lineIndex) => text.append('tspan').attr('x', 35).attr('dy', lineIndex ? 19 : 0).text(line));
+        const legend = svg.append('g').attr('data-legend-item', label).attr('data-method', row.method).attr('data-methods', JSON.stringify(methods)).attr('transform', `translate(${left + column * columnWidth},${y + 4})`);
+        legend.append('line').attr('x2', 48).attr('stroke', color(row.method)).attr('stroke-dasharray', dash(row.method)).attr('stroke-width', /^fss:/.test(row.method) ? 2.6 : 1.8);
+        legend.append('path').attr('transform', 'translate(24,0)').attr('d', d3.symbol().type(symbol(row.method)).size(45)).attr('fill', color(row.method));
+        const text = legend.append('text').attr('x', 60).attr('y', 4).attr('fill', '#333');
+        lines.forEach((line, lineIndex) => text.append('tspan').attr('x', 60).attr('dy', lineIndex ? 19 : 0).text(line));
       });
     });
     if (figure.isThreads) svg.append('text').attr('data-name', 'unsupported-note').attr('x', left).attr('y', H - 51)
-      .attr('font-size', 12).attr('fill', '#555').text('N=2²⁰. Point Eval amortizes over K=262,144. Software AES: T=1024 unsupported.');
+      .attr('font-size', 12).attr('fill', '#555').text('N=2²⁰. Point Eval uses independent keys. Fixed-256-thread multi-point kernels are excluded.');
     const defaultNote = figure.id === 'gpu-operations'
-      ? 'Logarithmic time axis. Gen and Eval amortize over K=262,144. EvalAll uses K=1. CUDA events time the operation kernels.'
+      ? 'Log time. Gen: ns/key. Eval: ns/query (independent keys or one-key batch). EvalAll: ms/key.'
       : figure.id.startsWith('gpu') ? 'Logarithmic time axis. CUDA-event-timed native GPU calls.'
-        : 'Logarithmic time axis. Point operations use one key and one thread. EvalAll uses K=1.';
+        : 'Log time. Gen: µs/key. Prepare: ns/key. Eval: µs/query. EvalAll: ms/key. One CPU thread.';
     svg.append('text').attr('data-name', 'timing-note').attr('x', left).attr('y', H - 31).attr('font-size', 12).attr('fill', '#555')
-      .text(metadata.figure_timing_note ?? defaultNote);
+      .text(figure.isSpeedup ? 'Paired source hashes and configuration match. Reference: direct Eval. Preparation is excluded from prepared query timing.' : metadata.figure_timing_note ?? defaultNote);
     svg.append('text').attr('data-name', 'methodology-note').attr('x', left).attr('y', H - 13).attr('font-size', 12).attr('fill', '#555')
-      .text('K is the keys per invocation. Output groups, PRGs, storage, and timing boundaries: benchmark methodology (doc/bench_figures.md).');
+      .text('Counts, native outputs, PRGs, and timing boundaries: doc/bench_figures.md. Variants: supplementary figures and comparison site.');
   }
 }
 
@@ -185,38 +181,13 @@ function superscript(value) {
   return String(value).split('').map(char => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(char)] ?? char).join('');
 }
 
-// One short qualifier per curve: native output shape and PRG backend. The
-// methodology page and each record keep the full configuration.
-function compactConfig(row) {
-  const output = {packed_128_binary_leaf: '1-bit packed', packed_bits: `${row.logical_output_bits}-bit packed`,
-    packed_lanes: `${row.logical_output_bits}-bit packed`, bool_scalar: '1-bit',
-    gmp_scalar: `${row.logical_output_bits}-bit field`}[row.output_storage] ??
-    {bytes: 'XOR', prime_field: `${row.logical_output_bits}-bit field`, additive_mod_2_64: 'additive mod 2^64',
-      additive_mod_2_128: 'additive mod 2^128', xor_128: 'XOR'}[row.group] ??
-    (row.logical_output_bits ? `${row.logical_output_bits}-bit` : null);
-  const prg = {OpenSSL_AES: null, 'OpenSSL-AES': 'AES', AES128: 'AES', 'AES128-MMO/OpenSSL': 'AES',
-    'AES128-MMO/RustCrypto': 'AES', 'AES128/OpenSSL': 'AES', 'AES128-MMO-NI': 'AES-NI',
-    AES_software: null, 'AES-software': 'AES (software)', 'ChaCha20-x1': 'ChaCha', 'ChaCha20-x2': 'ChaCha',
-    'ChaCha20-x4': 'ChaCha', ChaCha12: 'ChaCha12', Salsa12: 'Salsa12'}[row.prg] ?? row.prg;
-  return [output, prg, row.num_points ? `t=${row.num_points}` : null].filter(Boolean).join(' · ');
-}
-
-function legendName(row) {
-  const library = {fss: 'FSS', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0',
-    gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf', google_dpf: 'Google', libfss: 'libfss',
-    servan_vdpf: 'Servan-Schreiber'}[row.library] ?? row.library;
-  // Library names that already say "DPF" skip the scheme suffix.
-  const scheme = ['gpu_dpf', 'libdpf'].includes(row.library) ? '' :
-    ` ${{HalfTreeDPF: 'HalfTree', PackedHalfTreeDPF: 'PackedHalfTree', GrottoDCF: 'Grotto DCF'}[row.scheme] ?? row.scheme}`;
-  const experimental = row.library === 'fss' && row.scheme === 'PackedHalfTreeDPF' ? ' (exp.)' : '';
-  return `${library}${scheme}${experimental}`;
-}
-
 function wrap(text, limit) {
   const lines = [''];
+  const context = document.createElement('canvas').getContext('2d');
+  context.font = '14px Arial';
   for (const word of text.split(/\s+/)) {
     const index = lines.length - 1;
-    if (lines[index] && lines[index].length + word.length + 1 > limit) lines.push(word);
+    if (lines[index] && context.measureText(`${lines[index]} ${word}`).width > limit) lines.push(word);
     else lines[index] += `${lines[index] ? ' ' : ''}${word}`;
   }
   return lines;

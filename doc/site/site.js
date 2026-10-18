@@ -1,4 +1,4 @@
-'use strict';
+import {buildMethodStyles, describeMethod, methodId, outputQualifier, scaleTime, timeUnit, timingMetric, unitScale} from './method-model.mjs';
 
 // Static comparison page over the measured records exported by the figure
 // pipeline (doc/site/data.json). No dependencies: the charts are hand-built
@@ -6,16 +6,7 @@
 
 const FAMILY = {DCF: 'dcf', GrottoDCF: 'dcf', DPF: 'dpf', HalfTreeDPF: 'dpf',
   PackedHalfTreeDPF: 'dpf', VDPF: 'dpf', VIDPF: 'dpf', DMPF: 'dmpf', VDMPF: 'dmpf'};
-const OPERATIONS = ['Gen', 'Eval', 'EvalAll'];
-const LIBRARY_NAMES = {fss: 'FSS (this repo)', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0', mastic: 'Mastic (S&P 2025 prototype)', plasma: 'PLASMA (PoPETs 2024 prototype)', 'dpf-cpp': 'dpf-cpp (Kales)', dpfplusplus: 'dpf++ (fetched, pre-release)',
-  google_dpf: 'Google DPF', gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf',
-  libfss: 'libfss', servan_vdpf: 'Servan-Schreiber VDPF'};
-const LIBRARY_SHORT = {fss: 'FSS', fss_v070: 'FSS 0.7.0', fss_v060: 'FSS 0.6.0', mastic: 'Mastic', plasma: 'PLASMA', 'dpf-cpp': 'dpf-cpp', dpfplusplus: 'dpf++',
-  google_dpf: 'Google', gpu_dpf: 'GPU-DPF', ezpc: 'EzPC', libdpf: 'libdpf',
-  libfss: 'libfss', servan_vdpf: 'Servan-Schreiber'};
-const SCHEME_NAMES = {DPF: 'DPF', DCF: 'DCF', HalfTreeDPF: 'HalfTree DPF',
-  PackedHalfTreeDPF: 'Packed HalfTree DPF', VDPF: 'VDPF', VIDPF: 'VIDPF', GrottoDCF: 'Grotto DCF',
-  DMPF: 'DMPF', VDMPF: 'VDMPF'};
+const OPERATIONS = ['Gen', 'Prepare', 'Eval', 'EvalAll'];
 const SCHEME_ORDER = ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF', 'VIDPF', 'DCF', 'GrottoDCF', 'DMPF', 'VDMPF'];
 const PRG_NAMES = {'AES-NI': 'AES-128 MMO, AES-NI', 'OpenSSL-AES': 'AES-128 MMO, OpenSSL',
   AES128: 'AES-128', 'AES128-MMO/OpenSSL': 'AES-128 MMO, OpenSSL', 'AES128-MMO/RustCrypto': 'AES-128 MMO, RustCrypto',
@@ -32,35 +23,22 @@ const TIMING_NAMES = {
 // can be set against each other.
 const comparablePool = family => family === 'dmpf' ? 'dmpf' : 'point';
 const PREFERRED_B = ['libdpf', 'google_dpf', 'ezpc', 'libfss', 'servan_vdpf', 'dpf-cpp', 'dpfplusplus', 'mastic', 'plasma', 'gpu_dpf', 'fss_v070', 'fss_v060', 'fss'];
-// Variant suffix qualifiers set by the sweep: the evaluation-path variants and
-// the two proof accumulators differ only there, so the options must say so.
-// Longer suffixes first so -packedkey-oneshot wins over -packedkey.
-const VARIANT_TAGS = [['-packedkey-oneshot', 'one-shot pack + point eval'], ['-packedkey', 'packed-key point eval'],
-  ['-merkle-fold', 'Merkle-fold proof'], ['-merkle', 'Merkle-fold proof'], ['-chains', 'sequential-chain proof']];
-const variantTag = variant => VARIANT_TAGS.find(([suffix]) => variant.endsWith(suffix))?.[1];
-
 let variants = new Map();
 const state = {platform: 'cpu', a: null, b: null, op: null};
 
-function outputQualifier(row) {
-  const group = {bytes: 'XOR byte group', prime_field: `${row.logical_output_bits}-bit prime field`,
-    additive_mod_2_64: 'additive mod 2^64', additive_mod_2_128: 'additive mod 2^128', xor_128: 'XOR 128-bit'}[row.group];
-  return {packed_128_binary_leaf: '1-bit packed', packed_bits: `${row.logical_output_bits}-bit packed`,
-    packed_lanes: `${row.logical_output_bits}-bit packed`, bool_scalar: '1-bit bool',
-    gmp_scalar: `${row.logical_output_bits}-bit prime field`,
-    uint128_scalar: `${row.logical_output_bits}-bit integer`, field128x2_plus_counter: 'two Field128 words + counter',
-    u64_mod_p_scalar: 'u64 mod 2^63-25'}[row.output_storage] ?? group ??
-    (row.logical_output_bits ? `${row.logical_output_bits}-bit output` : null);
-}
-
 function buildVariants(records) {
+  const styles = buildMethodStyles(records);
   for (const row of records) {
     const key = `${row.platform}|${row.library}|${row.variant}`;
     if (!variants.has(key)) variants.set(key, {key, platform: row.platform, family: FAMILY[row.scheme],
-      variant: row.variant, library: row.library, scheme: row.scheme, ops: new Map(), sample: row});
+      variant: row.variant, library: row.library, scheme: row.scheme, ops: new Map(), sample: row, expectedBits: new Set(), style: styles.get(methodId(row))});
     const entry = variants.get(key);
+    (row.expected_domain_bits ?? [row.domain_bits]).forEach(bits => entry.expectedBits.add(bits));
     if (!entry.ops.has(row.operation)) entry.ops.set(row.operation, []);
-    entry.ops.get(row.operation).push({bits: row.domain_bits, ns: row.ns_per_key, keys: row.num_keys});
+    const metric = timingMetric(row);
+    entry.ops.get(row.operation).push({bits: row.domain_bits, ns: metric.ns,
+      keys: row.key_count ?? row.num_keys, queries: row.query_count, denominator: metric.denominator,
+      workload: row.workload, record: row, style: styles.get(methodId(row))});
   }
   for (const entry of variants.values()) {
     for (const [operation, points] of entry.ops) {
@@ -95,10 +73,7 @@ function normalizeSelection() {
 }
 
 function optionLabel(entry) {
-  // Library prefix keeps variants apart when two libraries share a scheme and
-  // PRG backend (FSS and FSS 0.7.0 both run AES-NI MMO DCF).
-  return `${LIBRARY_SHORT[entry.library] ?? entry.library} ${SCHEME_NAMES[entry.scheme]} — ` +
-    `${[outputQualifier(entry.sample), PRG_NAMES[entry.sample.prg] ?? entry.sample.prg, variantTag(entry.variant)].filter(Boolean).join(', ')}`;
+  return describeMethod(entry.sample).label;
 }
 
 function optionMarkup(entries, selected) {
@@ -114,15 +89,26 @@ function populateSelects() {
   document.getElementById('select-b').disabled = poolList.length <= 1;
 }
 
-function variantLabel(entry) {
-  const suffix = entry.library === 'servan_vdpf' ? '' : ` ${SCHEME_NAMES[entry.scheme]}`;
-  return `${LIBRARY_NAMES[entry.library] ?? entry.library}${suffix}`;
+function variantLabel(entry, operation = null) {
+  return describeMethod(entry.ops.get(operation)?.[0]?.record ?? entry.sample).label;
 }
 
 function configLine(entry) {
   const row = entry.sample;
-  const keysPerOperation = OPERATIONS.filter(operation => entry.ops.has(operation))
-    .map(operation => `${operation} ${entry.ops.get(operation)[0].keys.toLocaleString('en-US')}`);
+  const quantities = values => {
+    const unique = [...new Set(values)].sort((a, b) => a - b);
+    return unique.length === 1 ? unique[0].toLocaleString('en-US') : `${unique[0].toLocaleString('en-US')}..${unique.at(-1).toLocaleString('en-US')}`;
+  };
+  const keysPerOperation = OPERATIONS.filter(operation => entry.ops.has(operation)).map(operation => {
+    const points = entry.ops.get(operation);
+    const queries = points.every(point => point.queries === 2 ** point.bits) ? 'N' : quantities(points.map(point => point.queries ?? 0));
+    const outputs = operation === 'EvalAll' ? ', N domain outputs' : '';
+    return `${operation}: ${quantities(points.map(point => point.keys))} key(s)${queries !== '0' ? `, ${queries} queries` : ''}${outputs}`;
+  });
+  const launchSizes = OPERATIONS.filter(operation => entry.ops.has(operation)).flatMap(operation => {
+    const actual = entry.ops.get(operation).map(point => point.record.threads_per_block).filter(value => value > 0);
+    return actual.length ? [`${operation} ${quantities(actual)}`] : [];
+  });
   const bits = row.logical_output_bits;
   const storage = Number.isFinite(row.storage_output_bits) ? ` in ${row.storage_output_bits}-bit storage` : '';
   // The footer states the statistic and the wall-clock CPU boundary, so the
@@ -131,7 +117,8 @@ function configLine(entry) {
     : TIMING_NAMES[row.timing_boundary] ?? row.timing_boundary;
   return [outputQualifier(row) + (bits ? ` (${bits} logical bit${bits > 1 ? 's' : ''}${storage})` : ''),
     `PRG: ${PRG_NAMES[row.prg] ?? row.prg}`,
-    `K: ${keysPerOperation.join(', ')}`,
+    `Counts: ${keysPerOperation.join('; ')}`,
+    launchSizes.length ? `Actual T: ${launchSizes.join('; ')}` : null,
     row.num_points > 1 ? `t=${row.num_points} points` : null, timing].filter(Boolean).join(' · ');
 }
 
@@ -149,12 +136,6 @@ function axisTick(value) {
   if (value >= 1e3) return `${trimmed(value / 1e3)}k`;
   return trimmed(value);
 }
-
-function timeUnit(nsValues) {
-  const max = Math.max(...nsValues);
-  return max >= 1e6 ? 'ms' : max >= 1e3 ? 'µs' : 'ns';
-}
-const unitScale = {ns: 1, 'µs': 1e3, ms: 1e6};
 
 // Log-scale y ticks: decades on wide ranges, 2× and 5× steps in between, and
 // minor steps on narrow ranges so a nearly flat curve still shows a readable
@@ -180,7 +161,8 @@ function yTicks(min, max, spacingPx, position) {
 function panelElement(operation, series) {
   const width = 320, height = 240, left = 50, right = 10, top = 10, bottom = 42;
   const allPoints = series.flatMap(item => item.entry.ops.get(operation));
-  const xs = allPoints.map(point => point.bits), ys = allPoints.map(point => point.ns);
+  const xs = [...new Set(series.flatMap(item => [...item.entry.expectedBits]))].sort((a, b) => a - b);
+  const ys = allPoints.map(point => point.ns);
   const xMin = Math.min(...xs) - 0.3, xMax = Math.max(...xs) + 0.3;
   const yMin = Math.min(...ys) * 0.6, yMax = Math.max(...ys) * 1.9;
   const x = value => left + (value - xMin) / (xMax - xMin) * (width - left - right);
@@ -189,7 +171,7 @@ function panelElement(operation, series) {
   const svg = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${operation} comparison">`];
   for (const tick of yTicks(yMin, yMax, 14, y)) {
     svg.push(`<line x1="${left}" x2="${width - right}" y1="${y(tick).toFixed(1)}" y2="${y(tick).toFixed(1)}" stroke="#e5e7e9" stroke-width="1"/>`);
-    svg.push(`<text x="${left - 6}" y="${(y(tick) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="#55595e">${axisTick(tick)}</text>`);
+    svg.push(`<text x="${left - 6}" y="${(y(tick) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="#55595e">${axisTick(scaleTime(tick, unit))}</text>`);
   }
   svg.push(`<rect x="${left}" y="${top}" width="${width - left - right}" height="${height - top - bottom}" fill="none" stroke="#333" stroke-width="1"/>`);
   const xTicks = [...new Set(xs)].sort((a, b) => a - b).filter((value, index, list) => list.length <= 6 || index % 2 === 0);
@@ -197,17 +179,23 @@ function panelElement(operation, series) {
     svg.push(`<text x="${x(tick).toFixed(1)}" y="${height - bottom + 16}" text-anchor="middle" font-size="11" fill="#55595e">2${superscript(tick)}</text>`);
   }
   svg.push(`<text x="${(left + width - right) / 2}" y="${height - 6}" text-anchor="middle" font-size="11.5" fill="#55595e">Domain size, N</text>`);
-  svg.push(`<text x="12" y="${(top + height - bottom) / 2}" text-anchor="middle" font-size="11.5" fill="#55595e" transform="rotate(-90 12 ${(top + height - bottom) / 2})">Time (${unit}/key)</text>`);
+  svg.push(`<text x="12" y="${(top + height - bottom) / 2}" text-anchor="middle" font-size="11.5" fill="#55595e" transform="rotate(-90 12 ${(top + height - bottom) / 2})">Time (${unit}/${series[0].entry.ops.get(operation)[0].denominator})</text>`);
   for (const item of series) {
     const points = item.entry.ops.get(operation);
-    svg.push(`<polyline fill="none" stroke="${item.color}" stroke-width="2"${item.dash ? ` stroke-dasharray="${item.dash}"` : ''} points="${
-      points.map(point => `${x(point.bits).toFixed(1)},${y(point.ns).toFixed(1)}`).join(' ')}"/>`);
-    for (const point of points) svg.push(`<circle cx="${x(point.bits).toFixed(1)}" cy="${y(point.ns).toFixed(1)}" r="2.7" fill="${item.color}"/>`);
+    const byBits = new Map(points.map(point => [point.bits, point]));
+    const segments = [[]];
+    for (const bit of [...new Set(xs)].sort((a, b) => a - b)) {
+      if (byBits.has(bit)) segments[segments.length - 1].push(byBits.get(bit));
+      else if (segments[segments.length - 1].length) segments.push([]);
+    }
+    for (const segment of segments) svg.push(`<polyline fill="none" stroke="${item.color}" stroke-width="2"${item.dash ? ` stroke-dasharray="${item.dash}"` : ''} points="${
+      segment.map(point => `${x(point.bits).toFixed(1)},${y(point.ns).toFixed(1)}`).join(' ')}"/>`);
+    for (const point of points) svg.push(markerElement(item.marker, x(point.bits), y(point.ns), item.color));
   }
   svg.push('</svg>');
   const missing = tag => series.length === 1 ? ` (${tag}: no data)` : '';
-  const title = `<p class="panel-title">${operation} <span class="series">· <span class="series-a">${variantLabel(state.a)}</span>` +
-    ` vs <span class="series-b">${variantLabel(state.b)}</span>${state.a.ops.has(operation) ? '' : missing('A')}${state.b.ops.has(operation) ? '' : missing('B')}</span></p>`;
+  const title = `<p class="panel-title">${operation} <span class="series">· <span class="series-a">${legendSwatch(state.a, operation)}${variantLabel(state.a, operation)}</span>` +
+    ` vs <span class="series-b">${legendSwatch(state.b, operation)}${variantLabel(state.b, operation)}</span>${state.a.ops.has(operation) ? '' : missing('A')}${state.b.ops.has(operation) ? '' : missing('B')}</span></p>`;
   const panel = document.createElement('div');
   panel.className = 'panel';
   panel.innerHTML = title + svg.join('');
@@ -220,8 +208,8 @@ function renderPanels() {
   const available = OPERATIONS.filter(operation => state.a.ops.has(operation) || state.b.ops.has(operation));
   for (const operation of available) {
     const series = [];
-    if (state.a.ops.has(operation)) series.push({entry: state.a, color: 'var(--a)', dash: null});
-    if (state.b.ops.has(operation)) series.push({entry: state.b, color: 'var(--b)', dash: '5 3'});
+    if (state.a.ops.has(operation)) series.push({entry: state.a, ...state.a.ops.get(operation)[0].style});
+    if (state.b.ops.has(operation)) series.push({entry: state.b, ...state.b.ops.get(operation)[0].style});
     container.appendChild(panelElement(operation, series));
   }
 }
@@ -247,31 +235,34 @@ function renderTable() {
   }
   const aPoints = state.a.ops.has(state.op) ? state.a.ops.get(state.op) : [];
   const bPoints = state.b.ops.has(state.op) ? state.b.ops.get(state.op) : [];
+  const denomA = aPoints[0]?.denominator, denomB = bPoints[0]?.denominator;
   const unitA = aPoints.length ? timeUnit(aPoints.map(point => point.ns)) : null;
   const unitB = bPoints.length ? timeUnit(bPoints.map(point => point.ns)) : null;
   head.innerHTML = '<tr><th scope="col">N</th>' +
-    `<th scope="col"><span class="head-a">A — ${variantLabel(state.a)}</span>${unitA ? `, ${unitA}/key` : ''}</th>` +
-    `<th scope="col"><span class="head-b">B — ${variantLabel(state.b)}</span>${unitB ? `, ${unitB}/key` : ''}</th>` +
+    `<th scope="col"><span class="head-a">A — ${variantLabel(state.a)}</span>${unitA ? `, ${unitA}/${denomA}` : ''}</th>` +
+    `<th scope="col"><span class="head-b">B — ${variantLabel(state.b)}</span>${unitB ? `, ${unitB}/${denomB}` : ''}</th>` +
     '<th scope="col">A ÷ B</th></tr>';
   const aByBits = new Map(aPoints.map(point => [point.bits, point.ns]));
   const bByBits = new Map(bPoints.map(point => [point.bits, point.ns]));
-  const bits = [...new Set([...aByBits.keys(), ...bByBits.keys()])].sort((x, y) => x - y);
+  const bits = [...new Set([...state.a.expectedBits, ...state.b.expectedBits])].sort((x, y) => x - y);
   const cell = (value, unit) => value === undefined ? '<td class="missing">—</td>' :
-    `<td>${trimmed(value / unitScale[unit])}&#8239;${unit}</td>`;
+    `<td>${trimmed(scaleTime(value, unit))}&#8239;${unit}</td>`;
   let hasGap = false;
   const rows = bits.map(bit => {
     const a = aByBits.get(bit), b = bByBits.get(bit);
     if (a === undefined || b === undefined) hasGap = true;
     return `<tr><td>2${superscript(bit)} (${(2 ** bit).toLocaleString('en-US')})</td>${cell(a, unitA)}${cell(b, unitB)}` +
-      `<td>${a !== undefined && b !== undefined ? `${(a / b).toFixed(2)}×` : '—'}</td></tr>`;
+      `<td>${a !== undefined && b !== undefined && denomA === denomB ? `${(a / b).toFixed(2)}×` : '—'}</td></tr>`;
   });
   body.innerHTML = rows.join('');
   const details = [];
   for (const [tag, entry] of [['A', state.a], ['B', state.b]]) {
     if (entry.ops.has(state.op) && entry.ops.get(state.op)[0].keys > 1) {
-      details.push(`${tag}: per-key time amortized over K=${entry.ops.get(state.op)[0].keys.toLocaleString('en-US')} keys`);
+      details.push(`${tag}: independent-key workload over ${entry.ops.get(state.op)[0].keys.toLocaleString('en-US')} keys`);
     }
   }
+  for (const [tag, points] of [['A', aPoints], ['B', bPoints]]) if (points[0]?.workload === 'single_key_batch') details.push(`${tag}: one key, ${points[0].queries.toLocaleString('en-US')} queries per invocation`);
+  if (denomA && denomB && denomA !== denomB) details.push('Ratio omitted because time denominators differ');
   if (hasGap) details.push('—: not measured at that domain size for that implementation');
   note.textContent = details.join('. ') + (details.length ? '.' : '');
 }
@@ -285,6 +276,21 @@ function renderProvenance(runs) {
       .filter(Boolean).join(' ') + '.';
 }
 
+function legendSwatch(entry, operation) {
+  const {color, dash, marker} = entry.ops.get(operation)?.[0]?.style ?? entry.style;
+  return `<svg class="swatch" viewBox="0 0 48 12" aria-hidden="true"><line x1="0" x2="48" y1="6" y2="6" stroke-width="2" stroke="${color}" stroke-dasharray="${dash}"/>${markerElement(marker, 24, 6, color)}</svg>`;
+}
+
+function markerElement(marker, x, y, color) {
+  const r = 3;
+  const path = [null, `M${x-r},${y-r}h${2*r}v${2*r}h${-2*r}Z`,
+    `M${x},${y-r-1}l${r+1},${2*r+1}h${-2*r-2}Z`,
+    `M${x},${y-r-1}l${r+1},${r+1}l${-r-1},${r+1}l${-r-1},${-r-1}Z`,
+    `M${x-r},${y}h${2*r}M${x},${y-r}v${2*r}`, `M${x-r},${y-r}l${2*r},${2*r}M${x-r},${y+r}l${2*r},${-2*r}`][marker];
+  return path ? `<path d="${path}" fill="${marker > 3 ? 'none' : color}" stroke="${color}" stroke-width="1.5"/>` :
+    `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}"/>`;
+}
+
 function syncPlatformToggle() {
   for (const button of document.querySelectorAll('#platform-toggle button')) {
     button.classList.toggle('active', button.dataset.platform === state.platform);
@@ -296,6 +302,8 @@ let suppressHashChange = false;
 function update() {
   normalizeSelection();
   populateSelects();
+  document.documentElement.style.setProperty('--a', state.a.style.color);
+  document.documentElement.style.setProperty('--b', state.b.style.color);
   renderConfigSummary();
   renderPanels();
   renderTabs();

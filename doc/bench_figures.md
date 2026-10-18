@@ -2,14 +2,16 @@
 
 Use `third_party/figure_bench.py` to reproduce the time curves. Run from the
 repository root on Linux after following the
-[pinned dependency and toolchain setup](bench_third_parties.md#running).
+[pinned dependency and toolchain setup](bench_third_parties.md).
 CPU curves use `cs659b`: AMD EPYC 9115, NVIDIA RTX PRO 5000, SM 120, and
 CUDA 13.2. The experiment pins CPU operations to CPU 24, uses one CPU
 thread, and verifies the `performance` governor.
 GPU curves use `cs11369a`: Intel Xeon Platinum 8352V, NVIDIA A6000, SM 86,
 and CUDA 12.6. GPU runs pin the launch process to CPU 100, leaving the shared
-host's CPU governor unchanged. All four GPUs are the same A6000 model, so runs
-take whichever card is idle; the DMPF curves were collected on GPU 1.
+host's CPU governor unchanged. The v1.3 repair recollection on 2026-10-18
+uses GPU 3 for all current-FSS GPU domain and block curves. Retained
+third-party receipts identify their original device and run configuration.
+All four devices on this host are the same A6000 model.
 Historical FSS 0.7 has no GPU curves: its upstream benchmarks crash on the
 A6000 with a misaligned address, so the merge drops its GPU rows instead of
 keeping measurements from the previous GPU.
@@ -25,14 +27,42 @@ Eval at all N inputs. The other supported cases use seven domain sizes.
 The separate current-FSS block sweep fixes `n = 20` and uses
 `T = 16, 32, 64, 128, 256, 512, 1024` threads per block.
 
-CPU Gen measures one two-party key generation, and CPU Eval measures one
-party at one query. Full-domain EvalAll measures one party over N outputs
-with `K = 1`. GPU Gen and point Eval use `K = 262144` keys per invocation,
-and the figure divides invocation time by K. GPU full evaluation also uses
-`K = 1`. Domain runs use T=256 for point operations and T=128 for full
-evaluation where configurable. EzPC uses its fixed T=256 full adapter.
-Read each record's `num_keys`, `domain_size`, and `threads_per_block` fields
-before comparing an operation or interpreting a native items counter.
+CPU Gen measures one two-party key generation. CPU Eval measures one
+party at one query. EvalAll measures one party over N logical domain outputs
+with one key. Ordinary GPU Gen and point Eval use 262144 independent keys
+per invocation. GPU DMPF/VDMPF Eval uses one key and 262144 queries. Their
+key count is 1, their query count is 262144, and their point time is ns/query.
+Full-domain GPU evaluation uses one key. Domain runs request T=256 for point
+operations and T=128 for full evaluation where configurable. EzPC and the
+multi-point kernels use fixed T=256. A packed frontier may use fewer threads
+than requested for a small domain.
+
+The collector checks native domain, launch, and explicit work-count counters
+against the requested case before accepting a receipt. The supported-case
+registry controls both default and scoped GPU filters. Only the DPF software-AES
+point workload is in the block sweep. A scoped block sweep for a different
+scheme skips point Eval instead of selecting that DPF workload.
+
+Records preserve raw elapsed `median_ns` and `time_ns`. The explicit fields
+`key_count`, `query_count`, and `domain_output_count` state the work per timed
+invocation. Gen, Prepare, and EvalAll use `time_denominator="key"`. Eval uses
+`time_denominator="query"`. `ns_per_unit` divides raw elapsed time by that
+count. `ns_per_domain_output` divides full-domain elapsed time by the logical
+output count, including when outputs are packed. These rates do not count
+packed storage words as domain outputs. `workload` distinguishes independent
+keys from a single-key query batch. `setup_included` and `timing_boundary`
+state what the timed operation contains.
+
+`num_keys` and `ns_per_key` remain historical export fields. Their original
+values are also recorded in `legacy_quantity_fields`. They mislabeled old
+multi-query batches and must not be used for new normalization. Receipt
+counters take priority over requested T, which is retained as
+`requested_threads_per_block`. For old multi-point receipts without counters,
+the collector recognizes the verified wrappers at e25a42c and 84b93e5 by
+SHA-256. They establish one key, kN queries, and fixed T=256 without changing
+the elapsed measurements. Unknown wrapper/counter combinations are marked
+`metadata_status="requires_recollection"` and omitted from figures. This
+metadata repair does not represent a new measurement.
 
 The mastic, plasma, dpf-cpp, and dpfplusplus additions join the CPU sweep with
 their own availability windows. mastic covers Gen at n = 12, 16, 20, Eval at
@@ -64,6 +94,11 @@ proof included in the timing, while the CPU VDMPF curves time the
 paper-faithful sequential chains - the accumulator difference follows the
 per-platform-implementation split below, and proofs do not verify across the
 two accumulators.
+CPU VDPF point Eval times `Eval` plus `Prove` on the one-element proof
+sequence. Both CPU Eval and the default EvalAll therefore carry a chain
+accumulator label. Gen generates key material and has no timed proof
+accumulator. The metadata records `proof_accumulator` and
+`proof_generation_included` independently of the preserved raw names.
 The CPU VDPF `Merkle/EvalAll` row joins the plain chain row with the other
 accumulator choice: its timed loop produces the Merkle-fold proof, and
 verification runs outside timing with the accumulator required to match
@@ -86,11 +121,14 @@ stateful (AES-CTR), so each timed Gen, Eval, or EvalAll re-initializes them
 inside the timing region, and proof verification is an equality check
 outside timing.
 
-Plain DPF and HalfTree DPF add packed-key point evaluation rows while their
-Eval curves stay the unprepared default. `PackedKey/Eval` packs the key once
+Plain DPF and HalfTree DPF add packed-key preparation and point evaluation
+rows while their Eval curves stay the unprepared default. `PackedKey/Prepare`
+times only packing one key and reports time/key with query_count=0. Key
+generation and validation are outside timing. `PackedKey/Eval` packs the key once
 outside timing and times only prepared-key point evaluations cycling over the
 domain. `PackedKeyOneShot/Eval` times the pack plus one point evaluation per
-iteration, which is the cost without key reuse. Both rows check bit-exact
+iteration, which is the cost without key reuse. The timed loop prevents the
+compiler from lifting preparation outside the iteration. Both rows check bit-exact
 agreement with the scheme Eval for both parties outside timing.
 
 Current FSS GPU FullEval sets `z = min(17, n)` for DPF,
@@ -122,6 +160,12 @@ bits using the upstream DFS expansion, launches 256 threads, and has one
 active DFS thread. Label these implementations and their timing boundaries
 when comparing them with current FSS output materialization.
 
+The renderer and comparison site obtain expected domain coordinates from all
+measurement statuses and planned run cases. An omitted or failed coordinate
+breaks each affected curve, including when the entire panel has no successful
+measurement there. Table cells remain empty. No positive values are
+interpolated to fill those gaps.
+
 ## Native configurations and validation
 
 The primary current-FSS CPU curves use AES-NI and the byte group: 127 logical
@@ -144,6 +188,10 @@ can differ from those tables.
 | libfss DPF / DCF | GMP scalar modulo nextprime(2^32), a 33-bit field / uint64 modulo 2^64 |
 | EzPC full adapter | Packed binary output |
 
+The packed HalfTree GPU wrapper uses `ChaCha<1>`. Its metadata therefore
+records `ChaCha20-x1` and one output block. Earlier `x2` labels are corrected
+from the wrapper without changing their elapsed measurements.
+
 The legends and records retain native PRGs: current-FSS CPU AES-NI, its GPU
 ChaCha variants and software-AES point variant, GPU-DPF GPU ChaCha12, EzPC
 and Google AES128, and historical FSS CPU AES-MMO-NI and GPU Salsa12.
@@ -165,35 +213,51 @@ byte-group curves. Preserve that failure if collecting optional integer
 variants with `--include-uint`. EzPC's strict DCF API rejects n=8. Historical
 FSS 0.7 has no native full-domain API. Keep these statuses in the dataset.
 
-Main figures show logarithmic N and logarithmic time per key: CPU point
-operations in microseconds, GPU point operations in nanoseconds, and full
-evaluation in milliseconds. The block-size figure shows actual T and a
-logarithmic time axis. Render only successful positive measurements. Leave
-unsupported, failed, and unmeasured points absent. A curve absent from a
-panel means the implementation does not provide that method on that
-platform or has no benchmark for it — GPU-DPF contributes only full-domain
-evaluation, Grotto DCF and the packed HalfTree DPF appear only in
-full-domain evaluation — so panels in the same row carry different numbers
-of curves. The figures compare current implementations; the historical FSS
-0.6.0 and 0.7.0 curves and every absent case stay available on the
-comparison site. Captions must follow the
-collected raw data.
+The CPU and GPU overviews use five rows with Gen, Eval, and EvalAll columns:
 
-Each platform renders one figure: one scheme family per row — DCF (including
-Grotto DCF), DPF with its verifiable VDPF counterparts, and the DMPF family —
-and one operation per column, `Gen`, `Eval`, and `EvalAll`. Every legend entry
-carries its library and scheme (FSS DPF, FSS HalfTreeDPF, FSS
-PackedHalfTreeDPF with an experimental marker, FSS VDPF, and the third-party
-libraries), plus a short native output and PRG qualifier. The records keep the
-full configuration. The verifiable point-function curves — FSS VDPF and the
-Servan-Schreiber VDPF reference (eprint 2021/580, single point) — render in
-the DPF row with proof generation inside the timed evaluation and verification
-outside. Their times buy malicious security that the plain DPF curves do not.
-Grotto DCF joins the DCF row with its one-bit comparison output. DMPF and
-VDMPF share their row since adding verifiability changes functionality but
-little time. VDMPF BatchEval timings include proof generation, and
-verification itself is a comparison outside timing. The threads-per-block
-sweep renders on the separate [block-size figure](#gpu-block-size-sensitivity).
+| Row | Overview methods |
+| --- | --- |
+| DCF | Default FSS DCF, Grotto DCF, Google DCF, libfss DCF, and measured GPU references |
+| DPF full width | Default FSS DPF, HalfTree, Google DPF, libfss DPF, and GPU-DPF |
+| Packed DPF | FSS packed HalfTree, libdpf, and an ordinary FSS reference where a packed method was measured |
+| VDPF | Default FSS VDPF and measured verifiable references |
+| DMPF / VDMPF | Default DMPF and VDMPF with the same point count |
+
+These absolute comparisons retain the slow baselines on log time axes.
+CPU point operations use µs, GPU point operations use ns, and full-domain
+operations use ms. The focused setup panels use ns/key. Eval is per query. The other columns are per key. A
+single-key GPU batch and independent-key GPU point workload remain distinct
+in the records and site configuration. The full grid leaves missing operations
+absent, including GPU VDPF Gen/Eval and multi-point GPU Gen.
+
+Prepared-key variants have a focused default-byte-group comparison with separate setup,
+steady-state query, and pack-plus-query panels. A speedup panel is produced
+only for actual paired direct/variant measurements with matching configuration
+and source hashes. The pairing retains the direct reference receipt. It does
+not derive standalone setup cost from unrelated medians. Integer-group
+prepared variants remain selectable on the comparison site and are listed
+in the method inventory.
+
+The [prepared-key figure](figures/cpu-prepared.svg),
+[proof-accumulator figure](figures/cpu-proof.svg),
+[PRP-backend figure](figures/cpu-prp.svg), and
+[GPU output-group and PRG figure](figures/gpu-output-groups.svg) retain
+specialized comparisons. The [comparison site](https://myl7.github.io/fss/bench/)
+retains all measured variants, including historical FSS versions and additional
+native libraries. `build/figures/manifest.json` inventories each measured
+method's static figure and site locations. Supplementary figures are generated
+only when the required data exist.
+
+The shared description model names direct queries, prepared queries,
+pack-plus-query operations, standalone preparation, chain/Merkle proofs,
+OpenSSL/raw PRPs, native output widths/groups, and point counts. Colors identify
+constructs and dash/marker combinations identify variants. The pipeline checks
+unique labels and complete styles inside each panel and shared row legend.
+A shared construction style has one legend entry with operation-specific
+configuration, such as Gen/Eval output versus packed EvalAll output, or VDPF key generation versus chain point/full-domain proofs. This presentation does
+not merge measurement records or their sources. Lines do not shift or
+interpolate missing domain sizes. A broken y axis is not used because the slow
+and fast curves occupy overlapping time ranges as N changes.
 
 ## GPU block-size sensitivity
 
@@ -202,7 +266,8 @@ sweep renders on the separate [block-size figure](#gpu-block-size-sensitivity).
 The supplementary block sweep fixes `N = 2^20` and varies actual threads per
 block T: point `Eval` (including software AES) amortized over `K = 262,144`
 keys, and full-domain `EvalAll` with `K = 1` for the DCF, DPF, HalfTreeDPF,
-packed, VDPF, and Grotto schemes. The sweep adjusts the block
+packed, VDPF, and Grotto schemes. Fixed-256-thread DMPF/VDMPF kernels are
+excluded from this sensitivity sweep. The sweep adjusts the block
 root depth as described above. VDPF has no T=16 and T=32 points because no
 tiling satisfies its root-fold constraints at those block sizes, and
 software AES at T=1024 exceeds the kernel's
@@ -238,7 +303,11 @@ python3 third_party/figure_bench.py merge \
   --directory build/third_party/sweep/results/merged
 ```
 
-`run` exports its `chart-data.json` and CSV. The current published curves merge
+`run` exports its `chart-data.json` and CSV. The default GPU Eval collection
+uses the same supported-case registry as `--scheme`, and includes DMPF and
+VDMPF. Explicit scheme selection skips unsupported operations. Prepare rows
+are collected alongside the ordinary CPU Eval sweep, keeping the CLI's three
+ordinary operation defaults unchanged. The current published curves merge
 the `figure-data-r5` baseline and the cs11369a DMPF / VDMPF cards with eight
 cs659b re-measurement runs on the integrated revision: the pipelined
 full-domain rows at n = 8, 10, and 16, the n = 10 DMPF / VDMPF / VDPF rows,
@@ -261,7 +330,7 @@ per-case configuration and statuses, exact commands, logs, and native JSON or
 Criterion estimates. Keep these files with the merged data.
 
 Use the offline D3/Playwright setup in
-[the figure authoring guide](figures/authoring/README.md), then export and inspect
+[the figure authoring guide](https://github.com/myl7/fss/blob/main/doc/figures/authoring/README.md), then export and inspect
 `build/figures` before publishing. Install D3 under `build/figure-tools` and
 configure the local Playwright runtime through `FSS_FIGURE_NODE_MODULES` when
 the exporter's default runtime path is unavailable. Keep browser downloads

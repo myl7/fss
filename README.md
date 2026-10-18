@@ -13,7 +13,7 @@ Function secret sharing (FSS) primitives including:
 Features:
 
 - First-class support for GPU (based on CUDA)
-- Top-tier performance shown by benchmarks
+- CPU and CUDA benchmarks against third-party libraries
 - Well-commented and documented
 - Header-only library, easy for integration
 
@@ -25,7 +25,7 @@ Features:
 For example, a number $x$ can be secret-shared into $x_0, x_1$ via $x = x_0 + x_1$.
 
 **FSS** is a scheme to secret-share a function into a group of function shares.
-Each function share, called as a **key**, can be individually evaluated on a party.
+Each function share, called a **key**, can be individually evaluated by a party.
 The outputs of the keys are the shares of the original function output.
 FSS consists of 2 methods: `Gen` for generating function shares as keys and `Eval` for evaluating a key to get an output share.
 FSS's workflow is shown below:
@@ -55,7 +55,8 @@ More details, including the definitions and the implementation details that user
 
 - CMake >= 3.22
 - CUDA toolkit >= 12.0 (for C++20 support). C++ CI is configured for CUDA 12.6 and 13.4.
-- OpenSSL 3 (only required for CPU with AES-128 MMO PRG)
+- OpenMP headers; automatic and parallel CPU evaluation also require OpenMP compiler flags and runtime linkage.
+- OpenSSL 3 for OpenSSL AES PRGs/PRPs and SHA256 on CPU
 
 ### Build
 
@@ -359,9 +360,10 @@ y1 = dpf.eval(party=1, s0=s0s[1], cws=cws, x=42)
 assert torch.bitwise_xor(y0, y1).equal(beta)
 ```
 
-`gen` and `eval_all` are CPU-only.
-`eval` can run on CUDA tensors for ChaCha PRG when CUDA is available.
-The JIT path sets a default `TORCH_CUDA_ARCH_LIST` on machines with no visible GPU so CPU tests can still compile the extension.
+Key generation runs on CPU. CUDA point and full-domain evaluation are available for supported schemes with ChaCha; the [API capability table](doc/api-capabilities.md) lists the exact combinations and proof accumulators.
+Python bulk evaluators default to `par_depth=0`, which keeps all host work on the calling thread. Set the keyword to `-1` for automatic OpenMP partitioning or a positive split depth; C++ schemes retain their released default of `-1`.
+The OpenSSL AES backend uses independent contexts per host thread and supports CPU execution.
+JIT caches include the source tree, compiler, Python/PyTorch ABI, CUDA architectures, and configuration. On a host without a visible GPU, the JIT chooses a fallback architecture without changing the process environment.
 
 To develop against a checkout instead, install the dev extra and run the tests:
 
@@ -422,7 +424,7 @@ CPU_ID=0 make bench_cpu
 GPU_ID=1 CUDA_ARCH=86 make bench_gpu
 ```
 
-The [third-party comparison guide](doc/bench_third_parties.md#running) covers fixed dependency versions, selecting libraries, and generating reports.
+The [third-party comparison guide](doc/bench_third_parties.md) covers fixed dependency versions, selecting libraries, and generating reports.
 The `main` selection runs the benchmarks in this README:
 
 ```bash
@@ -441,30 +443,32 @@ Two more targets support the sections below: `make ptx_info` rebuilds with `--pt
 ### Comparison Curves
 
 The domain sweep measures domain sizes `N = 2^8, 2^10, ..., 2^20`.
-Each figure is one platform, one scheme family per row — DCF (including Grotto DCF), DPF with its verifiable VDPF counterparts, and DMPF with VDMPF — and one operation per column: `Gen`, `Eval`, `EvalAll`.
-Time axes are logarithmic and legends show each library's native output shape and PRG backend.
+Each figure shows one platform, with five rows: DCF, full-width DPF, packed DPF, VDPF, and DMPF/VDMPF. Columns show `Gen`, `Eval`, and `EvalAll`.
+Logarithmic time axes retain the full measured range. Legends distinguish the construction, output shape, PRG, and proof accumulator; colors, markers, and line styles identify each method.
+Separate figures cover [prepared-key costs](doc/figures/cpu-prepared.svg), [proof accumulators](doc/figures/cpu-proof.svg), [PRP backends](doc/figures/cpu-prp.svg), and [output groups](doc/figures/cpu-output-groups.svg). The comparison site supports selecting individual methods to inspect overlapping curves.
 Hardware, sampling, timing boundaries, and reproduction commands are in the [curve methodology](doc/bench_figures.md).
 The exact measured medians behind the curves, with per-domain values and pairwise library comparison, are on the [benchmark comparison site](https://myl7.github.io/fss/bench/).
 An implementation appears in a panel only where it provides that method on that platform.
+Gen timings count one call producing both party keys.
 
 ![CPU benchmark operations](doc/figures/cpu-operations.svg)
 
-CPU point operations use one key and one thread, in µs/key.
+CPU point evaluation uses one key and one thread, in µs/query; generation uses µs/key.
 `EvalAll` produces all N outputs for one key, in ms/key.
 The slow materialized point-loop cases use five domain sizes.
 The verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference, eprint 2021/580, single point) include proof generation in the timed evaluation.
 Verification stays outside timing.
 Grotto DCF point `Eval` times the parity-tree query with Preprocess outside timing.
 DMPF and VDMPF use `t = 64` points over `m = 112` Cuckoo buckets.
-VDMPF `EvalAll` materializes through BatchEval including proof generation.
+The VDMPF `EvalAll` benchmark materializes all inputs through batch evaluation, including proof generation.
 
 ![GPU benchmark operations](doc/figures/gpu-operations.svg)
 
-GPU `Gen` and point `Eval` report time amortized per key, in ns/key.
+GPU `Gen` reports ns/key. Point `Eval` reports ns/query: ordinary point kernels use independent keys, while DMPF/VDMPF evaluate many queries against one key.
 `EvalAll` uses one key, in ms/key.
 The native GPU-DPF and packed EzPC adapters keep their native output configurations.
-GPU `EvalAll` covers DPF, HalfTree DPF, DCF, the one-bit packed HalfTree DPF, VDPF with the Merkle-fold proof computed on device, and Grotto DCF.
-The threads-per-block sweep lives in the [curve methodology](doc/bench_figures.md#gpu-block-size-sensitivity).
+GPU `EvalAll` covers DPF, HalfTree DPF, DCF, the one-bit packed HalfTree DPF, VDPF and VDMPF with Merkle-fold proofs computed on device, Grotto DCF, and DMPF.
+The threads-per-block sweep lives in the [curve methodology](doc/bench_figures.md).
 
 ### Flamegraph
 

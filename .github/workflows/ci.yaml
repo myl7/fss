@@ -72,7 +72,7 @@ jobs:
     # Endpoint testing on the oldest and newest supported Python/torch pairs.
     # Versions are pinned to major.minor and patches resolve on their own. The
     # toolkit follows the cuda pin; a minor mismatch against the torch wheel's
-    # bundled CUDA (2.6 ships cu126, 2.13 ships cu131) is only a warning in
+    # bundled CUDA (2.6 ships cu126, 2.13 ships cu130) is only a warning in
     # torch.utils.cpp_extension. Runners have no GPU, so the JIT extension
     # compiles against TORCH_CUDA_ARCH_LIST=8.0 and CUDA tests skip.
     name: python (${{ matrix.name }})
@@ -172,6 +172,11 @@ jobs:
           mkdir -p build/pages/bench
           cp -r doc/html/. build/pages/
           cp -r doc/site/. build/pages/bench/
+          # README and doc/ Markdown links use different relative paths.
+          for path in doc/figures figures; do
+            mkdir -p "build/pages/$path"
+            cp doc/figures/*.svg "build/pages/$path/"
+          done
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3

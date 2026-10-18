@@ -1,74 +1,143 @@
-// Normalize measured timing records without interpolating missing measurements.
-const SCHEMES = ['DPF', 'DCF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'GrottoDCF', 'DMPF', 'VDMPF', 'VDPF', 'VIDPF'];
-// Scheme families share one figure row: comparison DCFs together with Grotto
-// DCF, point-function schemes together with their verifiable VDPF
-// counterparts, and the multi-point DMPF family. Families without measured
-// panels simply leave their grid cells empty.
+import {assertPanelIdentities, buildMethodStyles, buildRowLegend, describeMethod, methodId, timingMetric} from '../../site/method-model.mjs';
 const FAMILIES = [
   ['dcf', 'DCF', ['DCF', 'GrottoDCF']],
-  ['dpf', 'DPF / VDPF', ['DPF', 'HalfTreeDPF', 'PackedHalfTreeDPF', 'VDPF', 'VIDPF']],
+  ['dpf', 'DPF full width', ['DPF', 'HalfTreeDPF']],
+  ['packed', 'Packed DPF', ['PackedHalfTreeDPF']],
+  ['vdpf', 'VDPF', ['VDPF', 'VIDPF']],
   ['dmpf', 'DMPF / VDMPF', ['DMPF', 'VDMPF']],
 ];
 const OPERATIONS = ['gen', 'eval', 'eval_all'];
-
+const historical = row => ['fss_v060', 'fss_v070'].includes(row.library);
+const prepared = row => /-packedkey/.test(row.variant);
+const extra = row => /-rawprp|-simd8/.test(row.variant) || row.group === 'uint' ||
+  row.prg === 'AES-software' || row.library === 'fss' && row.platform === 'cpu' && /-merkle/.test(row.variant);
+// Include failed records and planned cases so a missing coordinate breaks a
+// curve even when every method in its panel failed at that coordinate.
+export function expectedCoordinates(input) {
+  const coordinates = new Map();
+  const add = row => {
+    const scan = row.scan === 'threads' || row.sweep === 'block' ? 'threads' : 'domain';
+    const key = `${row.platform}|${scan}`;
+    const value = Number(scan === 'threads' ? row.requested_threads_per_block ?? row.threads_per_block : row.domain_bits);
+    if (!(value > 0)) return;
+    if (!coordinates.has(key)) coordinates.set(key, new Set());
+    coordinates.get(key).add(value);
+  };
+  (Array.isArray(input) ? input : input.records ?? []).forEach(add);
+  const walk = metadata => {
+    (metadata?.cases ?? []).forEach(add);
+    (metadata?.runs ?? []).forEach(run => walk(run.metadata));
+  };
+  if (!Array.isArray(input)) walk(input.metadata);
+  return new Map([...coordinates].map(([key, values]) => [key, [...values].sort((a, b) => a - b)]));
+}
 export function normalizeRecords(input) {
   const records = Array.isArray(input) ? input : input.records;
   if (!Array.isArray(records)) throw new Error('missing benchmark records');
-  return records.filter(row => row.status === 'ok').map(row => {
-    const keys = Number(row.num_keys ?? 1);
-    const time = Number(row.ns_per_key) / 1e6;
-    if (!(keys > 0) || !(time > 0) || !Number.isFinite(time)) {
-      throw new Error(`invalid timing for ${row.label ?? row.method}`);
-    }
+  const good = records.filter(row => row.status === 'ok' && row.metadata_status !== 'requires_recollection');
+  const styles = buildMethodStyles(good);
+  const coordinates = expectedCoordinates(input);
+  return good.map(row => {
+    const metric = timingMetric(row);
     const device = row.platform;
-    const family = FAMILIES.find(([, , schemes]) => schemes.includes(row.scheme))?.[0];
-    const operation = {Gen: 'gen', Eval: 'eval', EvalAll: 'eval_all'}[row.operation];
+    const family = row.library === 'libdpf' || ['dpf-cpp', 'dpfplusplus'].includes(row.library) ? 'packed' :
+      FAMILIES.find(([, , schemes]) => schemes.includes(row.scheme))?.[0];
+    const operation = {Gen: 'gen', Eval: 'eval', EvalAll: 'eval_all', Prepare: 'prepare'}[row.operation];
     if (!['cpu', 'gpu'].includes(device)) throw new Error('invalid platform');
     if (!family) throw new Error('invalid scheme');
     if (!operation) throw new Error('invalid operation');
     const exponent = Number(row.domain_bits);
     if (!Number.isInteger(exponent) || exponent < 1) throw new Error('invalid log_n');
-    const variant = (row.variant ?? '').replace(/^(PackedHalfTreeDPF|HalfTreeDPF|GrottoDCF|VDMPF|VDPF|DMPF|DPF|DCF)[-_]?/, '');
-    // The scheme suffix keeps series apart when two schemes share a variant
-    // (DPF/DCF/VDPF bytes-AES-NI in the DPF and DCF rows, DMPF/VDMPF in the
-    // multi-point row); otherwise the renderer groups them into one polyline.
-    const suffix = {HalfTreeDPF: ':half-tree', PackedHalfTreeDPF: ':packed', DCF: ':dcf', VDPF: ':vdpf', VIDPF: ':vidpf',
-      GrottoDCF: ':grotto', DMPF: ':dmpf', VDMPF: ':vdmpf'}[row.scheme] ?? '';
-    const method = `${row.library}:${variant}${suffix}`;
-    const label = row.label ?? `${row.library}${row.scheme === 'HalfTreeDPF' ? ' HalfTree' : ''}${row.variant ? ` (${row.variant})` : ''}`;
-    return {...row, method, label, device, family, operation, log_n: exponent, keys, ms_per_key: time};
+    const method = methodId(row), description = describeMethod(row);
+    return {...row, method, methodLabel: description.label, legendName: description.name,
+      compactConfig: description.config, style: styles.get(method), device, family, operation,
+      log_n: exponent, expected_coordinates: coordinates.get(`${device}|${row.scan === 'threads' ? 'threads' : 'domain'}`),
+      denominator: metric.denominator, count: metric.count,
+      ns_per_unit: metric.ns, ms_per_unit: metric.ns / 1e6};
   });
 }
-
-export function figureGroups(records) {
-  const specs = [
-    ['cpu-operations', 'CPU benchmark operations', 'cpu', OPERATIONS],
-    ['gpu-operations', 'GPU benchmark operations', 'gpu', OPERATIONS],
-    ['gpu-block-size', 'GPU block-size sensitivity', 'gpu', ['eval', 'eval_all']],
-  ];
-  return specs.map(([id, title, device, operations]) => {
-    const isThreads = id === 'gpu-block-size';
-    const selected = records.filter(row => row.device === device && operations.includes(row.operation) &&
-      (isThreads ? row.scan === 'threads' : row.scan !== 'threads'));
-    const panels = [];
-    if (isThreads) {
-      for (const family of FAMILIES) for (const operation of operations) {
-        const rows = selected.filter(row => row.family === family[0] && row.operation === operation);
-        if (rows.length) panels.push({family: family[0], familyLabel: family[1], operation, rows});
+function panelsFor(selected, operations, families = FAMILIES) {
+  const panels = [];
+  families.forEach(([family, familyLabel], row) => {
+    operations.forEach((operation, column) => {
+      const rows = selected.filter(item => item.family === family && item.operation === operation);
+      if (rows.length) {
+        assertPanelIdentities(rows);
+        const denominators = new Set(rows.map(item => item.denominator));
+        if (denominators.size !== 1) throw new Error('mixed time denominators');
+        panels.push({family, familyLabel, operation, rows, row, column, denominator: rows[0].denominator});
       }
-    } else {
-      // One family per grid row and one operation per grid column, so the
-      // Gen, Eval, and EvalAll columns stay aligned across families.
-      FAMILIES.forEach(([family, familyLabel], row) => {
-        operations.forEach((operation, column) => {
-          // The historical FSS releases stay on the comparison site with full
-          // provenance; the figures compare current implementations.
-          const rows = selected.filter(row_ => row_.family === family && row_.operation === operation
-            && !['fss_v060', 'fss_v070'].includes(row_.library));
-          if (rows.length) panels.push({family, familyLabel, operation, rows, row, column});
-        });
-      });
+    });
+  });
+  return panels;
+}
+export function figureGroups(records) {
+  const figures = [];
+  for (const device of ['cpu', 'gpu']) {
+    const selected = records.filter(row => row.device === device && row.scan !== 'threads' && !historical(row));
+    const overview = selected.filter(row => !prepared(row) && !extra(row) && !['mastic', 'plasma', 'dpf-cpp', 'dpfplusplus'].includes(row.library));
+    // The ordinary DPF reference is repeated in the packed row where measured.
+    const packedReference = overview.filter(row => row.library === 'fss' && row.scheme === 'DPF' && overview.some(item => item.family === 'packed' && item.operation === row.operation)).map(row => ({...row, family: 'packed'}));
+    figures.push({id: `${device}-operations`, title: `${device.toUpperCase()} benchmark overview`,
+      panels: panelsFor([...overview, ...packedReference], OPERATIONS)});
+    const supplements = [
+      ['prepared', 'Prepared-key point evaluation', selected.filter(row => row.library === 'fss' && row.group !== 'uint' && ['DPF', 'HalfTreeDPF'].includes(row.scheme) && ['prepare', 'eval'].includes(row.operation))],
+      ['proof', 'Proof accumulators', selected.filter(row => row.scheme === 'VDPF' && row.library === 'fss' && row.operation === 'eval_all')],
+      ['prp', 'PRP backend comparison', selected.filter(row => ['DMPF', 'VDMPF'].includes(row.scheme))],
+      ['output-groups', 'Output groups and PRG backends', selected.filter(row => ['DPF', 'DCF', 'HalfTreeDPF', 'VDPF'].includes(row.scheme) && row.library === 'fss' && !prepared(row))],
+      ['additional', 'Additional native implementations', selected.filter(row => ['mastic', 'plasma', 'dpf-cpp', 'dpfplusplus'].includes(row.library) || row.library === 'fss' && !prepared(row) && !extra(row))],
+    ];
+    for (const [suffix, title, rows] of supplements) {
+      const distinctVariants = new Set(rows.filter(row => row.library === 'fss').map(row => row.variant));
+      if (suffix === 'prepared' && !rows.some(prepared) || suffix === 'prp' && !rows.some(row => /-rawprp/.test(row.variant)) ||
+        suffix === 'additional' && !rows.some(row => row.library !== 'fss') ||
+        suffix === 'output-groups' && !rows.some(row => row.group === 'uint' || row.prg === 'AES-software') ||
+        suffix === 'proof' && !rows.some(row => /-chains/.test(row.variant)) || !distinctVariants.size) continue;
+      figures.push({id: `${device}-${suffix}`, title: `${device.toUpperCase()}: ${title}`, panels: suffix === 'prepared' ? preparedPanels(rows) : panelsFor(rows, suffix === 'proof' ? ['eval_all'] : OPERATIONS)});
     }
-    return {id, title, isThreads, panels};
-  }).filter(figure => figure.panels.length);
+    const speedup = pairedSpeedups(selected.filter(row => row.group !== 'uint'));
+    if (speedup.length) figures.push({id: `${device}-prepared-speedup`, title: `${device.toUpperCase()}: prepared query speedup`,
+      isSpeedup: true, panels: preparedPanels(speedup)});
+  }
+  const threads = records.filter(row => row.device === 'gpu' && row.scan === 'threads' && row.block_size_tunable !== false && !['DMPF', 'VDMPF'].includes(row.scheme));
+  figures.push({id: 'gpu-block-size', title: 'GPU block-size sensitivity', isThreads: true, panels: panelsFor(threads, ['eval', 'eval_all'])});
+  return figures.filter(figure => figure.panels.length).map(figure => {
+    const rows = new Map();
+    for (const panel of figure.panels) {
+      const row = figure.isThreads ? 0 : panel.row;
+      if (!rows.has(row)) rows.set(row, []);
+      rows.get(row).push(panel);
+    }
+    return {...figure, rowLegends: [...rows].map(([rowIndex, panels]) => ({rowIndex, entries: buildRowLegend(panels)}))};
+  });
+}
+function preparedPanels(rows) {
+  return ['prepare', 'eval'].flatMap((operation, row) => ['DPF', 'HalfTreeDPF'].flatMap((scheme, column) => {
+    const selected = rows.filter(item => item.scheme === scheme && item.operation === operation);
+    if (!selected.length) return [];
+    assertPanelIdentities(selected);
+    return [{family: scheme, familyLabel: scheme === 'DPF' ? 'DPF' : 'HalfTree',
+      operation, rows: selected, row, column, denominator: operation === 'prepare' ? 'key' : 'query'}];
+  }));
+}
+export function pairedSpeedups(records) {
+  const relevant = row => JSON.stringify([row.device, row.scheme, row.log_n, row.group, row.logical_output_bits,
+    row.prg, row.key_count, row.query_count, row.time_denominator, row.raw_result, row.raw_result_sha256, row.source_sha256]);
+  const direct = new Map(records.filter(row => row.library === 'fss' && row.operation === 'eval' && !prepared(row)).map(row => [relevant(row), row]));
+  return records.filter(row => row.operation === 'eval' && prepared(row)).flatMap(row => {
+    // Only pair when source hashes exist and the configuration matches. The
+    // paired raw receipt remains explicit in exported provenance.
+    const reference = direct.get(relevant(row));
+    if (!reference || !row.raw_result || !row.raw_result_sha256 || !row.source_sha256 || !Object.keys(row.source_sha256).length) return [];
+    return [{...row, speedup: reference.ns_per_unit / row.ns_per_unit,
+      paired_reference: {raw_result: reference.raw_result, raw_result_sha256: reference.raw_result_sha256,
+        ns_per_unit: reference.ns_per_unit, source_sha256: reference.source_sha256}}];
+  });
+}
+export function methodInventory(records, figures) {
+  return [...new Map(records.map(row => [row.method, row])).values()].map(row => ({
+    method: row.method, label: row.methodLabel, platform: row.device,
+    figures: figures.filter(figure => figure.panels.some(panel => panel.rows.some(item => item.method === row.method))).map(figure => figure.id),
+    comparison_site: records.some(item => item.method === row.method && item.scan !== 'threads'),
+  }));
 }
