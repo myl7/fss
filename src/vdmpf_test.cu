@@ -70,7 +70,7 @@ protected:
       s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
     }
     ASSERT_EQ(vdmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
-        cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT), 0);
+        cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT, 1000, true), 0);
   }
 
   void TestEvalAtAlpha() {

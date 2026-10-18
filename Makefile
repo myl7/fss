@@ -1,4 +1,6 @@
 SOURCES := $(shell find src include samples -name '*.cuh' -o -name '*.cu')
+RELEASED_SAMPLES := dpf_dcf_cpu dpf_dcf_gpu half_tree_dpf_cpu grotto_dcf_cpu vdpf_cpu vdmpf_cpu
+SOURCES := $(filter-out $(addprefix src/compat_v1_2/,$(addsuffix .cu,$(RELEASED_SAMPLES))),$(SOURCES))
 CPU_ID ?= 0
 GPU_ID ?= 0
 CUDA_ARCH ?=

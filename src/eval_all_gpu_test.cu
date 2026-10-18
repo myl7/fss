@@ -15,41 +15,54 @@ namespace {
 struct Uint127Group {
   using Impl = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
   Impl value;
-  __host__ __device__ Uint127Group operator+(Uint127Group rhs) const { return {value + rhs.value}; }
-  __host__ __device__ Uint127Group operator-() const { return {-value}; }
-  __host__ __device__ static Uint127Group From(int4 input) { return {Impl::From(input)}; }
-  __host__ __device__ int4 Into() const { return value.Into(); }
+  __host__ __device__ Uint127Group operator+(Uint127Group rhs) const {
+    return {value + rhs.value};
+  }
+  __host__ __device__ Uint127Group operator-() const {
+    return {-value};
+  }
+  __host__ __device__ static Uint127Group From(int4 input) {
+    return {Impl::From(input)};
+  }
+  __host__ __device__ int4 Into() const {
+    return value.Into();
+  }
 };
 
 template <typename T>
 class DeviceBuffer {
- public:
+public:
   DeviceBuffer() = default;
   DeviceBuffer(const DeviceBuffer &) = delete;
   DeviceBuffer &operator=(const DeviceBuffer &) = delete;
   ~DeviceBuffer() {
     if (data_ != nullptr) EXPECT_EQ(cudaFree(data_), cudaSuccess);
   }
-  cudaError_t Allocate(size_t count) { return cudaMalloc(&data_, count * sizeof(T)); }
+  cudaError_t Allocate(size_t count) {
+    return cudaMalloc(&data_, count * sizeof(T));
+  }
   cudaError_t Upload(const T *source, size_t count) {
     return cudaMemcpy(data_, source, count * sizeof(T), cudaMemcpyHostToDevice);
   }
-  T *data() const { return data_; }
- private:
+  T *data() const {
+    return data_;
+  }
+
+private:
   T *data_ = nullptr;
 };
 
-template <int bits, typename Group, bool half_tree, typename In = uint>
+template <int bits, typename Group, bool half_tree, typename In = uint, int par_depth = -1>
 struct SchemeType;
-template <int bits, typename Group, typename In>
-struct SchemeType<bits, Group, false, In> {
+template <int bits, typename Group, typename In, int par_depth>
+struct SchemeType<bits, Group, false, In, par_depth> {
   using Prg = fss::prg::ChaCha<2>;
-  using Type = fss::Dpf<bits, Group, Prg, In>;
+  using Type = fss::Dpf<bits, Group, Prg, In, par_depth>;
 };
-template <int bits, typename Group, typename In>
-struct SchemeType<bits, Group, true, In> {
+template <int bits, typename Group, typename In, int par_depth>
+struct SchemeType<bits, Group, true, In, par_depth> {
   using Prg = fss::prg::ChaCha<1>;
-  using Type = fss::HalfTreeDpf<bits, Group, Prg, In>;
+  using Type = fss::HalfTreeDpf<bits, Group, Prg, In, par_depth>;
 };
 
 void ExpectOutput(int4 actual, int4 expected, size_t input) {
@@ -60,7 +73,7 @@ void ExpectOutput(int4 actual, int4 expected, size_t input) {
 }
 
 template <int bits, int z, int threads, int keys, typename Group, bool half_tree, bool large = false,
-    typename In = uint>
+    typename In = uint, int par_depth = -1>
 void CheckFullEvaluation() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -68,7 +81,7 @@ void CheckFullEvaluation() {
     GTEST_SKIP() << "no CUDA device available";
   }
   ASSERT_EQ(status, cudaSuccess);
-  using Types = SchemeType<bits, Group, half_tree, In>;
+  using Types = SchemeType<bits, Group, half_tree, In, par_depth>;
   using Scheme = typename Types::Type;
   using Prg = typename Types::Prg;
   using Cw = typename Scheme::Cw;
@@ -107,14 +120,14 @@ void CheckFullEvaluation() {
     for (int key = 0; key < keys; ++key) party_seeds[key] = seeds[2 * key + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     if constexpr (keys > 1 && half_tree) {
-      fss::gpu::HalfTreeDpfEvalAllGpuBatch<z, b1, threads>(party, device_seeds.data(), device_cws.data(),
-          device_ocws.data(), keys, device_outputs.data(), scheme);
+      fss::gpu::HalfTreeDpfEvalAllGpuBatch<z, b1, threads>(
+          party, device_seeds.data(), device_cws.data(), device_ocws.data(), keys, device_outputs.data(), scheme);
     } else if constexpr (keys > 1) {
-      fss::gpu::DpfEvalAllGpuBatch<z, b1, threads>(party, device_seeds.data(), device_cws.data(), keys,
-          device_outputs.data(), scheme);
+      fss::gpu::DpfEvalAllGpuBatch<z, b1, threads>(
+          party, device_seeds.data(), device_cws.data(), keys, device_outputs.data(), scheme);
     } else if constexpr (half_tree) {
-      fss::gpu::HalfTreeDpfEvalAllGpu<z, b1, threads>(party, party_seeds[0], device_cws.data(), ocws[0],
-          device_outputs.data(), scheme);
+      fss::gpu::HalfTreeDpfEvalAllGpu<z, b1, threads>(
+          party, party_seeds[0], device_cws.data(), ocws[0], device_outputs.data(), scheme);
     } else {
       fss::gpu::DpfEvalAllGpu<z, b1, threads>(party, party_seeds[0], device_cws.data(), device_outputs.data(), scheme);
     }
@@ -125,7 +138,8 @@ void CheckFullEvaluation() {
     for (int key = 0; key < keys; ++key) {
       SCOPED_TRACE(::testing::Message() << "key " << key);
       const Key &party_key = party == 0 ? keys0[key] : keys1[key];
-      if constexpr (large) scheme.EvalAll(static_cast<bool>(party), party_key, cuda::std::span<int4>(host_ys.data(), n));
+      if constexpr (large)
+        scheme.EvalAll(static_cast<bool>(party), party_key, cuda::std::span<int4>(host_ys.data(), n));
       for (size_t x = 0; x < n; ++x) {
         int4 expected;
         if constexpr (large) expected = host_ys[x];
@@ -181,7 +195,7 @@ TEST(EvalAllGpu, HalfTreeWideInUint16) {
   CheckFullEvaluation<8, 7, 128, 1, fss::group::Bytes, true, false, uint16_t>();
 }
 
-template <int bits, int z, int threads, typename In = uint>
+template <int bits, int z, int threads, typename In = uint, int par_depth = -1>
 void CheckVdpfGpu() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -192,7 +206,7 @@ void CheckVdpfGpu() {
   using Prg = fss::prg::ChaCha<2>;
   using Blake3 = fss::hash::Blake3;
   using Group = Uint127Group;
-  using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In, par_depth>;
   using Cw = typename Scheme::Cw;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits;
@@ -245,7 +259,7 @@ void CheckVdpfGpu() {
   EXPECT_TRUE(Scheme::Verify(cuda::std::span<const int4, 4>(gpu_pi[0]), cuda::std::span<const int4, 4>(gpu_pi[1])));
 }
 
-template <int bits, int out_bits, int z, int b1, int threads, int keys = 1, typename In = uint>
+template <int bits, int out_bits, int z, int b1, int threads, int keys = 1, typename In = uint, int par_depth = -1>
 void CheckPackedGpu() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -254,7 +268,7 @@ void CheckPackedGpu() {
   }
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<1>;
-  using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, Prg, In>;
+  using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, Prg, In, par_depth>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kDepth = Scheme::kDepth;
@@ -291,8 +305,8 @@ void CheckPackedGpu() {
       fss::gpu::PackedHalfTreeDpfEvalAllGpuBatch<z, b1, threads>(
           party, device_seeds.data(), device_cws.data(), device_fcws.data(), keys, device_outputs.data(), scheme);
     } else {
-      fss::gpu::PackedHalfTreeDpfEvalAllGpu<z, b1, threads>(
-          party, party == 0 ? keys0[0].s0 : keys1[0].s0, device_cws.data(), keys0[0].fcw, device_outputs.data(), scheme);
+      fss::gpu::PackedHalfTreeDpfEvalAllGpu<z, b1, threads>(party, party == 0 ? keys0[0].s0 : keys1[0].s0,
+          device_cws.data(), keys0[0].fcw, device_outputs.data(), scheme);
     }
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -316,8 +330,8 @@ void CheckPackedGpu() {
   }
 }
 
-template <int bits, int z, int threads, int keys, typename Group, fss::DcfPred pred = fss::DcfPred::kLt,
-    int alpha = 42, typename In = uint, int par_depth = -1, bool large = false>
+template <int bits, int z, int threads, int keys, typename Group, fss::DcfPred pred = fss::DcfPred::kLt, int alpha = 42,
+    typename In = uint, int par_depth = -1, bool large = false>
 void CheckDcfGpu() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -358,8 +372,7 @@ void CheckDcfGpu() {
       fss::gpu::DcfEvalAllGpuBatch<z, b1, threads>(
           party, device_seeds.data(), device_cws.data(), keys, device_outputs.data(), scheme);
     } else {
-      fss::gpu::DcfEvalAllGpu<z, b1, threads>(
-          party, party_seeds[0], device_cws.data(), device_outputs.data(), scheme);
+      fss::gpu::DcfEvalAllGpu<z, b1, threads>(party, party_seeds[0], device_cws.data(), device_outputs.data(), scheme);
     }
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -368,7 +381,8 @@ void CheckDcfGpu() {
     for (int key = 0; key < keys; ++key) {
       SCOPED_TRACE(::testing::Message() << "key " << key);
       const Key &party_key = party == 0 ? keys0[key] : keys1[key];
-      if constexpr (large) scheme.EvalAll(static_cast<bool>(party), party_key, cuda::std::span<int4>(host_ys.data(), n));
+      if constexpr (large)
+        scheme.EvalAll(static_cast<bool>(party), party_key, cuda::std::span<int4>(host_ys.data(), n));
       for (size_t x = 0; x < n; ++x) {
         int4 expected;
         if constexpr (large) expected = host_ys[x];
@@ -385,7 +399,7 @@ void CheckDcfGpu() {
   }
 }
 
-template <int bits, int z, int threads, typename In = uint>
+template <int bits, int z, int threads, typename In = uint, int par_depth = -1>
 void CheckGrottoGpu() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -394,7 +408,7 @@ void CheckGrottoGpu() {
   }
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
-  using Scheme = fss::GrottoDcf<bits, Prg, In>;
+  using Scheme = fss::GrottoDcf<bits, Prg, In, par_depth>;
   using Cw = typename Scheme::Cw;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
@@ -422,8 +436,8 @@ void CheckGrottoGpu() {
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     auto actual_p = std::make_unique<bool[]>(2 * n - 1);
-    ASSERT_EQ(cudaMemcpy(actual_p.get(), device_p.data(), (2 * n - 1) * sizeof(bool), cudaMemcpyDeviceToHost),
-        cudaSuccess);
+    ASSERT_EQ(
+        cudaMemcpy(actual_p.get(), device_p.data(), (2 * n - 1) * sizeof(bool), cudaMemcpyDeviceToHost), cudaSuccess);
     for (size_t i = 0; i < 2 * n - 1; ++i) EXPECT_EQ(actual_p[i], host_tree.p[i]) << "node " << i;
 
     scheme.EvalAll(static_cast<bool>(party), key, cuda::std::span<bool>(host_ys.get(), n));
@@ -525,6 +539,19 @@ TEST(EvalAllGpu, GrottoAbove24Bits) {
 }
 TEST(EvalAllGpu, GrottoWideInUint16) {
   CheckGrottoGpu<10, 10, 128, uint16_t>();
+}
+
+TEST(EvalAllGpu, ConfiguredDepths) {
+  CheckFullEvaluation<8, 8, 128, 2, fss::group::Bytes, false, false, uint, 0>();
+  CheckFullEvaluation<8, 8, 128, 2, fss::group::Bytes, false, false, uint, 2>();
+  CheckFullEvaluation<8, 7, 128, 2, fss::group::Bytes, true, false, uint, 0>();
+  CheckFullEvaluation<8, 7, 128, 2, fss::group::Bytes, true, false, uint, 2>();
+  CheckPackedGpu<12, 8, 8, 1, 128, 2, uint, 0>();
+  CheckPackedGpu<12, 8, 8, 1, 128, 2, uint, 2>();
+  CheckVdpfGpu<10, 10, 256, uint, 0>();
+  CheckVdpfGpu<10, 10, 256, uint, 2>();
+  CheckGrottoGpu<8, 8, 128, uint, 0>();
+  CheckGrottoGpu<8, 8, 128, uint, 2>();
 }
 
 }  // namespace

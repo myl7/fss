@@ -16,9 +16,9 @@
  *
  * - Key generation: $Gen(1^\lambda, f_{a, b}) \rightarrow (k_0, k_1)$.
  * - Evaluation: $Eval(k_i, x) \rightarrow (y_{i,x}, \tilde\pi_{i,x})$.
- * - Proof accumulation: $Prove(\{\tilde\pi\}, cs) \rightarrow \pi$. An order-independent
- *   alternative, `ProveMerkle`/`EvalAllMerkle`, replaces the sequential chain with a Merkle
- *   fold over the corrected per-point hashes; see doc/vdpf_merkle_fold_security.md.
+ * - Proof accumulation: $Prove(\{\tilde\pi\}, cs) \rightarrow \pi$.
+ *   `ProveMerkle`/`EvalAllMerkle` replaces the sequential chain with a parallel Merkle
+ *   fold over a fixed ordered sequence of corrected per-point hashes. See doc/vdpf_merkle_fold_security.md.
  * - Verification: $Verify(\pi_0, \pi_1) \rightarrow \{Accept, Reject\}$.
  *
  * ## Implementation Details
@@ -125,8 +125,8 @@ public:
       int ret = Gen(k0.cws, k0.cs, k0.ocw, s0s, a, b_buf);
       if (ret != 0) {
         if (!retry) return 1;
-        s0s[0].x += 1;
-        s0s[1].y += 1;
+        s0s[0].x = util::IncrementWord(s0s[0].x);
+        s0s[1].y = util::IncrementWord(s0s[1].y);
         continue;
       }
       k0.s0 = s0s[0];
@@ -156,12 +156,19 @@ public:
      * @return The output share $y_{i,x}$ plus the corrected per-point hash for proof accumulation.
      */
   __host__ __device__ EvalResult Eval(bool b, const Key &key, In x) {
-    int4 s = key.s0;
+    EvalResult result;
+    result.pi_tilde = Eval(b, key.s0, key.cws, key.cs, key.ocw, x, result.y);
+    return result;
+  }
+
+  __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0, cuda::std::span<const Cw> cws,
+      cuda::std::span<const int4, 4> cs, int4 ocw, In x, int4 &y) {
+    int4 s = s0;
     s = util::SetLsb(s, false);
     bool t = b;
 
     for (int i = 0; i < in_bits; ++i) {
-      Cw cw = key.cws[i];
+      Cw cw = cws[i];
       int4 s_cw = cw.s;
       bool tl_cw = util::GetLsb(s_cw);
       s_cw = util::SetLsb(s_cw, false);
@@ -194,8 +201,8 @@ public:
 
     // Output share
     auto g = Group::From(s);
-    assert((key.ocw.w & 1) == 0);
-    if (t) g = g + Group::From(key.ocw);
+    assert((ocw.w & 1) == 0);
+    if (t) g = g + Group::From(ocw);
     if (b) g = -g;
 
     // Corrected verification hash
@@ -203,9 +210,10 @@ public:
 
     auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
     if (t) {
-      pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(key.cs));
+      pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
     }
-    return {g.Into(), pi_tilde};
+    y = g.Into();
+    return pi_tilde;
   }
 
   /**
@@ -258,7 +266,12 @@ public:
      * par_depth = 0: no parallelism, i.e., sequential execution.
      */
   void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
-    int4 st = key.s0;
+    EvalAll(b, key.s0, key.cws, key.cs, key.ocw, ys, pi);
+  }
+
+  void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw,
+      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+    int4 st = s0;
     bool t = b;
     st = util::SetLsb(st, t);
 
@@ -267,18 +280,23 @@ public:
     size_t r = 1ULL << in_bits;
     int i = 0;
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
 
     // Phase 1: tree traversal, store (s, t) packed into ys temporarily
-#pragma omp parallel
+    if (par_depth_ == 0) {
+      EvalTree(st, cws, ys, l, r, i, 0);
+    } else {
+      int threads = util::ResolveParThreads(par_depth_, r);
+#pragma omp parallel num_threads(threads)
 #pragma omp single
-    EvalTree(st, key.cws, ys, l, r, i, par_depth_);
+      EvalTree(st, cws, ys, l, r, i, par_depth_);
+    }
 
     // Phase 2: sequential output computation and proof accumulation
-    pi = {key.cs[0], key.cs[1], key.cs[2], key.cs[3]};
+    pi = {cs[0], cs[1], cs[2], cs[3]};
     size_t n = 1ULL << in_bits;
-    assert((key.ocw.w & 1) == 0);
-    auto ocw_group = Group::From(key.ocw);
+    assert((ocw.w & 1) == 0);
+    auto ocw_group = Group::From(ocw);
     for (size_t j = 0; j < n; ++j) {
       int4 sj = ys[j];
       bool tj = util::GetLsb(sj);
@@ -295,7 +313,7 @@ public:
 
       auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
       if (tj) {
-        pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(key.cs));
+        pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
       }
 
       cuda::std::array<int4, 4> h_input =
@@ -309,7 +327,7 @@ public:
   /**
    * Proof accumulation method (Merkle fold).
    *
-   * Order-independent alternative to Prove(): hashes the corrected per-point hashes into the
+   * Parallel alternative to Prove() over a fixed ordered sequence: hashes corrected per-point hashes into the
    * leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the
    * same hash level by level (an odd trailing node carries to the next level unchanged). The
    * proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so Verify() is shared.
@@ -325,22 +343,18 @@ public:
     size_t count = pi_tildes.size();
     assert(count >= 1);
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
-
     std::vector<cuda::std::array<int4, 2>> nodes(count);
-#pragma omp parallel for if (par_depth_ > 0)
-    for (size_t i = 0; i < count; ++i) {
+    util::ParallelFor(par_depth, count, [&](size_t i) {
       nodes[i] = hash.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
-    }
+    });
 
     while (count > 1) {
       size_t pairs = count / 2;
       std::vector<cuda::std::array<int4, 2>> next(pairs + count % 2);
-#pragma omp parallel for if (par_depth_ > 0)
-      for (size_t i = 0; i < pairs; ++i) {
+      util::ParallelFor(par_depth, pairs, [&](size_t i) {
         int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
         next[i] = hash.Hash(cuda::std::span<const int4, 4>(msg));
-      }
+      });
       if (count % 2 != 0) next[pairs] = nodes[count - 1];
       nodes = std::move(next);
       count = nodes.size();
@@ -371,12 +385,17 @@ public:
     size_t r = 1ULL << in_bits;
     int i = 0;
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
 
     // Phase 1: tree traversal, store (s, t) packed into ys temporarily
-#pragma omp parallel
+    if (par_depth_ == 0) {
+      EvalTree(st, key.cws, ys, l, r, i, 0);
+    } else {
+      int threads = util::ResolveParThreads(par_depth_, r);
+#pragma omp parallel num_threads(threads)
 #pragma omp single
-    EvalTree(st, key.cws, ys, l, r, i, par_depth_);
+      EvalTree(st, key.cws, ys, l, r, i, par_depth_);
+    }
 
     // Phase 2: parallel output conversion and leaf hashing, then the Merkle fold
     pi = {key.cs[0], key.cs[1], key.cs[2], key.cs[3]};
@@ -384,8 +403,7 @@ public:
     assert((key.ocw.w & 1) == 0);
     auto ocw_group = Group::From(key.ocw);
     std::vector<cuda::std::array<int4, 4>> leaves(n);
-#pragma omp parallel for if (par_depth_ > 0)
-    for (size_t j = 0; j < n; ++j) {
+    util::ParallelFor(par_depth, n, [&](size_t j) {
       int4 sj = ys[j];
       bool tj = util::GetLsb(sj);
       sj = util::SetLsb(sj, false);
@@ -403,11 +421,11 @@ public:
       } else {
         leaves[j] = pi_tilde;
       }
-    }
+    });
     ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(leaves), cuda::std::span<const int4, 4>(key.cs), pi);
   }
 
-private:
+public:
   /**
      * Key generation core on the correction-word form.
      *
@@ -510,6 +528,7 @@ private:
     return 0;
   }
 
+private:
   void EvalTree(
       int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_) {
     if (i == in_bits) {

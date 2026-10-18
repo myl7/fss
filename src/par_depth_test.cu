@@ -20,6 +20,10 @@
 #include <fss/packed_half_tree_dpf.cuh>
 #include <fss/vdpf.cuh>
 #include <fss/group/bytes.cuh>
+#include <fss/grotto_dcf.cuh>
+#include <fss/dmpf.cuh>
+#include <fss/prp/chacha_feistel.cuh>
+#include <climits>
 
 // Tests of the par_depth execution contract: a par_depth of 0 must keep every
 // evaluation path sequential no matter how many OpenMP threads are available,
@@ -38,8 +42,20 @@ struct CallCounters {
   std::atomic<int> inside{0};
   std::atomic<int> max_in_flight{1};
   std::atomic<bool> stall{false};
+  std::atomic<int> batch_calls{0};
+  const std::thread::id caller = std::this_thread::get_id();
+  std::atomic<bool> other_thread{false};
+  std::atomic<bool> active_team{false};
+  std::atomic<int> max_team_size{1};
 
   void Enter() {
+    if (std::this_thread::get_id() != caller) other_thread = true;
+    if (omp_in_parallel()) active_team = true;
+    int team_size = omp_get_num_threads();
+    int previous_size = max_team_size.load(std::memory_order_relaxed);
+    while (team_size > previous_size &&
+        !max_team_size.compare_exchange_weak(previous_size, team_size, std::memory_order_relaxed)) {
+    }
     int now = inside.fetch_add(1, std::memory_order_relaxed) + 1;
     int prev = max_in_flight.load(std::memory_order_relaxed);
     while (now > prev && !max_in_flight.compare_exchange_weak(prev, now, std::memory_order_relaxed)) {
@@ -51,6 +67,12 @@ struct CallCounters {
 
   void Leave() { inside.fetch_sub(1, std::memory_order_relaxed); }
 };
+
+void ExpectCallerThreadOnly(const CallCounters &counters) {
+  EXPECT_EQ(counters.max_in_flight.load(), 1);
+  EXPECT_FALSE(counters.other_thread.load());
+  EXPECT_FALSE(counters.active_team.load());
+}
 
 __host__ __device__ inline unsigned Mix32(unsigned x) {
   x ^= x >> 16;
@@ -90,6 +112,20 @@ public:
     if (counters != nullptr) counters->Leave();
 #endif
     return out;
+  }
+};
+
+// The batched form is bit-exact with the scalar backend and records whether
+// a frontier actually used the Gen8 path.
+template <int mul>
+class BatchedCountingPrg : public CountingPrg<mul> {
+public:
+  using CountingPrg<mul>::CountingPrg;
+  cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(const cuda::std::array<int4, 8> &seeds) {
+    if (this->counters != nullptr) ++this->counters->batch_calls;
+    cuda::std::array<cuda::std::array<int4, mul>, 8> result;
+    for (int i = 0; i < 8; ++i) result[i] = this->Gen(seeds[i]);
+    return result;
   }
 };
 
@@ -152,10 +188,10 @@ void FillSeeds(int4 s0s[2]) {
   s0s[1] = kSeed1;
 }
 
-template <int in_bits, int par_depth>
+template <int in_bits, int par_depth, typename Prg = CountingPrg<2>>
 void RunDpfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DpfType = fss::Dpf<in_bits, BytesGroup, CountingPrg<2>, uint16_t, par_depth>;
-  CountingPrg<2> prg{c};
+  using DpfType = fss::Dpf<in_bits, BytesGroup, Prg, uint16_t, par_depth>;
+  Prg prg{c};
   DpfType dpf{prg};
 
   int4 s0s[2];
@@ -169,10 +205,10 @@ void RunDpfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &y
   dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 }
 
-template <int in_bits, int par_depth>
+template <int in_bits, int par_depth, typename Prg = CountingPrg<4>>
 void RunDcfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DcfType = fss::Dcf<in_bits, BytesGroup, CountingPrg<4>, uint16_t, fss::DcfPred::kLt, par_depth>;
-  CountingPrg<4> prg{c};
+  using DcfType = fss::Dcf<in_bits, BytesGroup, Prg, uint16_t, fss::DcfPred::kLt, par_depth>;
+  Prg prg{c};
   DcfType dcf{prg};
 
   int4 s0s[2];
@@ -186,10 +222,10 @@ void RunDcfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &y
   dcf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 }
 
-template <int in_bits, int par_depth>
+template <int in_bits, int par_depth, typename Prg = CountingPrg<1>>
 void RunHalfTreeEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DpfType = fss::HalfTreeDpf<in_bits, BytesGroup, CountingPrg<1>, uint16_t, par_depth>;
-  CountingPrg<1> prg{c};
+  using DpfType = fss::HalfTreeDpf<in_bits, BytesGroup, Prg, uint16_t, par_depth>;
+  Prg prg{c};
   DpfType dpf{prg, kHashKey};
 
   int4 s0s[2];
@@ -203,10 +239,10 @@ void RunHalfTreeEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int
   dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 }
 
-template <int in_bits, int par_depth>
+template <int in_bits, int par_depth, typename Prg = CountingPrg<1>>
 void RunPackedEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DpfType = fss::PackedHalfTreeDpf<in_bits, 1, CountingPrg<1>, uint16_t, par_depth>;
-  CountingPrg<1> prg{c};
+  using DpfType = fss::PackedHalfTreeDpf<in_bits, 1, Prg, uint16_t, par_depth>;
+  Prg prg{c};
   DpfType dpf{prg, kHashKey};
 
   int4 s0s[2];
@@ -297,8 +333,8 @@ TEST(ParDepthTest, DpfEvalAllHonorsZeroParDepth) {
   RunDpfEvalAll<12, 0>(c_large_seq, ys0_large_seq, ys1_large_seq, 107);
   RunDpfEvalAll<12, 2>(c_large_par, ys0_large_par, ys1_large_par, 107);
 
-  EXPECT_EQ(c_small_seq.max_in_flight.load(), 1);
-  EXPECT_EQ(c_large_seq.max_in_flight.load(), 1);
+  ExpectCallerThreadOnly(c_small_seq);
+  ExpectCallerThreadOnly(c_large_seq);
   EXPECT_TRUE(EqualBuffers(ys0_small_seq, ys0_small_par));
   EXPECT_TRUE(EqualBuffers(ys1_small_seq, ys1_small_par));
   EXPECT_TRUE(EqualBuffers(ys0_large_seq, ys0_large_par));
@@ -319,8 +355,8 @@ TEST(ParDepthTest, DcfEvalAllHonorsZeroParDepth) {
   RunDcfEvalAll<12, 0>(c_large_seq, ys0_large_seq, ys1_large_seq, 107);
   RunDcfEvalAll<12, 2>(c_large_par, ys0_large_par, ys1_large_par, 107);
 
-  EXPECT_EQ(c_small_seq.max_in_flight.load(), 1);
-  EXPECT_EQ(c_large_seq.max_in_flight.load(), 1);
+  ExpectCallerThreadOnly(c_small_seq);
+  ExpectCallerThreadOnly(c_large_seq);
   EXPECT_TRUE(EqualBuffers(ys0_small_seq, ys0_small_par));
   EXPECT_TRUE(EqualBuffers(ys1_small_seq, ys1_small_par));
   EXPECT_TRUE(EqualBuffers(ys0_large_seq, ys0_large_par));
@@ -338,8 +374,8 @@ TEST(ParDepthTest, HalfTreeDpfEvalAllHonorsZeroParDepth) {
   RunHalfTreeEvalAll<3, 0>(c_small_seq, ys0_small_seq, ys1_small_seq, 5);
   RunHalfTreeEvalAll<10, 0>(c_large_seq, ys0_large_seq, ys1_large_seq, 107);
 
-  EXPECT_EQ(c_small_seq.max_in_flight.load(), 1);
-  EXPECT_EQ(c_large_seq.max_in_flight.load(), 1);
+  ExpectCallerThreadOnly(c_small_seq);
+  ExpectCallerThreadOnly(c_large_seq);
   ExpectReconstruction(ys0_large_seq, ys1_large_seq, 107);
 }
 
@@ -356,8 +392,8 @@ TEST(ParDepthTest, PackedHalfTreeDpfEvalAllHonorsZeroParDepth) {
   RunPackedEvalAll<13, 0>(c_frontier_seq, ys0_frontier_seq, ys1_frontier_seq, 107);
   RunPackedEvalAll<13, 2>(c_frontier_par, ys0_frontier_par, ys1_frontier_par, 107);
 
-  EXPECT_EQ(c_small_seq.max_in_flight.load(), 1);
-  EXPECT_EQ(c_frontier_seq.max_in_flight.load(), 1);
+  ExpectCallerThreadOnly(c_small_seq);
+  ExpectCallerThreadOnly(c_frontier_seq);
   EXPECT_TRUE(EqualBuffers(ys0_frontier_seq, ys0_frontier_par));
   EXPECT_TRUE(EqualBuffers(ys1_frontier_seq, ys1_frontier_par));
 
@@ -381,11 +417,16 @@ TEST(ParDepthTest, VdpfEvalAllMerkleHonorsZeroParDepth) {
 
   // The PRG covers the phase-1 tree walk, the XorHash the phase-2 leaf loop, and
   // the Hash the ProveMerkle fold levels.
-  EXPECT_EQ(prg_seq.max_in_flight.load(), 1);
-  EXPECT_EQ(xhash_seq.max_in_flight.load(), 1);
-  EXPECT_EQ(hash_seq.max_in_flight.load(), 1);
+  ExpectCallerThreadOnly(prg_seq);
+  ExpectCallerThreadOnly(xhash_seq);
+  ExpectCallerThreadOnly(hash_seq);
   EXPECT_TRUE(EqualBuffers(ys0_seq, ys0_par));
   EXPECT_TRUE(EqualBuffers(ys1_seq, ys1_par));
+  EXPECT_EQ(memcmp(pi0_seq.data(), pi0_par.data(), sizeof(pi0_seq)), 0);
+  EXPECT_EQ(memcmp(pi1_seq.data(), pi1_par.data(), sizeof(pi1_seq)), 0);
+  EXPECT_LE(prg_par.max_team_size.load(), 4);
+  EXPECT_LE(xhash_par.max_team_size.load(), 4);
+  EXPECT_LE(hash_par.max_team_size.load(), 4);
   ExpectReconstruction(ys0_seq, ys1_seq, 107);
 
   using VdpfType = fss::Vdpf<12, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t>;
@@ -413,5 +454,149 @@ TEST(ParDepthTest, VdpfProveMerkleHonorsZeroParDepth) {
   vdpf.ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(leaves),
       cuda::std::span<const int4, 4>(cs.data(), 4), pi);
 
-  EXPECT_EQ(hash_seq.max_in_flight.load(), 1);
+  ExpectCallerThreadOnly(hash_seq);
+}
+
+
+TEST(ParDepthTest, LoopPartitionsAreBoundedAndCoverTheInput) {
+  omp_set_num_threads(8);
+  EXPECT_EQ(fss::util::ResolveParPartitions(0, 100), 1);
+  EXPECT_EQ(fss::util::ResolveParPartitions(1, 100), 2);
+  EXPECT_EQ(fss::util::ResolveParPartitions(2, 100), 4);
+  EXPECT_EQ(fss::util::ResolveParPartitions(INT_MAX, 7), 7);
+  EXPECT_EQ(fss::util::ResolveParPartitions(INT_MAX, 0), 0);
+  EXPECT_LE(fss::util::ResolveParDepth(INT_MAX), sizeof(size_t) * CHAR_BIT - 1);
+
+  for (int depth : {0, 1, 2, -1, INT_MAX}) {
+    std::vector<int> visits(37);
+    CallCounters counters;
+    fss::util::ParallelFor(depth, visits.size(), [&](size_t i) {
+      counters.Enter();
+      ++visits[i];
+      counters.Leave();
+    });
+    for (int count : visits) EXPECT_EQ(count, 1);
+    if (depth == 0) ExpectCallerThreadOnly(counters);
+    if (depth == 1 || depth == 2) EXPECT_LE(counters.max_team_size.load(), 1 << depth);
+  }
+}
+
+TEST(ParDepthTest, PositiveDepthBoundsFallbackAndFrontierTeams) {
+  omp_set_num_threads(8);
+  CallCounters dpf_small, dcf_small, half_small, packed_small, packed_frontier;
+  std::vector<int4> ys0, ys1;
+  RunDpfEvalAll<5, 1>(dpf_small, ys0, ys1, 13);
+  RunDcfEvalAll<5, 1>(dcf_small, ys0, ys1, 13);
+  RunHalfTreeEvalAll<3, 1>(half_small, ys0, ys1, 5);
+  RunPackedEvalAll<9, 1>(packed_small, ys0, ys1, 13);
+  RunPackedEvalAll<13, 1>(packed_frontier, ys0, ys1, 107);
+  for (const CallCounters *c : {&dpf_small, &dcf_small, &half_small, &packed_small, &packed_frontier}) {
+    EXPECT_LE(c->max_team_size.load(), 2);
+  }
+}
+
+TEST(ParDepthTest, GrottoPreprocessAndEvalAllStayOnCallingThread) {
+  omp_set_num_threads(4);
+  using Scheme = fss::GrottoDcf<8, CountingPrg<2>, uint16_t, 0>;
+  CallCounters counters;
+  Scheme scheme{CountingPrg<2>{counters}};
+  Scheme::Key k0, k1;
+  int4 seeds[2] = {kSeed0, kSeed1};
+  scheme.Gen(k0, k1, seeds, 107);
+  auto tree0 = scheme.Preprocess(false, k0);
+  auto tree1 = scheme.Preprocess(true, k1);
+  bool ys0[256], ys1[256];
+  scheme.EvalAll(false, k0, ys0);
+  scheme.EvalAll(true, k1, ys1);
+  for (int x = 0; x < 256; ++x) {
+    EXPECT_EQ(ys0[x], scheme.Eval(tree0, x));
+    EXPECT_EQ(ys1[x], scheme.Eval(tree1, x));
+    EXPECT_EQ(ys0[x] ^ ys1[x], x >= 107);
+  }
+  ExpectCallerThreadOnly(counters);
+}
+
+TEST(ParDepthTest, VdpfChainStaysOnCallingThread) {
+  omp_set_num_threads(4);
+  using Scheme = fss::Vdpf<8, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t, 0>;
+  CallCounters prg, xor_hash, hash;
+  Scheme scheme{CountingPrg<2>{prg}, CountingXorHash{xor_hash}, CountingHash{hash}};
+  Scheme::Key k0, k1;
+  int4 seeds[2] = {kSeed0, kSeed1};
+  ASSERT_EQ(scheme.Gen(k0, k1, seeds, 107, kBeta), 0);
+  std::vector<int4> ys0(256), ys1(256);
+  cuda::std::array<int4, 4> pi0, pi1;
+  scheme.EvalAll(false, k0, ys0, pi0);
+  scheme.EvalAll(true, k1, ys1, pi1);
+  EXPECT_TRUE(Scheme::Verify(pi0, pi1));
+  ExpectReconstruction(ys0, ys1, 107);
+  ExpectCallerThreadOnly(prg);
+  ExpectCallerThreadOnly(xor_hash);
+  ExpectCallerThreadOnly(hash);
+}
+
+TEST(ParDepthTest, DmpfEvalAllPropagatesZeroToItsInnerDpf) {
+  omp_set_num_threads(4);
+  using Prp = fss::prp::ChaChaFeistel;
+  using Scheme = fss::Dmpf<8, 30, 6, BytesGroup, CountingPrg<2>, Prp, uint16_t, 3, 80, 0>;
+  CallCounters counters;
+  Scheme scheme{CountingPrg<2>{counters}, Prp{}};
+  Scheme::Key k0, k1;
+  cuda::std::array<cuda::std::array<int4, 2>, Scheme::m> seeds;
+  for (auto &pair : seeds) pair = {kSeed0, kSeed1};
+  uint16_t alphas[30];
+  int4 betas[30];
+  for (int i = 0; i < 30; ++i) {
+    alphas[i] = i * 3;
+    betas[i] = kBeta;
+  }
+  int4 sigma = kHashKey;
+  ASSERT_EQ(scheme.Gen(k0, k1, sigma, seeds, alphas, betas, 30), 0);
+  std::vector<int4> ys0(256), ys1(256);
+  scheme.EvalAll(false, k0, ys0);
+  scheme.EvalAll(true, k1, ys1);
+  ExpectCallerThreadOnly(counters);
+  for (int x = 0; x < 256; ++x) {
+    int4 sum = fss::util::Xor(ys0[x], ys1[x]);
+    int4 expected = x < 90 && x % 3 == 0 ? BytesGroup::From(kBeta).Into() : int4{0, 0, 0, 0};
+    EXPECT_EQ(memcmp(&sum, &expected, sizeof(sum)), 0);
+  }
+}
+
+
+TEST(ParDepthTest, Gen8FrontiersHonorSequentialContextAndMatchScalarFallback) {
+  omp_set_num_threads(4);
+  CallCounters scalar, batched;
+  std::vector<int4> scalar0, scalar1, batched0, batched1;
+  RunDpfEvalAll<12, 0>(scalar, scalar0, scalar1, 107);
+  RunDpfEvalAll<12, 0, BatchedCountingPrg<2>>(batched, batched0, batched1, 107);
+  EXPECT_TRUE(EqualBuffers(scalar0, batched0));
+  EXPECT_TRUE(EqualBuffers(scalar1, batched1));
+  RunDcfEvalAll<12, 0>(scalar, scalar0, scalar1, 107);
+  RunDcfEvalAll<12, 0, BatchedCountingPrg<4>>(batched, batched0, batched1, 107);
+  EXPECT_TRUE(EqualBuffers(scalar0, batched0));
+  EXPECT_TRUE(EqualBuffers(scalar1, batched1));
+  RunHalfTreeEvalAll<12, 0>(scalar, scalar0, scalar1, 107);
+  RunHalfTreeEvalAll<12, 0, BatchedCountingPrg<1>>(batched, batched0, batched1, 107);
+  EXPECT_TRUE(EqualBuffers(scalar0, batched0));
+  EXPECT_TRUE(EqualBuffers(scalar1, batched1));
+  RunPackedEvalAll<13, 0>(scalar, scalar0, scalar1, 107);
+  RunPackedEvalAll<13, 0, BatchedCountingPrg<1>>(batched, batched0, batched1, 107);
+  EXPECT_TRUE(EqualBuffers(scalar0, batched0));
+  EXPECT_TRUE(EqualBuffers(scalar1, batched1));
+  EXPECT_TRUE(batched.batch_calls.load() > 0);
+  ExpectCallerThreadOnly(batched);
+}
+
+TEST(ParDepthTest, ExcessiveDepthIsClampedBeforeShifting) {
+  omp_set_num_threads(4);
+  CallCounters counters;
+  std::vector<int4> ys0, ys1;
+  RunDpfEvalAll<8, INT_MAX>(counters, ys0, ys1, 107);
+  ExpectReconstruction(ys0, ys1, 107);
+  RunDcfEvalAll<8, INT_MAX>(counters, ys0, ys1, 107);
+  ExpectDcfLtReconstruction(ys0, ys1, 107);
+  RunHalfTreeEvalAll<8, INT_MAX>(counters, ys0, ys1, 107);
+  ExpectReconstruction(ys0, ys1, 107);
+  RunPackedEvalAll<13, INT_MAX>(counters, ys0, ys1, 107);
 }

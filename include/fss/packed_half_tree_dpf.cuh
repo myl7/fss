@@ -320,10 +320,9 @@ private:
       // Domains too shallow to fill an 8-wide frontier evaluate one point per
       // block through the tested point walk.
       constexpr size_t blocks = size_t{1} << kDepth;
-#pragma omp parallel for if (util::ResolveParDepth(par_depth) > 0)
-      for (size_t j = 0; j < blocks; ++j) {
+      util::ParallelFor(par_depth, blocks, [&](size_t j) {
         ys[j] = Eval(b, s0, cws, fcw, static_cast<In>(j * kLanes));
-      }
+      });
     }
   }
 
@@ -366,21 +365,38 @@ private:
       }
     }
 
-    // Batched frontier descent, 8 parents per batched expansion. Each level is an OpenMP
-    // worksharing loop; the implicit barriers give the level-to-level synchronization.
-    // par_depth resolving to 0 runs the descent sequentially, like the other schemes.
-#pragma omp parallel if (util::ResolveParDepth(par_depth) > 0)
+    // Each level bounds its independent partitions by 2^par_depth. The
+    // sequential branch avoids an inactive OpenMP region as well as workers.
+    int depth = util::ResolveParDepth(par_depth, kDepth);
+    if (depth == 0) {
+      for (int i = kTopDepth; i < kDepth; ++i) {
+        const int4 *src = bufs[i & 1];
+        int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) & 1];
+        size_t batches = (size_t{1} << i) / 8;
+        for (size_t k = 0; k < batches; ++k) {
+          if (i + 1 == kDepth) ExpandConvert8(src, dst, k, cws[i].s, fcw);
+          else Expand8(src, dst, k, cws[i].s);
+        }
+      }
+      return;
+    }
+    int threads = util::ResolveParThreads(depth, num_blocks / 16);
+#pragma omp parallel num_threads(threads)
     {
       for (int i = kTopDepth; i < kDepth; ++i) {
         const int4 *src = bufs[i & 1];
         int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) & 1];
         size_t batches = (size_t{1} << i) / 8;
-        if (i + 1 == kDepth) {
+        size_t partitions = util::ResolveParPartitions(depth, batches);
 #pragma omp for schedule(static)
-          for (size_t k = 0; k < batches; ++k) ExpandConvert8(src, dst, k, cws[i].s, fcw);
-        } else {
-#pragma omp for schedule(static)
-          for (size_t k = 0; k < batches; ++k) Expand8(src, dst, k, cws[i].s);
+        for (size_t partition = 0; partition < partitions; ++partition) {
+          size_t begin = partition * (batches / partitions) +
+              (partition < batches % partitions ? partition : batches % partitions);
+          size_t end = begin + batches / partitions + (partition < batches % partitions);
+          for (size_t k = begin; k < end; ++k) {
+            if (i + 1 == kDepth) ExpandConvert8(src, dst, k, cws[i].s, fcw);
+            else Expand8(src, dst, k, cws[i].s);
+          }
         }
       }
     }

@@ -192,8 +192,10 @@ struct HalfTreeDpfPointKey {
  * @param key A party's key returned by Dpf::Gen().
  * @return The packed key.
  */
-template <int in_bits, typename Group, typename Prg, typename In>
-DpfPointKey<in_bits> DpfPackPoint(const typename Dpf<in_bits, Group, Prg, In>::Key &key) {
+template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
+    typename Key = typename Dpf<in_bits, Group, Prg, In, par_depth>::Key>
+  requires(std::is_same_v<Key, typename Dpf<in_bits, Group, Prg, In, Key::kParDepth>::Key>)
+DpfPointKey<in_bits> DpfPackPoint(const Key &key) {
   DpfPointKey<in_bits> packed = {};
   packed.s0 = key.s0;
   ExtBits<in_bits> tr = 0;
@@ -273,9 +275,10 @@ int4 DpfEvalPoint(bool b, const DpfPointKey<in_bits> &key, In x, Prg &prg) {
  * @param key A party's key returned by HalfTreeDpf::Gen().
  * @return The packed key.
  */
-template <int in_bits, typename Group, typename Prg, typename In>
-HalfTreeDpfPointKey<in_bits> HalfTreeDpfPackPoint(
-    const typename HalfTreeDpf<in_bits, Group, Prg, In>::Key &key) {
+template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
+    typename Key = typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Key>
+  requires(std::is_same_v<Key, typename HalfTreeDpf<in_bits, Group, Prg, In, Key::kParDepth>::Key>)
+HalfTreeDpfPointKey<in_bits> HalfTreeDpfPackPoint(const Key &key) {
   HalfTreeDpfPointKey<in_bits> packed = {};
   packed.s0 = key.s0;
   for (int i = 0; i < in_bits - 1; ++i) packed.cws[i] = key.cws[i].s;

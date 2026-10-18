@@ -26,6 +26,7 @@ template <int mul, int rounds = 20>
 class ChaCha {
 private:
   int nonce_[2];
+  const int *legacy_nonce_ = nullptr;
 
   template <int n>
   __host__ __device__ static int RotateLeft(int a) {
@@ -34,16 +35,16 @@ private:
   }
 
   __host__ __device__ static void QuarterRound(int &a, int &b, int &c, int &d) {
-    a += b;
+    a = static_cast<int>(static_cast<uint32_t>(a) + static_cast<uint32_t>(b));
     d ^= a;
     d = RotateLeft<16>(d);
-    c += d;
+    c = static_cast<int>(static_cast<uint32_t>(c) + static_cast<uint32_t>(d));
     b ^= c;
     b = RotateLeft<12>(b);
-    a += b;
+    a = static_cast<int>(static_cast<uint32_t>(a) + static_cast<uint32_t>(b));
     d ^= a;
     d = RotateLeft<8>(d);
-    c += d;
+    c = static_cast<int>(static_cast<uint32_t>(c) + static_cast<uint32_t>(d));
     b ^= c;
     b = RotateLeft<7>(b);
   }
@@ -92,8 +93,13 @@ public:
      */
   __host__ __device__ ChaCha(int nonce0, int nonce1) : nonce_{nonce0, nonce1} {}
 
+  // Legacy non-owning mode reads the nonce only when Gen() executes. The
+  // caller must keep its host or device storage alive throughout evaluation.
+  __host__ __device__ ChaCha(const int *nonce) : nonce_{0, 0}, legacy_nonce_(nonce) {}
+
   __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
     int4 buf[4];
+    const int *nonce = legacy_nonce_ != nullptr ? legacy_nonce_ : nonce_;
 
     // Constant
     if constexpr (mul <= 2) buf[0] = kConstant16;
@@ -107,8 +113,8 @@ public:
     buf[3].x = 0;
     buf[3].y = 0;
     // Nonce
-    buf[3].z = nonce_[0];
-    buf[3].w = nonce_[1];
+    buf[3].z = nonce[0];
+    buf[3].w = nonce[1];
 
     Rounds(buf);
 
@@ -121,7 +127,7 @@ public:
     } else {
       buf[0] = util::Xor(buf[0], kConstant32);
       buf[2] = util::Xor(buf[2], seed);
-      buf[3] = util::Xor(buf[3], {0, 0, nonce_[0], nonce_[1]});
+      buf[3] = util::Xor(buf[3], {0, 0, nonce[0], nonce[1]});
       return {buf[0], buf[1], buf[2], buf[3]};
     }
   }

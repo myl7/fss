@@ -69,17 +69,15 @@ public:
      * @param a The secret comparison threshold.
      */
   __host__ __device__ void Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a) {
-    DpfType dpf{prg};
-    typename DpfType::Key dk0;
-    typename DpfType::Key dk1;
-    int4 beta = {0, 0, 0, 0};
-    dpf.Gen(dk0, dk1, s0s, a, beta);
-    for (int i = 0; i <= in_bits; ++i) {
-      k0.cws[i] = dk0.cws[i];
-      k1.cws[i] = dk1.cws[i];
-    }
+    Gen(k0.cws, s0s.data(), a);
+    for (int i = 0; i <= in_bits; ++i) k1.cws[i] = k0.cws[i];
     k0.s0 = s0s[0];
     k1.s0 = s0s[1];
+  }
+
+  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a) {
+    DpfType dpf{prg};
+    dpf.Gen(cws, s0s, a, int4{0, 0, 0, 0});
   }
 
   /**
@@ -129,15 +127,19 @@ public:
     pt.p = std::make_unique<bool[]>(2 * N - 1);
     pt.b = b;
 
-    // Phase 1: expand tree, write leaf control bits to pt.p[N-1 .. 2N-2]
-    ExpandTree(b, key.s0, key.cws, pt.p.get() + (N - 1));
-
-    // Phase 2a: build parity segment tree bottom-up
-    for (size_t j = N - 2; j < N - 1; --j) {
-      pt.p[j] = pt.p[2 * j + 1] ^ pt.p[2 * j + 2];
-    }
+    ParityTree view = pt.view();
+    Preprocess(view, key.s0, key.cws);
 
     return pt;
+  }
+
+  // Caller-owned v1.2.0 form. pt.p contains 2 * 2^in_bits - 1 entries.
+  void Preprocess(ParityTree &pt, int4 s0, const Cw cws[]) {
+    constexpr size_t n = size_t{1} << in_bits;
+    ExpandTree(pt.b, s0, cws, pt.p + n - 1);
+    for (size_t j = n - 2; j < n - 1; --j) {
+      pt.p[j] = pt.p[2 * j + 1] ^ pt.p[2 * j + 2];
+    }
   }
 
   /**
@@ -199,10 +201,14 @@ public:
      *           ys[x] = party b's share of 1[alpha <= x].
      */
   void EvalAll(bool b, const Key &key, cuda::std::span<bool> ys) {
+    EvalAll(b, key.s0, key.cws, ys.data());
+  }
+
+  void EvalAll(bool b, int4 s0, const Cw cws[], bool ys[]) {
     constexpr size_t N = 1ULL << in_bits;
 
     // Phase 1: expand tree to get leaf control bits into ys[]
-    ExpandTree(b, key.s0, key.cws, ys.data());
+    ExpandTree(b, s0, cws, ys);
 
     // Phase 2b: prefix-sum scan (running XOR)
     // ys[x] currently holds leaf x's control bit.
@@ -223,9 +229,14 @@ private:
     size_t r = 1ULL << in_bits;
     int i = 0;
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
 
-#pragma omp parallel
+    if (par_depth_ == 0) {
+      ExpandTreeRec(st, cws, t, l, r, i, 0);
+      return;
+    }
+    int threads = util::ResolveParThreads(par_depth_, r);
+#pragma omp parallel num_threads(threads)
 #pragma omp single
     ExpandTreeRec(st, cws, t, l, r, i, par_depth_);
   }

@@ -64,6 +64,7 @@ public:
    * differ in the seed.
    */
   struct Key {
+    static constexpr int kParDepth = par_depth;
     Cw cws[in_bits];
     int4 ocw;
     int4 s0;
@@ -120,6 +121,7 @@ private:
   // directly, so no backward in-place pass over ys is needed.
   static constexpr int kBatchPrefix = 3;
 
+public:
   __host__ __device__ void Gen(Cw cws[], int4 &ocw, const int4 s0s[2], In a, int4 b_buf) {
     b_buf = util::SetLsb(b_buf, false);
 
@@ -283,14 +285,13 @@ private:
       // Domains too small to fill an 8-wide frontier evaluate per input; the
       // point walk is cheaper than the batched machinery at this size.
       constexpr size_t n = size_t{1} << in_bits;
-#pragma omp parallel for if (util::ResolveParDepth(par_depth) > 0)
-      for (size_t x = 0; x < n; ++x) ys[x] = Eval(b, s0, cws, ocw, static_cast<In>(x));
+      util::ParallelFor(par_depth, n, [&](size_t x) { ys[x] = Eval(b, s0, cws, ocw, static_cast<In>(x)); });
       return;
     }
 
     int4 node = util::SetLsb(s0, b);
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
 
     int split_depth = par_depth_;
     if (split_depth > in_bits - kBatchPrefix - 1) split_depth = in_bits - kBatchPrefix - 1;
@@ -300,24 +301,24 @@ private:
       size_t num_tasks = size_t{1} << split_depth;
       std::vector<int4> frontier(num_tasks);
       frontier[0] = node;
-      for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(frontier.data(), 1 << lv, cws, lv);
+      for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(frontier.data(), size_t{1} << lv, cws, lv);
       size_t span = size_t{1} << (in_bits - split_depth);
-#pragma omp parallel for
-      for (size_t task = 0; task < num_tasks; ++task) {
+      util::ParallelFor(par_depth_, num_tasks, [&](size_t task) {
         EvalBatched8(b, frontier[task], cws, Group::From(ocw), ys, task * span, split_depth);
-      }
+      });
     } else {
       EvalBatched8(b, node, cws, Group::From(ocw), ys, 0, 0);
     }
   }
 
+private:
   // Expands w scalar frontier nodes by one level with cws[lv].
   // The children overwrite the frontier in place: iteration is in reverse so
   // the writes at 2j, 2j+1 never clobber nodes still to be read.
-  void ExpandFrontier(int4 frontier[], int w, const Cw cws[], int lv) {
+  void ExpandFrontier(int4 frontier[], size_t w, const Cw cws[], int lv) {
     int4 cw = cws[lv].s;
     int4 zero4 = {0, 0, 0, 0};
-    for (int j = w; j-- > 0;) {
+    for (size_t j = w; j-- > 0;) {
       int4 node = frontier[j];
       int4 h = prg.Gen(util::Xor(hash_key, node))[0];
       int4 t_mask = util::GetLsb(node) ? cw : zero4;
@@ -339,7 +340,7 @@ private:
   void EvalBatched8(bool b, int4 node, const Cw cws[], Group ocw_group, int4 ys[], size_t l, int i) {
     int4 frontier[8];
     frontier[0] = node;
-    for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(frontier, 1 << (lv - i), cws, lv);
+    for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(frontier, size_t{1} << (lv - i), cws, lv);
     EvalBatched8Group(b, frontier, cws, ocw_group, ys, l, i + kBatchPrefix);
   }
 

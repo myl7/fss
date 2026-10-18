@@ -42,6 +42,7 @@
 #include <fss/half_tree_dpf.cuh>
 #include <fss/packed_half_tree_dpf.cuh>
 #include <fss/vdpf.cuh>
+#include <fss/internal/gpu_workspace.cuh>
 
 namespace fss::gpu {
 
@@ -356,8 +357,8 @@ __global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, in
 }
 
 template <int in_bits, int z, int b1, typename Group, typename Prg, typename Cw>
-__global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, const int4 *ocws, int4 *ys,
-    int nkeys, int4 hash_key, Prg prg) {
+__global__ void HalfTreeDpfEvalAllBatchKernel(
+    bool b, const int4 *s0s, const Cw *cws, const int4 *ocws, int4 *ys, int nkeys, int4 hash_key, Prg prg) {
   constexpr int D = in_bits - z;
   constexpr int kSub = z - b1;
   constexpr int kBlocks = 1 << b1;
@@ -460,8 +461,8 @@ __global__ void HalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw 
 // ocw, and no party negation of outputs since packed shares XOR-reconstruct.
 
 template <int in_bits, int out_bits, int kDepth, int z, int b1, typename Prg, typename Cw>
-__global__ void PackedHalfTreeDpfEvalAllKernel(bool b, int4 s0, const Cw *cws, int4 fcw, int4 *ys, int4 hash_key,
-    Prg prg) {
+__global__ void PackedHalfTreeDpfEvalAllKernel(
+    bool b, int4 s0, const Cw *cws, int4 fcw, int4 *ys, int4 hash_key, Prg prg) {
   constexpr int D = kDepth - z;
   constexpr int kSub = z - b1;
   const int64_t tid = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -526,8 +527,8 @@ __global__ void PackedHalfTreeDpfEvalAllKernel(bool b, int4 s0, const Cw *cws, i
 }
 
 template <int in_bits, int out_bits, int kDepth, int z, int b1, typename Prg, typename Cw>
-__global__ void PackedHalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s, const Cw *cws, const int4 *fcws,
-    int4 *ys, int nkeys, int4 hash_key, Prg prg) {
+__global__ void PackedHalfTreeDpfEvalAllBatchKernel(
+    bool b, const int4 *s0s, const Cw *cws, const int4 *fcws, int4 *ys, int nkeys, int4 hash_key, Prg prg) {
   constexpr int D = kDepth - z;
   constexpr int kSub = z - b1;
   constexpr int kBlocks = 1 << b1;
@@ -602,8 +603,8 @@ __global__ void PackedHalfTreeDpfEvalAllBatchKernel(bool b, const int4 *s0s, con
 // A DCF tree node carries (st, v): st is the seed with t in the LSB, v is the
 // running group value of the path, mirroring Dcf::EvalTree.
 template <typename Cw, typename Group, typename Prg>
-__device__ __forceinline__ void DcfExpandNode(int4 st, Group v, bool b, const Cw &cw, Prg prg,
-    int4 &left, Group &v_left, int4 &right, Group &v_right) {
+__device__ __forceinline__ void DcfExpandNode(
+    int4 st, Group v, bool b, const Cw &cw, Prg prg, int4 &left, Group &v_left, int4 &right, Group &v_right) {
   bool t = util::GetLsb(st);
   int4 s = util::SetLsb(st, false);
   int4 s_cw = cw.s;
@@ -647,8 +648,8 @@ __device__ __forceinline__ void DcfExpandNode(int4 st, Group v, bool b, const Cw
 
 // One step of a DCF path walk: only the chosen child's (st, v) is kept.
 template <typename Cw, typename Group, typename Prg>
-__device__ __forceinline__ void DcfPathStep(int4 st, Group v, bool b, const Cw &cw, Prg prg, bool x_bit,
-    int4 &next_st, Group &next_v) {
+__device__ __forceinline__ void DcfPathStep(
+    int4 st, Group v, bool b, const Cw &cw, Prg prg, bool x_bit, int4 &next_st, Group &next_v) {
   int4 left, right;
   Group v_left, v_right;
   DcfExpandNode(st, v, b, cw, prg, left, v_left, right, v_right);
@@ -1120,9 +1121,9 @@ __global__ void DmpfEvalAllMergeKernel(int4 *ys, int4 sigma, int m_rt, int b_rt,
  * @param dpf A HalfTreeDpf instance (holds the PRG and hash key). Used on the host side.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
-void HalfTreeDpfEvalAllGpu(bool b, int4 s0, const typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw *cws, int4 ocw,
-    int4 *ys, const HalfTreeDpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In, int par_depth>
+void HalfTreeDpfEvalAllGpu(bool b, int4 s0, const typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw *cws,
+    int4 ocw, int4 *ys, const HalfTreeDpf<in_bits, Group, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
   constexpr int Z = (z < 0 ? (in_bits - 1 <= 16 ? in_bits - 1 : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z < in_bits && in_bits - Z <= 8);
@@ -1147,16 +1148,15 @@ void HalfTreeDpfEvalAllGpu(bool b, int4 s0, const typename HalfTreeDpf<in_bits, 
  * @param dpf A Dpf instance (holds the PRG). Used on the host side.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
-void DpfEvalAllGpu(bool b, int4 s0, const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int4 *ys,
-    const Dpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In, int par_depth>
+void DpfEvalAllGpu(bool b, int4 s0, const typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int4 *ys,
+    const Dpf<in_bits, Group, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   constexpr size_t kBlocks = (size_t{1} << Z) / bs;
-  detail::DpfEvalAllKernel<in_bits, Z, B1, Group, Prg>
-      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, ys, dpf.prg);
+  detail::DpfEvalAllKernel<in_bits, Z, B1, Group, Prg><<<kBlocks, bs, 0, stream>>>(b, s0, cws, ys, dpf.prg);
 }
 
 /**
@@ -1180,9 +1180,10 @@ void DpfEvalAllGpu(bool b, int4 s0, const typename Dpf<in_bits, Group, Prg, In>:
  * @param dpf A Dpf instance (holds the PRG). Used on the host side.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
-void DpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys,
-    int4 *ys, const Dpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In, int par_depth>
+void DpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw *cws,
+    int nkeys, int4 *ys, const Dpf<in_bits, Group, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
@@ -1195,16 +1196,18 @@ void DpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dpf<in_bits, Gro
  * GPU full-domain evaluation of nkeys HalfTree DPF keys in one launch, see
  * DpfEvalAllGpuBatch. cws stride is in_bits per key; ocws has nkeys entries.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In>
-void HalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw *cws,
-    const int4 *ocws, int nkeys, int4 *ys, const HalfTreeDpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In, int par_depth>
+void HalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s,
+    const typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, const int4 *ocws, int nkeys, int4 *ys,
+    const HalfTreeDpf<in_bits, Group, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int Z = (z < 0 ? (in_bits - 1 <= 16 ? in_bits - 1 : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z < in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   detail::HalfTreeDpfEvalAllBatchKernel<in_bits, Z, B1, Group, Prg>
-      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(b, s0s, cws, ocws, ys, nkeys, dpf.hash_key,
-          dpf.prg);
+      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(
+          b, s0s, cws, ocws, ys, nkeys, dpf.hash_key, dpf.prg);
 }
 
 /**
@@ -1226,11 +1229,11 @@ void HalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s, const typename HalfTree
  * @param dpf A PackedHalfTreeDpf instance (holds the PRG and hash key). Used on the host side.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg, typename In>
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg, typename In, int par_depth>
 void PackedHalfTreeDpfEvalAllGpu(bool b, int4 s0,
-    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::Cw *cws, int4 fcw, int4 *ys,
-    const PackedHalfTreeDpf<in_bits, out_bits, Prg, In> &dpf, cudaStream_t stream = 0) {
-  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::kDepth;
+    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>::Cw *cws, int4 fcw, int4 *ys,
+    const PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
+  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>::kDepth;
   constexpr int Z = (z < 0 ? (kDepth <= 16 ? kDepth : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= kDepth && kDepth - Z <= 8);
@@ -1245,18 +1248,19 @@ void PackedHalfTreeDpfEvalAllGpu(bool b, int4 s0,
  * PackedHalfTreeDpfEvalAllGpu and DpfEvalAllGpuBatch. cws stride is kDepth per key;
  * fcws has nkeys entries; ys stride is (1 << kDepth) per key.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg, typename In>
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg, typename In, int par_depth>
 void PackedHalfTreeDpfEvalAllGpuBatch(bool b, const int4 *s0s,
-    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::Cw *cws, const int4 *fcws, int nkeys, int4 *ys,
-    const PackedHalfTreeDpf<in_bits, out_bits, Prg, In> &dpf, cudaStream_t stream = 0) {
-  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, In>::kDepth;
+    const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>::Cw *cws, const int4 *fcws, int nkeys,
+    int4 *ys, const PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
+  constexpr int kDepth = PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>::kDepth;
   constexpr int Z = (z < 0 ? (kDepth <= 16 ? kDepth : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= kDepth && kDepth - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   detail::PackedHalfTreeDpfEvalAllBatchKernel<in_bits, out_bits, kDepth, Z, B1, Prg>
-      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(b, s0s, cws, fcws, ys, nkeys, dpf.hash_key,
-          dpf.prg);
+      <<<static_cast<size_t>(nkeys) * (size_t{1} << B1), bs, 0, stream>>>(
+          b, s0s, cws, fcws, ys, nkeys, dpf.hash_key, dpf.prg);
 }
 
 /**
@@ -1284,8 +1288,7 @@ void DcfEvalAllGpu(bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, In, 
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   constexpr size_t kBlocks = (size_t{1} << Z) / bs;
-  detail::DcfEvalAllKernel<in_bits, Z, B1, Group, Prg>
-      <<<kBlocks, bs, 0, stream>>>(b, s0, cws, ys, dcf.prg);
+  detail::DcfEvalAllKernel<in_bits, Z, B1, Group, Prg><<<kBlocks, bs, 0, stream>>>(b, s0, cws, ys, dcf.prg);
 }
 
 /**
@@ -1312,9 +1315,9 @@ void DcfEvalAllGpu(bool b, int4 s0, const typename Dcf<in_bits, Group, Prg, In, 
  */
 template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename In, DcfPred pred,
     int par_depth>
-void DcfEvalAllGpuBatch(bool b, const int4 *s0s,
-    const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws, int nkeys, int4 *ys,
-    const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf, cudaStream_t stream = 0) {
+void DcfEvalAllGpuBatch(bool b, const int4 *s0s, const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws,
+    int nkeys, int4 *ys, const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
@@ -1342,16 +1345,16 @@ void DcfEvalAllGpuBatch(bool b, const int4 *s0s,
  * @param dcf A GrottoDcf instance (holds the PRG). Used on the host side.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg, typename In>
-void GrottoDcfPreprocessGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg, In>::Cw *cws, bool *d_p,
-    const GrottoDcf<in_bits, Prg, In> &dcf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg, typename In, int par_depth>
+void GrottoDcfPreprocessGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw *cws, bool *d_p,
+    const GrottoDcf<in_bits, Prg, In, par_depth> &dcf, cudaStream_t stream = 0) {
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   constexpr size_t kBlocks = (size_t{1} << Z) / bs;
   constexpr size_t N = size_t{1} << in_bits;
-  detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In>::Cw, Prg>
+  detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, d_p + (N - 1), dcf.prg);
   // Bottom-up parity build. Levels wider than one block get one kernel each;
   // the levels of at most bs nodes at the top go through one single-block
@@ -1381,35 +1384,29 @@ void GrottoDcfPreprocessGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, P
  * @param dcf A GrottoDcf instance (holds the PRG). Used on the host side.
  * @param stream CUDA stream to launch on.
  */
-template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg, typename In>
-void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg, In>::Cw *cws, bool *d_ys,
-    const GrottoDcf<in_bits, Prg, In> &dcf, cudaStream_t stream = 0) {
+template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg, typename In, int par_depth>
+void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw *cws, bool *d_ys,
+    const GrottoDcf<in_bits, Prg, In, par_depth> &dcf, cudaStream_t stream = 0) {
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
   static_assert(B1 <= Z && (1 << (Z - B1)) == bs);
   constexpr size_t kBlocks = (size_t{1} << Z) / bs;
   constexpr size_t N = size_t{1} << in_bits;
-  detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In>::Cw, Prg>
+  detail::GrottoDcfExpandLeafBitsKernel<in_bits, Z, B1, typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw, Prg>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, d_ys, dcf.prg);
-  // Host-side plain C++: scan the 1-byte control bits as unsigned char. The
-  // CUB scratch is cached per host thread: a per-call cudaMallocAsync costs a
-  // driver round trip on some setups when the pool cannot serve the block
-  // from cache, which measured ~0.6ms of stream stall per call on a shared
-  // A6000. Calls from one thread on different streams are only safe when
-  // those streams are not run concurrently.
+  // Scratch belongs to this specialization and current device. Calls from
+  // one host thread on different streams must not overlap.
   auto *bits = reinterpret_cast<unsigned char *>(d_ys);
   detail::GrottoXorScanOp scan_op;
   size_t tmp_bytes = 0;
-  cub::DeviceScan::InclusiveScan(nullptr, tmp_bytes, bits, bits, scan_op, static_cast<int64_t>(N), stream);
-  thread_local void *d_tmp = nullptr;
-  thread_local size_t tmp_cap = 0;
-  if (tmp_cap < tmp_bytes) {
-    if (d_tmp != nullptr) cudaFree(d_tmp);
-    cudaMalloc(&d_tmp, tmp_bytes);
-    tmp_cap = tmp_bytes;
-  }
-  cub::DeviceScan::InclusiveScan(d_tmp, tmp_bytes, bits, bits, scan_op, static_cast<int64_t>(N), stream);
+  detail::CheckCudaWorkspace(
+      cub::DeviceScan::InclusiveScan(nullptr, tmp_bytes, bits, bits, scan_op, static_cast<int64_t>(N), stream));
+  static const int kWorkspaceTag = 0;
+  auto &workspace = detail::GetGpuWorkspaceCache().Get(&kWorkspaceTag);
+  auto *d_tmp = workspace.Ensure<unsigned char>(0, tmp_bytes);
+  detail::CheckCudaWorkspace(
+      cub::DeviceScan::InclusiveScan(d_tmp, tmp_bytes, bits, bits, scan_op, static_cast<int64_t>(N), stream));
 }
 
 /**
@@ -1438,10 +1435,11 @@ void GrottoDcfEvalAllGpu(bool b, int4 s0, const typename GrottoDcf<in_bits, Prg,
  * @param stream CUDA stream to launch on.
  */
 template <int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group, typename Prg, typename XorHash,
-    typename Hash, typename In>
-void VdpfEvalAllMerkleGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws,
-    cuda::std::array<int4, 4> cs, int4 ocw, int4 *ys, cuda::std::array<int4, 4> *d_pi,
-    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
+    typename Hash, typename In, int par_depth>
+void VdpfEvalAllMerkleGpu(bool b, int4 s0,
+    const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw *cws, cuda::std::array<int4, 4> cs,
+    int4 ocw, int4 *ys, cuda::std::array<int4, 4> *d_pi,
+    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth> &vdpf, cudaStream_t stream = 0) {
   constexpr int Z = (z < 0 ? (in_bits <= 16 ? in_bits : 16) : z);
   constexpr int B1 = (b1 < 0 ? 8 : b1);
   static_assert(Z <= in_bits && in_bits - Z <= 8);
@@ -1450,14 +1448,13 @@ void VdpfEvalAllMerkleGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, P
   // fit: (1 << Z) / bs <= bs.
   static_assert((1 << Z) <= bs * bs);
   constexpr int kBlocks = (1 << Z) / bs;
-  // The per-block root buffer is tiny (kBlocks entries), but a per-call
-  // cudaMallocAsync costs a driver round trip on some setups, so keep one
-  // allocation per host thread. Calls from one thread on different streams
-  // must not run concurrently.
-  thread_local cuda::std::array<int4, 2> *d_roots = nullptr;
-  if (d_roots == nullptr) cudaMalloc(&d_roots, sizeof(cuda::std::array<int4, 2>) * kBlocks);
+  // Each device owns its cached block roots. See ReleaseGpuWorkspaces for
+  // lifetime and stream restrictions.
+  static const int kWorkspaceTag = 0;
+  auto &workspace = detail::GetGpuWorkspaceCache().Get(&kWorkspaceTag);
+  auto *d_roots = workspace.Ensure<cuda::std::array<int4, 2>>(0, kBlocks);
   detail::VdpfEvalAllMerkleKernel<in_bits, Z, B1, Group, Prg, XorHash, Hash, In,
-      typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
+      typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw>
       <<<kBlocks, bs, 0, stream>>>(b, s0, cws, cs, ocw, ys, d_roots, vdpf.prg, vdpf.xor_hash, vdpf.hash);
   detail::VdpfMerkleRootsKernel<bs, Hash><<<1, bs, 0, stream>>>(d_roots, kBlocks, cs, d_pi, vdpf.hash);
 }
@@ -1490,13 +1487,15 @@ void VdpfEvalAllMerkleGpu(bool b, int4 s0, const typename Vdpf<in_bits, Group, P
  * @param dmpf A Dmpf instance (holds the PRG and PRP).
  * @param stream CUDA stream to launch both phases on.
  */
-template <int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bits, typename Group,
-    typename Prg, typename Prp, typename In, int kappa>
+template <int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg,
+    typename Prp, typename In, int kappa, int ch_lambda, int par_depth>
 void DmpfEvalAllGpu(bool b, int4 sigma, int m_rt, int b_rt, const int4 *s0s,
-    const typename Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa>::InnerDpf::Cw *cws,
-    int4 *bucket_ys, int4 *ys, const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa> &dmpf,
+    const typename Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda,
+        par_depth>::InnerDpf::Cw *cws,
+    int4 *bucket_ys, int4 *ys,
+    const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth> &dmpf,
     cudaStream_t stream = 0) {
-  using DmpfType = Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa>;
+  using DmpfType = Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth>;
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
   constexpr int Z = z < 0 ? (bucket_bits <= 16 ? bucket_bits : 16) : z;
   constexpr int B1 = b1 < 0 ? (Z >= 8 ? Z - 8 : 0) : b1;

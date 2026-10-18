@@ -70,21 +70,32 @@ namespace fss {
  *   (Lemma 5 and Remark 1 of the paper).
  * @tparam ch_lambda Cuckoo-hashing security parameter in bits. Controls the failure probability
  *   of Cuckoo hashing: inserting t elements fails with probability at most $2^{-\text{ch\_lambda}}$.
+ * @tparam par_depth Inner DPF EvalAll tree split depth. Zero keeps PRG calls on
+ *   the calling thread. -1 selects a depth from the available OpenMP workers.
+ *   Positive depths bound independent work partitions by 2^par_depth.
+ *   PRGs sharing mutable contexts, including Aes128Mmo, require zero or separate
+ *   contexts for concurrent calls.
  */
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In = uint,
-    int kappa = 3, int ch_lambda = 80>
+    int kappa = 3, int ch_lambda = 80, int par_depth = -1>
   requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) && in_bits <= sizeof(In) * 8 &&
       Groupable<Group> && Prgable<Prg, 2> && Permutable<Prp>)
 class Dmpf {
 public:
   static_assert(max_points >= 30, "max_points must be >= 30 (Remark 1 of the paper)");
+  static_assert(bucket_bits >= 1 && bucket_bits <= 30, "bucket_bits must be in [1, 30]");
+  static_assert(kappa > 0, "kappa must be positive");
   static constexpr int m = cuckoo_hash::ChBucket(max_points, ch_lambda);
+  static_assert(m > 0, "bucket count must be positive");
   static constexpr __uint128_t n = __uint128_t(1) << in_bits;
-  // b_size = ceil(n * kappa / m), use __uint128_t to avoid overflow.
-  static constexpr int b_size = static_cast<int>((static_cast<__uint128_t>(n) * kappa + m - 1) / m);
-  static_assert(b_size <= (1 << bucket_bits));
+  // Bound capacity before forming n * kappa, which may overflow even __uint128_t.
+  static_assert(n <= ((__uint128_t{1} << bucket_bits) * m) / kappa,
+      "bucket_bits is too small for the bucket size");
+  // b_size = ceil(n * kappa / m). The capacity bound keeps the numerator in range.
+  static constexpr __uint128_t kBucketSize = (n * kappa + m - 1) / m;
+  static constexpr int b_size = static_cast<int>(kBucketSize);
 
-  using InnerDpf = Dpf<bucket_bits, Group, Prg, uint>;
+  using InnerDpf = Dpf<bucket_bits, Group, Prg, uint, par_depth>;
 
   Prg prg;
   Prp prp;
@@ -135,8 +146,9 @@ public:
     int m_ = cuckoo_hash::ChBucket(t, ch_lambda);
     assert(m_ <= m);
     __uint128_t n128 = static_cast<__uint128_t>(n);
-    int b_rt = static_cast<int>((n128 * kappa + m_ - 1) / m_);
-    assert(b_rt <= (1 << bucket_bits));
+    __uint128_t bucket_size = (n128 * kappa + m_ - 1) / m_;
+    assert(bucket_size <= (uint64_t{1} << bucket_bits));
+    int b_rt = static_cast<int>(bucket_size);
 
     k0.m_rt = m_;
     k1.m_rt = m_;
@@ -183,10 +195,10 @@ public:
       if (!retry) return 1;
 
       // Deterministically perturb the PRP seed and the initial seeds, then retry.
-      sigma.x += 1;
+      sigma.x = util::IncrementWord(sigma.x);
       for (int i = 0; i < m; ++i) {
-        s0s[i][0].x += 1;
-        s0s[i][1].y += 1;
+        s0s[i][0].x = util::IncrementWord(s0s[i][0].x);
+        s0s[i][1].y = util::IncrementWord(s0s[i][1].y);
       }
     }
 

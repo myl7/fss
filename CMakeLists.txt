@@ -135,6 +135,43 @@ if(BUILD_TESTING)
     add_executable(par_depth_test src/par_depth_test.cu)
     target_link_libraries(par_depth_test GTest::gtest_main fss)
     gtest_discover_tests(par_depth_test)
+
+    add_executable(release_compat_test src/release_compat_test.cu)
+    target_link_libraries(release_compat_test GTest::gtest_main fss OpenSSL::Crypto)
+    target_compile_options(release_compat_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-msse4.2>)
+    gtest_discover_tests(release_compat_test)
+
+    add_executable(word_arithmetic_test src/word_arithmetic_test.cu)
+    target_link_libraries(word_arithmetic_test GTest::gtest_main fss)
+    gtest_discover_tests(word_arithmetic_test)
+
+    # Keep these released consumers unchanged so API repairs cannot update the
+    # expected calls together with the library implementation.
+    foreach(sample dpf_dcf_cpu half_tree_dpf_cpu grotto_dcf_cpu vdpf_cpu)
+        add_executable(compat_v1_2_${sample} src/compat_v1_2/${sample}.cu)
+        target_link_libraries(compat_v1_2_${sample} PRIVATE fss OpenSSL::Crypto)
+        add_test(NAME compat_v1_2_${sample}
+            COMMAND ${CMAKE_COMMAND}
+                -DEXECUTABLE=$<TARGET_FILE:compat_v1_2_${sample}>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/src/compat_v1_2/check_sample.cmake)
+        set_tests_properties(compat_v1_2_${sample} PROPERTIES
+            ENVIRONMENT "OMP_NUM_THREADS=1")
+    endforeach()
+    # The released VDMPF sample used t=8 despite its documented t>=30
+    # precondition. Compile its API calls unchanged and use the valid-domain
+    # legacy oracle for numerical compatibility.
+    add_executable(compat_v1_2_vdmpf_cpu src/compat_v1_2/vdmpf_cpu.cu)
+    target_link_libraries(compat_v1_2_vdmpf_cpu PRIVATE fss OpenSSL::Crypto)
+    add_executable(compat_v1_2_oracle src/compat_v1_2/legacy_oracle.cu)
+    target_link_libraries(compat_v1_2_oracle PRIVATE fss OpenSSL::Crypto)
+    add_executable(compat_v1_2_dpf_dcf_gpu src/compat_v1_2/gpu_sample_runner.cu)
+    target_link_libraries(compat_v1_2_dpf_dcf_gpu PRIVATE fss)
+    add_test(NAME compat_v1_2_dpf_dcf_gpu
+        COMMAND ${CMAKE_COMMAND}
+            -DEXECUTABLE=$<TARGET_FILE:compat_v1_2_dpf_dcf_gpu>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/src/compat_v1_2/check_sample.cmake)
+    set_tests_properties(compat_v1_2_dpf_dcf_gpu PROPERTIES
+        SKIP_REGULAR_EXPRESSION "no CUDA device")
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
@@ -160,13 +197,17 @@ endif()
 install(TARGETS fss EXPORT fssTargets)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT fssTargets
-    FILE fssConfig.cmake
+    FILE fssTargets.cmake
     NAMESPACE fss::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fss)
 
 include(CMakePackageConfigHelpers)
+configure_package_config_file(cmake/fssConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/fssConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fss)
 write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/fssConfigVersion.cmake"
     COMPATIBILITY SameMajorVersion)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/fssConfigVersion.cmake"
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/fssConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/fssConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fss)

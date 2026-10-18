@@ -20,30 +20,43 @@ namespace {
 struct Uint127Group {
   using Impl = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
   Impl value;
-  __host__ __device__ Uint127Group operator+(Uint127Group rhs) const { return {value + rhs.value}; }
-  __host__ __device__ Uint127Group operator-() const { return {-value}; }
-  __host__ __device__ static Uint127Group From(int4 input) { return {Impl::From(input)}; }
-  __host__ __device__ int4 Into() const { return value.Into(); }
+  __host__ __device__ Uint127Group operator+(Uint127Group rhs) const {
+    return {value + rhs.value};
+  }
+  __host__ __device__ Uint127Group operator-() const {
+    return {-value};
+  }
+  __host__ __device__ static Uint127Group From(int4 input) {
+    return {Impl::From(input)};
+  }
+  __host__ __device__ int4 Into() const {
+    return value.Into();
+  }
 };
 
 template <typename T>
 class DeviceBuffer {
- public:
+public:
   DeviceBuffer() = default;
   DeviceBuffer(const DeviceBuffer &) = delete;
   DeviceBuffer &operator=(const DeviceBuffer &) = delete;
   ~DeviceBuffer() {
     if (data_ != nullptr) EXPECT_EQ(cudaFree(data_), cudaSuccess);
   }
-  cudaError_t Allocate(size_t count) { return cudaMalloc(&data_, count * sizeof(T)); }
+  cudaError_t Allocate(size_t count) {
+    return cudaMalloc(&data_, count * sizeof(T));
+  }
   cudaError_t Upload(const T *source, size_t count) {
     return cudaMemcpy(data_, source, count * sizeof(T), cudaMemcpyHostToDevice);
   }
   cudaError_t Download(T *dest, size_t count) {
     return cudaMemcpy(dest, data_, count * sizeof(T), cudaMemcpyDeviceToHost);
   }
-  T *data() const { return data_; }
- private:
+  T *data() const {
+    return data_;
+  }
+
+private:
   T *data_ = nullptr;
 };
 
@@ -56,7 +69,7 @@ void ExpectOutput(int4 actual, int4 expected, size_t input) {
   EXPECT_EQ(actual.w, expected.w) << "input " << input;
 }
 
-template <typename Group>
+template <typename Group, int ch_lambda = 80, int par_depth = -1>
 class DmpfGpuTest : public ::testing::Test {
 protected:
   static constexpr int kInBits = 16;
@@ -66,7 +79,7 @@ protected:
 
   using Prg = fss::prg::ChaCha<2>;
   using Prp = fss::prp::ChaChaFeistel;
-  using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t>;
+  using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t, 3, ch_lambda, par_depth>;
   using Cw = typename DmpfType::InnerDpf::Cw;
 
   static constexpr int m = DmpfType::m;
@@ -104,7 +117,8 @@ protected:
       s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
     }
     ASSERT_EQ(dmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
-        cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT), 0);
+                  cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT),
+        0);
   }
 
   // Flatten the active bucket keys into the per-key layout of
@@ -122,7 +136,8 @@ protected:
   void TestBatchEval() {
     int devices = 0;
     const cudaError_t status = cudaGetDeviceCount(&devices);
-    if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver || (status == cudaSuccess && devices == 0)) {
+    if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver ||
+        (status == cudaSuccess && devices == 0)) {
       GTEST_SKIP() << "no CUDA device available";
     }
     ASSERT_EQ(status, cudaSuccess);
@@ -171,9 +186,12 @@ protected:
     ASSERT_EQ(d_extra.Allocate(m_rt), cudaSuccess);
 
     // Both parties share the correction words, so one repack serves both.
-    fss::gpu::DpfRepackGpu<kBucketBits, Group, Prg, uint>(d_cws.data(), m_rt, d_cw_s.data(), d_extra.data(),
-        d_out_cw.data());
+    fss::gpu::DpfRepackGpu<kBucketBits, Group, Prg, uint, par_depth>(
+        d_cws.data(), m_rt, d_cw_s.data(), d_extra.data(), d_out_cw.data());
 
+    fss::gpu::DmpfBatchEvalGpu(false, static_cast<const uint16_t *>(nullptr), nullptr, 0, sigma, m_rt, b_rt, nullptr,
+        nullptr, nullptr, nullptr, dmpf);
+    ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     for (int p = 0; p < 2; ++p) {
       fss::gpu::DmpfBatchEvalGpu(p != 0, d_xs.data(), d_ys[p].data(), n, sigma, m_rt, b_rt, d_s0s[p].data(),
           d_cw_s.data(), d_extra.data(), d_out_cw.data(), dmpf);
@@ -203,8 +221,7 @@ protected:
     // Bit-exact against the host batch evaluation per party.
     std::vector<int4> host_ys(n);
     for (int p = 0; p < 2; ++p) {
-      dmpf.BatchEval(p != 0, p == 0 ? k0 : k1, cuda::std::span<const uint16_t>(xs),
-          cuda::std::span<int4>(host_ys));
+      dmpf.BatchEval(p != 0, p == 0 ? k0 : k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(host_ys));
       for (int i = 0; i < n; ++i) ExpectOutput(ys[p][i], host_ys[i], xs[i]);
     }
   }
@@ -212,7 +229,8 @@ protected:
   void TestEvalAll() {
     int devices = 0;
     const cudaError_t status = cudaGetDeviceCount(&devices);
-    if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver || (status == cudaSuccess && devices == 0)) {
+    if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver ||
+        (status == cudaSuccess && devices == 0)) {
       GTEST_SKIP() << "no CUDA device available";
     }
     ASSERT_EQ(status, cudaSuccess);
@@ -242,8 +260,8 @@ protected:
     ASSERT_EQ(d_bucket_ys.Allocate(static_cast<size_t>(m_rt) * kBucketDomain), cudaSuccess);
 
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::DmpfEvalAllGpu(p != 0, sigma, m_rt, b_rt, d_s0s[p].data(), d_cws.data(), d_bucket_ys.data(),
-          d_ys[p].data(), dmpf);
+      fss::gpu::DmpfEvalAllGpu(
+          p != 0, sigma, m_rt, b_rt, d_s0s[p].data(), d_cws.data(), d_bucket_ys.data(), d_ys[p].data(), dmpf);
     }
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
@@ -289,6 +307,14 @@ TEST_F(DmpfUint128GpuTest, BatchEval) {
 }
 
 TEST_F(DmpfUint128GpuTest, EvalAll) {
+  TestEvalAll();
+}
+
+using DmpfCustomSecurityGpuTest = DmpfGpuTest<fss::group::Bytes, 60, 0>;
+TEST_F(DmpfCustomSecurityGpuTest, BatchEval) {
+  TestBatchEval();
+}
+TEST_F(DmpfCustomSecurityGpuTest, EvalAll) {
   TestEvalAll();
 }
 

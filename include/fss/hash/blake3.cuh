@@ -32,13 +32,13 @@ private:
   }
 
   __host__ __device__ static void G(int &a, int &b, int &c, int &d, int x, int y) {
-    a += b + x;
+    a = static_cast<int>(static_cast<uint32_t>(a) + static_cast<uint32_t>(b) + static_cast<uint32_t>(x));
     d = RotateRight<16>(d ^ a);
-    c += d;
+    c = static_cast<int>(static_cast<uint32_t>(c) + static_cast<uint32_t>(d));
     b = RotateRight<12>(b ^ c);
-    a += b + y;
+    a = static_cast<int>(static_cast<uint32_t>(a) + static_cast<uint32_t>(b) + static_cast<uint32_t>(y));
     d = RotateRight<8>(d ^ a);
-    c += d;
+    c = static_cast<int>(static_cast<uint32_t>(c) + static_cast<uint32_t>(d));
     b = RotateRight<7>(b ^ c);
   }
 

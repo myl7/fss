@@ -87,6 +87,7 @@ public:
      * Both parties share the same correction words and differ in the seed.
      */
   struct Key {
+    static constexpr int kParDepth = par_depth;
     Cw cws[in_bits + 1];
     int4 s0;
   };
@@ -145,6 +146,7 @@ private:
   static constexpr int kBatchPrefix = 3;
   static constexpr int kBatchTail = 3;
 
+public:
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
     int4 s0 = s0s[0];
     s0 = util::SetLsb(s0, false);
@@ -267,15 +269,14 @@ private:
       // Domains too small to fill an 8-wide frontier evaluate per input; the
       // point walk is cheaper than the batched machinery at this size.
       constexpr size_t n = size_t{1} << in_bits;
-#pragma omp parallel for if (util::ResolveParDepth(par_depth) > 0)
-      for (size_t x = 0; x < n; ++x) ys[x] = Eval(b, s0, cws, static_cast<In>(x));
+      util::ParallelFor(par_depth, n, [&](size_t x) { ys[x] = Eval(b, s0, cws, static_cast<In>(x)); });
       return;
     }
 
     int4 st = s0;
     st = util::SetLsb(st, b);
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
 
     int split_depth = par_depth_;
     if (split_depth > in_bits - kBatchPrefix - kBatchTail) split_depth = in_bits - kBatchPrefix - kBatchTail;
@@ -283,28 +284,39 @@ private:
       // Split at a frontier of 2 ** split_depth subtree roots instead of per-node tasks,
       // so the sequential batched walk stays the fast default path.
       size_t num_tasks = size_t{1} << split_depth;
-      std::vector<int4> frontier(num_tasks);
-      frontier[0] = st;
-      for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(frontier.data(), 1 << lv, cws, lv);
+      std::vector<int4> frontier = BuildParallelFrontier(st, cws, split_depth);
       size_t span = (size_t{1} << in_bits) / num_tasks;
-#pragma omp parallel for
-      for (size_t task = 0; task < num_tasks; ++task) {
+      util::ParallelFor(par_depth_, num_tasks, [&](size_t task) {
         EvalBatched8(b, frontier[task], cws, ys, task * span, split_depth);
-      }
+      });
     } else {
       EvalBatched8(b, st, cws, ys, 0, 0);
     }
   }
 
+private:
+  // GCC 12.4.0 can discard these writes before the OpenMP walk after IPA
+  // effect analysis. Keep this boundary opaque on GCC 12 releases before 12.5.
+  // GCC PR115033 describes a related closure escape-analysis defect.
+#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ == 12 && __GNUC_MINOR__ <= 4
+  __attribute__((noipa))
+#endif
+  std::vector<int4> BuildParallelFrontier(int4 st, const Cw cws[], int split_depth) {
+    std::vector<int4> frontier(size_t{1} << split_depth);
+    frontier[0] = st;
+    for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(frontier.data(), size_t{1} << lv, cws, lv);
+    return frontier;
+  }
+
   // Expands w scalar frontier nodes (t in LSB) by one level with cws[lv].
   // The children overwrite the frontier in place: iteration is in reverse so
   // the writes at 2j, 2j+1 never clobber nodes still to be read.
-  void ExpandFrontier(int4 frontier[], int w, const Cw cws[], int lv) {
+  void ExpandFrontier(int4 frontier[], size_t w, const Cw cws[], int lv) {
     int4 s_cw = util::SetLsb(cws[lv].s, false);
     bool tl_cw = util::GetLsb(cws[lv].s);
     bool tr_cw = cws[lv].tr;
 
-    for (int j = w; j-- > 0;) {
+    for (size_t j = w; j-- > 0;) {
       bool t = util::GetLsb(frontier[j]);
       int4 s = util::SetLsb(frontier[j], false);
 
@@ -344,7 +356,7 @@ private:
   void EvalBatched8(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, int i) {
     int4 frontier[8];
     frontier[0] = st;
-    for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(frontier, 1 << (lv - i), cws, lv);
+    for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(frontier, size_t{1} << (lv - i), cws, lv);
     EvalBatched8Group(b, frontier, cws, ys, l, i + kBatchPrefix);
   }
 

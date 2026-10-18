@@ -17,7 +17,9 @@
  * The query points use the scheme's In type, so these kernels cover the same
  * input-domain widths as the host Eval, through __uint128_t. The packed tr
  * bits (extra) hold one bit per level and widen to uint64_t or __uint128_t
- * once in_bits passes 32 or 64.
+ * once in_bits passes 32 or 64. Released uint32_t query arrays remain
+ * supported for domains of at most 32 bits, even when In is narrower. Each
+ * uint32_t element is loaded at its own stride and converted to In.
  */
 #ifndef FSS_POINT_EVAL_GPU_CUH_
 #define FSS_POINT_EVAL_GPU_CUH_
@@ -36,6 +38,7 @@
 #include <fss/util.cuh>
 #include <fss/vdpf.cuh>
 #include <fss/vdmpf.cuh>
+#include <fss/internal/gpu_workspace.cuh>
 
 namespace fss::gpu {
 
@@ -43,15 +46,18 @@ namespace fss::gpu {
 // in total. Common in_bits <= 32 keys keep the uint32_t layout, so existing
 // callers see no change.
 template <int bits>
-using ExtBits = std::conditional_t<bits <= 32, uint32_t,
-    std::conditional_t<bits <= 64, uint64_t, __uint128_t>>;
+using ExtBits = std::conditional_t<bits <= 32, uint32_t, std::conditional_t<bits <= 64, uint64_t, __uint128_t>>;
 
 namespace detail {
 
-__device__ __host__ inline int4 Zero4() { return {0, 0, 0, 0}; }
+__device__ __host__ inline int4 Zero4() {
+  return {0, 0, 0, 0};
+}
 
 template <typename T>
-__device__ __host__ inline bool GetBit(T x, int i) { return ((x >> i) & 1) != 0; }
+__device__ __host__ inline bool GetBit(T x, int i) {
+  return ((x >> i) & 1) != 0;
+}
 
 // Pack per-key HalfTree DPF cws (stride in_bits) into level-major cw_s and the
 // last-level extra bit (bit 0 of extra[k]).
@@ -111,14 +117,14 @@ __global__ void DcfRepackKernel(const Cw *pk, int4 *cw_s, int4 *cw_v, int4 *out_
 
 // Point-evaluate in_bits-level HalfTree DPF keys: one thread per key, one
 // output value per key at xs[tid]. cw_s/extra come from HalfTreeDpfRepackKernel.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In>
-__global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s,
-    const uint32_t *extra, const int4 *ocws, const In *xs, int nkeys, Prg prg, int4 hash_key) {
+template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In, typename Query = In>
+__global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const uint32_t *extra,
+    const int4 *ocws, const Query *xs, int nkeys, Prg prg, int4 hash_key) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
   int4 node = fss::util::SetLsb(seeds[tid], b);
-  In x = xs[tid];
+  In x = static_cast<In>(xs[tid]);
 
 #pragma unroll unroll
   for (int i = 0; i < in_bits - 1; ++i) {
@@ -149,15 +155,15 @@ __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const in
 
 // Point-evaluate in_bits-level DPF keys, one thread per key. cw_s/extra/out_cw
 // come from DpfRepackKernel.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In>
+template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In, typename Query = In>
 __global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
-    const int4 *out_cw, const In *xs, int nkeys, Prg prg) {
+    const int4 *out_cw, const Query *xs, int nkeys, Prg prg) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
   int4 s = fss::util::SetLsb(seeds[tid], false);
   bool t = b;
-  In x = xs[tid];
+  In x = static_cast<In>(xs[tid]);
   ExtBits<in_bits> ex = extra[tid];
 
 #pragma unroll unroll
@@ -200,16 +206,16 @@ __global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
 // Point-evaluate in_bits-level DCF keys, one thread per key. cw_s/cw_v/out_cw
 // come from DcfRepackKernel. v starts at zero, which is the value the
 // library Eval relies on the compiler to produce for its uninitialized v.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In>
-__global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const int4 *cw_v,
-    const int4 *out_cw, const In *xs, int nkeys, Prg prg) {
+template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In, typename Query = In>
+__global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw,
+    const Query *xs, int nkeys, Prg prg) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
   int4 s = fss::util::SetLsb(seeds[tid], false);
   Group v = Group::From(Zero4());
   bool t = b;
-  In x = xs[tid];
+  In x = static_cast<In>(xs[tid]);
 
 #pragma unroll unroll
   for (int i = 0; i < in_bits; ++i) {
@@ -273,16 +279,17 @@ __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
 // hash cost, the tail does one Blake3 and, when t, the cs correction.
 // cw_s/extra come from VdpfRepackKernel. cs and ocws stay per-key: each is
 // read once per evaluation, not once per level.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash, typename In>
+template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash, typename In,
+    typename Query = In>
 __global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const int4 *cw_s,
-    const ExtBits<in_bits> *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const In *xs, int nkeys,
+    const ExtBits<in_bits> *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs, int nkeys,
     Prg prg, XorHash xor_hash) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
   int4 s = fss::util::SetLsb(seeds[tid], false);
   bool t = b;
-  In x = xs[tid];
+  In x = static_cast<In>(xs[tid]);
   ExtBits<in_bits> ex = extra[tid];
 
 #pragma unroll unroll
@@ -402,8 +409,8 @@ __global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma, i
 // the (point, hash) order inside each bucket, which is exactly the canonical
 // order the host BatchEvalMerkle folds its per-bucket leaves in.
 template <int in_bits, typename Prp, typename In, int kappa>
-__global__ void VdmpfLocateKernel(const In *xs, int n, int4 sigma, int m_rt, int b_rt, uint32_t *keys,
-    uint64_t *vals, uint32_t *counts, Prp prp) {
+__global__ void VdmpfLocateKernel(
+    const In *xs, int n, int4 sigma, int m_rt, int b_rt, uint32_t *keys, uint64_t *vals, uint32_t *counts, Prp prp) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   In x = xs[tid];
@@ -493,8 +500,8 @@ __global__ void VdmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int m_rt, co
 // Prefix tables for the Merkle-fold kernels: per-bucket leaf offsets and the
 // per-bucket chunk-count prefix, both with an m+1 sentinel end. One thread;
 // m is tiny.
-__global__ void VdmpfFoldSetupKernel(uint32_t *leaf_offsets, uint32_t *chunk_offsets, const uint32_t *counts,
-    int m_buckets, int chunk_size) {
+__global__ void VdmpfFoldSetupKernel(
+    uint32_t *leaf_offsets, uint32_t *chunk_offsets, const uint32_t *counts, int m_buckets, int chunk_size) {
   if (threadIdx.x != 0 || blockIdx.x != 0) return;
   uint32_t leaves = 0, chunks = 0;
   for (int i = 0; i < m_buckets; ++i) {
@@ -550,8 +557,8 @@ __global__ void VdmpfChunkFoldKernel(cuda::std::array<int4, 2> *chunk_roots, con
   while (count > 1) {
     uint32_t pairs = count / 2;
     if (threadIdx.x < pairs) {
-      int4 msg[4] = {cur[2 * threadIdx.x][0], cur[2 * threadIdx.x][1], cur[2 * threadIdx.x + 1][0],
-          cur[2 * threadIdx.x + 1][1]};
+      int4 msg[4] = {
+          cur[2 * threadIdx.x][0], cur[2 * threadIdx.x][1], cur[2 * threadIdx.x + 1][0], cur[2 * threadIdx.x + 1][1]};
       next[threadIdx.x] = hash.Hash(cuda::std::span<const int4, 4>(msg));
     }
     if (count % 2 != 0 && threadIdx.x == pairs) {
@@ -578,7 +585,8 @@ __global__ void VdmpfBucketFoldKernel(cuda::std::array<int4, 4> *pi, const cuda:
   int i = threadIdx.x;
   if (i < m_buckets) {
     cuda::std::array<int4, 2> node = hash.Hash(cuda::std::span<const int4, 4>(cs[i]));
-    for (uint32_t q = chunk_offsets[i]; q < chunk_offsets[i + 1]; ++q) {
+    for (uint32_t q = chunk_offsets == nullptr ? 0 : chunk_offsets[i];
+        chunk_offsets != nullptr && q < chunk_offsets[i + 1]; ++q) {
       int4 msg[4] = {node[0], node[1], chunk_roots[q][0], chunk_roots[q][1]};
       node = hash.Hash(cuda::std::span<const int4, 4>(msg));
     }
@@ -621,12 +629,13 @@ __global__ void VdmpfBucketFoldKernel(cuda::std::array<int4, 4> *pi, const cuda:
  * @param extra Output packed last-level extra bits.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename In>
-void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
-    uint32_t *extra, cudaStream_t stream = 0) {
+template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
+void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys,
+    int4 *cw_s, uint32_t *extra, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::HalfTreeDpfRepackKernel<in_bits, typename HalfTreeDpf<in_bits, Group, Prg, In>::Cw>
+  detail::HalfTreeDpfRepackKernel<in_bits, typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nkeys);
 }
 
@@ -643,12 +652,13 @@ void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In>::C
  * @param out_cw Output correction words cws[k][in_bits].s, one per key.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename In>
-void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
+template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
+void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
     ExtBits<in_bits> *extra, int4 *out_cw, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DpfRepackKernel<in_bits, typename Dpf<in_bits, Group, Prg, In>::Cw>
+  detail::DpfRepackKernel<in_bits, typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, out_cw, nkeys);
 }
 
@@ -666,12 +676,13 @@ void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkey
  * @param out_cw Output final correction words' v parts, one per key.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred = DcfPred::kLt>
-void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred>::Cw *cws, int nkeys, int4 *cw_s, int4 *cw_v,
-    int4 *out_cw, cudaStream_t stream = 0) {
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred = DcfPred::kLt, int par_depth = -1>
+void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
+    int4 *cw_v, int4 *out_cw, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In, pred>::Cw>
+  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, cw_v, out_cw, nkeys);
 }
 
@@ -687,13 +698,41 @@ void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred>::Cw *cws, in
  * @param extra Output packed tr bits, bit i of extra[k] = level i.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
-void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws, int nkeys, int4 *cw_s,
-    ExtBits<in_bits> *extra, cudaStream_t stream = 0) {
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In, int par_depth = -1>
+void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw *cws, int nkeys,
+    int4 *cw_s, ExtBits<in_bits> *extra, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::VdpfRepackKernel<in_bits, typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
+  detail::VdpfRepackKernel<in_bits, typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nkeys);
+}
+
+// Released names remain available with their original packed-control layout.
+template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
+void HalfTreeDpfRelayoutGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys,
+    int4 *cw_s, uint32_t *extra, cudaStream_t stream = 0) {
+  HalfTreeDpfRepackGpu<in_bits, Group, Prg, In, par_depth>(cws, nkeys, cw_s, extra, stream);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
+void DpfRelayoutGpu(const typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
+    uint32_t *extra, int4 *out_cw, cudaStream_t stream = 0) {
+  static_assert(in_bits <= 32, "released packed control words support at most 32 levels");
+  DpfRepackGpu<in_bits, Group, Prg, In, par_depth>(cws, nkeys, cw_s, extra, out_cw, stream);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred = DcfPred::kLt, int par_depth = -1>
+void DcfRelayoutGpu(const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
+    int4 *cw_v, int4 *out_cw, cudaStream_t stream = 0) {
+  DcfRepackGpu<in_bits, Group, Prg, In, pred, par_depth>(cws, nkeys, cw_s, cw_v, out_cw, stream);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In, int par_depth = -1>
+void VdpfRelayoutGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw *cws, int nkeys,
+    int4 *cw_s, uint32_t *extra, cudaStream_t stream = 0) {
+  static_assert(in_bits <= 32, "released packed control words support at most 32 levels");
+  VdpfRepackGpu<in_bits, Group, Prg, XorHash, Hash, In, par_depth>(cws, nkeys, cw_s, extra, stream);
 }
 
 /**
@@ -714,17 +753,20 @@ void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::
  * @param dpf A HalfTreeDpf instance (holds the PRG and hash key).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In>
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
+    typename Query = In>
+  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
 void HalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const uint32_t *extra, const int4 *ocws,
-    const In *xs, int4 *ys, int nkeys, const HalfTreeDpf<in_bits, Group, Prg, In> &dpf,
+    const Query *xs, int4 *ys, int nkeys, const HalfTreeDpf<in_bits, Group, Prg, In, par_depth> &dpf,
     cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Group, Prg, In>
+    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys, dpf.prg, dpf.hash_key);
   } else {
-    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Group, Prg, In>
+    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys, dpf.prg, dpf.hash_key);
   }
 }
@@ -746,16 +788,19 @@ void HalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const 
  * @param dpf A Dpf instance (holds the PRG).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In>
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
+    typename Query = In>
+  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
 void DpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra, const int4 *out_cw,
-    const In *xs, int4 *ys, int nkeys, const Dpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+    const Query *xs, int4 *ys, int nkeys, const Dpf<in_bits, Group, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::DpfEvalPointKernel<in_bits, unroll, true, Group, Prg, In>
+    detail::DpfEvalPointKernel<in_bits, unroll, true, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, nkeys, dpf.prg);
   } else {
-    detail::DpfEvalPointKernel<in_bits, unroll, false, Group, Prg, In>
+    detail::DpfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, nkeys, dpf.prg);
   }
 }
@@ -778,17 +823,19 @@ void DpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<
  *   par_depth instantiation; both are deduced from the argument.
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, DcfPred pred, int par_depth>
-void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw,
-    const In *xs, int4 *ys, int nkeys, const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf,
-    cudaStream_t stream = 0) {
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, DcfPred pred, int par_depth,
+    typename Query = In>
+  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw, const Query *xs,
+    int4 *ys, int nkeys, const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::DcfEvalPointKernel<in_bits, unroll, true, Group, Prg, In>
+    detail::DcfEvalPointKernel<in_bits, unroll, true, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, dcf.prg);
   } else {
-    detail::DcfEvalPointKernel<in_bits, unroll, false, Group, Prg, In>
+    detail::DcfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, dcf.prg);
   }
 }
@@ -813,17 +860,20 @@ void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw
  * @param vdpf A Vdpf instance (holds the PRG and hashes).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In,
+    int par_depth = -1, typename Query = In>
+  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
 void VdpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
-    const cuda::std::array<int4, 4> *cs, const int4 *ocws, const In *xs, int4 *ys, int4 *pi, int nkeys,
-    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
+    const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs, int4 *ys, int4 *pi, int nkeys,
+    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth> &vdpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::VdpfEvalPointKernel<in_bits, unroll, true, Group, Prg, XorHash, In>
+    detail::VdpfEvalPointKernel<in_bits, unroll, true, Group, Prg, XorHash, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys, vdpf.prg, vdpf.xor_hash);
   } else {
-    detail::VdpfEvalPointKernel<in_bits, unroll, false, Group, Prg, XorHash, In>
+    detail::VdpfEvalPointKernel<in_bits, unroll, false, Group, Prg, XorHash, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys, vdpf.prg, vdpf.xor_hash);
   }
 }
@@ -855,10 +905,12 @@ void VdpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits
  * @param stream CUDA stream to launch on.
  */
 template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp,
-    typename In, int kappa>
+    typename In, int kappa, int ch_lambda, int par_depth>
 void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_rt, int b_rt, const int4 *s0s,
     const int4 *cw_s, const ExtBits<bucket_bits> *extra, const int4 *out_cw,
-    const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa> &dmpf, cudaStream_t stream = 0) {
+    const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth> &dmpf,
+    cudaStream_t stream = 0) {
+  if (n == 0) return;
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
   constexpr int kBs = 256;
   int blocks = (n + kBs - 1) / kBs;
@@ -890,9 +942,10 @@ void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_r
  * ChaChaFeistel qualifies, Aes128Feistel does not.
  *
  * The Locate records, sorted copies, bucket counts, per-contribution hashes,
- * chunk roots, and CUB temporary storage are cached per host thread and grown
- * on demand: calls from one thread on different streams must not run
- * concurrently.
+ * chunk roots, and CUB temporary storage are cached per host thread and CUDA
+ * device. Calls from one thread on different streams must not overlap.
+ * ReleaseGpuWorkspaces completes outstanding work and releases this thread's
+ * caches. Call it before cudaDeviceReset. Thread exit also releases scratch.
  *
  * @tparam unroll Unroll factor of the level loop.
  * @param b Party index. False for 0 and true for 1.
@@ -912,80 +965,73 @@ void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_r
  * @param vdmpf A Vdmpf instance (holds the PRG, hashes, and PRP).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg,
-    typename XorHash, typename Hash, typename Prp, typename In, int kappa>
-void VdmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, cuda::std::array<int4, 4> *d_pi, int n, int4 sigma, int m_rt,
-    int b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra,
+template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename Prp, typename In, int kappa, int ch_lambda>
+void VdmpfBatchEvalMerkleGpu(bool b, const In *xs, int4 *ys, cuda::std::array<int4, 4> *d_pi, int n, int4 sigma,
+    int m_rt, int b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra,
     const cuda::std::array<int4, 4> *cs, const int4 *ocws,
-    const Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa> &vdmpf,
+    const Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda> &vdmpf,
     cudaStream_t stream = 0) {
-  using VdmpfT = Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa>;
+  using VdmpfT = Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda>;
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
   static_assert(VdmpfT::m < (1 << 16), "the radix sort covers the bucket keys");
   static_assert(2 * VdmpfT::m * 32 <= 46 * 1024, "the bucket-fold kernel double-buffers every bucket node");
   const size_t total = static_cast<size_t>(n) * kappa;
   constexpr int kChunk = VdmpfT::kMerkleChunkSize;
 
-  // Per-host-thread pipeline buffers, grown on demand and never freed.
-  thread_local uint32_t *d_keys = nullptr, *d_keys_out = nullptr, *d_counts = nullptr;
-  thread_local uint32_t *d_leaf_offsets = nullptr, *d_chunk_offsets = nullptr;
-  thread_local uint64_t *d_vals = nullptr, *d_vals_out = nullptr;
-  thread_local cuda::std::array<int4, 4> *d_pi_tilde = nullptr;
-  thread_local cuda::std::array<int4, 2> *d_chunk_roots = nullptr;
-  thread_local void *d_cub_temp = nullptr;
-  thread_local size_t cub_bytes = 0, capacity = 0;
-  if (capacity < total) {
-    cudaFree(d_keys);
-    cudaFree(d_keys_out);
-    cudaFree(d_vals);
-    cudaFree(d_vals_out);
-    cudaFree(d_pi_tilde);
-    cudaFree(d_chunk_roots);
-    cudaMalloc(&d_keys, sizeof(uint32_t) * total);
-    cudaMalloc(&d_keys_out, sizeof(uint32_t) * total);
-    cudaMalloc(&d_vals, sizeof(uint64_t) * total);
-    cudaMalloc(&d_vals_out, sizeof(uint64_t) * total);
-    cudaMalloc(&d_pi_tilde, sizeof(cuda::std::array<int4, 4>) * total);
-    cudaMalloc(&d_chunk_roots, sizeof(cuda::std::array<int4, 2>) * (total / kChunk + VdmpfT::m));
-    capacity = total;
+  constexpr int kFoldThreads = (VdmpfT::m + 31) / 32 * 32;
+  if (n == 0) {
+    detail::VdmpfBucketFoldKernel<VdmpfT::m, Hash>
+        <<<1, kFoldThreads, 0, stream>>>(d_pi, nullptr, nullptr, cs, vdmpf.hash);
+    return;
   }
-  if (d_counts == nullptr) {
-    cudaMalloc(&d_counts, sizeof(uint32_t) * VdmpfT::m);
-    cudaMalloc(&d_leaf_offsets, sizeof(uint32_t) * (VdmpfT::m + 1));
-    cudaMalloc(&d_chunk_offsets, sizeof(uint32_t) * (VdmpfT::m + 1));
-  }
-  cudaMemsetAsync(d_counts, 0, sizeof(uint32_t) * VdmpfT::m, stream);
-
-  size_t sort_bytes = 0;
-  cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes, d_keys, d_keys_out, d_vals, d_vals_out,
-      static_cast<int>(total), 0, 16, stream);
-  if (cub_bytes < sort_bytes) {
-    cudaFree(d_cub_temp);
-    cudaMalloc(&d_cub_temp, sort_bytes);
-    cub_bytes = sort_bytes;
-  }
+  static const int kWorkspaceTag = 0;
+  auto &workspace = detail::GetGpuWorkspaceCache().Get(&kWorkspaceTag);
+  auto *d_keys = workspace.Ensure<uint32_t>(0, total);
+  auto *d_keys_out = workspace.Ensure<uint32_t>(1, total);
+  auto *d_vals = workspace.Ensure<uint64_t>(2, total);
+  auto *d_vals_out = workspace.Ensure<uint64_t>(3, total);
+  auto *d_pi_tilde = workspace.Ensure<cuda::std::array<int4, 4>>(4, total);
+  auto *d_chunk_roots = workspace.Ensure<cuda::std::array<int4, 2>>(5, total / kChunk + VdmpfT::m);
+  auto *d_counts = workspace.Ensure<uint32_t>(6, VdmpfT::m);
+  auto *d_leaf_offsets = workspace.Ensure<uint32_t>(7, VdmpfT::m + 1);
+  auto *d_chunk_offsets = workspace.Ensure<uint32_t>(8, VdmpfT::m + 1);
+  size_t cub_bytes = 0;
+  detail::CheckCudaWorkspace(cub::DeviceRadixSort::SortPairs(
+      nullptr, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out, static_cast<int>(total), 0, 16, stream));
+  auto *d_cub_temp = workspace.Ensure<unsigned char>(9, cub_bytes);
+  detail::CheckCudaWorkspace(cudaMemsetAsync(d_counts, 0, sizeof(uint32_t) * VdmpfT::m, stream));
 
   constexpr int kBs = 256;
   int blocks = (n + kBs - 1) / kBs;
   detail::VdmpfLocateKernel<in_bits, Prp, In, kappa>
       <<<blocks, kBs, 0, stream>>>(xs, n, sigma, m_rt, b_rt, d_keys, d_vals, d_counts, vdmpf.prp);
-  cub::DeviceRadixSort::SortPairs(d_cub_temp, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out,
-      static_cast<int>(total), 0, 16, stream);
+  cub::DeviceRadixSort::SortPairs(
+      d_cub_temp, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out, static_cast<int>(total), 0, 16, stream);
   if (b) {
-    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, true, Group, Prg, XorHash, In, kappa>
-        <<<blocks, kBs, 0, stream>>>(ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
-            vdmpf.prg, vdmpf.xor_hash);
+    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, true, Group, Prg, XorHash, In, kappa><<<blocks, kBs, 0, stream>>>(
+        ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals, vdmpf.prg, vdmpf.xor_hash);
   } else {
     detail::VdmpfBatchEvalKernel<bucket_bits, unroll, false, Group, Prg, XorHash, In, kappa>
-        <<<blocks, kBs, 0, stream>>>(ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
-            vdmpf.prg, vdmpf.xor_hash);
+        <<<blocks, kBs, 0, stream>>>(
+            ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals, vdmpf.prg, vdmpf.xor_hash);
   }
   detail::VdmpfFoldSetupKernel<<<1, 1, 0, stream>>>(d_leaf_offsets, d_chunk_offsets, d_counts, VdmpfT::m, kChunk);
   detail::VdmpfChunkFoldKernel<kChunk, Hash><<<static_cast<int>(total / kChunk + VdmpfT::m), kChunk, 0, stream>>>(
       d_chunk_roots, d_chunk_offsets, d_leaf_offsets, d_counts, d_vals_out, d_pi_tilde, VdmpfT::m, vdmpf.hash);
-  constexpr int kFoldThreads = (VdmpfT::m + 31) / 32 * 32;
-  detail::VdmpfBucketFoldKernel<VdmpfT::m, Hash><<<1, kFoldThreads, 0, stream>>>(
-      d_pi, d_chunk_roots, d_chunk_offsets, cs, vdmpf.hash);
+  detail::VdmpfBucketFoldKernel<VdmpfT::m, Hash>
+      <<<1, kFoldThreads, 0, stream>>>(d_pi, d_chunk_roots, d_chunk_offsets, cs, vdmpf.hash);
+}
+
+// Compatibility name for the existing Merkle batch evaluator.
+template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename Prp, typename In, int kappa, int ch_lambda>
+void VdmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, cuda::std::array<int4, 4> *d_pi, int n, int4 sigma, int m_rt,
+    int b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra, const cuda::std::array<int4, 4> *cs,
+    const int4 *ocws,
+    const Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda> &vdmpf,
+    cudaStream_t stream = 0) {
+  VdmpfBatchEvalMerkleGpu<unroll>(b, xs, ys, d_pi, n, sigma, m_rt, b_rt, s0s, cw_s, extra, cs, ocws, vdmpf, stream);
 }
 
 }  // namespace fss::gpu

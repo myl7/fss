@@ -170,6 +170,7 @@ private:
   static constexpr bool kGroupIsUint127 =
       std::is_same_v<Group, group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>>;
 
+public:
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
     int4 s0 = s0s[0];
     s0 = util::SetLsb(s0, false);
@@ -335,7 +336,7 @@ private:
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]) {
     assert(in_bits < sizeof(size_t) * 8);
 
-    int par_depth_ = util::ResolveParDepth(par_depth);
+    int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
 
     int4 st = s0;
     st = util::SetLsb(st, b);
@@ -343,9 +344,14 @@ private:
 
     if constexpr (in_bits < kBatchPrefix + kBatchTail) {
       // Domains too small to fill an 8wide frontier keep the recursive tree walk.
-#pragma omp parallel
+      if (par_depth_ == 0) {
+        EvalTree(b, st, cws, ys, 0, size_t{1} << in_bits, 0, 0, v);
+      } else {
+        int threads = util::ResolveParThreads(par_depth_, size_t{1} << in_bits);
+#pragma omp parallel num_threads(threads)
 #pragma omp single
-      EvalTree(b, st, cws, ys, 0, size_t{1} << in_bits, 0, par_depth_, v);
+        EvalTree(b, st, cws, ys, 0, size_t{1} << in_bits, 0, par_depth_, v);
+      }
       return;
     }
 
@@ -359,17 +365,17 @@ private:
       std::vector<Group> v_front(num_tasks);
       st_front[0] = st;
       v_front[0] = v;
-      for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(b, st_front.data(), v_front.data(), 1 << lv, cws, lv);
+      for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(b, st_front.data(), v_front.data(), size_t{1} << lv, cws, lv);
       size_t span = (size_t{1} << in_bits) / num_tasks;
-#pragma omp parallel for
-      for (size_t task = 0; task < num_tasks; ++task) {
+      util::ParallelFor(par_depth_, num_tasks, [&](size_t task) {
         EvalBatched8(b, st_front[task], v_front[task], cws, ys, task * span, split_depth);
-      }
+      });
     } else {
       EvalBatched8(b, st, v, cws, ys, 0, 0);
     }
   }
 
+private:
   void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_, Group v) {
     bool t = util::GetLsb(st);
     int4 s = st;
@@ -446,13 +452,13 @@ private:
   // Expands w scalar frontier nodes (t in LSB, v the running group value) by one level
   // with cws[lv]. The children overwrite the frontier in place: iteration is in reverse
   // so the writes at 2j, 2j+1 never clobber nodes still to be read.
-  void ExpandFrontier(bool b, int4 st_front[], Group v_front[], int w, const Cw cws[], int lv) {
+  void ExpandFrontier(bool b, int4 st_front[], Group v_front[], size_t w, const Cw cws[], int lv) {
     int4 s_cw = util::SetLsb(cws[lv].s, false);
     bool tl_cw = util::GetLsb(cws[lv].s);
     bool tr_cw = util::GetLsb(cws[lv].v);
     auto v_cw = Group::From(util::SetLsb(cws[lv].v, false));
 
-    for (int j = w; j-- > 0;) {
+    for (size_t j = w; j-- > 0;) {
       bool t = util::GetLsb(st_front[j]);
       int4 s = util::SetLsb(st_front[j], false);
       // The parent value must be read before the children overwrite the frontier:
@@ -528,7 +534,7 @@ private:
     Group v_front[8];
     st_front[0] = st;
     v_front[0] = v;
-    for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(b, st_front, v_front, 1 << (lv - i), cws, lv);
+    for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(b, st_front, v_front, size_t{1} << (lv - i), cws, lv);
     EvalBatched8Group(b, st_front, v_front, cws, ys, l, i + kBatchPrefix);
   }
 
