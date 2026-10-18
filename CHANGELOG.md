@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Distributed multi-point function (DMPF)
-- Merkle-fold proof accumulation for VDPF (`ProveMerkle`, `EvalAllMerkle`, GPU `VdpfEvalAllMerkleGpu`) and for VDMPF (`BatchEvalMerkle`, GPU `VdmpfBatchEvalGpu`), with the security analysis in doc/vdpf_merkle_fold_security.md
+- Merkle-fold proof accumulation for VDPF (`ProveMerkle`, `EvalAllMerkle`, GPU `VdpfEvalAllMerkleGpu`) and for VDMPF (`BatchEvalMerkle`, GPU `VdmpfBatchEvalMerkleGpu`), with the security analysis in doc/vdpf_merkle_fold_security.md
 - Packed-output DPF (`PackedHalfTreeDpf`, experimental): Half-Tree expansion with a domain-separated leaf conversion and a batched frontier walk
 - Packed point-key CPU fast paths for DPF and Half-Tree point evaluation
 - GPU full-domain evaluation for DCF, Grotto DCF, packed HalfTree DPF, and VDPF, and GPU batch and full-domain evaluation for DMPF
@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 8-way AES-NI batch generation for the raw MMO PRG (`Gen8`), with an internal `GenBatch` fallback for PRGs without one
 - AES-NI raw Feistel PRP backend (`Aes128FeistelRaw`)
 - Python bindings for every scheme, including CUDA evaluation and device-side VDPF Merkle proofs
+- Keyword-only Python `par_depth` controls, explicit VDMPF `batch_eval_merkle`, and verification without constructing or compiling a scheme
 - Static benchmark comparison site (doc/site), scheme-family comparison figures, and benchmark coverage page (doc/benchmarks.md)
 - CPU benchmark curves for the newer schemes, with the Servan-Schreiber VDPF reference and the Mastic, PLASMA, sycret, dpf-cpp, and dpfplusplus (fetched on demand) baselines
 - Chart merges can drop a library-platform combination whose rows would otherwise survive every refresh
@@ -28,18 +29,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking** (0.x): scheme keys are `Key` aggregates; `Gen` fills one per party, `Eval` and `EvalAll` take the party's key, public array parameters are `cuda::std::span`, `Vdpf::Eval` returns `{y, pi_tilde}`, and `GrottoDcf::Preprocess` returns an owning `PreprocessedTree`
-- **Breaking** (0.x): `ChaCha` stores its nonce by value; the pointer constructor and the host/device dual-instance pattern are gone
-- **Breaking** (0.x): `Vdpf`, `Dmpf`, and `Vdmpf` `Gen` retries internally by default and writes the effective seeds and sigma back; `retry = false` restores the fail-fast return
-- Renamed the GPU point-eval key-preparation entry points from `*RelayoutGpu` to `*RepackGpu`
+- Added aggregate `Key` APIs, owning Grotto `PreprocessedTree`, and owning ChaCha nonce construction alongside the v1.2.0 raw-buffer and pointer APIs
+- Mutable generation APIs can retry and return effective seeds; released const-input VDPF and VDMPF calls retain fail-fast behavior. The mutable VDMPF overload requires explicit retry arguments
+- Added `*RepackGpu` preparation names alongside the released `*RelayoutGpu` entry points
 - The DPF, Half-Tree, and DCF CPU full-domain evaluations walk a batched frontier, honoring `par_depth` throughout
+- `par_depth=0` executes on the calling thread; positive depths bound work partitions. DMPF forwards the option to its inner DPF
 - The `fss-crypto` package requires Python >= 3.10
 - Historical FSS curves moved from the figures to the comparison site, and the GPU benchmark curves moved to the cs11369a reference host
+- Benchmark figures separate five scheme families and prepared-key, proof, PRP, and output-group comparisons, with distinct labels and styles
+- Benchmark records distinguish independent keys, single-key query batches, and logical domain outputs; setup preparation is measured separately
 
 ### Fixed
 
 - The Python bindings' CUDA paths no longer dereference device seed tensors on the host before kernel launches
+- Python CUDA scalar and metadata copies follow the current PyTorch stream before evaluation
+- Restored v1.2.0 overloads, VDMPF `BucketKey` layout, legacy GPU query strides, and deferred ChaCha nonce-pointer reads
+- Configured CPU and GPU helpers accept nondefault `par_depth` and Cuckoo security parameters
+- Preserve DPF parallel-root initialization on affected GCC 12 toolchains
+- Python AES uses the OpenSSL MMO implementation with independent thread-local contexts; JIT cache fingerprints include source, compiler, ABI, architecture, and options
+- Python backend and domain validation rejects unsupported device combinations, invalid queries, oversized bucket domains, and unsafe full-domain allocations before evaluation
+- Reject overflowing DMPF and VDMPF compile-time bucket capacities before multiplication
+- Complete 64-bit beta handling and defined unsigned retry increments
+- Define ChaCha and BLAKE3 round additions as unsigned arithmetic modulo 2^32
+- Preserve all 64/128-bit scalar input bits across Python's signed native argument boundary
+- GPU scratch allocations have per-device ownership and explicit release; empty multi-point batches preserve proof semantics without invalid kernel launches
+- Installed CMake packages discover their OpenMP dependency, and Python wheels include internal public-header dependencies
 - `Vdmpf::BatchEval` no longer scans every collected record for duplicates, a quadratic pass the Cuckoo PRP's permutation property can never trigger (`Dmpf::BatchEval` carried the same scan)
+
+### Removed
+
+- Repository pre-commit hook
 
 ## [1.2.0] - 2026-08-17
 
