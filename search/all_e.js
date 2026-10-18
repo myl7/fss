@@ -1,5 +1,30 @@
 var searchData=
 [
-  ['m_5frt_0',['m_rt',['../structfss_1_1Dmpf_1_1Key.html#aa7887d41f1e46dcca59a6b43e8484f05',1,'fss::Dmpf::Key::m_rt'],['../structfss_1_1Vdmpf_1_1Key.html#a01ba1444ba6f4ca55e2bcce87b0708bf',1,'fss::Vdmpf::Key::m_rt']]],
-  ['myl7_20fss_1',['myl7/fss',['../index.html',1,'']]]
+  ['dcf_0',['Dcf',['../classfss_1_1Dcf.html',1,'fss']]],
+  ['dcf_20library_20benchmarks_1',['Third-party DPF/DCF Library Benchmarks',['../md_doc_2bench__third__parties.html',1,'']]],
+  ['dcf_2ecuh_2',['dcf.cuh',['../dcf_8cuh.html',1,'']]],
+  ['dcfevalallgpu_3',['DcfEvalAllGpu',['../eval__all__gpu_8cuh.html#ab679e980ab04442603d54afd3ec80779',1,'fss::gpu']]],
+  ['dcfevalallgpubatch_4',['DcfEvalAllGpuBatch',['../eval__all__gpu_8cuh.html#a29a2deed580dc4b9dace422fa01662b8',1,'fss::gpu']]],
+  ['dcfpred_5',['DcfPred',['../dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509',1,'fss']]],
+  ['definitions_6',['definitions',['../dcf_8cuh.html#autotoc_md17',1,'Definitions'],['../dmpf_8cuh.html#autotoc_md21',1,'Definitions'],['../dpf_8cuh.html#autotoc_md24',1,'Definitions'],['../vdmpf_8cuh.html#autotoc_md39',1,'Definitions'],['../vdpf_8cuh.html#autotoc_md42',1,'Definitions']]],
+  ['details_7',['details',['../vdmpf_8cuh.html#autotoc_md40',1,'Implementation Details'],['../packed__half__tree__dpf_8cuh.html#autotoc_md34',1,'Implementation details'],['../conceptGroupable.html#autotoc_md30',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md25',1,'Implementation Details'],['../dmpf_8cuh.html#autotoc_md22',1,'Implementation Details'],['../vdpf_8cuh.html#autotoc_md43',1,'Implementation Details'],['../dcf_8cuh.html#autotoc_md18',1,'Implementation Details']]],
+  ['discussion_8',['7. Discussion',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md112',1,'']]],
+  ['dmpf_9',['Dmpf',['../classfss_1_1Dmpf.html',1,'fss']]],
+  ['dmpf_2ecuh_10',['dmpf.cuh',['../dmpf_8cuh.html',1,'']]],
+  ['dmpfevalallgpu_11',['DmpfEvalAllGpu',['../eval__all__gpu_8cuh.html#acab95f496e70e27511203295df533137',1,'fss::gpu']]],
+  ['dpf_12',['Dpf',['../classfss_1_1Dpf.html',1,'fss']]],
+  ['dpf_20cpp_20c_13',['dpf-cpp (C++)',['../md_doc_2bench__third__parties.html#autotoc_md80',1,'']]],
+  ['dpf_20cpu_20c_14',['GPU-DPF CPU (C++)',['../md_doc_2bench__third__parties.html#autotoc_md69',1,'']]],
+  ['dpf_20dcf_20library_20benchmarks_15',['Third-party DPF/DCF Library Benchmarks',['../md_doc_2bench__third__parties.html',1,'']]],
+  ['dpf_20evaluation_16',['Software-AES DPF Evaluation',['../md_doc_2bench__aes128__soft.html#autotoc_md101',1,'']]],
+  ['dpf_20gpu_20python_20cuda_17',['GPU-DPF GPU (Python/CUDA)',['../md_doc_2bench__third__parties.html#autotoc_md70',1,'']]],
+  ['dpf_20rh3nry_20dpfplusplus_20cpu_20benchmark_18',['dpf++ (rh3nry/dpfplusplus) CPU Benchmark',['../md_doc_2bench-dpfplusplus.html',1,'']]],
+  ['dpf_2ecuh_19',['dpf.cuh',['../dpf_8cuh.html',1,'']]],
+  ['dpfevalallgpu_20',['DpfEvalAllGpu',['../eval__all__gpu_8cuh.html#a5341223c925dbe044db40047ba154a6d',1,'fss::gpu']]],
+  ['dpfevalallgpubatch_21',['DpfEvalAllGpuBatch',['../eval__all__gpu_8cuh.html#a05de57449dad5e32ce46acd5299928f2',1,'fss::gpu']]],
+  ['dpfevalpoint_22',['DpfEvalPoint',['../point__eval__cpu_8cuh.html#aacbb2703a0c6539f23f1ee1290ed8001',1,'fss::cpu']]],
+  ['dpfpackpoint_23',['DpfPackPoint',['../point__eval__cpu_8cuh.html#a1cf16cc997de31518b3ffd7c086c18c9',1,'fss::cpu']]],
+  ['dpfplusplus_20c_24',['dpfplusplus (C++)',['../md_doc_2bench__third__parties.html#autotoc_md81',1,'']]],
+  ['dpfplusplus_20cpu_20benchmark_25',['dpf++ (rh3nry/dpfplusplus) CPU Benchmark',['../md_doc_2bench-dpfplusplus.html',1,'']]],
+  ['dpfpointkey_26',['DpfPointKey',['../structfss_1_1cpu_1_1DpfPointKey.html',1,'fss::cpu']]]
 ];

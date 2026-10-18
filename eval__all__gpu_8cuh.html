@@ -36,7 +36,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.2.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.3.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -120,6 +120,7 @@ $(document).ready(function(){initNavTree('eval__all__gpu_8cuh.html',''); initRes
 <code>#include &lt;<a class="el" href="half__tree__dpf_8cuh_source.html">fss/half_tree_dpf.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="packed__half__tree__dpf_8cuh_source.html">fss/packed_half_tree_dpf.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="vdpf_8cuh_source.html">fss/vdpf.cuh</a>&gt;</code><br />
+<code>#include &lt;fss/internal/gpu_workspace.cuh&gt;</code><br />
 </div><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
@@ -128,30 +129,30 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ae687af3b98f88fcf27636556e500d0bf" id="r_ae687af3b98f88fcf27636556e500d0bf"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:ae687af3b98f88fcf27636556e500d0bf"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#ae687af3b98f88fcf27636556e500d0bf">fss::gpu::HalfTreeDpfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *cws, int4 ocw, int4 *ys, const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:ae687af3b98f88fcf27636556e500d0bf"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a HalfTree DPF key: ys[x] = Eval(b, s0, cws, ocw, x) for all x.  <br /></td></tr>
-<tr class="separator:ae687af3b98f88fcf27636556e500d0bf"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a050307577f4e514b5aa40058618e766e" id="r_a050307577f4e514b5aa40058618e766e"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:a050307577f4e514b5aa40058618e766e"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a050307577f4e514b5aa40058618e766e">fss::gpu::DpfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *cws, int4 *ys, const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:a050307577f4e514b5aa40058618e766e"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a DPF key: ys[x] = Eval(b, s0, cws, x) for all x.  <br /></td></tr>
-<tr class="separator:a050307577f4e514b5aa40058618e766e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a1fab1de5e7acea1cb1e4296aba52d5ad" id="r_a1fab1de5e7acea1cb1e4296aba52d5ad"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:a1fab1de5e7acea1cb1e4296aba52d5ad"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a1fab1de5e7acea1cb1e4296aba52d5ad">fss::gpu::DpfEvalAllGpuBatch</a> (bool b, const int4 *s0s, const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *cws, int nkeys, int4 *ys, const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:a1fab1de5e7acea1cb1e4296aba52d5ad"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of nkeys DPF keys in one launch: per-key time drops toward the PRG bound as the grid fills the device (tail waves and launch overhead amortized).  <br /></td></tr>
-<tr class="separator:a1fab1de5e7acea1cb1e4296aba52d5ad"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ad4d68679b9ea371c5b59740684207998" id="r_ad4d68679b9ea371c5b59740684207998"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:ad4d68679b9ea371c5b59740684207998"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#ad4d68679b9ea371c5b59740684207998">fss::gpu::HalfTreeDpfEvalAllGpuBatch</a> (bool b, const int4 *s0s, const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *cws, const int4 *ocws, int nkeys, int4 *ys, const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:ad4d68679b9ea371c5b59740684207998"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of nkeys HalfTree DPF keys in one launch, see DpfEvalAllGpuBatch.  <br /></td></tr>
-<tr class="separator:ad4d68679b9ea371c5b59740684207998"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6b3ab532cacdccc3ca6f12108dcfd0b5" id="r_a6b3ab532cacdccc3ca6f12108dcfd0b5"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:a6b3ab532cacdccc3ca6f12108dcfd0b5"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a6b3ab532cacdccc3ca6f12108dcfd0b5">fss::gpu::PackedHalfTreeDpfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt;::Cw *cws, int4 fcw, int4 *ys, const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:a6b3ab532cacdccc3ca6f12108dcfd0b5"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a PackedHalfTree DPF key: block j of ys covers inputs [j * kLanes, (j + 1) * kLanes) for all j, matching EvalAll().  <br /></td></tr>
-<tr class="separator:a6b3ab532cacdccc3ca6f12108dcfd0b5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6b7b60ba54fbf1da9ad3089eafe6e54e" id="r_a6b7b60ba54fbf1da9ad3089eafe6e54e"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:a6b7b60ba54fbf1da9ad3089eafe6e54e"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a6b7b60ba54fbf1da9ad3089eafe6e54e">fss::gpu::PackedHalfTreeDpfEvalAllGpuBatch</a> (bool b, const int4 *s0s, const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt;::Cw *cws, const int4 *fcws, int nkeys, int4 *ys, const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:a6b7b60ba54fbf1da9ad3089eafe6e54e"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of nkeys PackedHalfTree DPF keys in one launch, see PackedHalfTreeDpfEvalAllGpu and DpfEvalAllGpuBatch.  <br /></td></tr>
-<tr class="separator:a6b7b60ba54fbf1da9ad3089eafe6e54e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3b0f3fad8cb85e6529ee080fcaaecdbb" id="r_a3b0f3fad8cb85e6529ee080fcaaecdbb"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:a3b0f3fad8cb85e6529ee080fcaaecdbb"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a3b0f3fad8cb85e6529ee080fcaaecdbb">fss::gpu::HalfTreeDpfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *cws, int4 ocw, int4 *ys, const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:a3b0f3fad8cb85e6529ee080fcaaecdbb"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a HalfTree DPF key: ys[x] = Eval(b, s0, cws, ocw, x) for all x.  <br /></td></tr>
+<tr class="separator:a3b0f3fad8cb85e6529ee080fcaaecdbb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5341223c925dbe044db40047ba154a6d" id="r_a5341223c925dbe044db40047ba154a6d"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:a5341223c925dbe044db40047ba154a6d"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a5341223c925dbe044db40047ba154a6d">fss::gpu::DpfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *cws, int4 *ys, const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:a5341223c925dbe044db40047ba154a6d"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a DPF key: ys[x] = Eval(b, s0, cws, x) for all x.  <br /></td></tr>
+<tr class="separator:a5341223c925dbe044db40047ba154a6d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a05de57449dad5e32ce46acd5299928f2" id="r_a05de57449dad5e32ce46acd5299928f2"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:a05de57449dad5e32ce46acd5299928f2"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a05de57449dad5e32ce46acd5299928f2">fss::gpu::DpfEvalAllGpuBatch</a> (bool b, const int4 *s0s, const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *cws, int nkeys, int4 *ys, const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:a05de57449dad5e32ce46acd5299928f2"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of nkeys DPF keys in one launch: per-key time drops toward the PRG bound as the grid fills the device (tail waves and launch overhead amortized).  <br /></td></tr>
+<tr class="separator:a05de57449dad5e32ce46acd5299928f2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a96ca01c7a52abdab25f75d56f2e4f6e9" id="r_a96ca01c7a52abdab25f75d56f2e4f6e9"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:a96ca01c7a52abdab25f75d56f2e4f6e9"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a96ca01c7a52abdab25f75d56f2e4f6e9">fss::gpu::HalfTreeDpfEvalAllGpuBatch</a> (bool b, const int4 *s0s, const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *cws, const int4 *ocws, int nkeys, int4 *ys, const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:a96ca01c7a52abdab25f75d56f2e4f6e9"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of nkeys HalfTree DPF keys in one launch, see DpfEvalAllGpuBatch.  <br /></td></tr>
+<tr class="separator:a96ca01c7a52abdab25f75d56f2e4f6e9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a30902c38376e1aa768979bf2cc55ee52" id="r_a30902c38376e1aa768979bf2cc55ee52"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:a30902c38376e1aa768979bf2cc55ee52"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a30902c38376e1aa768979bf2cc55ee52">fss::gpu::PackedHalfTreeDpfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt;::Cw *cws, int4 fcw, int4 *ys, const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:a30902c38376e1aa768979bf2cc55ee52"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a PackedHalfTree DPF key: block j of ys covers inputs [j * kLanes, (j + 1) * kLanes) for all j, matching EvalAll().  <br /></td></tr>
+<tr class="separator:a30902c38376e1aa768979bf2cc55ee52"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae521794f36eb0ca79d15df3a2888677d" id="r_ae521794f36eb0ca79d15df3a2888677d"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:ae521794f36eb0ca79d15df3a2888677d"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#ae521794f36eb0ca79d15df3a2888677d">fss::gpu::PackedHalfTreeDpfEvalAllGpuBatch</a> (bool b, const int4 *s0s, const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt;::Cw *cws, const int4 *fcws, int nkeys, int4 *ys, const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt; &amp;dpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:ae521794f36eb0ca79d15df3a2888677d"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of nkeys PackedHalfTree DPF keys in one launch, see PackedHalfTreeDpfEvalAllGpu and DpfEvalAllGpuBatch.  <br /></td></tr>
+<tr class="separator:ae521794f36eb0ca79d15df3a2888677d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab679e980ab04442603d54afd3ec80779" id="r_ab679e980ab04442603d54afd3ec80779"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred, int par_depth&gt; </td></tr>
 <tr class="memitem:ab679e980ab04442603d54afd3ec80779"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#ab679e980ab04442603d54afd3ec80779">fss::gpu::DcfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1Dcf.html">Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::Cw *cws, int4 *ys, const <a class="el" href="classfss_1_1Dcf.html">Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt; &amp;dcf, cudaStream_t stream=0)</td></tr>
 <tr class="memdesc:ab679e980ab04442603d54afd3ec80779"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a DCF key: ys[x] = Eval(b, s0, cws, x) for all x.  <br /></td></tr>
@@ -160,22 +161,22 @@ Functions</h2></td></tr>
 <tr class="memitem:a29a2deed580dc4b9dace422fa01662b8"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a29a2deed580dc4b9dace422fa01662b8">fss::gpu::DcfEvalAllGpuBatch</a> (bool b, const int4 *s0s, const typename <a class="el" href="classfss_1_1Dcf.html">Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::Cw *cws, int nkeys, int4 *ys, const <a class="el" href="classfss_1_1Dcf.html">Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt; &amp;dcf, cudaStream_t stream=0)</td></tr>
 <tr class="memdesc:a29a2deed580dc4b9dace422fa01662b8"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of nkeys DCF keys in one launch: per-key time drops toward the PRG bound as the grid fills the device (tail waves and launch overhead amortized).  <br /></td></tr>
 <tr class="separator:a29a2deed580dc4b9dace422fa01662b8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a533dfe0a9b4958ade697ed384521578c" id="r_a533dfe0a9b4958ade697ed384521578c"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:a533dfe0a9b4958ade697ed384521578c"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a533dfe0a9b4958ade697ed384521578c">fss::gpu::GrottoDcfPreprocessGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt;::Cw *cws, bool *d_p, const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt; &amp;dcf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:a533dfe0a9b4958ade697ed384521578c"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU preprocess of a Grotto DCF key: expands the DPF tree on the GPU and builds the parity segment tree of <a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304" title="Preprocess: expand DPF tree and build parity segment tree.">GrottoDcf::Preprocess</a> in device memory.  <br /></td></tr>
-<tr class="separator:a533dfe0a9b4958ade697ed384521578c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac89ae39ede341dc196e03894ec468018" id="r_ac89ae39ede341dc196e03894ec468018"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:ac89ae39ede341dc196e03894ec468018"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#ac89ae39ede341dc196e03894ec468018">fss::gpu::GrottoDcfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt;::Cw *cws, bool *d_ys, const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt; &amp;dcf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:ac89ae39ede341dc196e03894ec468018"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a Grotto DCF key: d_ys[x] is party b's share of 1[alpha &lt;= x] for all x, as in <a class="el" href="classfss_1_1GrottoDcf.html#a0f7de68279f447b7b4a3ec680af85b73" title="Full domain evaluation.">GrottoDcf::EvalAll</a>.  <br /></td></tr>
-<tr class="separator:ac89ae39ede341dc196e03894ec468018"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a62dfb0e741ace2890a9810be50b99639" id="r_a62dfb0e741ace2890a9810be50b99639"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; </td></tr>
-<tr class="memitem:a62dfb0e741ace2890a9810be50b99639"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a62dfb0e741ace2890a9810be50b99639">fss::gpu::VdpfEvalAllMerkleGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::Cw *cws, cuda::std::array&lt; int4, 4 &gt; cs, int4 ocw, int4 *ys, cuda::std::array&lt; int4, 4 &gt; *d_pi, const <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt; &amp;vdpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:a62dfb0e741ace2890a9810be50b99639"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a VDPF key with the Merkle-fold proof: ys[x] is the output share of Eval(b, s0, cws, cs, ocw, x) and d_pi the 64B proof, matching <a class="el" href="classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd" title="Full domain evaluation method with the Merkle-fold proof.">Vdpf::EvalAllMerkle</a> bit for bit.  <br /></td></tr>
-<tr class="separator:a62dfb0e741ace2890a9810be50b99639"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7e400472998960ce0ced5042fa581029" id="r_a7e400472998960ce0ced5042fa581029"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In , int kappa&gt; </td></tr>
-<tr class="memitem:a7e400472998960ce0ced5042fa581029"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a7e400472998960ce0ced5042fa581029">fss::gpu::DmpfEvalAllGpu</a> (bool b, int4 sigma, int m_rt, int b_rt, const int4 *s0s, const typename <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa &gt;::InnerDpf::Cw *cws, int4 *bucket_ys, int4 *ys, const <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa &gt; &amp;dmpf, cudaStream_t stream=0)</td></tr>
-<tr class="memdesc:a7e400472998960ce0ced5042fa581029"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a DMPF key: two launches on the stream.  <br /></td></tr>
-<tr class="separator:a7e400472998960ce0ced5042fa581029"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a735c34ed1d7085db6be180f25b4f398c" id="r_a735c34ed1d7085db6be180f25b4f398c"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:a735c34ed1d7085db6be180f25b4f398c"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a735c34ed1d7085db6be180f25b4f398c">fss::gpu::GrottoDcfPreprocessGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Cw *cws, bool *d_p, const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt; &amp;dcf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:a735c34ed1d7085db6be180f25b4f398c"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU preprocess of a Grotto DCF key: expands the DPF tree on the GPU and builds the parity segment tree of <a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304" title="Preprocess: expand DPF tree and build parity segment tree.">GrottoDcf::Preprocess</a> in device memory.  <br /></td></tr>
+<tr class="separator:a735c34ed1d7085db6be180f25b4f398c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa50e94edeedfece01eb8606ead4b4661" id="r_aa50e94edeedfece01eb8606ead4b4661"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:aa50e94edeedfece01eb8606ead4b4661"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#aa50e94edeedfece01eb8606ead4b4661">fss::gpu::GrottoDcfEvalAllGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Cw *cws, bool *d_ys, const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt; &amp;dcf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:aa50e94edeedfece01eb8606ead4b4661"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a Grotto DCF key: d_ys[x] is party b's share of 1[alpha &lt;= x] for all x, as in <a class="el" href="classfss_1_1GrottoDcf.html#a0f7de68279f447b7b4a3ec680af85b73" title="Full domain evaluation.">GrottoDcf::EvalAll</a>.  <br /></td></tr>
+<tr class="separator:aa50e94edeedfece01eb8606ead4b4661"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a692e85399e8be73a3976695835ee0e58" id="r_a692e85399e8be73a3976695835ee0e58"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In , int par_depth&gt; </td></tr>
+<tr class="memitem:a692e85399e8be73a3976695835ee0e58"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#a692e85399e8be73a3976695835ee0e58">fss::gpu::VdpfEvalAllMerkleGpu</a> (bool b, int4 s0, const typename <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Cw *cws, cuda::std::array&lt; int4, 4 &gt; cs, int4 ocw, int4 *ys, cuda::std::array&lt; int4, 4 &gt; *d_pi, const <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt; &amp;vdpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:a692e85399e8be73a3976695835ee0e58"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a VDPF key with the Merkle-fold proof: ys[x] is the output share of Eval(b, s0, cws, cs, ocw, x) and d_pi the 64B proof, matching <a class="el" href="classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd" title="Full domain evaluation method with the Merkle-fold proof.">Vdpf::EvalAllMerkle</a> bit for bit.  <br /></td></tr>
+<tr class="separator:a692e85399e8be73a3976695835ee0e58"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acab95f496e70e27511203295df533137" id="r_acab95f496e70e27511203295df533137"><td class="memTemplParams" colspan="2">template&lt;int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In , int kappa, int ch_lambda, int par_depth&gt; </td></tr>
+<tr class="memitem:acab95f496e70e27511203295df533137"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="eval__all__gpu_8cuh.html#acab95f496e70e27511203295df533137">fss::gpu::DmpfEvalAllGpu</a> (bool b, int4 sigma, int m_rt, int b_rt, const int4 *s0s, const typename <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt;::InnerDpf::Cw *cws, int4 *bucket_ys, int4 *ys, const <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt; &amp;dmpf, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:acab95f496e70e27511203295df533137"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPU full-domain evaluation of a DMPF key: two launches on the stream.  <br /></td></tr>
+<tr class="separator:acab95f496e70e27511203295df533137"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>GPU full-domain evaluation (EvalAll) for DPF, HalfTree DPF, packed HalfTree DPF, DCF, VDPF (with host-side Prove), and Grotto DCF (Preprocess and EvalAll). </p>
@@ -353,13 +354,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
 
 </div>
 </div>
-<a id="a7e400472998960ce0ced5042fa581029" name="a7e400472998960ce0ced5042fa581029"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7e400472998960ce0ced5042fa581029">&#9670;&#160;</a></span>DmpfEvalAllGpu()</h2>
+<a id="acab95f496e70e27511203295df533137" name="acab95f496e70e27511203295df533137"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acab95f496e70e27511203295df533137">&#9670;&#160;</a></span>DmpfEvalAllGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In , int kappa&gt; </div>
+template&lt;int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In , int kappa, int ch_lambda, int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::DmpfEvalAllGpu </td>
@@ -394,7 +395,7 @@ template&lt;int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bit
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa &gt;::InnerDpf::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt;::InnerDpf::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -412,7 +413,7 @@ template&lt;int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bit
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1Dmpf.html">Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dmpf</em>, </td>
         </tr>
         <tr>
@@ -457,13 +458,13 @@ template&lt;int z = -1, int b1 = -1, int in_bits, int max_points, int bucket_bit
 
 </div>
 </div>
-<a id="a050307577f4e514b5aa40058618e766e" name="a050307577f4e514b5aa40058618e766e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a050307577f4e514b5aa40058618e766e">&#9670;&#160;</a></span>DpfEvalAllGpu()</h2>
+<a id="a5341223c925dbe044db40047ba154a6d" name="a5341223c925dbe044db40047ba154a6d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5341223c925dbe044db40047ba154a6d">&#9670;&#160;</a></span>DpfEvalAllGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::DpfEvalAllGpu </td>
@@ -480,7 +481,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -492,7 +493,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dpf</em>, </td>
         </tr>
         <tr>
@@ -531,13 +532,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
 
 </div>
 </div>
-<a id="a1fab1de5e7acea1cb1e4296aba52d5ad" name="a1fab1de5e7acea1cb1e4296aba52d5ad"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a1fab1de5e7acea1cb1e4296aba52d5ad">&#9670;&#160;</a></span>DpfEvalAllGpuBatch()</h2>
+<a id="a05de57449dad5e32ce46acd5299928f2" name="a05de57449dad5e32ce46acd5299928f2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a05de57449dad5e32ce46acd5299928f2">&#9670;&#160;</a></span>DpfEvalAllGpuBatch()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::DpfEvalAllGpuBatch </td>
@@ -554,7 +555,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -572,7 +573,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dpf</em>, </td>
         </tr>
         <tr>
@@ -615,13 +616,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
 
 </div>
 </div>
-<a id="ac89ae39ede341dc196e03894ec468018" name="ac89ae39ede341dc196e03894ec468018"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac89ae39ede341dc196e03894ec468018">&#9670;&#160;</a></span>GrottoDcfEvalAllGpu()</h2>
+<a id="aa50e94edeedfece01eb8606ead4b4661" name="aa50e94edeedfece01eb8606ead4b4661"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa50e94edeedfece01eb8606ead4b4661">&#9670;&#160;</a></span>GrottoDcfEvalAllGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::GrottoDcfEvalAllGpu </td>
@@ -638,7 +639,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , ty
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -650,7 +651,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , ty
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dcf</em>, </td>
         </tr>
         <tr>
@@ -691,13 +692,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , ty
 
 </div>
 </div>
-<a id="a533dfe0a9b4958ade697ed384521578c" name="a533dfe0a9b4958ade697ed384521578c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a533dfe0a9b4958ade697ed384521578c">&#9670;&#160;</a></span>GrottoDcfPreprocessGpu()</h2>
+<a id="a735c34ed1d7085db6be180f25b4f398c" name="a735c34ed1d7085db6be180f25b4f398c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a735c34ed1d7085db6be180f25b4f398c">&#9670;&#160;</a></span>GrottoDcfPreprocessGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::GrottoDcfPreprocessGpu </td>
@@ -714,7 +715,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , ty
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -726,7 +727,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , ty
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1GrottoDcf.html">GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dcf</em>, </td>
         </tr>
         <tr>
@@ -767,13 +768,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Prg , ty
 
 </div>
 </div>
-<a id="ae687af3b98f88fcf27636556e500d0bf" name="ae687af3b98f88fcf27636556e500d0bf"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae687af3b98f88fcf27636556e500d0bf">&#9670;&#160;</a></span>HalfTreeDpfEvalAllGpu()</h2>
+<a id="a3b0f3fad8cb85e6529ee080fcaaecdbb" name="a3b0f3fad8cb85e6529ee080fcaaecdbb"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3b0f3fad8cb85e6529ee080fcaaecdbb">&#9670;&#160;</a></span>HalfTreeDpfEvalAllGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::HalfTreeDpfEvalAllGpu </td>
@@ -790,7 +791,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -808,7 +809,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dpf</em>, </td>
         </tr>
         <tr>
@@ -848,13 +849,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
 
 </div>
 </div>
-<a id="ad4d68679b9ea371c5b59740684207998" name="ad4d68679b9ea371c5b59740684207998"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ad4d68679b9ea371c5b59740684207998">&#9670;&#160;</a></span>HalfTreeDpfEvalAllGpuBatch()</h2>
+<a id="a96ca01c7a52abdab25f75d56f2e4f6e9" name="a96ca01c7a52abdab25f75d56f2e4f6e9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a96ca01c7a52abdab25f75d56f2e4f6e9">&#9670;&#160;</a></span>HalfTreeDpfEvalAllGpuBatch()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::HalfTreeDpfEvalAllGpuBatch </td>
@@ -871,7 +872,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -895,7 +896,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dpf</em>, </td>
         </tr>
         <tr>
@@ -917,13 +918,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
 
 </div>
 </div>
-<a id="a6b3ab532cacdccc3ca6f12108dcfd0b5" name="a6b3ab532cacdccc3ca6f12108dcfd0b5"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6b3ab532cacdccc3ca6f12108dcfd0b5">&#9670;&#160;</a></span>PackedHalfTreeDpfEvalAllGpu()</h2>
+<a id="a30902c38376e1aa768979bf2cc55ee52" name="a30902c38376e1aa768979bf2cc55ee52"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a30902c38376e1aa768979bf2cc55ee52">&#9670;&#160;</a></span>PackedHalfTreeDpfEvalAllGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::PackedHalfTreeDpfEvalAllGpu </td>
@@ -940,7 +941,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typ
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -958,7 +959,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typ
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dpf</em>, </td>
         </tr>
         <tr>
@@ -999,13 +1000,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typ
 
 </div>
 </div>
-<a id="a6b7b60ba54fbf1da9ad3089eafe6e54e" name="a6b7b60ba54fbf1da9ad3089eafe6e54e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6b7b60ba54fbf1da9ad3089eafe6e54e">&#9670;&#160;</a></span>PackedHalfTreeDpfEvalAllGpuBatch()</h2>
+<a id="ae521794f36eb0ca79d15df3a2888677d" name="ae521794f36eb0ca79d15df3a2888677d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae521794f36eb0ca79d15df3a2888677d">&#9670;&#160;</a></span>PackedHalfTreeDpfEvalAllGpuBatch()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typename Prg , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::PackedHalfTreeDpfEvalAllGpuBatch </td>
@@ -1022,7 +1023,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typ
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -1046,7 +1047,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typ
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1PackedHalfTreeDpf.html">PackedHalfTreeDpf</a>&lt; in_bits, out_bits, Prg, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>dpf</em>, </td>
         </tr>
         <tr>
@@ -1068,13 +1069,13 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, int out_bits, typ
 
 </div>
 </div>
-<a id="a62dfb0e741ace2890a9810be50b99639" name="a62dfb0e741ace2890a9810be50b99639"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a62dfb0e741ace2890a9810be50b99639">&#9670;&#160;</a></span>VdpfEvalAllMerkleGpu()</h2>
+<a id="a692e85399e8be73a3976695835ee0e58" name="a692e85399e8be73a3976695835ee0e58"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a692e85399e8be73a3976695835ee0e58">&#9670;&#160;</a></span>VdpfEvalAllMerkleGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; </div>
+template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In , int par_depth&gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">void fss::gpu::VdpfEvalAllMerkleGpu </td>
@@ -1091,7 +1092,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::Cw *&#160;</td>
+          <td class="paramtype">const typename <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Cw *&#160;</td>
           <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
@@ -1121,7 +1122,7 @@ template&lt;int z = -1, int b1 = 8, int bs = 256, int in_bits, typename Group , 
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt; &amp;&#160;</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1Vdpf.html">Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt; &amp;&#160;</td>
           <td class="paramname"><em>vdpf</em>, </td>
         </tr>
         <tr>

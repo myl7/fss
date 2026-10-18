@@ -1,7 +1,8 @@
 var searchData=
 [
-  ['samples_0',['Samples',['../index.html#autotoc_md8',1,'']]],
-  ['sha256_1',['sha256',['../classfss_1_1hash_1_1Sha256.html',1,'fss::hash::Sha256'],['../classfss_1_1hash_1_1Sha256.html#a1e31d36a519e0c469aba396646a4184a',1,'fss::hash::Sha256::Sha256()']]],
-  ['sha256_2ecuh_2',['sha256.cuh',['../sha256_8cuh.html',1,'']]],
-  ['started_3',['Get Started',['../index.html#autotoc_md2',1,'']]]
+  ['implementation_20details_0',['implementation details',['../dcf_8cuh.html#autotoc_md18',1,'Implementation Details'],['../dmpf_8cuh.html#autotoc_md22',1,'Implementation Details'],['../dpf_8cuh.html#autotoc_md25',1,'Implementation Details'],['../conceptGroupable.html#autotoc_md30',1,'Implementation Details'],['../packed__half__tree__dpf_8cuh.html#autotoc_md34',1,'Implementation details'],['../vdmpf_8cuh.html#autotoc_md40',1,'Implementation Details'],['../vdpf_8cuh.html#autotoc_md43',1,'Implementation Details']]],
+  ['index_1',['index',['../structfss_1_1cuckoo__hash_1_1LocateResult.html#a3c432233f973d7aa31d97c8fa9f1381a',1,'fss::cuckoo_hash::LocateResult']]],
+  ['interfaces_20and_20retry_20behavior_2',['Released interfaces and retry behavior',['../md_doc_2api-capabilities.html#autotoc_md51',1,'']]],
+  ['introduction_3',['Introduction',['../index.html#autotoc_md1',1,'']]],
+  ['is_20vendored_4',['License status and why nothing is vendored',['../md_doc_2bench-dpfplusplus.html#autotoc_md90',1,'']]]
 ];

@@ -9,8 +9,8 @@
 <body>
 <main>
   <h1>FSS benchmark comparison</h1>
-  <p class="intro">Median time per key for function secret sharing implementations,
-  measured on one host over domain sizes N&nbsp;=&nbsp;2<sup>8</sup>&nbsp;&hellip;&nbsp;2<sup>20</sup>.
+  <p class="intro">Median operation time per key or query for function secret sharing implementations,
+  measured on the documented CPU and GPU hosts over domain sizes N&nbsp;=&nbsp;2<sup>8</sup>&nbsp;&hellip;&nbsp;2<sup>20</sup>.
   Pick two implementations to compare. Output groups, PRGs, storage, and timing
   boundaries differ between implementations. Read the configuration lines under
   the selectors before comparing numbers.</p>
@@ -51,14 +51,14 @@
     <p>All times are medians — five repetitions per measurement, or five
     Criterion process medians for the Rust libraries. CPU timings are
     wall-clock. GPU timings are CUDA-event based, with each implementation's
-    configuration line naming its timed region. K is the number of keys per
-    timed invocation. Methodology, library versions, and reproduction
+    configuration line naming its timed region. The tables state time per key for Gen/Prepare/EvalAll and per query for Eval.
+    Counts distinguish independent keys from many queries on one key. Methodology, library versions, and reproduction
     commands:
     <a href="https://github.com/myl7/fss/blob/main/doc/bench_figures.md">benchmark curve methodology</a>.
     Raw records: <a href="data.json">data.json</a>.
     Source repository: <a href="https://github.com/myl7/fss">myl7/fss</a>.</p>
   </footer>
 </main>
-<script src="site.js"></script>
+<script type="module" src="site.js"></script>
 </body>
 </html>

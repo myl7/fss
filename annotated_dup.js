@@ -12,6 +12,8 @@ var annotated_dup =
       ] ],
       [ "gpu", null, [
         [ "detail", null, [
+          [ "GpuWorkspace", "classfss_1_1gpu_1_1detail_1_1GpuWorkspace.html", null ],
+          [ "GpuWorkspaceCache", "classfss_1_1gpu_1_1detail_1_1GpuWorkspaceCache.html", null ],
           [ "GrottoXorScanOp", "structfss_1_1gpu_1_1detail_1_1GrottoXorScanOp.html", null ]
         ] ]
       ] ],

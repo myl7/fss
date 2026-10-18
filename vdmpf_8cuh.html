@@ -36,7 +36,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.2.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.3.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -132,8 +132,11 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdmpf.html">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">2-party VDMPF scheme.  <a href="classfss_1_1Vdmpf.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdmpf_1_1BucketKey.html">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::BucketKey</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Per-bucket key with the released v1.2.0 field order and aggregate layout.  <a href="structfss_1_1Vdmpf_1_1BucketKey.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdmpf_1_1Key.html">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::Key</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">VDMPF key for one party.  <a href="structfss_1_1Vdmpf_1_1Key.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">VDMPF key for one party, containing the PRP seed and per-bucket keys.  <a href="structfss_1_1Vdmpf_1_1Key.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>

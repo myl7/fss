@@ -36,7 +36,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.2.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.3.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -152,7 +152,7 @@ Definitions</h2>
 <ul>
 <li>Key generation: \(Gen(1^\lambda, f_{a, b}) \rightarrow (k_0, k_1)\).</li>
 <li>Evaluation: \(Eval(k_i, x) \rightarrow (y_{i,x}, \tilde\pi_{i,x})\).</li>
-<li>Proof accumulation: \(Prove(\{\tilde\pi\}, cs) \rightarrow \pi\). An order-independent alternative, <code>ProveMerkle</code>/<code>EvalAllMerkle</code>, replaces the sequential chain with a Merkle fold over the corrected per-point hashes; see doc/vdpf_merkle_fold_security.md.</li>
+<li>Proof accumulation: \(Prove(\{\tilde\pi\}, cs) \rightarrow \pi\). <code>ProveMerkle</code>/<code>EvalAllMerkle</code> replaces the sequential chain with a parallel Merkle fold over a fixed ordered sequence of corrected per-point hashes. See doc/vdpf_merkle_fold_security.md.</li>
 <li>Verification: \(Verify(\pi_0, \pi_1) \rightarrow \{Accept, Reject\}\).</li>
 </ul>
 <h2><a class="anchor" id="autotoc_md43"></a>

@@ -36,7 +36,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.2.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.3.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -307,129 +307,145 @@ $(document).ready(function(){initNavTree('packed__half__tree__dpf_8cuh_source.ht
 <div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>      <span class="comment">// Domains too shallow to fill an 8-wide frontier evaluate one point per</span></div>
 <div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>      <span class="comment">// block through the tested point walk.</span></div>
 <div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>      <span class="keyword">constexpr</span> <span class="keywordtype">size_t</span> blocks = <span class="keywordtype">size_t</span>{1} &lt;&lt; kDepth;</div>
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span><span class="preprocessor">#pragma omp parallel for if (util::ResolveParDepth(par_depth) &gt; 0)</span></div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>      <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> j = 0; j &lt; blocks; ++j) {</div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>        ys[j] = Eval(b, s0, cws, fcw, <span class="keyword">static_cast&lt;</span>In<span class="keyword">&gt;</span>(j * kLanes));</div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>      }</div>
-<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>    }</div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>  }</div>
-<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span> </div>
-<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>  <span class="comment">// lhs ^ (rhs &amp; mask) with mask being 0 or -1 in every lane, so the per-node corrections</span></div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>  <span class="comment">// controlled by the seed LSB apply branchlessly.</span></div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>  <span class="keyword">static</span> __host__ __device__ int4 MaskXor(int4 lhs, int4 rhs, <span class="keywordtype">int</span> mask) {</div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>    <span class="keywordflow">return</span> {lhs.x ^ (rhs.x &amp; mask), lhs.y ^ (rhs.y &amp; mask), lhs.z ^ (rhs.z &amp; mask), lhs.w ^ (rhs.w &amp; mask)};</div>
-<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>  }</div>
-<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span> </div>
-<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>  <span class="comment">// Expands one node with a scalar PRG call: left = H_S(node) ^ (t ? cw : 0), right = left ^ node.</span></div>
-<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>  __host__ __device__ <span class="keywordtype">void</span> ExpandNode(int4 node, int4 cw, int4 &amp;left, int4 &amp;right) {</div>
-<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>    int4 h = prg.Gen(util::Xor(hash_key, node))[0];</div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>    <span class="keywordtype">int</span> t_mask = -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(node));</div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>    left = MaskXor(h, cw, t_mask);</div>
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>    right = util::Xor(left, node);</div>
-<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>  }</div>
-<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span> </div>
-<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>  <span class="comment">// Level-order full-domain evaluation over a batched frontier. The frontier of</span></div>
-<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>  <span class="comment">// level i lives in bufs[i &amp; 1]; the final expansion fuses the leaf conversion and writes</span></div>
-<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>  <span class="comment">// each ys block exactly once, in the same order the DFS walk produces. The level-order</span></div>
-<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>  <span class="comment">// node index equals the in-order leaf index, so the ys layout is unchanged.</span></div>
-<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>  <span class="keywordtype">void</span> EvalAllFrontier(<span class="keywordtype">bool</span> b, int4 s0, <span class="keyword">const</span> Cw cws[], int4 fcw, int4 ys[]) {</div>
-<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>    assert(kDepth &lt; <span class="keyword">sizeof</span>(<span class="keywordtype">size_t</span>) * 8);</div>
-<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>    <span class="keywordtype">size_t</span> num_blocks = 1ULL &lt;&lt; kDepth;</div>
-<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span> </div>
-<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>    <span class="comment">// Frontier ping-pong scratch, grown on demand and reused across calls of this thread.</span></div>
-<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>    <span class="comment">// Two halves of num_blocks / 2 each: no frontier before the last level exceeds that size.</span></div>
-<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>    <span class="comment">// thread_local isolates concurrent calls: each thread pays the first-call allocation and</span></div>
-<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>    <span class="comment">// retains the peak 16 * 2 ** kDepth bytes, about one packed output buffer, until it exits.</span></div>
-<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>    <span class="keyword">static</span> <span class="keyword">thread_local</span> std::vector&lt;int4&gt; scratch;</div>
-<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>    <span class="keywordflow">if</span> (scratch.size() &lt; num_blocks) scratch.resize(num_blocks);</div>
-<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>    int4 *bufs[2] = {scratch.data(), scratch.data() + num_blocks / 2};</div>
-<div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span> </div>
-<div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>    <span class="comment">// Scalar top: the root becomes the 2^kTopDepth level-kTopDepth frontier in bufs[kTopDepth &amp; 1].</span></div>
-<div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span>    bufs[0][0] = util::SetLsb(s0, b);</div>
-<div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; kTopDepth; ++i) {</div>
-<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>      <span class="keywordtype">size_t</span> count = <span class="keywordtype">size_t</span>{1} &lt;&lt; i;</div>
-<div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>      <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> j = 0; j &lt; count; ++j) {</div>
-<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>        ExpandNode(bufs[i &amp; 1][j], cws[i].s, bufs[(i + 1) &amp; 1][2 * j], bufs[(i + 1) &amp; 1][2 * j + 1]);</div>
-<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>      }</div>
-<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>    }</div>
-<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span> </div>
-<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>    <span class="comment">// Batched frontier descent, 8 parents per batched expansion. Each level is an OpenMP</span></div>
-<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>    <span class="comment">// worksharing loop; the implicit barriers give the level-to-level synchronization.</span></div>
-<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>    <span class="comment">// par_depth resolving to 0 runs the descent sequentially, like the other schemes.</span></div>
-<div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span><span class="preprocessor">#pragma omp parallel if (util::ResolveParDepth(par_depth) &gt; 0)</span></div>
-<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>    {</div>
-<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = kTopDepth; i &lt; kDepth; ++i) {</div>
-<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>        <span class="keyword">const</span> int4 *src = bufs[i &amp; 1];</div>
-<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>        int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) &amp; 1];</div>
-<div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span>        <span class="keywordtype">size_t</span> batches = (<span class="keywordtype">size_t</span>{1} &lt;&lt; i) / 8;</div>
-<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span>        <span class="keywordflow">if</span> (i + 1 == kDepth) {</div>
-<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span><span class="preprocessor">#pragma omp for schedule(static)</span></div>
-<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>          <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> k = 0; k &lt; batches; ++k) ExpandConvert8(src, dst, k, cws[i].s, fcw);</div>
-<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span><span class="preprocessor">#pragma omp for schedule(static)</span></div>
-<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>          <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> k = 0; k &lt; batches; ++k) Expand8(src, dst, k, cws[i].s);</div>
-<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>        }</div>
-<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>      }</div>
-<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>    }</div>
-<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>  }</div>
-<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span> </div>
-<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span>  <span class="comment">// Expands the 8 frontier parents src[8k..8k+8) into their 16 children with one batch.</span></div>
-<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>  <span class="comment">// Parent p has children 2p and 2p + 1, so the children of a batch interleave in pairs.</span></div>
-<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span>  <span class="keywordtype">void</span> Expand8(<span class="keyword">const</span> int4 *src, int4 *dst, <span class="keywordtype">size_t</span> k, int4 cw) {</div>
-<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>    int4 parents[8];</div>
-<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>    cuda::std::array&lt;int4, 8&gt; seeds;</div>
-<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
-<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>      parents[j] = src[8 * k + j];</div>
-<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>      seeds[j] = util::Xor(hash_key, parents[j]);</div>
-<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span>    }</div>
-<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>    <span class="keyword">auto</span> hs = detail::GenBatch&lt;1&gt;(prg, seeds);</div>
-<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
-<div class="line"><a id="l00400" name="l00400"></a><span class="lineno">  400</span>      int4 left = MaskXor(hs[j][0], cw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(parents[j])));</div>
-<div class="line"><a id="l00401" name="l00401"></a><span class="lineno">  401</span>      dst[16 * k + 2 * j] = left;</div>
-<div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span>      dst[16 * k + 2 * j + 1] = util::Xor(left, parents[j]);</div>
-<div class="line"><a id="l00403" name="l00403"></a><span class="lineno">  403</span>    }</div>
-<div class="line"><a id="l00404" name="l00404"></a><span class="lineno">  404</span>  }</div>
-<div class="line"><a id="l00405" name="l00405"></a><span class="lineno">  405</span> </div>
-<div class="line"><a id="l00406" name="l00406"></a><span class="lineno">  406</span>  <span class="comment">// Last-level Expand8() with the leaf conversion fused in: the children are the level</span></div>
-<div class="line"><a id="l00407" name="l00407"></a><span class="lineno">  407</span>  <span class="comment">// kDepth nodes, so they are hashed straight from registers into two more batches</span></div>
-<div class="line"><a id="l00408" name="l00408"></a><span class="lineno">  408</span>  <span class="comment">// (even and odd children), fcw applies through the child LSB mask, and each final block</span></div>
-<div class="line"><a id="l00409" name="l00409"></a><span class="lineno">  409</span>  <span class="comment">// is stored exactly once.</span></div>
-<div class="line"><a id="l00410" name="l00410"></a><span class="lineno">  410</span>  <span class="keywordtype">void</span> ExpandConvert8(<span class="keyword">const</span> int4 *src, int4 *ys, <span class="keywordtype">size_t</span> k, int4 cw, int4 fcw) {</div>
-<div class="line"><a id="l00411" name="l00411"></a><span class="lineno">  411</span>    int4 parents[8];</div>
-<div class="line"><a id="l00412" name="l00412"></a><span class="lineno">  412</span>    cuda::std::array&lt;int4, 8&gt; seeds;</div>
-<div class="line"><a id="l00413" name="l00413"></a><span class="lineno">  413</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
-<div class="line"><a id="l00414" name="l00414"></a><span class="lineno">  414</span>      parents[j] = src[8 * k + j];</div>
-<div class="line"><a id="l00415" name="l00415"></a><span class="lineno">  415</span>      seeds[j] = util::Xor(hash_key, parents[j]);</div>
-<div class="line"><a id="l00416" name="l00416"></a><span class="lineno">  416</span>    }</div>
-<div class="line"><a id="l00417" name="l00417"></a><span class="lineno">  417</span>    <span class="keyword">auto</span> hs = detail::GenBatch&lt;1&gt;(prg, seeds);</div>
-<div class="line"><a id="l00418" name="l00418"></a><span class="lineno">  418</span> </div>
-<div class="line"><a id="l00419" name="l00419"></a><span class="lineno">  419</span>    int4 children[16];</div>
-<div class="line"><a id="l00420" name="l00420"></a><span class="lineno">  420</span>    cuda::std::array&lt;int4, 8&gt; conv_seeds[2];</div>
-<div class="line"><a id="l00421" name="l00421"></a><span class="lineno">  421</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
-<div class="line"><a id="l00422" name="l00422"></a><span class="lineno">  422</span>      int4 left = MaskXor(hs[j][0], cw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(parents[j])));</div>
-<div class="line"><a id="l00423" name="l00423"></a><span class="lineno">  423</span>      children[2 * j] = left;</div>
-<div class="line"><a id="l00424" name="l00424"></a><span class="lineno">  424</span>      children[2 * j + 1] = util::Xor(left, parents[j]);</div>
-<div class="line"><a id="l00425" name="l00425"></a><span class="lineno">  425</span>      conv_seeds[0][j] = util::Xor(hash_key, children[2 * j]);</div>
-<div class="line"><a id="l00426" name="l00426"></a><span class="lineno">  426</span>      conv_seeds[1][j] = util::Xor(hash_key, children[2 * j + 1]);</div>
-<div class="line"><a id="l00427" name="l00427"></a><span class="lineno">  427</span>    }</div>
-<div class="line"><a id="l00428" name="l00428"></a><span class="lineno">  428</span>    <span class="keyword">auto</span> leaves_even = detail::GenBatch&lt;1&gt;(prg, conv_seeds[0]);</div>
-<div class="line"><a id="l00429" name="l00429"></a><span class="lineno">  429</span>    <span class="keyword">auto</span> leaves_odd = detail::GenBatch&lt;1&gt;(prg, conv_seeds[1]);</div>
-<div class="line"><a id="l00430" name="l00430"></a><span class="lineno">  430</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
-<div class="line"><a id="l00431" name="l00431"></a><span class="lineno">  431</span>      ys[16 * k + 2 * j] = MaskXor(leaves_even[j][0], fcw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(children[2 * j])));</div>
-<div class="line"><a id="l00432" name="l00432"></a><span class="lineno">  432</span>      ys[16 * k + 2 * j + 1] =</div>
-<div class="line"><a id="l00433" name="l00433"></a><span class="lineno">  433</span>          MaskXor(leaves_odd[j][0], fcw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(children[2 * j + 1])));</div>
-<div class="line"><a id="l00434" name="l00434"></a><span class="lineno">  434</span>    }</div>
-<div class="line"><a id="l00435" name="l00435"></a><span class="lineno">  435</span>  }</div>
-<div class="line"><a id="l00436" name="l00436"></a><span class="lineno">  436</span> </div>
-<div class="line"><a id="l00437" name="l00437"></a><span class="lineno">  437</span>  __host__ __device__ int4 ConvertLeaf(int4 node, int4 fcw) {</div>
-<div class="line"><a id="l00438" name="l00438"></a><span class="lineno">  438</span>    int4 leaf = prg.Gen(util::Xor(hash_key, node))[0];</div>
-<div class="line"><a id="l00439" name="l00439"></a><span class="lineno">  439</span>    <span class="keywordflow">if</span> (util::GetLsb(node)) leaf = util::Xor(leaf, fcw);</div>
-<div class="line"><a id="l00440" name="l00440"></a><span class="lineno">  440</span>    <span class="keywordflow">return</span> leaf;</div>
-<div class="line"><a id="l00441" name="l00441"></a><span class="lineno">  441</span>  }</div>
-<div class="line"><a id="l00442" name="l00442"></a><span class="lineno">  442</span>};</div>
+<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>      util::ParallelFor(par_depth, blocks, [&amp;](<span class="keywordtype">size_t</span> j) {</div>
+<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>        ys[j] = Eval(b, s0, cws, fcw, <span class="keyword">static_cast&lt;</span>In<span class="keyword">&gt;</span>(j * kLanes));</div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>      });</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>    }</div>
+<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>  }</div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span> </div>
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>  <span class="comment">// lhs ^ (rhs &amp; mask) with mask being 0 or -1 in every lane, so the per-node corrections</span></div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>  <span class="comment">// controlled by the seed LSB apply branchlessly.</span></div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>  <span class="keyword">static</span> __host__ __device__ int4 MaskXor(int4 lhs, int4 rhs, <span class="keywordtype">int</span> mask) {</div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>    <span class="keywordflow">return</span> {lhs.x ^ (rhs.x &amp; mask), lhs.y ^ (rhs.y &amp; mask), lhs.z ^ (rhs.z &amp; mask), lhs.w ^ (rhs.w &amp; mask)};</div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>  }</div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span> </div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>  <span class="comment">// Expands one node with a scalar PRG call: left = H_S(node) ^ (t ? cw : 0), right = left ^ node.</span></div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>  __host__ __device__ <span class="keywordtype">void</span> ExpandNode(int4 node, int4 cw, int4 &amp;left, int4 &amp;right) {</div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>    int4 h = prg.Gen(util::Xor(hash_key, node))[0];</div>
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>    <span class="keywordtype">int</span> t_mask = -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(node));</div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>    left = MaskXor(h, cw, t_mask);</div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>    right = util::Xor(left, node);</div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>  }</div>
+<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span> </div>
+<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>  <span class="comment">// Level-order full-domain evaluation over a batched frontier. The frontier of</span></div>
+<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>  <span class="comment">// level i lives in bufs[i &amp; 1]; the final expansion fuses the leaf conversion and writes</span></div>
+<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>  <span class="comment">// each ys block exactly once, in the same order the DFS walk produces. The level-order</span></div>
+<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>  <span class="comment">// node index equals the in-order leaf index, so the ys layout is unchanged.</span></div>
+<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>  <span class="keywordtype">void</span> EvalAllFrontier(<span class="keywordtype">bool</span> b, int4 s0, <span class="keyword">const</span> Cw cws[], int4 fcw, int4 ys[]) {</div>
+<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>    assert(kDepth &lt; <span class="keyword">sizeof</span>(<span class="keywordtype">size_t</span>) * 8);</div>
+<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>    <span class="keywordtype">size_t</span> num_blocks = 1ULL &lt;&lt; kDepth;</div>
+<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span> </div>
+<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>    <span class="comment">// Frontier ping-pong scratch, grown on demand and reused across calls of this thread.</span></div>
+<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>    <span class="comment">// Two halves of num_blocks / 2 each: no frontier before the last level exceeds that size.</span></div>
+<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>    <span class="comment">// thread_local isolates concurrent calls: each thread pays the first-call allocation and</span></div>
+<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>    <span class="comment">// retains the peak 16 * 2 ** kDepth bytes, about one packed output buffer, until it exits.</span></div>
+<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>    <span class="keyword">static</span> <span class="keyword">thread_local</span> std::vector&lt;int4&gt; scratch;</div>
+<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>    <span class="keywordflow">if</span> (scratch.size() &lt; num_blocks) scratch.resize(num_blocks);</div>
+<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>    int4 *bufs[2] = {scratch.data(), scratch.data() + num_blocks / 2};</div>
+<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span> </div>
+<div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span>    <span class="comment">// Scalar top: the root becomes the 2^kTopDepth level-kTopDepth frontier in bufs[kTopDepth &amp; 1].</span></div>
+<div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>    bufs[0][0] = util::SetLsb(s0, b);</div>
+<div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; kTopDepth; ++i) {</div>
+<div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>      <span class="keywordtype">size_t</span> count = <span class="keywordtype">size_t</span>{1} &lt;&lt; i;</div>
+<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>      <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> j = 0; j &lt; count; ++j) {</div>
+<div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>        ExpandNode(bufs[i &amp; 1][j], cws[i].s, bufs[(i + 1) &amp; 1][2 * j], bufs[(i + 1) &amp; 1][2 * j + 1]);</div>
+<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>      }</div>
+<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>    }</div>
+<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span> </div>
+<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>    <span class="comment">// Each level bounds its independent partitions by 2^par_depth. The</span></div>
+<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>    <span class="comment">// sequential branch avoids an inactive OpenMP region as well as workers.</span></div>
+<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>    <span class="keywordtype">int</span> depth = util::ResolveParDepth(par_depth, kDepth);</div>
+<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>    <span class="keywordflow">if</span> (depth == 0) {</div>
+<div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = kTopDepth; i &lt; kDepth; ++i) {</div>
+<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>        <span class="keyword">const</span> int4 *src = bufs[i &amp; 1];</div>
+<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>        int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) &amp; 1];</div>
+<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>        <span class="keywordtype">size_t</span> batches = (<span class="keywordtype">size_t</span>{1} &lt;&lt; i) / 8;</div>
+<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>        <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> k = 0; k &lt; batches; ++k) {</div>
+<div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span>          <span class="keywordflow">if</span> (i + 1 == kDepth) ExpandConvert8(src, dst, k, cws[i].s, fcw);</div>
+<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span>          <span class="keywordflow">else</span> Expand8(src, dst, k, cws[i].s);</div>
+<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>        }</div>
+<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>      }</div>
+<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>      <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>    }</div>
+<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>    <span class="keywordtype">int</span> threads = util::ResolveParThreads(depth, num_blocks / 16);</div>
+<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span><span class="preprocessor">#pragma omp parallel num_threads(threads)</span></div>
+<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>    {</div>
+<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = kTopDepth; i &lt; kDepth; ++i) {</div>
+<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>        <span class="keyword">const</span> int4 *src = bufs[i &amp; 1];</div>
+<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span>        int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) &amp; 1];</div>
+<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span>        <span class="keywordtype">size_t</span> batches = (<span class="keywordtype">size_t</span>{1} &lt;&lt; i) / 8;</div>
+<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>        <span class="keywordtype">size_t</span> partitions = util::ResolveParPartitions(depth, batches);</div>
+<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span><span class="preprocessor">#pragma omp for schedule(static)</span></div>
+<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>        <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> partition = 0; partition &lt; partitions; ++partition) {</div>
+<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>          <span class="keywordtype">size_t</span> begin = partition * (batches / partitions) +</div>
+<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>              (partition &lt; batches % partitions ? partition : batches % partitions);</div>
+<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>          <span class="keywordtype">size_t</span> end = begin + batches / partitions + (partition &lt; batches % partitions);</div>
+<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>          <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> k = begin; k &lt; end; ++k) {</div>
+<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span>            <span class="keywordflow">if</span> (i + 1 == kDepth) ExpandConvert8(src, dst, k, cws[i].s, fcw);</div>
+<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>            <span class="keywordflow">else</span> Expand8(src, dst, k, cws[i].s);</div>
+<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>          }</div>
+<div class="line"><a id="l00400" name="l00400"></a><span class="lineno">  400</span>        }</div>
+<div class="line"><a id="l00401" name="l00401"></a><span class="lineno">  401</span>      }</div>
+<div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span>    }</div>
+<div class="line"><a id="l00403" name="l00403"></a><span class="lineno">  403</span>  }</div>
+<div class="line"><a id="l00404" name="l00404"></a><span class="lineno">  404</span> </div>
+<div class="line"><a id="l00405" name="l00405"></a><span class="lineno">  405</span>  <span class="comment">// Expands the 8 frontier parents src[8k..8k+8) into their 16 children with one batch.</span></div>
+<div class="line"><a id="l00406" name="l00406"></a><span class="lineno">  406</span>  <span class="comment">// Parent p has children 2p and 2p + 1, so the children of a batch interleave in pairs.</span></div>
+<div class="line"><a id="l00407" name="l00407"></a><span class="lineno">  407</span>  <span class="keywordtype">void</span> Expand8(<span class="keyword">const</span> int4 *src, int4 *dst, <span class="keywordtype">size_t</span> k, int4 cw) {</div>
+<div class="line"><a id="l00408" name="l00408"></a><span class="lineno">  408</span>    int4 parents[8];</div>
+<div class="line"><a id="l00409" name="l00409"></a><span class="lineno">  409</span>    cuda::std::array&lt;int4, 8&gt; seeds;</div>
+<div class="line"><a id="l00410" name="l00410"></a><span class="lineno">  410</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
+<div class="line"><a id="l00411" name="l00411"></a><span class="lineno">  411</span>      parents[j] = src[8 * k + j];</div>
+<div class="line"><a id="l00412" name="l00412"></a><span class="lineno">  412</span>      seeds[j] = util::Xor(hash_key, parents[j]);</div>
+<div class="line"><a id="l00413" name="l00413"></a><span class="lineno">  413</span>    }</div>
+<div class="line"><a id="l00414" name="l00414"></a><span class="lineno">  414</span>    <span class="keyword">auto</span> hs = detail::GenBatch&lt;1&gt;(prg, seeds);</div>
+<div class="line"><a id="l00415" name="l00415"></a><span class="lineno">  415</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
+<div class="line"><a id="l00416" name="l00416"></a><span class="lineno">  416</span>      int4 left = MaskXor(hs[j][0], cw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(parents[j])));</div>
+<div class="line"><a id="l00417" name="l00417"></a><span class="lineno">  417</span>      dst[16 * k + 2 * j] = left;</div>
+<div class="line"><a id="l00418" name="l00418"></a><span class="lineno">  418</span>      dst[16 * k + 2 * j + 1] = util::Xor(left, parents[j]);</div>
+<div class="line"><a id="l00419" name="l00419"></a><span class="lineno">  419</span>    }</div>
+<div class="line"><a id="l00420" name="l00420"></a><span class="lineno">  420</span>  }</div>
+<div class="line"><a id="l00421" name="l00421"></a><span class="lineno">  421</span> </div>
+<div class="line"><a id="l00422" name="l00422"></a><span class="lineno">  422</span>  <span class="comment">// Last-level Expand8() with the leaf conversion fused in: the children are the level</span></div>
+<div class="line"><a id="l00423" name="l00423"></a><span class="lineno">  423</span>  <span class="comment">// kDepth nodes, so they are hashed straight from registers into two more batches</span></div>
+<div class="line"><a id="l00424" name="l00424"></a><span class="lineno">  424</span>  <span class="comment">// (even and odd children), fcw applies through the child LSB mask, and each final block</span></div>
+<div class="line"><a id="l00425" name="l00425"></a><span class="lineno">  425</span>  <span class="comment">// is stored exactly once.</span></div>
+<div class="line"><a id="l00426" name="l00426"></a><span class="lineno">  426</span>  <span class="keywordtype">void</span> ExpandConvert8(<span class="keyword">const</span> int4 *src, int4 *ys, <span class="keywordtype">size_t</span> k, int4 cw, int4 fcw) {</div>
+<div class="line"><a id="l00427" name="l00427"></a><span class="lineno">  427</span>    int4 parents[8];</div>
+<div class="line"><a id="l00428" name="l00428"></a><span class="lineno">  428</span>    cuda::std::array&lt;int4, 8&gt; seeds;</div>
+<div class="line"><a id="l00429" name="l00429"></a><span class="lineno">  429</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
+<div class="line"><a id="l00430" name="l00430"></a><span class="lineno">  430</span>      parents[j] = src[8 * k + j];</div>
+<div class="line"><a id="l00431" name="l00431"></a><span class="lineno">  431</span>      seeds[j] = util::Xor(hash_key, parents[j]);</div>
+<div class="line"><a id="l00432" name="l00432"></a><span class="lineno">  432</span>    }</div>
+<div class="line"><a id="l00433" name="l00433"></a><span class="lineno">  433</span>    <span class="keyword">auto</span> hs = detail::GenBatch&lt;1&gt;(prg, seeds);</div>
+<div class="line"><a id="l00434" name="l00434"></a><span class="lineno">  434</span> </div>
+<div class="line"><a id="l00435" name="l00435"></a><span class="lineno">  435</span>    int4 children[16];</div>
+<div class="line"><a id="l00436" name="l00436"></a><span class="lineno">  436</span>    cuda::std::array&lt;int4, 8&gt; conv_seeds[2];</div>
+<div class="line"><a id="l00437" name="l00437"></a><span class="lineno">  437</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
+<div class="line"><a id="l00438" name="l00438"></a><span class="lineno">  438</span>      int4 left = MaskXor(hs[j][0], cw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(parents[j])));</div>
+<div class="line"><a id="l00439" name="l00439"></a><span class="lineno">  439</span>      children[2 * j] = left;</div>
+<div class="line"><a id="l00440" name="l00440"></a><span class="lineno">  440</span>      children[2 * j + 1] = util::Xor(left, parents[j]);</div>
+<div class="line"><a id="l00441" name="l00441"></a><span class="lineno">  441</span>      conv_seeds[0][j] = util::Xor(hash_key, children[2 * j]);</div>
+<div class="line"><a id="l00442" name="l00442"></a><span class="lineno">  442</span>      conv_seeds[1][j] = util::Xor(hash_key, children[2 * j + 1]);</div>
+<div class="line"><a id="l00443" name="l00443"></a><span class="lineno">  443</span>    }</div>
+<div class="line"><a id="l00444" name="l00444"></a><span class="lineno">  444</span>    <span class="keyword">auto</span> leaves_even = detail::GenBatch&lt;1&gt;(prg, conv_seeds[0]);</div>
+<div class="line"><a id="l00445" name="l00445"></a><span class="lineno">  445</span>    <span class="keyword">auto</span> leaves_odd = detail::GenBatch&lt;1&gt;(prg, conv_seeds[1]);</div>
+<div class="line"><a id="l00446" name="l00446"></a><span class="lineno">  446</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) {</div>
+<div class="line"><a id="l00447" name="l00447"></a><span class="lineno">  447</span>      ys[16 * k + 2 * j] = MaskXor(leaves_even[j][0], fcw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(children[2 * j])));</div>
+<div class="line"><a id="l00448" name="l00448"></a><span class="lineno">  448</span>      ys[16 * k + 2 * j + 1] =</div>
+<div class="line"><a id="l00449" name="l00449"></a><span class="lineno">  449</span>          MaskXor(leaves_odd[j][0], fcw, -<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(util::GetLsb(children[2 * j + 1])));</div>
+<div class="line"><a id="l00450" name="l00450"></a><span class="lineno">  450</span>    }</div>
+<div class="line"><a id="l00451" name="l00451"></a><span class="lineno">  451</span>  }</div>
+<div class="line"><a id="l00452" name="l00452"></a><span class="lineno">  452</span> </div>
+<div class="line"><a id="l00453" name="l00453"></a><span class="lineno">  453</span>  __host__ __device__ int4 ConvertLeaf(int4 node, int4 fcw) {</div>
+<div class="line"><a id="l00454" name="l00454"></a><span class="lineno">  454</span>    int4 leaf = prg.Gen(util::Xor(hash_key, node))[0];</div>
+<div class="line"><a id="l00455" name="l00455"></a><span class="lineno">  455</span>    <span class="keywordflow">if</span> (util::GetLsb(node)) leaf = util::Xor(leaf, fcw);</div>
+<div class="line"><a id="l00456" name="l00456"></a><span class="lineno">  456</span>    <span class="keywordflow">return</span> leaf;</div>
+<div class="line"><a id="l00457" name="l00457"></a><span class="lineno">  457</span>  }</div>
+<div class="line"><a id="l00458" name="l00458"></a><span class="lineno">  458</span>};</div>
 </div>
-<div class="line"><a id="l00443" name="l00443"></a><span class="lineno">  443</span> </div>
-<div class="line"><a id="l00444" name="l00444"></a><span class="lineno">  444</span>}  <span class="comment">// namespace fss</span></div>
+<div class="line"><a id="l00459" name="l00459"></a><span class="lineno">  459</span> </div>
+<div class="line"><a id="l00460" name="l00460"></a><span class="lineno">  460</span>}  <span class="comment">// namespace fss</span></div>
 <div class="ttc" id="aclassfss_1_1PackedHalfTreeDpf_html"><div class="ttname"><a href="classfss_1_1PackedHalfTreeDpf.html">fss::PackedHalfTreeDpf</a></div><div class="ttdoc">2-party DPF scheme with packed sub-128-bit outputs, using the Half-Tree construction.</div><div class="ttdef"><b>Definition</b> packed_half_tree_dpf.cuh:93</div></div>
 <div class="ttc" id="aclassfss_1_1PackedHalfTreeDpf_html_a077411720ce8d4adff098cb5705444d6"><div class="ttname"><a href="classfss_1_1PackedHalfTreeDpf.html#a077411720ce8d4adff098cb5705444d6">fss::PackedHalfTreeDpf::Extract</a></div><div class="ttdeci">static uint64_t Extract(int4 block, In x)</div><div class="ttdoc">Extracts the out_bits-bit output share for input x from a packed block.</div><div class="ttdef"><b>Definition</b> packed_half_tree_dpf.cuh:212</div></div>
 <div class="ttc" id="aclassfss_1_1PackedHalfTreeDpf_html_a282a7026b5c13bc078920116fb0d90ff"><div class="ttname"><a href="classfss_1_1PackedHalfTreeDpf.html#a282a7026b5c13bc078920116fb0d90ff">fss::PackedHalfTreeDpf::EvalAll</a></div><div class="ttdeci">void EvalAll(bool b, const Key &amp;key, cuda::std::span&lt; int4 &gt; ys)</div><div class="ttdoc">Full domain evaluation method.</div><div class="ttdef"><b>Definition</b> packed_half_tree_dpf.cuh:243</div></div>

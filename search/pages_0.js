@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['fss_0',['myl7/fss',['../index.html',1,'']]]
+  ['0_0',['API capabilities for v1.3.0',['../md_doc_2api-capabilities.html',1,'']]]
 ];

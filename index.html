@@ -36,7 +36,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.2.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.3.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -116,7 +116,7 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 <p>Features:</p>
 <ul>
 <li>First-class support for GPU (based on CUDA)</li>
-<li>Top-tier performance shown by benchmarks</li>
+<li>CPU and CUDA benchmarks against third-party libraries</li>
 <li>Well-commented and documented</li>
 <li>Header-only library, easy for integration</li>
 </ul>
@@ -124,7 +124,7 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 Introduction</h1>
 <p><b>Multi-party computation (MPC)</b> is a subfield of cryptography that aims to enable a group of parties (e.g., servers) to jointly compute a function over their inputs while keeping the inputs private.</p>
 <p><b>Secret sharing</b> is a method that distributes a secret among a group of parties, such that no individual party holds any information about the secret. For example, a number \(x\) can be secret-shared into \(x_0, x_1\) via \(x = x_0 + x_1\).</p>
-<p><b>FSS</b> is a scheme to secret-share a function into a group of function shares. Each function share, called as a <b>key</b>, can be individually evaluated on a party. The outputs of the keys are the shares of the original function output. FSS consists of 2 methods: <code>Gen</code> for generating function shares as keys and <code>Eval</code> for evaluating a key to get an output share. FSS's workflow is shown below:</p>
+<p><b>FSS</b> is a scheme to secret-share a function into a group of function shares. Each function share, called a <b>key</b>, can be individually evaluated by a party. The outputs of the keys are the shares of the original function output. FSS consists of 2 methods: <code>Gen</code> for generating function shares as keys and <code>Eval</code> for evaluating a key to get an output share. FSS's workflow is shown below:</p>
 <div class="fragment"><div class="line">---</div>
 <div class="line">config:</div>
 <div class="line">  htmlLabels: false</div>
@@ -144,7 +144,8 @@ Prerequisites</h2>
 <ul>
 <li>CMake &gt;= 3.22</li>
 <li>CUDA toolkit &gt;= 12.0 (for C++20 support). C++ CI is configured for CUDA 12.6 and 13.4.</li>
-<li>OpenSSL 3 (only required for CPU with AES-128 MMO PRG)</li>
+<li>OpenMP headers; automatic and parallel CPU evaluation also require OpenMP compiler flags and runtime linkage.</li>
+<li>OpenSSL 3 for OpenSSL AES PRGs/PRPs and SHA256 on CPU</li>
 </ul>
 <h2><a class="anchor" id="autotoc_md4"></a>
 Build</h2>
@@ -239,7 +240,7 @@ CPU</h2>
 </div><!-- fragment --><p>See <code>samples/dpf_dcf_cpu.cu</code> for the complete working example.</p>
 <h2><a class="anchor" id="autotoc_md6"></a>
 CPU Point Evaluation Fast Path</h2>
-<p><code><a class="el" href="point__eval__cpu_8cuh.html" title="CPU point evaluation of FSS keys in the lean packed-key layout.">include/fss/point_eval_cpu.cuh</a></code> provides an optional fast path for host-side point evaluation of DPF and Half-Tree DPF keys. <code><a class="el" href="point__eval__cpu_8cuh.html#a32473843e2c20bd4a19efc79e5e8392c" title="One-time compaction of a Dpf key into the layout consumed by DpfEvalPoint().">fss::cpu::DpfPackPoint()</a></code> and <code><a class="el" href="point__eval__cpu_8cuh.html#a91b70e18e1949c084dd9f3b815e01b20" title="One-time compaction of a HalfTree DPF key into the layout consumed by HalfTreeDpfEvalPoint().">fss::cpu::HalfTreeDpfPackPoint()</a></code> convert a key from <code>Gen()</code> into a packed point key, which keeps one 16 B correction word per level and the per-level control bits in a single word. <code><a class="el" href="point__eval__cpu_8cuh.html#aacbb2703a0c6539f23f1ee1290ed8001" title="CPU point evaluation of a packed DPF key: the output is bit-exact with Dpf::Eval(b,...">fss::cpu::DpfEvalPoint()</a></code> and <code><a class="el" href="point__eval__cpu_8cuh.html#a6e83ddabd57f70cd5348ff180cf54301" title="CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact with HalfTreeDpf::Eval(b,...">fss::cpu::HalfTreeDpfEvalPoint()</a></code> evaluate a packed key faster than the normal <code>Eval()</code>, with bit-exact outputs. The pack runs once per key, so the cost amortizes over repeated point evaluations of that key; a one-off evaluation gains nothing and should call <code>Eval()</code>, which remains the default interface.</p>
+<p><code><a class="el" href="point__eval__cpu_8cuh.html" title="CPU point evaluation of FSS keys in the lean packed-key layout.">include/fss/point_eval_cpu.cuh</a></code> provides an optional fast path for host-side point evaluation of DPF and Half-Tree DPF keys. <code><a class="el" href="point__eval__cpu_8cuh.html#a1cf16cc997de31518b3ffd7c086c18c9" title="One-time compaction of a Dpf key into the layout consumed by DpfEvalPoint().">fss::cpu::DpfPackPoint()</a></code> and <code><a class="el" href="point__eval__cpu_8cuh.html#a2dc36f5b58b6417b4f4cedd6543a9824" title="One-time compaction of a HalfTree DPF key into the layout consumed by HalfTreeDpfEvalPoint().">fss::cpu::HalfTreeDpfPackPoint()</a></code> convert a key from <code>Gen()</code> into a packed point key, which keeps one 16 B correction word per level and the per-level control bits in a single word. <code><a class="el" href="point__eval__cpu_8cuh.html#aacbb2703a0c6539f23f1ee1290ed8001" title="CPU point evaluation of a packed DPF key: the output is bit-exact with Dpf::Eval(b,...">fss::cpu::DpfEvalPoint()</a></code> and <code><a class="el" href="point__eval__cpu_8cuh.html#a6e83ddabd57f70cd5348ff180cf54301" title="CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact with HalfTreeDpf::Eval(b,...">fss::cpu::HalfTreeDpfEvalPoint()</a></code> evaluate a packed key faster than the normal <code>Eval()</code>, with bit-exact outputs. The pack runs once per key, so the cost amortizes over repeated point evaluations of that key; a one-off evaluation gains nothing and should call <code>Eval()</code>, which remains the default interface.</p>
 <p>This path is host-only and requires x86-64 with SSE4.1. Compile with <code>-msse4.1</code>, plus <code>-maes</code> when the PRG itself uses AES-NI (e.g. <code>Aes128MmoRaw</code>); the repository compiles its tests with <code>-maes -msse4.2</code> for that reason. A plain PRG such as ChaCha needs no AES flag. A packed key must be used with the scheme configuration it was generated with: pass the same PRG instance, and for Half-Tree DPF also the same hash key.</p>
 <div class="fragment"><div class="line"><span class="comment">// Continuing the DPF setup from the CPU section above, after dpf.Gen(k0, k1, ...)</span></div>
 <div class="line"><span class="keyword">const</span> <a class="code hl_struct" href="structfss_1_1cpu_1_1DpfPointKey.html">fss::cpu::DpfPointKey&lt;kInBits&gt;</a> pk0 = fss::cpu::DpfPackPoint&lt;kInBits, Group, DpfPrg, In&gt;(k0);</div>
@@ -365,7 +366,7 @@ Python</h2>
 <div class="line">y1 = dpf.eval(party=1, s0=s0s[1], cws=cws, x=42)</div>
 <div class="line"> </div>
 <div class="line"><span class="keyword">assert</span> torch.bitwise_xor(y0, y1).equal(beta)</div>
-</div><!-- fragment --><p><code>gen</code> and <code>eval_all</code> are CPU-only. <code>eval</code> can run on CUDA tensors for ChaCha PRG when CUDA is available. The JIT path sets a default <code>TORCH_CUDA_ARCH_LIST</code> on machines with no visible GPU so CPU tests can still compile the extension.</p>
+</div><!-- fragment --><p>Key generation runs on CPU. CUDA point and full-domain evaluation are available for supported schemes with ChaCha; the <a class="el" href="md_doc_2api-capabilities.html">API capability table</a> lists the exact combinations and proof accumulators. Python bulk evaluators default to <code>par_depth=0</code>, which keeps all host work on the calling thread. Set the keyword to <code>-1</code> for automatic OpenMP partitioning or a positive split depth; C++ schemes retain their released default of <code>-1</code>. The OpenSSL AES backend uses independent contexts per host thread and supports CPU execution. JIT caches include the source tree, compiler, Python/PyTorch ABI, CUDA architectures, and configuration. On a host without a visible GPU, the JIT chooses a fallback architecture without changing the process environment.</p>
 <p>To develop against a checkout instead, install the dev extra and run the tests:</p>
 <div class="fragment"><div class="line">uv sync --extra dev</div>
 <div class="line">uv run pytest</div>
@@ -378,7 +379,7 @@ nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel
 <p>Workaround: wrap the type in a plain aggregate struct that satisfies <code>Groupable</code> but has no <code>__uint128_t</code> non-type template parameter in its name. The struct must have no user-declared constructors to remain an aggregate. See <code>third_party/fss/bench.cu</code> for an example.</p>
 <h1><a class="anchor" id="autotoc_md12"></a>
 Benchmarks</h1>
-<p>See benchmark methodology and comparison curves for the current full-output adapters and domain sweeps. The binaries below are built on <a href="https://github.com/google/benchmark">Google Benchmark</a> and time single operations. The benchmark coverage page lists what they measure and the GPU kernel register usage.</p>
+<p>See <a class="el" href="md_doc_2bench__figures.html">benchmark methodology and comparison curves</a> for the current full-output adapters and domain sweeps. The binaries below are built on <a href="https://github.com/google/benchmark">Google Benchmark</a> and time single operations. The <a class="el" href="md_doc_2benchmarks.html">benchmark coverage</a> page lists what they measure and the GPU kernel register usage.</p>
 <p>Configure with <code>BUILD_BENCH=ON</code> and build the targets:</p>
 <div class="fragment"><div class="line">cmake -B build -DBUILD_BENCH=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo</div>
 <div class="line">cmake --build build --target bench_cpu bench_gpu</div>
@@ -391,7 +392,7 @@ Benchmarks</h1>
 </div><!-- fragment --><p>The <code>Makefile</code> runs these sources through <code>third_party/bench.py</code>. Both CPU and GPU runs pin the host process to <code>CPU_ID</code>, verify the performance governor, and restore its previous value on exit. A governor change may require noninteractive <code>sudo</code>. <code>make bench_gpu</code> also selects <code>GPU_ID</code>. Builds, raw measurements, environment metadata, and reports are saved under <code>build/third_party/</code>.</p>
 <div class="fragment"><div class="line">CPU_ID=0 make bench_cpu</div>
 <div class="line">GPU_ID=1 CUDA_ARCH=86 make bench_gpu</div>
-</div><!-- fragment --><p>The <a href="doc/bench_third_parties.md#running">third-party comparison guide</a> covers fixed dependency versions, selecting libraries, and generating reports. The <code>main</code> selection runs the benchmarks in this README:</p>
+</div><!-- fragment --><p>The <a class="el" href="md_doc_2bench__third__parties.html">third-party comparison guide</a> covers fixed dependency versions, selecting libraries, and generating reports. The <code>main</code> selection runs the benchmarks in this README:</p>
 <div class="fragment"><div class="line">python3 third_party/bench.py run --libraries main --platform cpu --cpu 24 \</div>
 <div class="line">  --repetitions 5 --min-time 1 --run-id readme-cpu</div>
 <div class="line">python3 third_party/bench.py run --libraries main --platform gpu --cpu 8 --gpu 1 \</div>
@@ -400,17 +401,17 @@ Benchmarks</h1>
 <p><code>CUDA_ARCH</code> is only needed when CMake cannot infer the architecture. Two more targets support the sections below: <code>make ptx_info</code> rebuilds with <code>--ptxas-options=-v</code> and collects the register usage into <code>build/ptx_info.log</code>, and <code>make profile_gpu</code> records an Nsight Systems profile of one benchmark selected by <code>GPU_PROFILE_BENCH</code>.</p>
 <h2><a class="anchor" id="autotoc_md13"></a>
 Comparison Curves</h2>
-<p>The domain sweep measures domain sizes <code>N = 2^8, 2^10, ..., 2^20</code>. Each figure is one platform, one scheme family per row — DCF (including Grotto DCF), DPF with its verifiable VDPF counterparts, and DMPF with VDMPF — and one operation per column: <code>Gen</code>, <code>Eval</code>, <code>EvalAll</code>. Time axes are logarithmic and legends show each library's native output shape and PRG backend. Hardware, sampling, timing boundaries, and reproduction commands are in the curve methodology. The exact measured medians behind the curves, with per-domain values and pairwise library comparison, are on the <a href="https://myl7.github.io/fss/bench/">benchmark comparison site</a>. An implementation appears in a panel only where it provides that method on that platform.</p>
+<p>The domain sweep measures domain sizes <code>N = 2^8, 2^10, ..., 2^20</code>. Each figure shows one platform, with five rows: DCF, full-width DPF, packed DPF, VDPF, and DMPF/VDMPF. Columns show <code>Gen</code>, <code>Eval</code>, and <code>EvalAll</code>. Logarithmic time axes retain the full measured range. Legends distinguish the construction, output shape, PRG, and proof accumulator; colors, markers, and line styles identify each method. Separate figures cover <a href="doc/figures/cpu-prepared.svg">prepared-key costs</a>, <a href="doc/figures/cpu-proof.svg">proof accumulators</a>, <a href="doc/figures/cpu-prp.svg">PRP backends</a>, and <a href="doc/figures/cpu-output-groups.svg">output groups</a>. The comparison site supports selecting individual methods to inspect overlapping curves. Hardware, sampling, timing boundaries, and reproduction commands are in the <a class="el" href="md_doc_2bench__figures.html">curve methodology</a>. The exact measured medians behind the curves, with per-domain values and pairwise library comparison, are on the <a href="https://myl7.github.io/fss/bench/">benchmark comparison site</a>. An implementation appears in a panel only where it provides that method on that platform. Gen timings count one call producing both party keys.</p>
 <div class="image">
 <object type="image/svg+xml" data="cpu-operations.svg" style="pointer-events: none;"></object>
 <div class="caption">
 CPU benchmark operations</div></div>
-<p>CPU point operations use one key and one thread, in µs/key. <code>EvalAll</code> produces all N outputs for one key, in ms/key. The slow materialized point-loop cases use five domain sizes. The verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference, eprint 2021/580, single point) include proof generation in the timed evaluation. Verification stays outside timing. Grotto DCF point <code>Eval</code> times the parity-tree query with Preprocess outside timing. DMPF and VDMPF use <code>t = 64</code> points over <code>m = 112</code> Cuckoo buckets. VDMPF <code>EvalAll</code> materializes through BatchEval including proof generation.</p>
+<p>CPU point evaluation uses one key and one thread, in µs/query; generation uses µs/key. <code>EvalAll</code> produces all N outputs for one key, in ms/key. The slow materialized point-loop cases use five domain sizes. The verifiable VDPF curves (FSS VDPF and the Servan-Schreiber reference, eprint 2021/580, single point) include proof generation in the timed evaluation. Verification stays outside timing. Grotto DCF point <code>Eval</code> times the parity-tree query with Preprocess outside timing. DMPF and VDMPF use <code>t = 64</code> points over <code>m = 112</code> Cuckoo buckets. The VDMPF <code>EvalAll</code> benchmark materializes all inputs through batch evaluation, including proof generation.</p>
 <div class="image">
 <object type="image/svg+xml" data="gpu-operations.svg" style="pointer-events: none;"></object>
 <div class="caption">
 GPU benchmark operations</div></div>
-<p>GPU <code>Gen</code> and point <code>Eval</code> report time amortized per key, in ns/key. <code>EvalAll</code> uses one key, in ms/key. The native GPU-DPF and packed EzPC adapters keep their native output configurations. GPU <code>EvalAll</code> covers DPF, HalfTree DPF, DCF, the one-bit packed HalfTree DPF, VDPF with the Merkle-fold proof computed on device, and Grotto DCF. The threads-per-block sweep lives in the <a href="doc/bench_figures.md#gpu-block-size-sensitivity">curve methodology</a>.</p>
+<p>GPU <code>Gen</code> reports ns/key. Point <code>Eval</code> reports ns/query: ordinary point kernels use independent keys, while DMPF/VDMPF evaluate many queries against one key. <code>EvalAll</code> uses one key, in ms/key. The native GPU-DPF and packed EzPC adapters keep their native output configurations. GPU <code>EvalAll</code> covers DPF, HalfTree DPF, DCF, the one-bit packed HalfTree DPF, VDPF and VDMPF with Merkle-fold proofs computed on device, Grotto DCF, and DMPF. The threads-per-block sweep lives in the <a class="el" href="md_doc_2bench__figures.html">curve methodology</a>.</p>
 <h2><a class="anchor" id="autotoc_md14"></a>
 Flamegraph</h2>
 <p>Generate a CPU flamegraph with <code>perf</code> and <a href="https://github.com/brendangregg/FlameGraph">FlameGraph</a>:</p>

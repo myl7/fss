@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt; Class Template Reference</title>
+<title>myl7/fss: fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt; Class Template Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -36,7 +36,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.2.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.3.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -105,7 +105,7 @@ $(document).ready(function(){initNavTree('classfss_1_1Dmpf.html',''); initResiza
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="classfss_1_1Dmpf-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt; Class Template Reference</div></div>
+  <div class="headertitle"><div class="title">fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt; Class Template Reference</div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -120,20 +120,20 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a66aa3b6e27358c78bd78b67cfa8f9890" id="r_a66aa3b6e27358c78bd78b67cfa8f9890"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dmpf.html#a66aa3b6e27358c78bd78b67cfa8f9890">Gen</a> (<a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;k1, int4 &amp;sigma, cuda::std::span&lt; cuda::std::array&lt; int4, 2 &gt;, m &gt; s0s, cuda::std::span&lt; const In &gt; as, cuda::std::span&lt; const int4 &gt; b_bufs, int t, int ch_retry=1000, bool retry=true)</td></tr>
-<tr class="memdesc:a66aa3b6e27358c78bd78b67cfa8f9890"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1Dmpf_1_1Key.html" title="DMPF key for one party.">Key</a> generation method.  <br /></td></tr>
-<tr class="separator:a66aa3b6e27358c78bd78b67cfa8f9890"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a83f9598521140a74d45d72a488eb9325" id="r_a83f9598521140a74d45d72a488eb9325"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dmpf.html#a83f9598521140a74d45d72a488eb9325">BatchEval</a> (bool b, const <a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys)</td></tr>
-<tr class="memdesc:a83f9598521140a74d45d72a488eb9325"><td class="mdescLeft">&#160;</td><td class="mdescRight">Batch evaluation method.  <br /></td></tr>
-<tr class="separator:a83f9598521140a74d45d72a488eb9325"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ae89cb39dee4fbf15e802dd37699c5761" id="r_ae89cb39dee4fbf15e802dd37699c5761"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dmpf.html#ae89cb39dee4fbf15e802dd37699c5761">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys)</td></tr>
-<tr class="memdesc:ae89cb39dee4fbf15e802dd37699c5761"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the DMPF on all input points.  <br /></td></tr>
-<tr class="separator:ae89cb39dee4fbf15e802dd37699c5761"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab6d491466aef9c4a995a5891db0b295e" id="r_ab6d491466aef9c4a995a5891db0b295e"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dmpf.html#ab6d491466aef9c4a995a5891db0b295e">Gen</a> (<a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;k1, int4 &amp;sigma, cuda::std::span&lt; cuda::std::array&lt; int4, 2 &gt;, m &gt; s0s, cuda::std::span&lt; const In &gt; as, cuda::std::span&lt; const int4 &gt; b_bufs, int t, int ch_retry=1000, bool retry=true)</td></tr>
+<tr class="memdesc:ab6d491466aef9c4a995a5891db0b295e"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1Dmpf_1_1Key.html" title="DMPF key for one party.">Key</a> generation method.  <br /></td></tr>
+<tr class="separator:ab6d491466aef9c4a995a5891db0b295e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac8809c7f1e7a0723d5f9a9e63a2bce0c" id="r_ac8809c7f1e7a0723d5f9a9e63a2bce0c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dmpf.html#ac8809c7f1e7a0723d5f9a9e63a2bce0c">BatchEval</a> (bool b, const <a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys)</td></tr>
+<tr class="memdesc:ac8809c7f1e7a0723d5f9a9e63a2bce0c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Batch evaluation method.  <br /></td></tr>
+<tr class="separator:ac8809c7f1e7a0723d5f9a9e63a2bce0c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0b4c6a090670691b64b55c664c0a462d" id="r_a0b4c6a090670691b64b55c664c0a462d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dmpf.html#a0b4c6a090670691b64b55c664c0a462d">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys)</td></tr>
+<tr class="memdesc:a0b4c6a090670691b64b55c664c0a462d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the DMPF on all input points.  <br /></td></tr>
+<tr class="separator:a0b4c6a090670691b64b55c664c0a462d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In = uint, int kappa = 3, int ch_lambda = 80&gt;<br />
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In = uint, int kappa = 3, int ch_lambda = 80, int par_depth = -1&gt;<br />
 requires ((std::is_unsigned_v&lt;In&gt; || std::is_same_v&lt;In, __uint128_t&gt;) &amp;&amp; in_bits &lt;= sizeof(In) * 8 &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptPermutable.html">Permutable</a>&lt;Prp&gt;)<br />
-class fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;</div><p>2-party DMPF scheme. </p>
+class fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt;</div><p>2-party DMPF scheme. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">in_bits</td><td>Input domain bit size. </td></tr>
@@ -145,23 +145,24 @@ class fss::Dmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
     <tr><td class="paramname">kappa</td><td>Number of Cuckoo hash functions. 3 is good enough for all practical use cases (Lemma 5 and Remark 1 of the paper). </td></tr>
     <tr><td class="paramname">ch_lambda</td><td>Cuckoo-hashing security parameter in bits. Controls the failure probability of Cuckoo hashing: inserting t elements fails with probability at most \(2^{-\text{ch\_lambda}}\). </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Inner DPF EvalAll tree split depth. Zero keeps PRG calls on the calling thread. -1 selects a depth from the available OpenMP workers. Positive depths bound independent work partitions by 2^par_depth. PRGs sharing mutable contexts, including Aes128Mmo, require zero or separate contexts for concurrent calls. </td></tr>
   </table>
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="a83f9598521140a74d45d72a488eb9325" name="a83f9598521140a74d45d72a488eb9325"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a83f9598521140a74d45d72a488eb9325">&#9670;&#160;</a></span>BatchEval()</h2>
+<a id="ac8809c7f1e7a0723d5f9a9e63a2bce0c" name="ac8809c7f1e7a0723d5f9a9e63a2bce0c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac8809c7f1e7a0723d5f9a9e63a2bce0c">&#9670;&#160;</a></span>BatchEval()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In  = uint, int kappa = 3, int ch_lambda = 80&gt; </div>
+template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In  = uint, int kappa = 3, int ch_lambda = 80, int par_depth = -1&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;::BatchEval </td>
+          <td class="memname">void <a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt;::BatchEval </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -211,19 +212,19 @@ template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typen
 
 </div>
 </div>
-<a id="ae89cb39dee4fbf15e802dd37699c5761" name="ae89cb39dee4fbf15e802dd37699c5761"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae89cb39dee4fbf15e802dd37699c5761">&#9670;&#160;</a></span>EvalAll()</h2>
+<a id="a0b4c6a090670691b64b55c664c0a462d" name="a0b4c6a090670691b64b55c664c0a462d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0b4c6a090670691b64b55c664c0a462d">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In  = uint, int kappa = 3, int ch_lambda = 80&gt; </div>
+template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In  = uint, int kappa = 3, int ch_lambda = 80, int par_depth = -1&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;::EvalAll </td>
+          <td class="memname">void <a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt;::EvalAll </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -265,19 +266,19 @@ template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typen
 
 </div>
 </div>
-<a id="a66aa3b6e27358c78bd78b67cfa8f9890" name="a66aa3b6e27358c78bd78b67cfa8f9890"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a66aa3b6e27358c78bd78b67cfa8f9890">&#9670;&#160;</a></span>Gen()</h2>
+<a id="ab6d491466aef9c4a995a5891db0b295e" name="ab6d491466aef9c4a995a5891db0b295e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab6d491466aef9c4a995a5891db0b295e">&#9670;&#160;</a></span>Gen()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In  = uint, int kappa = 3, int ch_lambda = 80&gt; </div>
+template&lt;int in_bits, int max_points, int bucket_bits, typename Group , typename Prg , typename Prp , typename In  = uint, int kappa = 3, int ch_lambda = 80, int par_depth = -1&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">int <a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda &gt;::Gen </td>
+          <td class="memname">int <a class="el" href="classfss_1_1Dmpf.html">fss::Dmpf</a>&lt; in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth &gt;::Gen </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structfss_1_1Dmpf_1_1Key.html">Key</a> &amp;&#160;</td>
           <td class="paramname"><em>k0</em>, </td>

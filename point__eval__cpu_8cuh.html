@@ -36,7 +36,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.2.0</span>
+   <div id="projectname">myl7/fss<span id="projectnumber">&#160;1.3.0</span>
    </div>
    <div id="projectbrief">Function secret sharing (FSS) primitives including distributed point/comparison function (DPF/DCF)</div>
   </td>
@@ -133,21 +133,23 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a32473843e2c20bd4a19efc79e5e8392c" id="r_a32473843e2c20bd4a19efc79e5e8392c"><td class="memTemplParams" colspan="2">template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:a32473843e2c20bd4a19efc79e5e8392c"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1cpu_1_1DpfPointKey.html">DpfPointKey</a>&lt; in_bits &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="point__eval__cpu_8cuh.html#a32473843e2c20bd4a19efc79e5e8392c">fss::cpu::DpfPackPoint</a> (const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Key &amp;key)</td></tr>
-<tr class="memdesc:a32473843e2c20bd4a19efc79e5e8392c"><td class="mdescLeft">&#160;</td><td class="mdescRight">One-time compaction of a <a class="el" href="classfss_1_1Dpf.html" title="2-party DPF scheme.">Dpf</a> key into the layout consumed by <a class="el" href="point__eval__cpu_8cuh.html#aacbb2703a0c6539f23f1ee1290ed8001" title="CPU point evaluation of a packed DPF key: the output is bit-exact with Dpf::Eval(b,...">DpfEvalPoint()</a>.  <br /></td></tr>
-<tr class="separator:a32473843e2c20bd4a19efc79e5e8392c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1cf16cc997de31518b3ffd7c086c18c9" id="r_a1cf16cc997de31518b3ffd7c086c18c9"><td class="memTemplParams" colspan="2">template&lt;int in_bits, typename Group , typename Prg , typename In , int par_depth = -1, typename Key  = typename Dpf&lt;in_bits, Group, Prg, In, par_depth&gt;::Key&gt; <br />
+requires (std::is_same_v&lt;Key, typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt;in_bits, Group, Prg, In, Key::kParDepth&gt;::Key&gt;)</td></tr>
+<tr class="memitem:a1cf16cc997de31518b3ffd7c086c18c9"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1cpu_1_1DpfPointKey.html">DpfPointKey</a>&lt; in_bits &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="point__eval__cpu_8cuh.html#a1cf16cc997de31518b3ffd7c086c18c9">fss::cpu::DpfPackPoint</a> (const Key &amp;key)</td></tr>
+<tr class="memdesc:a1cf16cc997de31518b3ffd7c086c18c9"><td class="mdescLeft">&#160;</td><td class="mdescRight">One-time compaction of a <a class="el" href="classfss_1_1Dpf.html" title="2-party DPF scheme.">Dpf</a> key into the layout consumed by <a class="el" href="point__eval__cpu_8cuh.html#aacbb2703a0c6539f23f1ee1290ed8001" title="CPU point evaluation of a packed DPF key: the output is bit-exact with Dpf::Eval(b,...">DpfEvalPoint()</a>.  <br /></td></tr>
+<tr class="separator:a1cf16cc997de31518b3ffd7c086c18c9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aacbb2703a0c6539f23f1ee1290ed8001" id="r_aacbb2703a0c6539f23f1ee1290ed8001"><td class="memTemplParams" colspan="2">template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
 <tr class="memitem:aacbb2703a0c6539f23f1ee1290ed8001"><td class="memTemplItemLeft" align="right" valign="top">int4&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="point__eval__cpu_8cuh.html#aacbb2703a0c6539f23f1ee1290ed8001">fss::cpu::DpfEvalPoint</a> (bool b, const <a class="el" href="structfss_1_1cpu_1_1DpfPointKey.html">DpfPointKey</a>&lt; in_bits &gt; &amp;key, In x, Prg &amp;prg)</td></tr>
-<tr class="memdesc:aacbb2703a0c6539f23f1ee1290ed8001"><td class="mdescLeft">&#160;</td><td class="mdescRight">CPU point evaluation of a packed DPF key: the output is bit-exact with Dpf::Eval(b, key, x) for the key <a class="el" href="point__eval__cpu_8cuh.html#a32473843e2c20bd4a19efc79e5e8392c" title="One-time compaction of a Dpf key into the layout consumed by DpfEvalPoint().">DpfPackPoint()</a> was called on.  <br /></td></tr>
+<tr class="memdesc:aacbb2703a0c6539f23f1ee1290ed8001"><td class="mdescLeft">&#160;</td><td class="mdescRight">CPU point evaluation of a packed DPF key: the output is bit-exact with Dpf::Eval(b, key, x) for the key <a class="el" href="point__eval__cpu_8cuh.html#a1cf16cc997de31518b3ffd7c086c18c9" title="One-time compaction of a Dpf key into the layout consumed by DpfEvalPoint().">DpfPackPoint()</a> was called on.  <br /></td></tr>
 <tr class="separator:aacbb2703a0c6539f23f1ee1290ed8001"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a91b70e18e1949c084dd9f3b815e01b20" id="r_a91b70e18e1949c084dd9f3b815e01b20"><td class="memTemplParams" colspan="2">template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
-<tr class="memitem:a91b70e18e1949c084dd9f3b815e01b20"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1cpu_1_1HalfTreeDpfPointKey.html">HalfTreeDpfPointKey</a>&lt; in_bits &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="point__eval__cpu_8cuh.html#a91b70e18e1949c084dd9f3b815e01b20">fss::cpu::HalfTreeDpfPackPoint</a> (const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt;::Key &amp;key)</td></tr>
-<tr class="memdesc:a91b70e18e1949c084dd9f3b815e01b20"><td class="mdescLeft">&#160;</td><td class="mdescRight">One-time compaction of a HalfTree DPF key into the layout consumed by <a class="el" href="point__eval__cpu_8cuh.html#a6e83ddabd57f70cd5348ff180cf54301" title="CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact with HalfTreeDpf::Eval(b,...">HalfTreeDpfEvalPoint()</a>.  <br /></td></tr>
-<tr class="separator:a91b70e18e1949c084dd9f3b815e01b20"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2dc36f5b58b6417b4f4cedd6543a9824" id="r_a2dc36f5b58b6417b4f4cedd6543a9824"><td class="memTemplParams" colspan="2">template&lt;int in_bits, typename Group , typename Prg , typename In , int par_depth = -1, typename Key  = typename HalfTreeDpf&lt;in_bits, Group, Prg, In, par_depth&gt;::Key&gt; <br />
+requires (std::is_same_v&lt;Key, typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt;in_bits, Group, Prg, In, Key::kParDepth&gt;::Key&gt;)</td></tr>
+<tr class="memitem:a2dc36f5b58b6417b4f4cedd6543a9824"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1cpu_1_1HalfTreeDpfPointKey.html">HalfTreeDpfPointKey</a>&lt; in_bits &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="point__eval__cpu_8cuh.html#a2dc36f5b58b6417b4f4cedd6543a9824">fss::cpu::HalfTreeDpfPackPoint</a> (const Key &amp;key)</td></tr>
+<tr class="memdesc:a2dc36f5b58b6417b4f4cedd6543a9824"><td class="mdescLeft">&#160;</td><td class="mdescRight">One-time compaction of a HalfTree DPF key into the layout consumed by <a class="el" href="point__eval__cpu_8cuh.html#a6e83ddabd57f70cd5348ff180cf54301" title="CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact with HalfTreeDpf::Eval(b,...">HalfTreeDpfEvalPoint()</a>.  <br /></td></tr>
+<tr class="separator:a2dc36f5b58b6417b4f4cedd6543a9824"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6e83ddabd57f70cd5348ff180cf54301" id="r_a6e83ddabd57f70cd5348ff180cf54301"><td class="memTemplParams" colspan="2">template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </td></tr>
 <tr class="memitem:a6e83ddabd57f70cd5348ff180cf54301"><td class="memTemplItemLeft" align="right" valign="top">int4&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="point__eval__cpu_8cuh.html#a6e83ddabd57f70cd5348ff180cf54301">fss::cpu::HalfTreeDpfEvalPoint</a> (bool b, const <a class="el" href="structfss_1_1cpu_1_1HalfTreeDpfPointKey.html">HalfTreeDpfPointKey</a>&lt; in_bits &gt; &amp;key, In x, Prg &amp;prg, int4 hash_key)</td></tr>
-<tr class="memdesc:a6e83ddabd57f70cd5348ff180cf54301"><td class="mdescLeft">&#160;</td><td class="mdescRight">CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact with HalfTreeDpf::Eval(b, key, x) for the key <a class="el" href="point__eval__cpu_8cuh.html#a91b70e18e1949c084dd9f3b815e01b20" title="One-time compaction of a HalfTree DPF key into the layout consumed by HalfTreeDpfEvalPoint().">HalfTreeDpfPackPoint()</a> was called on.  <br /></td></tr>
+<tr class="memdesc:a6e83ddabd57f70cd5348ff180cf54301"><td class="mdescLeft">&#160;</td><td class="mdescRight">CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact with HalfTreeDpf::Eval(b, key, x) for the key <a class="el" href="point__eval__cpu_8cuh.html#a2dc36f5b58b6417b4f4cedd6543a9824" title="One-time compaction of a HalfTree DPF key into the layout consumed by HalfTreeDpfEvalPoint().">HalfTreeDpfPackPoint()</a> was called on.  <br /></td></tr>
 <tr class="separator:a6e83ddabd57f70cd5348ff180cf54301"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
@@ -222,18 +224,19 @@ template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </div>
 
 </div>
 </div>
-<a id="a32473843e2c20bd4a19efc79e5e8392c" name="a32473843e2c20bd4a19efc79e5e8392c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a32473843e2c20bd4a19efc79e5e8392c">&#9670;&#160;</a></span>DpfPackPoint()</h2>
+<a id="a1cf16cc997de31518b3ffd7c086c18c9" name="a1cf16cc997de31518b3ffd7c086c18c9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1cf16cc997de31518b3ffd7c086c18c9">&#9670;&#160;</a></span>DpfPackPoint()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename In , int par_depth = -1, typename Key  = typename Dpf&lt;in_bits, Group, Prg, In, par_depth&gt;::Key&gt; <br />
+requires (std::is_same_v&lt;Key, typename Dpf&lt;in_bits, Group, Prg, In, Key::kParDepth&gt;::Key&gt;)</div>
       <table class="memname">
         <tr>
           <td class="memname">DpfPointKey&lt; in_bits &gt; fss::cpu::DpfPackPoint </td>
           <td>(</td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1Dpf.html">Dpf</a>&lt; in_bits, Group, Prg, In &gt;::Key &amp;&#160;</td>
+          <td class="paramtype">const Key &amp;&#160;</td>
           <td class="paramname"><em>key</em></td><td>)</td>
           <td></td>
         </tr>
@@ -330,18 +333,19 @@ template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </div>
 
 </div>
 </div>
-<a id="a91b70e18e1949c084dd9f3b815e01b20" name="a91b70e18e1949c084dd9f3b815e01b20"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a91b70e18e1949c084dd9f3b815e01b20">&#9670;&#160;</a></span>HalfTreeDpfPackPoint()</h2>
+<a id="a2dc36f5b58b6417b4f4cedd6543a9824" name="a2dc36f5b58b6417b4f4cedd6543a9824"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2dc36f5b58b6417b4f4cedd6543a9824">&#9670;&#160;</a></span>HalfTreeDpfPackPoint()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In &gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename In , int par_depth = -1, typename Key  = typename HalfTreeDpf&lt;in_bits, Group, Prg, In, par_depth&gt;::Key&gt; <br />
+requires (std::is_same_v&lt;Key, typename HalfTreeDpf&lt;in_bits, Group, Prg, In, Key::kParDepth&gt;::Key&gt;)</div>
       <table class="memname">
         <tr>
           <td class="memname">HalfTreeDpfPointKey&lt; in_bits &gt; fss::cpu::HalfTreeDpfPackPoint </td>
           <td>(</td>
-          <td class="paramtype">const typename <a class="el" href="classfss_1_1HalfTreeDpf.html">HalfTreeDpf</a>&lt; in_bits, Group, Prg, In &gt;::Key &amp;&#160;</td>
+          <td class="paramtype">const Key &amp;&#160;</td>
           <td class="paramname"><em>key</em></td><td>)</td>
           <td></td>
         </tr>
