@@ -325,6 +325,78 @@ public:
   }
 
   /**
+  * Evaluate on a contiguous subset of the full domain.
+
+  * Evaluate the key on the range [L, R].
+  * Store the outputs sequentially and accumulate the proof for this range.
+  * A successful verification guarantees (except with negligible probability, under the VDPF security assumptions)
+  * that the reconstructed function has at most one nonzero output in [L, R]; no guarantee is made outside this range.
+  *
+  * @param b Party index. False for 0 and true for 1.
+  * @param L lower bound. The vdmpf will be evaluated on the range [L, R] of the full domain.
+  * @param R upper bound. The vdmpf will be evaluated on the range [L, R] of the full domain.
+  * @param key The party's key returned by Gen().
+  * @param ys Pre-allocated output array. Its size must be at least R - L + 1.
+  * @param pi Proof output.
+  */
+  void EvalRange(bool b, size_t L, size_t R, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      int4 ocw, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+    assert(in_bits < sizeof(size_t) * 8);
+    size_t domain_size = 1ULL << in_bits;
+    // check that [L, R] is contained in [0, domain_size - 1].
+    assert(L <= R);
+    assert(R < domain_size);
+
+    size_t num_inputs = R - L + 1;
+    // check enough space is allocated for the output
+    assert(ys.size() >= num_inputs);
+
+    const int4 st = util::SetLsb(s0, b);
+    const int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
+
+    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
+    if (par_depth_ == 0) {
+      EvalPrunedTree(st, cws, ys, 0, domain_size, 0, 0, L, R);
+    } else {
+      const int threads = util::ResolveParThreads(par_depth_, num_inputs);
+
+#pragma omp parallel num_threads(threads)
+#pragma omp single
+      EvalPrunedTree(st, cws, ys, 0, domain_size, 0, par_depth_, L, R);
+    }
+    // Phase 2: sequential output computation and proof accumulation
+    pi = {cs[0], cs[1], cs[2], cs[3]};
+
+    assert((ocw.w & 1) == 0);
+    auto ocw_group = Group::From(ocw);
+    for (size_t j = L; j <= R; ++j) {
+      int4 sj = ys[j - L];
+      bool tj = util::GetLsb(sj);
+      sj = util::SetLsb(sj, false);
+
+      // Output share
+      auto g = Group::From(sj);
+      if (tj) g = g + ocw_group;
+      if (b) g = -g;
+      ys[j - L] = g.Into();
+
+      // Proof accumulation
+      int4 x_buf = util::Pack(static_cast<In>(j));
+
+      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
+      if (tj) {
+        pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
+      }
+
+      cuda::std::array<int4, 4> h_input =
+          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tilde));
+      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
+      pi[0] = util::Xor(pi[0], h_out[0]);
+      pi[1] = util::Xor(pi[1], h_out[1]);
+    }
+  }
+
+  /**
    * Proof accumulation method (Merkle fold).
    *
    * Parallel alternative to Prove() over a fixed ordered sequence: hashes corrected per-point hashes into the
@@ -577,6 +649,75 @@ private:
     } else {
       EvalTree(stl, cws, ys, l, mid, i + 1, par_depth_);
       EvalTree(str, cws, ys, mid, r, i + 1, par_depth_);
+    }
+  }
+
+  void EvalPrunedTree(int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i,
+      int par_depth_, size_t L, size_t R) {
+    // this subtree is outside the range [L, R]
+    if (r <= L || l > R) {
+      return;
+    }
+    // this is a full subtree
+    if (l >= L && r - 1 <= R) {
+      EvalTree(st, cws, ys.subspan(l - L, r - l), 0, r - l, i, par_depth_);
+      return;
+    }
+    if (i == in_bits) {
+      assert(l + 1 == r);
+      // we only write leaves from [L, R]
+      ys[l - L] = st;
+      return;
+    }
+
+    bool t = util::GetLsb(st);
+    int4 s = st;
+    s = util::SetLsb(s, false);
+
+    Cw cw = cws[i];
+    int4 s_cw = cw.s;
+    bool tl_cw = util::GetLsb(s_cw);
+    s_cw = util::SetLsb(s_cw, false);
+    bool tr_cw = cw.tr;
+
+    auto [sl, sr] = prg.Gen(s);
+
+    bool tl = util::GetLsb(sl);
+    sl = util::SetLsb(sl, false);
+    bool tr = util::GetLsb(sr);
+    sr = util::SetLsb(sr, false);
+
+    if (t) {
+      sl = util::Xor(sl, s_cw);
+      sr = util::Xor(sr, s_cw);
+      tl = tl ^ tl_cw;
+      tr = tr ^ tr_cw;
+    }
+
+    int4 stl = sl;
+    stl = util::SetLsb(stl, tl);
+    int4 str = sr;
+    str = util::SetLsb(str, tr);
+
+    size_t mid = (l + r) / 2;
+
+    if (i < par_depth_) {
+      if (mid > L) {
+#pragma omp task
+        EvalPrunedTree(stl, cws, ys, l, mid, i + 1, par_depth_, L, R);
+      }
+      if (mid <= R) {
+#pragma omp task
+        EvalPrunedTree(str, cws, ys, mid, r, i + 1, par_depth_, L, R);
+      }
+#pragma omp taskwait
+    } else {
+      if (mid > L) {
+        EvalPrunedTree(stl, cws, ys, l, mid, i + 1, par_depth_, L, R);
+      }
+      if (mid <= R) {
+        EvalPrunedTree(str, cws, ys, mid, r, i + 1, par_depth_, L, R);
+      }
     }
   }
 };
