@@ -271,57 +271,7 @@ public:
 
   void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw,
       cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
-    int4 st = s0;
-    bool t = b;
-    st = util::SetLsb(st, t);
-
-    assert(in_bits < sizeof(size_t) * 8);
-    size_t l = 0;
-    size_t r = 1ULL << in_bits;
-    int i = 0;
-
-    int par_depth_ = util::ResolveParDepth(par_depth, in_bits);
-
-    // Phase 1: tree traversal, store (s, t) packed into ys temporarily
-    if (par_depth_ == 0) {
-      EvalTree(st, cws, ys, l, r, i, 0);
-    } else {
-      int threads = util::ResolveParThreads(par_depth_, r);
-#pragma omp parallel num_threads(threads)
-#pragma omp single
-      EvalTree(st, cws, ys, l, r, i, par_depth_);
-    }
-
-    // Phase 2: sequential output computation and proof accumulation
-    pi = {cs[0], cs[1], cs[2], cs[3]};
-    size_t n = 1ULL << in_bits;
-    assert((ocw.w & 1) == 0);
-    auto ocw_group = Group::From(ocw);
-    for (size_t j = 0; j < n; ++j) {
-      int4 sj = ys[j];
-      bool tj = util::GetLsb(sj);
-      sj = util::SetLsb(sj, false);
-
-      // Output share
-      auto g = Group::From(sj);
-      if (tj) g = g + ocw_group;
-      if (b) g = -g;
-      ys[j] = g.Into();
-
-      // Proof accumulation
-      int4 x_buf = util::Pack(static_cast<In>(j));
-
-      auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
-      if (tj) {
-        pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs));
-      }
-
-      cuda::std::array<int4, 4> h_input =
-          util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_tilde));
-      auto h_out = hash.Hash(cuda::std::span<const int4, 4>(h_input));
-      pi[0] = util::Xor(pi[0], h_out[0]);
-      pi[1] = util::Xor(pi[1], h_out[1]);
-    }
+    EvalRange(b, 0, (1ULL << in_bits) - 1, s0, cws, cs, ocw, ys, pi);
   }
 
   /**
