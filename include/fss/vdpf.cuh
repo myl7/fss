@@ -325,20 +325,24 @@ public:
   }
 
   /**
-  * Evaluate on a contiguous subset of the full domain.
+   * Evaluate on a contiguous subset of the full domain.
+   *
+   * Evaluate the key on the range [L, R].
+   * Store the outputs sequentially and accumulate the proof for this range.
+   * A successful verification guarantees (except with negligible probability, under the VDPF security assumptions)
+   * that the reconstructed function has at most one nonzero output in [L, R]; no guarantee is made outside this range.
+   *
+   * @param b Party index. False for 0 and true for 1.
+   * @param L lower bound. The vdpf will be evaluated on the range [L, R] of the full domain.
+   * @param R upper bound. The vdpf will be evaluated on the range [L, R] of the full domain.
+   * @param key The party's key returned by Gen().
+   * @param ys Pre-allocated output array. Its size must be at least R - L + 1.
+   * @param pi Proof output.
+   */
+  void EvalRange(bool b, size_t L, size_t R, const Key &key, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+    EvalRange(b, L, R, key.s0, key.cws, key.cs, key.ocw, ys, pi);
+  }
 
-  * Evaluate the key on the range [L, R].
-  * Store the outputs sequentially and accumulate the proof for this range.
-  * A successful verification guarantees (except with negligible probability, under the VDPF security assumptions)
-  * that the reconstructed function has at most one nonzero output in [L, R]; no guarantee is made outside this range.
-  *
-  * @param b Party index. False for 0 and true for 1.
-  * @param L lower bound. The vdpf will be evaluated on the range [L, R] of the full domain.
-  * @param R upper bound. The vdpf will be evaluated on the range [L, R] of the full domain.
-  * @param key The party's key returned by Gen().
-  * @param ys Pre-allocated output array. Its size must be at least R - L + 1.
-  * @param pi Proof output.
-  */
   void EvalRange(bool b, size_t L, size_t R, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
       int4 ocw, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
     assert(in_bits < sizeof(size_t) * 8);

@@ -203,7 +203,7 @@ protected:
       cuda::std::array<int4, 4> pi0, pi1;
 
       // EvalRange writing to y[1 : count]
-      vdpf.EvalRange(false, L, R, k0.s0, k0.cws, k0.cs, k0.ocw, cuda::std::span<int4>(ys0.data() + 1, count), pi0);
+      vdpf.EvalRange(false, L, R, k0, cuda::std::span<int4>(ys0.data() + 1, count), pi0);
 
       vdpf.EvalRange(true, L, R, k1.s0, k1.cws, k1.cs, k1.ocw, cuda::std::span<int4>(ys1.data() + 1, count), pi1);
 
