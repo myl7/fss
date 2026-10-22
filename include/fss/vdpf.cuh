@@ -333,8 +333,8 @@ public:
   * that the reconstructed function has at most one nonzero output in [L, R]; no guarantee is made outside this range.
   *
   * @param b Party index. False for 0 and true for 1.
-  * @param L lower bound. The vdmpf will be evaluated on the range [L, R] of the full domain.
-  * @param R upper bound. The vdmpf will be evaluated on the range [L, R] of the full domain.
+  * @param L lower bound. The vdpf will be evaluated on the range [L, R] of the full domain.
+  * @param R upper bound. The vdpf will be evaluated on the range [L, R] of the full domain.
   * @param key The party's key returned by Gen().
   * @param ys Pre-allocated output array. Its size must be at least R - L + 1.
   * @param pi Proof output.
