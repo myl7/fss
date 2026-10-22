@@ -139,6 +139,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:acd47773ba1f49dd1d342db6df9f4261b" id="r_acd47773ba1f49dd1d342db6df9f4261b"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
 <tr class="memdesc:acd47773ba1f49dd1d342db6df9f4261b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
 <tr class="separator:acd47773ba1f49dd1d342db6df9f4261b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7306d2384b1abafac56d7b4598cfdc15" id="r_a7306d2384b1abafac56d7b4598cfdc15"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a7306d2384b1abafac56d7b4598cfdc15">EvalRange</a> (bool b, size_t L, size_t R, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
+<tr class="memdesc:a7306d2384b1abafac56d7b4598cfdc15"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate on a contiguous subset of the full domain.  <br /></td></tr>
+<tr class="separator:a7306d2384b1abafac56d7b4598cfdc15"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2ce19a82c664e9b48893c9b202b0dc74" id="r_a2ce19a82c664e9b48893c9b202b0dc74"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74">ProveMerkle</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt; pi_tildes, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
 <tr class="memdesc:a2ce19a82c664e9b48893c9b202b0dc74"><td class="mdescLeft">&#160;</td><td class="mdescRight">Proof accumulation method (Merkle fold).  <br /></td></tr>
 <tr class="separator:a2ce19a82c664e9b48893c9b202b0dc74"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -345,6 +348,82 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
     <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
     <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits. </td></tr>
+    <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a7306d2384b1abafac56d7b4598cfdc15" name="a7306d2384b1abafac56d7b4598cfdc15"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7306d2384b1abafac56d7b4598cfdc15">&#9670;&#160;</a></span>EvalRange()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::EvalRange </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>L</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>R</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
+          <td class="paramname"><em>pi</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate on a contiguous subset of the full domain. </p>
+<p>Evaluate the key on the range \([L, R]\). Store the outputs sequentially and accumulate the proof for this range. A successful verification guarantees (except with negligible probability, under the VDPF security assumptions) that the reconstructed function has at most one nonzero output for \(x \in [L, R]\); no guarantee is made outside this range.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
+    <tr><td class="paramname">L</td><td>lower bound. The vdpf will be evaluated on the range \([L, R]\) of the full domain. </td></tr>
+    <tr><td class="paramname">R</td><td>upper bound. The vdpf will be evaluated on the range \([L, R]\) of the full domain. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least \(R - L + 1\). </td></tr>
     <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
   </table>
   </dd>

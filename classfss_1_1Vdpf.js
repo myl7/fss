@@ -6,6 +6,7 @@ var classfss_1_1Vdpf =
     [ "Eval", "classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689", null ],
     [ "EvalAll", "classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b", null ],
     [ "EvalAllMerkle", "classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd", null ],
+    [ "EvalRange", "classfss_1_1Vdpf.html#a7306d2384b1abafac56d7b4598cfdc15", null ],
     [ "Gen", "classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3", null ],
     [ "Gen", "classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90", null ],
     [ "Prove", "classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162", null ],
