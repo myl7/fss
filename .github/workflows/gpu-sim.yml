@@ -1,0 +1,50 @@
+name: GPU tests (simulated)
+
+# Optional, non-required check. The runners in ci.yaml have no GPU, so the
+# device tests skip there. This workflow runs them on a simulated NVIDIA A100
+# (https://github.com/pantheongpu/pantheonsim). A simulator cannot reproduce
+# hardware-specific behaviour or timing, so it complements real-GPU testing and
+# does not replace it.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+  pull_request:
+    paths:
+      - "include/fss/**"
+      - "src/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/gpu-sim.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gpu-tests:
+    name: ctest on a simulated A100
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up the simulated GPUs and CUDA toolkit
+        uses: pantheongpu/setup-pantheonsim@23932d9b811269d55c8d65687332fefc65daeb2c # v0.1.3
+        with:
+          gpu: nvidia/a100
+          # Two devices, so the multi-device workspace test runs instead of skipping.
+          count: 2
+          cuda-toolkit: "13.0"
+
+      - name: Configure CMake
+        run: |
+          # 80-virtual embeds PTX only: the simulator JIT-compiles PTX and does not run SASS.
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=80-virtual
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: vgpu run ctest --test-dir build --output-on-failure
