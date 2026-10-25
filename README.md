@@ -329,8 +329,8 @@ Or add it to a uv project:
 uv add fss-crypto
 ```
 
-The package requires Python >= 3.10 and PyTorch >= 2.6.
-CI is configured for Python 3.10 with PyTorch 2.6 and CUDA 12.6, and Python 3.13 with PyTorch 2.13 and CUDA 13.4.
+The package requires Python >= 3.11 and PyTorch >= 2.6.
+CI is configured for Python 3.11 with PyTorch 2.6 and CUDA 12.6, and Python 3.13 with PyTorch 2.13 and CUDA 13.4.
 CI checks compilation and CPU execution.
 GPU tests are skipped because CI runners have no GPU.
 For JIT compilation, use a local CUDA toolkit with the same major version as `torch.version.cuda`.
