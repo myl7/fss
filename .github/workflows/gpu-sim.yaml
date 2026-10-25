@@ -6,16 +6,7 @@ name: GPU tests (simulated)
 # hardware-specific behaviour or timing, so it complements real-GPU testing and
 # does not replace it.
 
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "17 3 * * 1"
-  pull_request:
-    paths:
-      - "include/fss/**"
-      - "src/**"
-      - "CMakeLists.txt"
-      - ".github/workflows/gpu-sim.yml"
+on: [push, pull_request]
 
 permissions:
   contents: read
