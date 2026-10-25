@@ -81,8 +81,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: 3.11 + torch 2.6
-            python: '3.11'
+          - name: 3.10 + torch 2.6
+            python: '3.10'
             torch: torch==2.6.*
             index: --index-url https://download.pytorch.org/whl/cu126
             cuda: 12.6
