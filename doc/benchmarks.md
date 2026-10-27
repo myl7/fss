@@ -9,12 +9,14 @@ the comparison site.
 
 ## Coverage
 
-- Schemes: DPF, DCF, VDPF, Half-Tree DPF, packed HalfTree DPF, Grotto DCF, DMPF, and VDMPF.
+- Schemes: DPF, DCF, VDPF, Half-Tree DPF, packed HalfTree DPF, Grotto DCF,
+  HalfTree Grotto DCF, DMPF, and VDMPF.
 - Operations: `Gen`, `Eval`, host `EvalAll`, VDPF `Prove` and the Merkle-fold
   `ProveMerkle`/`EvalAllMerkle`, Grotto DCF `Preprocess` and `PreprocessEvalAll`,
   GPU point eval, and full-domain GPU `EvalAll` for DPF, HalfTree DPF, packed
-  HalfTree DPF, DCF, and VDPF, plus GPU Grotto DCF `Preprocess` and `EvalAll`,
-  and GPU DMPF batch `Eval` and `EvalAll`. The lean host point-evaluation fast
+  HalfTree DPF, DCF, and VDPF, plus GPU point eval for Grotto DCF and HalfTree
+  Grotto DCF, GPU Grotto DCF `Preprocess` and `EvalAll`, and GPU DMPF batch
+  `Eval` and `EvalAll`. The lean host point-evaluation fast
   paths (`fss::cpu` packed-key walks for DPF and HalfTree DPF, bit-exact with
   the generic `Eval`) carry their own rows beside the generic point `Eval`.
 - PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics,

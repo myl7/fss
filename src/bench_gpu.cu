@@ -953,6 +953,106 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
   cudaFree(d_ocws);
 }
 
+// --- PackedHalfTree DPF and HalfTree Grotto DCF point eval GPU benchmarks (ChaCha<1>) ---
+//
+// Both evaluate the same 1-bit beta = 1 keys. dcf times the 1[alpha <= x] share of
+// HalfTreeGrottoDcfEvalPointGpu instead of the DPF output block.
+
+template <int in_bits, bool dcf>
+static void BM_PackedHalfTreePointGpu(benchmark::State &state) {
+  using Prg = fss::prg::ChaCha<1>;
+  using PackedType = fss::PackedHalfTreeDpf<in_bits, 1, Prg, uint>;
+  constexpr int kDepth = PackedType::kDepth;
+  GpuData data;
+
+  std::vector<uint64_t> betas(kNumKeys, 1);
+  uint64_t *d_betas_u64;
+  CUDA_CHECK(cudaMalloc(&d_betas_u64, sizeof(uint64_t) * kNumKeys));
+  CUDA_CHECK(cudaMemcpy(d_betas_u64, betas.data(), sizeof(uint64_t) * kNumKeys, cudaMemcpyHostToDevice));
+
+  typename PackedType::Cw *d_cws;
+  int4 *d_cw_s, *d_fcws;
+  bool *d_shares;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename PackedType::Cw) * kDepth * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * kDepth * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_fcws, sizeof(int4) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_shares, sizeof(bool) * kNumKeys));
+
+  PackedHalfTreeDpfGenKernel<in_bits, 1>
+      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_fcws, data.d_seeds, data.d_alphas, d_betas_u64);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  fss::gpu::PackedHalfTreeDpfRepackGpu<in_bits, 1, Prg, uint>(d_cws, kNumKeys, d_cw_s);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  Prg prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  PackedType dpf{prg, kHalfTreeHashKeyHost};
+  fss::HalfTreeGrottoDcf<in_bits, Prg, uint> grotto{prg, kHalfTreeHashKeyHost};
+
+  RunTimedKernel(state, [&] {
+    if constexpr (dcf) {
+      fss::gpu::HalfTreeGrottoDcfEvalPointGpu(
+          false, data.d_seeds0, d_cw_s, d_fcws, data.d_xs, d_shares, kNumKeys, grotto);
+    } else {
+      fss::gpu::PackedHalfTreeDpfEvalPointGpu(
+          false, data.d_seeds0, d_cw_s, d_fcws, data.d_xs, data.d_ys, kNumKeys, dpf);
+    }
+  });
+  state.SetItemsProcessed(state.iterations() * kNumKeys);
+
+  cudaFree(d_betas_u64);
+  cudaFree(d_cws);
+  cudaFree(d_cw_s);
+  cudaFree(d_fcws);
+  cudaFree(d_shares);
+}
+
+// --- Grotto DCF single-path point eval GPU benchmark (ChaCha<2>) ---
+
+template <int in_bits>
+__global__ void GrottoDcfGenKernel(
+    typename fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, uint>::Cw *cws, const int4 *seeds, const uint *alphas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, uint> dcf{prg};
+  int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  dcf.Gen(cws + (size_t)tid * (in_bits + 1), s0s, alphas[tid]);
+}
+
+template <int in_bits>
+static void BM_GrottoDcfEvalPointGpu(benchmark::State &state) {
+  using Prg = fss::prg::ChaCha<2>;
+  using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
+  GpuData data;
+
+  typename GdcfType::Cw *d_cws;
+  int4 *d_cw_s;
+  fss::gpu::ExtBits<in_bits> *d_extra;
+  bool *d_shares;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename GdcfType::Cw) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(fss::gpu::ExtBits<in_bits>) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_shares, sizeof(bool) * kNumKeys));
+
+  GrottoDcfGenKernel<in_bits><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  fss::gpu::GrottoDcfRepackGpu<in_bits, Prg, uint>(d_cws, kNumKeys, d_cw_s, d_extra);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  GdcfType dcf{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
+
+  RunTimedKernel(state, [&] {
+    fss::gpu::GrottoDcfEvalPointGpu(false, data.d_seeds0, d_cw_s, d_extra, data.d_xs, d_shares, kNumKeys, dcf);
+  });
+  state.SetItemsProcessed(state.iterations() * kNumKeys);
+
+  cudaFree(d_cws);
+  cudaFree(d_cw_s);
+  cudaFree(d_extra);
+  cudaFree(d_shares);
+}
+
 // --- Grotto DCF full-domain GPU benchmarks (ChaCha<2>) ---
 
 template <int in_bits>
@@ -1060,6 +1160,9 @@ BENCHMARK(BM_HalfTreeDpfEvalPointGpu<20, UintGroup>)
     ->Name("BM_HalfTreeDpfEvalPointGpu_Uint_ChaCha/20")
     ->UseManualTime();
 BENCHMARK(BM_VdpfEvalPointGpu<20, UintGroup>)->Name("BM_VdpfEvalPointGpu_Uint_ChaCha_Blake3/20")->UseManualTime();
+BENCHMARK(BM_PackedHalfTreePointGpu<20, false>)->Name("BM_PackedHalfTreeDpfEvalPointGpu_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_PackedHalfTreePointGpu<20, true>)->Name("BM_HalfTreeGrottoDcfEvalPointGpu_ChaCha/20")->UseManualTime();
+BENCHMARK(BM_GrottoDcfEvalPointGpu<20>)->Name("BM_GrottoDcfEvalPointGpu_ChaCha/20")->UseManualTime();
 
 // GPU full-domain eval (Grotto DCF)
 BENCHMARK(BM_GrottoDcfPreprocessGpu<20>)->Name("BM_GrottoDcfPreprocessGpu_ChaCha/20")->UseManualTime();
