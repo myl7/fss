@@ -34,6 +34,7 @@
 #include <fss/dcf.cuh>
 #include <fss/dmpf.cuh>
 #include <fss/dpf.cuh>
+#include <fss/grotto_dcf.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/packed_half_tree_dpf.cuh>
 #include <fss/util.cuh>
@@ -75,7 +76,8 @@ __global__ void HalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extr
 }
 
 // Pack per-key DPF cws (stride in_bits + 1) into level-major cw_s, the tr bits
-// (bit i of extra[k] = level i), and the output correction word.
+// (bit i of extra[k] = level i), and the output correction word unless out_cw
+// is null, as for Grotto DCF keys, which leave it unused.
 template <int in_bits, typename Cw>
 __global__ void DpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extra, int4 *out_cw, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -86,7 +88,7 @@ __global__ void DpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extr
     if (pk[(size_t)k * (in_bits + 1) + i].tr) e |= static_cast<ExtBits<in_bits>>(1) << i;
   }
   extra[k] = e;
-  out_cw[k] = pk[(size_t)k * (in_bits + 1) + in_bits].s;
+  if (out_cw != nullptr) out_cw[k] = pk[(size_t)k * (in_bits + 1) + in_bits].s;
 }
 
 // Pack per-key VDPF cws (stride in_bits) into level-major cw_s and the tr
@@ -187,10 +189,12 @@ __global__ void PackedHalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, co
   ys[tid] = leaf;
 }
 
-// Point-evaluate in_bits-level DPF keys, one thread per key. cw_s/extra/out_cw
-// come from DpfRepackKernel.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In, typename Query = In>
-__global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
+// Point-evaluate in_bits-level DPF keys, one thread per key. ys[tid] is the
+// output, or with cmp the 1[alpha <= x] share of GrottoDcf::Eval(b, key, x).
+// cw_s/extra/out_cw come from DpfRepackKernel. out_cw is unused with cmp.
+template <int in_bits, int unroll, bool b, bool cmp, typename Group, typename Prg, typename In, typename Query,
+    typename Y>
+__global__ void DpfEvalPointKernel(Y *ys, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
     const int4 *out_cw, const Query *xs, int nkeys, Prg prg) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -199,9 +203,13 @@ __global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
   bool t = b;
   In x = static_cast<In>(xs[tid]);
   ExtBits<in_bits> ex = extra[tid];
+  fss::detail::GrottoTurns turns;
 
 #pragma unroll unroll
   for (int i = 0; i < in_bits; ++i) {
+    bool x_bit = GetBit(x, in_bits - 1 - i);
+    if constexpr (cmp) turns(t, x_bit);
+
     int4 s_cw = cw_s[(size_t)i * nkeys + tid];
     bool tr_cw = GetBit(ex, i);
     bool tl_cw = fss::util::GetLsb(s_cw);
@@ -221,7 +229,6 @@ __global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
       tr = tr ^ tr_cw;
     }
 
-    bool x_bit = GetBit(x, in_bits - 1 - i);
     if (x_bit) {
       s = sr;
       t = tr;
@@ -231,10 +238,29 @@ __global__ void DpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
     }
   }
 
-  auto y = Group::From(s);
-  if (t) y = y + Group::From(out_cw[tid]);
-  if constexpr (b) y = -y;
-  ys[tid] = y.Into();
+  if constexpr (cmp) {
+    ys[tid] = turns.PointLeaf(t);
+  } else {
+    auto y = Group::From(s);
+    if (t) y = y + Group::From(out_cw[tid]);
+    if constexpr (b) y = -y;
+    ys[tid] = y.Into();
+  }
+}
+
+template <int unroll, bool cmp, int in_bits, typename Group, typename Prg, typename In, typename Query, typename Y>
+void DpfEvalPointLaunch(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
+    const int4 *out_cw, const Query *xs, Y *ys, int nkeys, Prg prg, cudaStream_t stream) {
+  if (nkeys == 0) return;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  if (b) {
+    DpfEvalPointKernel<in_bits, unroll, true, cmp, Group, Prg, In, Query, Y>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, nkeys, prg);
+  } else {
+    DpfEvalPointKernel<in_bits, unroll, false, cmp, Group, Prg, In, Query, Y>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, nkeys, prg);
+  }
 }
 
 // Point-evaluate in_bits-level DCF keys, one thread per key. cw_s/cw_v/out_cw
@@ -744,6 +770,28 @@ void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::
 }
 
 /**
+ * One-time repack of per-key Grotto DCF keys into the level-major layout
+ * consumed by GrottoDcfEvalPointGpu. cw_s has in_bits * nkeys int4s and extra
+ * has nkeys entries.
+ *
+ * @tparam in_bits Domain size as 2 ** in_bits.
+ * @param cws Correction words returned by Gen(), key-major, stride in_bits + 1.
+ * @param nkeys Number of keys.
+ * @param cw_s Output level-major correction words, cw_s[i * nkeys + k].
+ * @param extra Output packed tr bits, bit i of extra[k] = level i.
+ * @param stream CUDA stream to launch on.
+ */
+template <int in_bits, typename Prg, typename In, int par_depth = -1>
+void GrottoDcfRepackGpu(const typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
+    ExtBits<in_bits> *extra, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  detail::DpfRepackKernel<in_bits, typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw>
+      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nullptr, nkeys);
+}
+
+/**
  * One-time repack of per-key VDPF keys into the level-major layout consumed
  * by VdpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra has nkeys
  * entries. cs and ocws need no repack: each is read once per evaluation.
@@ -883,16 +931,8 @@ template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In
   requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
 void DpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra, const int4 *out_cw,
     const Query *xs, int4 *ys, int nkeys, const Dpf<in_bits, Group, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
-  if (nkeys == 0) return;
-  constexpr int kBs = 256;
-  int blocks = (nkeys + kBs - 1) / kBs;
-  if (b) {
-    detail::DpfEvalPointKernel<in_bits, unroll, true, Group, Prg, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, nkeys, dpf.prg);
-  } else {
-    detail::DpfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, nkeys, dpf.prg);
-  }
+  detail::DpfEvalPointLaunch<unroll, false, in_bits, Group, Prg, In>(
+      b, seeds, cw_s, extra, out_cw, xs, ys, nkeys, dpf.prg, stream);
 }
 
 /**
@@ -928,6 +968,32 @@ void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw
     detail::DcfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, dcf.prg);
   }
+}
+
+/**
+ * GPU single-path evaluation of nkeys Grotto DCF keys: ys[k] = Eval(b, key[k],
+ * xs[k]), the party's share of 1[alpha <= xs[k]]. One thread per key, with
+ * in_bits PRG calls and no preprocessing. cw_s/extra must come from
+ * GrottoDcfRepackGpu.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @tparam in_bits Domain size as 2 ** in_bits.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds, one per key.
+ * @param cw_s Level-major correction words from GrottoDcfRepackGpu.
+ * @param extra Packed tr bits from GrottoDcfRepackGpu.
+ * @param xs Evaluation points, one per key.
+ * @param ys Output array, one share bit per key.
+ * @param nkeys Number of keys.
+ * @param dcf A GrottoDcf instance (holds the PRG).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, typename Prg, typename In, int par_depth = -1, typename Query = In>
+  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+void GrottoDcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
+    const Query *xs, bool *ys, int nkeys, const GrottoDcf<in_bits, Prg, In, par_depth> &dcf, cudaStream_t stream = 0) {
+  detail::DpfEvalPointLaunch<unroll, true, in_bits, fss::group::Bytes, Prg, In>(
+      b, seeds, cw_s, extra, nullptr, xs, ys, nkeys, dcf.prg, stream);
 }
 
 /**

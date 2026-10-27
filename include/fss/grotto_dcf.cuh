@@ -10,10 +10,22 @@
  * (2,2)-DPFs_](https://eprint.iacr.org/2023/108) (@ref grotto_dcf "1: the published version").
  *
  * Key generation is identical to standard BGI DPF. The comparison functionality
- * emerges from prefix-parity of the DPF control bits.
+ * emerges from prefix-parity of the DPF control bits: the two parties' control
+ * bits of a node XOR to the parity of the leaves below it (Theorem 4 of the paper).
  *
  * Output shares are in F2 (XOR sharing). Each party holds a single bool per query.
  * For inputs x: share_0 XOR share_1 = 1[alpha <= x].
+ *
+ * ## Evaluation
+ *
+ * Eval(b, key, x) runs the paper's prefix-parity algorithm (Section 4) on x's
+ * root-to-leaf path: in_bits PRG calls per query and no preprocessing, the cost
+ * of a DPF point evaluation. Preprocess() instead expands the whole domain, about
+ * 2^in_bits PRG calls, into a parity segment tree that Eval(tree, x) then queries
+ * without PRG calls. It pays off once a key answers more than about
+ * 2^in_bits / in_bits queries. The two routes give different shares that
+ * reconstruct to the same value only in pairs, so both parties must use the
+ * same route.
  *
  * ## References
  *
@@ -33,6 +45,30 @@
 #include <fss/util.cuh>
 
 namespace fss {
+
+namespace detail {
+
+// State of the prefix-parity algorithm (Section 4 of the paper) on x's path. Called with the
+// control bit t of every expanded node and the branch x_bit taken from it, share accumulates
+// the control bits of the nodes where the path turns, taking the edge into the root as a left
+// edge. GrottoDcf and HalfTreeGrottoDcf share it and differ only in the leaf step.
+struct GrottoTurns {
+  bool share = false;
+  bool prev_bit = false;
+
+  __host__ __device__ void operator()(bool t, bool x_bit) {
+    if (x_bit != prev_bit) share ^= t;
+    prev_bit = x_bit;
+  }
+
+  // Leaf step when each leaf is a single input: XOR the leaf's control bit if the path ends
+  // with a left edge.
+  __host__ __device__ bool PointLeaf(bool t) const {
+    return share != (!prev_bit && t);
+  }
+};
+
+}  // namespace detail
 
 /**
  * 2-party DCF scheme over F2 from standard DPF (Grotto construction).
@@ -78,6 +114,28 @@ public:
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a) {
     DpfType dpf{prg};
     dpf.Gen(cws, s0s, a, int4{0, 0, 0, 0});
+  }
+
+  /**
+     * Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4).
+     *
+     * Walks x's root-to-leaf path and XORs the control bit of every node at which the
+     * path turns, taking the edge into the root as a left edge, then the leaf's control
+     * bit if the path ends with a left edge. See "Evaluation" in the file details.
+     *
+     * @param b Party index. False for 0 and true for 1.
+     * @param key The party's key returned by Gen().
+     * @param x Query point.
+     * @return bool share such that share_0 XOR share_1 = 1[alpha <= x].
+     */
+  __host__ __device__ bool Eval(bool b, const Key &key, In x) {
+    return Eval(b, key.s0, key.cws, x);
+  }
+
+  __host__ __device__ bool Eval(bool b, int4 s0, const Cw cws[], In x) {
+    detail::GrottoTurns turns;
+    int4 leaf = DpfType{prg}.Walk(b, s0, cws, x, turns);
+    return turns.PointLeaf(util::GetLsb(leaf));
   }
 
   /**

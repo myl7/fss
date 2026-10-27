@@ -50,6 +50,10 @@
 
 namespace fss {
 
+template <int in_bits, typename Prg, typename In, int par_depth>
+  requires((std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) && in_bits <= sizeof(In) * 8 && Prgable<Prg, 2>)
+class GrottoDcf;
+
 /**
  * 2-party DPF scheme.
  *
@@ -217,41 +221,9 @@ public:
 
   // Seed + correction-words form used by the internal recursion and tests.
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x) {
-    int4 s = s0;
-    s = util::SetLsb(s, false);
-    bool t = b;
-
-    for (int i = 0; i < in_bits; ++i) {
-      Cw cw = cws[i];
-      int4 s_cw = cw.s;
-      bool tl_cw = util::GetLsb(s_cw);
-      s_cw = util::SetLsb(s_cw, false);
-      bool tr_cw = cw.tr;
-
-      auto [sl, sr] = prg.Gen(s);
-
-      bool tl = util::GetLsb(sl);
-      sl = util::SetLsb(sl, false);
-      bool tr = util::GetLsb(sr);
-      sr = util::SetLsb(sr, false);
-
-      if (t) {
-        sl = util::Xor(sl, s_cw);
-        sr = util::Xor(sr, s_cw);
-        tl = tl ^ tl_cw;
-        tr = tr ^ tr_cw;
-      }
-
-      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
-
-      if (!x_bit) {
-        s = sl;
-        t = tl;
-      } else {
-        s = sr;
-        t = tr;
-      }
-    }
+    int4 st = Walk(b, s0, cws, x, [](bool, bool) {});
+    bool t = util::GetLsb(st);
+    int4 s = util::SetLsb(st, false);
 
     auto y = Group::From(s);
     int4 v_cw_np1 = cws[in_bits].s;
@@ -295,6 +267,52 @@ public:
   }
 
 private:
+  friend class GrottoDcf<in_bits, Prg, In, par_depth>;
+
+  // Walks x's path from the root and returns the leaf seed with its control bit in the LSB.
+  // visit(t, x_bit) sees the control bit of every expanded node and the branch x takes from it.
+  template <typename Visit>
+  __host__ __device__ int4 Walk(bool b, int4 s0, const Cw cws[], In x, Visit &&visit) {
+    int4 s = s0;
+    s = util::SetLsb(s, false);
+    bool t = b;
+
+    for (int i = 0; i < in_bits; ++i) {
+      bool x_bit = (x >> (in_bits - 1 - i)) & 1;
+      visit(t, x_bit);
+
+      Cw cw = cws[i];
+      int4 s_cw = cw.s;
+      bool tl_cw = util::GetLsb(s_cw);
+      s_cw = util::SetLsb(s_cw, false);
+      bool tr_cw = cw.tr;
+
+      auto [sl, sr] = prg.Gen(s);
+
+      bool tl = util::GetLsb(sl);
+      sl = util::SetLsb(sl, false);
+      bool tr = util::GetLsb(sr);
+      sr = util::SetLsb(sr, false);
+
+      if (t) {
+        sl = util::Xor(sl, s_cw);
+        sr = util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
+
+      if (!x_bit) {
+        s = sl;
+        t = tl;
+      } else {
+        s = sr;
+        t = tr;
+      }
+    }
+
+    return util::SetLsb(s, t);
+  }
+
   // GCC 12.4.0 can discard these writes before the OpenMP walk after IPA
   // effect analysis. Keep this boundary opaque on GCC 12 releases before 12.5.
   // GCC PR115033 describes a related closure escape-analysis defect.

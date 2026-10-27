@@ -129,3 +129,76 @@ TEST_F(GrottoDcfChaChaTest, EdgeAlphaMax) {
     EXPECT_EQ(result, expected) << "Failed at x=" << x;
   }
 }
+
+// Single-path Eval against every (alpha, x) pair of small domains.
+template <int InBits>
+void CheckSinglePathSweep() {
+  using Prg = fss::prg::ChaCha<2>;
+  using Gdcf = fss::GrottoDcf<InBits, Prg, uint8_t>;
+  constexpr uint32_t n = 1u << InBits;
+  Gdcf dcf{Prg(kNonce0, kNonce1)};
+  int4 s0s[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444440},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
+  for (uint32_t alpha = 0; alpha < n; ++alpha) {
+    typename Gdcf::Key k0, k1;
+    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), static_cast<uint8_t>(alpha));
+    for (uint32_t x = 0; x < n; ++x) {
+      bool y0 = dcf.Eval(false, k0, static_cast<uint8_t>(x));
+      bool y1 = dcf.Eval(true, k1, static_cast<uint8_t>(x));
+      ASSERT_EQ(y0 != y1, alpha <= x) << "in_bits=" << InBits << " alpha=" << alpha << " x=" << x;
+    }
+  }
+}
+
+TEST(GrottoDcfSinglePath, Sweep1) {
+  CheckSinglePathSweep<1>();
+}
+TEST(GrottoDcfSinglePath, Sweep2) {
+  CheckSinglePathSweep<2>();
+}
+TEST(GrottoDcfSinglePath, Sweep5) {
+  CheckSinglePathSweep<5>();
+}
+TEST(GrottoDcfSinglePath, Sweep8) {
+  CheckSinglePathSweep<8>();
+}
+
+// Single-path Eval on wide domains at the comparison boundaries: alpha itself, its neighbors,
+// alpha with the last or the top bit flipped, and a random point.
+template <int InBits, typename In>
+void CheckSinglePathWide() {
+  using Prg = fss::prg::ChaCha<2>;
+  using Gdcf = fss::GrottoDcf<InBits, Prg, In>;
+  const __uint128_t mask = InBits == 128 ? ~static_cast<__uint128_t>(0) : (static_cast<__uint128_t>(1) << InBits) - 1;
+  std::mt19937_64 rng(5);
+  auto random_in = [&] { return static_cast<In>(((static_cast<__uint128_t>(rng()) << 64) | rng()) & mask); };
+  Gdcf dcf{Prg(kNonce0, kNonce1)};
+  for (int trial = 0; trial < 64; ++trial) {
+    int4 s0s[2] = {{static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng())},
+        {static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng())}};
+    In alpha = random_in();
+    typename Gdcf::Key k0, k1;
+    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
+    const In top_bit = static_cast<In>(static_cast<In>(1) << (InBits - 1));
+    const In xs[] = {alpha, static_cast<In>((alpha - 1) & mask), static_cast<In>((alpha + 1) & mask),
+        static_cast<In>(alpha ^ 1), static_cast<In>(alpha ^ top_bit), random_in()};
+    for (In x : xs) {
+      bool y0 = dcf.Eval(false, k0, x);
+      bool y1 = dcf.Eval(true, k1, x);
+      ASSERT_EQ(y0 != y1, alpha <= x) << "in_bits=" << InBits << " trial=" << trial;
+    }
+  }
+}
+
+TEST(GrottoDcfSinglePath, Wide20) {
+  CheckSinglePathWide<20, uint32_t>();
+}
+TEST(GrottoDcfSinglePath, Wide32) {
+  CheckSinglePathWide<32, uint32_t>();
+}
+TEST(GrottoDcfSinglePath, Wide64) {
+  CheckSinglePathWide<64, uint64_t>();
+}
+TEST(GrottoDcfSinglePath, Wide128) {
+  CheckSinglePathWide<128, __uint128_t>();
+}

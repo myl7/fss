@@ -12,12 +12,12 @@ Use the scheme headers under `include/fss` for host operations. Include `fss/poi
 | DCF | `Gen` | `Gen` | `Eval`, both predicates | `DcfEvalPointGpu` after repack | `EvalAll` | `DcfEvalAllGpu`, `DcfEvalAllGpuBatch` |
 | HalfTree DPF | `Gen` | `Gen` | `Eval` | `HalfTreeDpfEvalPointGpu` after repack | `EvalAll` | `HalfTreeDpfEvalAllGpu`, `HalfTreeDpfEvalAllGpuBatch` |
 | Packed HalfTree DPF | `Gen` | `Gen` | `Eval`, then `Extract` | `PackedHalfTreeDpfEvalPointGpu` after repack | `EvalAll` returns packed blocks | `PackedHalfTreeDpfEvalAllGpu`, `PackedHalfTreeDpfEvalAllGpuBatch` |
-| Grotto DCF | `Gen` | `Gen` | `Preprocess`, then `Eval` | `GrottoDcfPreprocessGpu`, then device-callable `Eval` on its parity tree | `EvalAll` | `GrottoDcfEvalAllGpu` |
+| Grotto DCF | `Gen` | `Gen` | `Eval` along x's path, or `Preprocess` then `Eval` on the parity tree | `GrottoDcfEvalPointGpu` after repack, or `GrottoDcfPreprocessGpu` then device-callable `Eval` on its parity tree | `EvalAll` | `GrottoDcfEvalAllGpu` |
 | VDPF | `Gen` | `Gen` | `Eval` returns a share and a corrected per-point hash | `VdpfEvalPointGpu` after repack | `EvalAll` with chain proof, `EvalAllMerkle` | `VdpfEvalAllMerkleGpu` |
 | DMPF | `Gen` | No | `BatchEval` | `DmpfBatchEvalGpu` | `EvalAll` | `DmpfEvalAllGpu` |
 | VDMPF | `Gen` | No | `BatchEval` with chain proof, `BatchEvalMerkle` | `VdmpfBatchEvalMerkleGpu` | No full-domain API | No full-domain API |
 
-DPF, DCF, HalfTree, Packed HalfTree, and VDPF also expose device-callable scalar evaluation through their scheme objects. Pass device-accessible keys and a device-callable backend. GPU helpers accept a CUDA stream and preserve the configured scheme type, including nondefault `par_depth`. DMPF and VDMPF helpers also preserve nondefault `ch_lambda`.
+DPF, DCF, HalfTree, Packed HalfTree, Grotto DCF, and VDPF also expose device-callable scalar evaluation through their scheme objects. Pass device-accessible keys and a device-callable backend. GPU helpers accept a CUDA stream and preserve the configured scheme type, including nondefault `par_depth`. DMPF and VDMPF helpers also preserve nondefault `ch_lambda`.
 
 On x86-64 with SSE4.1, `fss/point_eval_cpu.cuh` provides `DpfPackPoint` / `DpfEvalPoint` and `HalfTreeDpfPackPoint` / `HalfTreeDpfEvalPoint`. Pack each key once before repeated queries. These helpers accept keys with nondefault depth. GPU `*RepackGpu` helpers produce the layouts for the GPU point launchers. Preparation cost and query cost are separate operations.
 
