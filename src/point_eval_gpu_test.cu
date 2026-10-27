@@ -216,6 +216,92 @@ void CheckHalfTreePoint() {
   ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }
 
+// Boundary points per key: alpha, its neighbors, alpha with the last tree bit flipped (the other
+// block of alpha's lane), alpha with the top bit flipped, and a point in the other half.
+template <int bits, typename In, int depth>
+std::vector<In> MakeBoundaryPoints(const std::vector<In> &alphas) {
+  const __uint128_t mask = bits == 128 ? ~static_cast<__uint128_t>(0) : (static_cast<__uint128_t>(1) << bits) - 1;
+  std::vector<In> xs(alphas.size());
+  for (size_t k = 0; k < alphas.size(); ++k) {
+    const __uint128_t a = alphas[k];
+    const __uint128_t candidates[6] = {a, a - 1, a + 1, a ^ (static_cast<__uint128_t>(1) << (bits - depth)),
+        a ^ (static_cast<__uint128_t>(1) << (bits - 1)), static_cast<__uint128_t>(3 * k + 1)};
+    xs[k] = static_cast<In>(candidates[k % 6] & mask);
+  }
+  return xs;
+}
+
+// Packed HalfTree DPF point evaluation against the host Eval and the two-party reconstruction.
+template <int bits, typename In, int out_bits, int keys = 37, typename Query = In, int par_depth = -1>
+void CheckPackedPoint() {
+  int devices = 0;
+  const cudaError_t status = cudaGetDeviceCount(&devices);
+  if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver || (status == cudaSuccess && devices == 0)) {
+    GTEST_SKIP() << "no CUDA device available";
+  }
+  ASSERT_EQ(status, cudaSuccess);
+  using Prg = fss::prg::ChaCha<1>;
+  using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, Prg, In, par_depth>;
+  using Cw = typename Scheme::Cw;
+  using Key = typename Scheme::Key;
+  constexpr int kDepth = Scheme::kDepth;
+  Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), {11, 22, 33, 44}};
+  const uint64_t beta = out_bits == 1 ? 1 : Scheme::kBetaMax - 2;
+  const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
+  const std::vector<In> xs = MakeBoundaryPoints<bits, In, kDepth>(alphas);
+  std::vector<Cw> cws(keys * kDepth);
+  std::vector<Key> keys0(keys), keys1(keys);
+  std::vector<int4> seeds(2 * keys), party_seeds(keys), fcws(keys);
+  for (int k = 0; k < keys; ++k) {
+    seeds[2 * k] = {11 + k, 22, 33, 44};
+    seeds[2 * k + 1] = {55 + k, 66, 77, 88};
+    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
+    for (int i = 0; i < kDepth; ++i) cws[k * kDepth + i] = keys0[k].cws[i];
+    fcws[k] = keys0[k].fcw;
+  }
+  DeviceBuffer<Cw> device_cws;
+  DeviceBuffer<int4> device_cw_s, device_fcws, device_seeds, device_ys;
+  DeviceBuffer<Query> device_xs;
+  ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
+  ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
+  ASSERT_EQ(device_cw_s.Allocate(kDepth * keys), cudaSuccess);
+  ASSERT_EQ(device_fcws.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_fcws.Upload(fcws.data(), keys), cudaSuccess);
+  ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
+  const std::vector<Query> query_buffer(xs.begin(), xs.end());
+  ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
+  cudaStream_t stream;
+  ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
+  fss::gpu::PackedHalfTreeDpfRepackGpu<bits, out_bits, Prg, In, par_depth>(
+      device_cws.data(), keys, device_cw_s.data(), stream);
+  std::vector<int4> actual(keys), first(keys);
+  for (int party = 0; party < 2; ++party) {
+    SCOPED_TRACE(::testing::Message() << "party " << party);
+    for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
+    ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
+    fss::gpu::PackedHalfTreeDpfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_fcws.data(),
+        device_xs.data(), device_ys.data(), keys, scheme, stream);
+    ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+    for (int k = 0; k < keys; ++k) {
+      SCOPED_TRACE(::testing::Message() << "key " << k);
+      const Key &party_key = party == 0 ? keys0[k] : keys1[k];
+      ExpectInt4(actual[k], scheme.Eval(party != 0, party_key, xs[k]), k);
+      if (party == 0) {
+        first[k] = actual[k];
+      } else {
+        const bool same_block = (xs[k] >> (bits - kDepth)) == (alphas[k] >> (bits - kDepth));
+        const int4 expected = same_block ? Scheme::PackBeta(alphas[k], beta) : int4{0, 0, 0, 0};
+        ExpectInt4(fss::util::Xor(first[k], actual[k]), expected, k);
+      }
+    }
+  }
+  ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+}
+
 template <int bits, typename In, int keys = 8, fss::DcfPred pred = fss::DcfPred::kLt, int par_depth = -1,
     typename Query = In, bool released = false>
 void CheckDcfPoint() {
@@ -408,6 +494,32 @@ TEST(PointEvalGpu, HalfTreeBytes) {
 TEST(PointEvalGpu, HalfTreeUint128) {
   CheckHalfTreePoint<64, __uint128_t>();
 }
+TEST(PointEvalGpu, PackedHalfTree1Bit) {
+  CheckPackedPoint<20, uint32_t, 1>();
+}
+TEST(PointEvalGpu, PackedHalfTree8Bit) {
+  CheckPackedPoint<20, uint32_t, 8>();
+}
+TEST(PointEvalGpu, PackedHalfTree64BitUint64) {
+  CheckPackedPoint<64, uint64_t, 64>();
+}
+TEST(PointEvalGpu, PackedHalfTree1BitUint128) {
+  CheckPackedPoint<128, __uint128_t, 1>();
+}
+TEST(PointEvalGpu, PackedHalfTreeUint32QueriesForNarrowInputs) {
+  CheckPackedPoint<16, uint16_t, 1, 37, uint32_t>();
+}
+TEST(PointEvalGpu, PackedHalfTreeManyBlocks) {
+  CheckPackedPoint<20, uint32_t, 1, 1000>();
+}
+TEST(PointEvalGpu, PackedHalfTreeDepth1Uint8) {
+  CheckPackedPoint<8, uint8_t, 1>();
+}
+TEST(PointEvalGpu, PackedHalfTreeConfiguredDepths) {
+  CheckPackedPoint<10, uint32_t, 1, 8, uint32_t, 0>();
+  CheckPackedPoint<10, uint32_t, 1, 8, uint32_t, 2>();
+}
+
 TEST(PointEvalGpu, DcfBytes) {
   CheckDcfPoint<10, uint>();
 }

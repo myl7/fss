@@ -35,6 +35,7 @@
 #include <fss/dmpf.cuh>
 #include <fss/dpf.cuh>
 #include <fss/half_tree_dpf.cuh>
+#include <fss/packed_half_tree_dpf.cuh>
 #include <fss/util.cuh>
 #include <fss/vdpf.cuh>
 #include <fss/vdmpf.cuh>
@@ -151,6 +152,39 @@ __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const in
   if (low) y = y + Group::From(ocws[tid]);
   if constexpr (b) y = -y;
   ys[tid] = y.Into();
+}
+
+// Pack per-key Packed HalfTree DPF cws (stride depth) into level-major cw_s.
+template <int depth, typename Cw>
+__global__ void PackedHalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, int nkeys) {
+  int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (k >= nkeys) return;
+  for (int i = 0; i < depth; ++i) cw_s[(size_t)i * nkeys + k] = pk[(size_t)k * depth + i].s;
+}
+
+// Point-evaluate Packed HalfTree DPF keys, one thread per key. ys[tid] is x's output block. cw_s
+// comes from PackedHalfTreeDpfRepackKernel.
+template <int in_bits, int out_bits, int unroll, bool b, typename Prg, typename In, int par_depth, typename Query>
+__global__ void PackedHalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const int4 *fcws,
+    const Query *xs, int nkeys, Prg prg, int4 hash_key) {
+  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= nkeys) return;
+  int4 node = fss::util::SetLsb(seeds[tid], b);
+  In x = static_cast<In>(xs[tid]);
+
+#pragma unroll unroll
+  for (int i = 0; i < Scheme::kDepth; ++i) {
+    bool x_bit = GetBit(x, in_bits - 1 - i);
+    bool t = fss::util::GetLsb(node);
+    int4 h = prg.Gen(fss::util::Xor(hash_key, node))[0];
+    int4 cw = cw_s[(size_t)i * nkeys + tid];
+    node = fss::util::Xor(fss::util::Xor(h, x_bit ? node : Zero4()), t ? cw : Zero4());
+  }
+
+  int4 leaf = prg.Gen(fss::util::Xor(hash_key, node))[0];
+  if (fss::util::GetLsb(node)) leaf = fss::util::Xor(leaf, fcws[tid]);
+  ys[tid] = leaf;
 }
 
 // Point-evaluate in_bits-level DPF keys, one thread per key. cw_s/extra/out_cw
@@ -640,6 +674,29 @@ void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In, pa
 }
 
 /**
+ * One-time repack of per-key Packed HalfTree DPF keys into the level-major
+ * layout consumed by PackedHalfTreeDpfEvalPointGpu. cw_s has kDepth * nkeys
+ * int4s. fcws need no repack: each is read once per evaluation.
+ *
+ * @tparam in_bits Domain size as 2 ** in_bits.
+ * @tparam out_bits Output width of the keys.
+ * @param cws Correction words returned by Gen(), key-major, stride kDepth.
+ * @param nkeys Number of keys.
+ * @param cw_s Output level-major correction words, cw_s[i * nkeys + k].
+ * @param stream CUDA stream to launch on.
+ */
+template <int in_bits, int out_bits, typename Prg, typename In, int par_depth = -1>
+void PackedHalfTreeDpfRepackGpu(const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>::Cw *cws,
+    int nkeys, int4 *cw_s, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
+  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  detail::PackedHalfTreeDpfRepackKernel<Scheme::kDepth, typename Scheme::Cw>
+      <<<blocks, kBs, 0, stream>>>(cws, cw_s, nkeys);
+}
+
+/**
  * One-time repack of per-key DPF keys into the level-major layout consumed
  * by DpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra and out_cw have
  * nkeys entries each.
@@ -768,6 +825,39 @@ void HalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const 
   } else {
     detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys, dpf.prg, dpf.hash_key);
+  }
+}
+
+/**
+ * GPU point evaluation of nkeys Packed HalfTree DPF keys: ys[k] = Eval(b,
+ * key[k], xs[k]), the output block containing xs[k]. Extract() reads the lane.
+ * One thread per key. cw_s must come from PackedHalfTreeDpfRepackGpu.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @tparam in_bits Domain size as 2 ** in_bits.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds, one per key.
+ * @param cw_s Level-major correction words from PackedHalfTreeDpfRepackGpu.
+ * @param fcws Final correction words returned by Gen(), one per key.
+ * @param xs Evaluation points, one per key.
+ * @param ys Output array, one int4 per key.
+ * @param nkeys Number of keys.
+ * @param dpf A PackedHalfTreeDpf instance (holds the PRG and hash key).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, int out_bits, typename Prg, typename In, int par_depth = -1, typename Query = In>
+  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+void PackedHalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *fcws, const Query *xs,
+    int4 *ys, int nkeys, const PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  if (b) {
+    detail::PackedHalfTreeDpfEvalPointKernel<in_bits, out_bits, unroll, true, Prg, In, par_depth, Query>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, fcws, xs, nkeys, dpf.prg, dpf.hash_key);
+  } else {
+    detail::PackedHalfTreeDpfEvalPointKernel<in_bits, out_bits, unroll, false, Prg, In, par_depth, Query>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, fcws, xs, nkeys, dpf.prg, dpf.hash_key);
   }
 }
 

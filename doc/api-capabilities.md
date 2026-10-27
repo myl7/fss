@@ -11,7 +11,7 @@ Use the scheme headers under `include/fss` for host operations. Include `fss/poi
 | DPF | `Gen` | `Gen` | `Eval` | `DpfEvalPointGpu` after repack | `EvalAll` | `DpfEvalAllGpu`, `DpfEvalAllGpuBatch` |
 | DCF | `Gen` | `Gen` | `Eval`, both predicates | `DcfEvalPointGpu` after repack | `EvalAll` | `DcfEvalAllGpu`, `DcfEvalAllGpuBatch` |
 | HalfTree DPF | `Gen` | `Gen` | `Eval` | `HalfTreeDpfEvalPointGpu` after repack | `EvalAll` | `HalfTreeDpfEvalAllGpu`, `HalfTreeDpfEvalAllGpuBatch` |
-| Packed HalfTree DPF | `Gen` | `Gen` | `Eval`, then `Extract` | Device-callable `Eval` in a caller's kernel | `EvalAll` returns packed blocks | `PackedHalfTreeDpfEvalAllGpu`, `PackedHalfTreeDpfEvalAllGpuBatch` |
+| Packed HalfTree DPF | `Gen` | `Gen` | `Eval`, then `Extract` | `PackedHalfTreeDpfEvalPointGpu` after repack | `EvalAll` returns packed blocks | `PackedHalfTreeDpfEvalAllGpu`, `PackedHalfTreeDpfEvalAllGpuBatch` |
 | Grotto DCF | `Gen` | `Gen` | `Preprocess`, then `Eval` | `GrottoDcfPreprocessGpu`, then device-callable `Eval` on its parity tree | `EvalAll` | `GrottoDcfEvalAllGpu` |
 | VDPF | `Gen` | `Gen` | `Eval` returns a share and a corrected per-point hash | `VdpfEvalPointGpu` after repack | `EvalAll` with chain proof, `EvalAllMerkle` | `VdpfEvalAllMerkleGpu` |
 | DMPF | `Gen` | No | `BatchEval` | `DmpfBatchEvalGpu` | `EvalAll` | `DmpfEvalAllGpu` |
