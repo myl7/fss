@@ -302,6 +302,79 @@ void CheckPackedPoint() {
   ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }
 
+// HalfTree Grotto DCF point evaluation against the host Eval and the two-party reconstruction.
+template <int bits, typename In, int keys = 37, typename Query = In, int par_depth = -1>
+void CheckHalfTreeGrottoPoint() {
+  int devices = 0;
+  const cudaError_t status = cudaGetDeviceCount(&devices);
+  if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver || (status == cudaSuccess && devices == 0)) {
+    GTEST_SKIP() << "no CUDA device available";
+  }
+  ASSERT_EQ(status, cudaSuccess);
+  using Prg = fss::prg::ChaCha<1>;
+  using Scheme = fss::HalfTreeGrottoDcf<bits, Prg, In, par_depth>;
+  using Cw = typename Scheme::Cw;
+  using Key = typename Scheme::Key;
+  constexpr int kDepth = Scheme::kDepth;
+  Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), {11, 22, 33, 44}};
+  // Every other run of six keys flips alpha's last tree bit, so each boundary point meets both
+  // leaf parity sides.
+  std::vector<In> alphas = MakeAlphas<bits, In>(keys);
+  for (int k = 0; k < keys; ++k) {
+    if ((k / 6) % 2 == 1) alphas[k] = static_cast<In>(alphas[k] ^ (static_cast<In>(1) << (bits - kDepth)));
+  }
+  const std::vector<In> xs = MakeBoundaryPoints<bits, In, kDepth>(alphas);
+  std::vector<Cw> cws(keys * kDepth);
+  std::vector<Key> keys0(keys), keys1(keys);
+  std::vector<int4> seeds(2 * keys), party_seeds(keys), fcws(keys);
+  for (int k = 0; k < keys; ++k) {
+    seeds[2 * k] = {11 + k, 22, 33, 44};
+    seeds[2 * k + 1] = {55 + k, 66, 77, 88};
+    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k]);
+    for (int i = 0; i < kDepth; ++i) cws[k * kDepth + i] = keys0[k].cws[i];
+    fcws[k] = keys0[k].fcw;
+  }
+  DeviceBuffer<Cw> device_cws;
+  DeviceBuffer<int4> device_cw_s, device_fcws, device_seeds;
+  DeviceBuffer<bool> device_ys;
+  DeviceBuffer<Query> device_xs;
+  ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
+  ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
+  ASSERT_EQ(device_cw_s.Allocate(kDepth * keys), cudaSuccess);
+  ASSERT_EQ(device_fcws.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_fcws.Upload(fcws.data(), keys), cudaSuccess);
+  ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
+  const std::vector<Query> query_buffer(xs.begin(), xs.end());
+  ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
+  cudaStream_t stream;
+  ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
+  fss::gpu::HalfTreeGrottoDcfRepackGpu<bits, Prg, In, par_depth>(device_cws.data(), keys, device_cw_s.data(), stream);
+  std::vector<uint8_t> actual(keys), first(keys);
+  for (int party = 0; party < 2; ++party) {
+    SCOPED_TRACE(::testing::Message() << "party " << party);
+    for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
+    ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
+    fss::gpu::HalfTreeGrottoDcfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_fcws.data(),
+        device_xs.data(), device_ys.data(), keys, scheme, stream);
+    ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(bool), cudaMemcpyDeviceToHost), cudaSuccess);
+    for (int k = 0; k < keys; ++k) {
+      SCOPED_TRACE(::testing::Message() << "key " << k);
+      const Key &party_key = party == 0 ? keys0[k] : keys1[k];
+      EXPECT_EQ(actual[k] != 0, scheme.Eval(party != 0, party_key, xs[k]));
+      if (party == 0) {
+        first[k] = actual[k];
+      } else {
+        EXPECT_EQ((first[k] != 0) != (actual[k] != 0), alphas[k] <= xs[k]);
+      }
+    }
+  }
+  ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+}
+
 // Grotto DCF single-path evaluation against the host Eval and the two-party reconstruction.
 template <int bits, typename In, int keys = 37, typename Query = In, int par_depth = -1>
 void CheckGrottoPoint() {
@@ -608,6 +681,26 @@ TEST(PointEvalGpu, GrottoDcfManyBlocks) {
 TEST(PointEvalGpu, GrottoDcfConfiguredDepths) {
   CheckGrottoPoint<10, uint32_t, 8, uint32_t, 0>();
   CheckGrottoPoint<10, uint32_t, 8, uint32_t, 2>();
+}
+
+TEST(PointEvalGpu, HalfTreeGrottoDcf) {
+  CheckHalfTreeGrottoPoint<20, uint32_t>();
+}
+TEST(PointEvalGpu, HalfTreeGrottoDcfDepth1Uint8) {
+  CheckHalfTreeGrottoPoint<8, uint8_t>();
+}
+TEST(PointEvalGpu, HalfTreeGrottoDcfUint128) {
+  CheckHalfTreeGrottoPoint<128, __uint128_t>();
+}
+TEST(PointEvalGpu, HalfTreeGrottoDcfUint32QueriesForNarrowInputs) {
+  CheckHalfTreeGrottoPoint<16, uint16_t, 37, uint32_t>();
+}
+TEST(PointEvalGpu, HalfTreeGrottoDcfManyBlocks) {
+  CheckHalfTreeGrottoPoint<20, uint32_t, 1000>();
+}
+TEST(PointEvalGpu, HalfTreeGrottoDcfConfiguredDepths) {
+  CheckHalfTreeGrottoPoint<10, uint32_t, 8, uint32_t, 0>();
+  CheckHalfTreeGrottoPoint<10, uint32_t, 8, uint32_t, 2>();
 }
 
 TEST(PointEvalGpu, DcfBytes) {

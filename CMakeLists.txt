@@ -92,6 +92,10 @@ if(BUILD_TESTING)
     target_link_libraries(grotto_dcf_test GTest::gtest_main fss)
     gtest_discover_tests(grotto_dcf_test)
 
+    add_executable(half_tree_grotto_dcf_test src/half_tree_grotto_dcf_test.cu)
+    target_link_libraries(half_tree_grotto_dcf_test GTest::gtest_main fss)
+    gtest_discover_tests(half_tree_grotto_dcf_test)
+
     add_executable(vdmpf_test src/vdmpf_test.cu)
     target_link_libraries(vdmpf_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(vdmpf_test)

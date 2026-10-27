@@ -24,8 +24,8 @@
  * share for input x is lane x & (kLanes - 1) of block x >> log2(kLanes); see Extract().
  *
  * The output group is XOR only: the two parties' blocks XOR-reconstruct to beta at alpha's lane
- * and to the zero block everywhere else. Additive groups cannot be packed into shared lanes,
- * and comparison functions need per-leaf control bits, so no packed counterpart exists for DCF.
+ * and to the zero block everywhere else. Additive groups cannot be packed into shared lanes.
+ * HalfTreeGrottoDcf evaluates a 1-bit key with beta = 1 as a comparison function.
  *
  * ## Implementation details
  *
@@ -74,6 +74,9 @@
 #include <fss/util.cuh>
 
 namespace fss {
+
+template <int in_bits, typename Prg, typename In, int par_depth>
+class HalfTreeGrottoDcf;
 
 /**
  * 2-party DPF scheme with packed sub-128-bit outputs, using the Half-Tree construction.
@@ -245,6 +248,9 @@ public:
   }
 
 private:
+  template <int, typename, typename, int>
+  friend class HalfTreeGrottoDcf;
+
   __host__ __device__ void Gen(Cw cws[], int4 &fcw, const int4 s0s[2], In a, uint64_t beta) {
     assert(beta <= kBetaMax);
 
@@ -295,11 +301,19 @@ private:
 
   // Seed + correction-words form used by the internal recursion and tests.
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], int4 fcw, In x) {
+    return ConvertLeaf(Walk(b, s0, cws, x, [](bool, bool) {}), fcw);
+  }
+
+  // Walks x's path to its level-kDepth node. visit(t, x_bit) sees the control bit of every
+  // expanded node and the branch x takes from it.
+  template <typename Visit>
+  __host__ __device__ int4 Walk(bool b, int4 s0, const Cw cws[], In x, Visit &&visit) {
     int4 node = util::SetLsb(s0, b);
 
     for (int i = 0; i < kDepth; ++i) {
       bool x_bit = (x >> (in_bits - 1 - i)) & 1;
       bool t = util::GetLsb(node);
+      visit(t, x_bit);
 
       int4 h = prg.Gen(util::Xor(hash_key, node))[0];
 
@@ -310,7 +324,7 @@ private:
       node = util::Xor(util::Xor(h, xb_mask), t_mask);
     }
 
-    return ConvertLeaf(node, fcw);
+    return node;
   }
 
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 fcw, int4 ys[]) {

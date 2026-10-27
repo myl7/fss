@@ -13,11 +13,14 @@ Use the scheme headers under `include/fss` for host operations. Include `fss/poi
 | HalfTree DPF | `Gen` | `Gen` | `Eval` | `HalfTreeDpfEvalPointGpu` after repack | `EvalAll` | `HalfTreeDpfEvalAllGpu`, `HalfTreeDpfEvalAllGpuBatch` |
 | Packed HalfTree DPF | `Gen` | `Gen` | `Eval`, then `Extract` | `PackedHalfTreeDpfEvalPointGpu` after repack | `EvalAll` returns packed blocks | `PackedHalfTreeDpfEvalAllGpu`, `PackedHalfTreeDpfEvalAllGpuBatch` |
 | Grotto DCF | `Gen` | `Gen` | `Eval` along x's path, or `Preprocess` then `Eval` on the parity tree | `GrottoDcfEvalPointGpu` after repack, or `GrottoDcfPreprocessGpu` then device-callable `Eval` on its parity tree | `EvalAll` | `GrottoDcfEvalAllGpu` |
+| HalfTree Grotto DCF | `Gen` | `Gen` | `Eval` | `HalfTreeGrottoDcfEvalPointGpu` after repack | No full-domain API | No full-domain API |
 | VDPF | `Gen` | `Gen` | `Eval` returns a share and a corrected per-point hash | `VdpfEvalPointGpu` after repack | `EvalAll` with chain proof, `EvalAllMerkle` | `VdpfEvalAllMerkleGpu` |
 | DMPF | `Gen` | No | `BatchEval` | `DmpfBatchEvalGpu` | `EvalAll` | `DmpfEvalAllGpu` |
 | VDMPF | `Gen` | No | `BatchEval` with chain proof, `BatchEvalMerkle` | `VdmpfBatchEvalMerkleGpu` | No full-domain API | No full-domain API |
 
-DPF, DCF, HalfTree, Packed HalfTree, Grotto DCF, and VDPF also expose device-callable scalar evaluation through their scheme objects. Pass device-accessible keys and a device-callable backend. GPU helpers accept a CUDA stream and preserve the configured scheme type, including nondefault `par_depth`. DMPF and VDMPF helpers also preserve nondefault `ch_lambda`.
+A HalfTree Grotto DCF key is a 1-bit Packed HalfTree DPF key with `beta = 1`, so `PackedHalfTreeDpf::Eval` on the same key gives the shares of `x == alpha`.
+
+DPF, DCF, HalfTree, Packed HalfTree, Grotto DCF, HalfTree Grotto DCF, and VDPF also expose device-callable scalar evaluation through their scheme objects. Pass device-accessible keys and a device-callable backend. GPU helpers accept a CUDA stream and preserve the configured scheme type, including nondefault `par_depth`. DMPF and VDMPF helpers also preserve nondefault `ch_lambda`.
 
 On x86-64 with SSE4.1, `fss/point_eval_cpu.cuh` provides `DpfPackPoint` / `DpfEvalPoint` and `HalfTreeDpfPackPoint` / `HalfTreeDpfEvalPoint`. Pack each key once before repeated queries. These helpers accept keys with nondefault depth. GPU `*RepackGpu` helpers produce the layouts for the GPU point launchers. Preparation cost and query cost are separate operations.
 
@@ -44,7 +47,7 @@ Chain and Merkle proofs have the same `(4, 4)` int32 representation but differen
 
 ## Host parallel execution
 
-The seven C++ schemes with a `par_depth` template argument are DPF, DCF, HalfTree DPF, Packed HalfTree DPF, Grotto DCF, VDPF, and DMPF. C++ defaults to `-1`. Their Python constructors expose keyword-only `par_depth=0`, which preserves the sequential Python default.
+The eight C++ schemes with a `par_depth` template argument are DPF, DCF, HalfTree DPF, Packed HalfTree DPF, Grotto DCF, HalfTree Grotto DCF, VDPF, and DMPF. C++ defaults to `-1`. HalfTree Grotto DCF has no Python wrapper yet. The other Python constructors expose keyword-only `par_depth=0`, which preserves the sequential Python default.
 
 A loaded Python extension initializes public ChaCha nonce or AES key parameters in its process. Generate and evaluate a key with the same initialized PRG parameters and extension configuration, including `par_depth`. Changing depth selects another extension whose public PRG values need not match. Raw key tensors and individual party shares need not match or interoperate across those extensions. The raw tensors do not export these public PRG parameters, so saving them alone does not provide a self-contained cross-process key format. Each configuration reconstructs the requested function from its own generated keys. Moving a key between CPU and CUDA keeps the same extension configuration when its backend supports both.
 
@@ -60,6 +63,7 @@ The parameter controls partitioning. It does not change the process-wide OpenMP 
 | --- | --- | --- |
 | DPF, DCF, HalfTree, Packed HalfTree | `EvalAll` | Scalar point evaluation and generation |
 | Grotto | `Preprocess`, `EvalAll` | Point queries and generation |
+| HalfTree Grotto DCF | None. It selects the Packed HalfTree DPF key type | Point queries and generation |
 | VDPF | `EvalAll` traversal, `EvalAllMerkle`, `ProveMerkle` | Chain conversion and accumulation in `EvalAll`, chain `Prove`, point evaluation, generation |
 | DMPF | Inner DPF `EvalAll` | Mapping, gathering, generation, and point-batch evaluation |
 | VDMPF | No exposed depth parameter | Host `BatchEval` and `BatchEvalMerkle` are sequential reference implementations |
