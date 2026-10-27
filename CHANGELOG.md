@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- VDPF `EvalRange`, which evaluates a contiguous input range and proves at most one nonzero output within it
+- GPU point evaluation for the packed HalfTree DPF (`PackedHalfTreeDpfRepackGpu`, `PackedHalfTreeDpfEvalPointGpu`)
+- Single-path Grotto DCF evaluation, `GrottoDcf::Eval(b, key, x)`: Grotto's prefix-parity algorithm on one root-to-leaf path, with in_bits PRG calls per query and no preprocessing, plus the GPU launcher `GrottoDcfEvalPointGpu` after `GrottoDcfRepackGpu`
+- Grotto DCF on packed HalfTree DPF keys (`HalfTreeGrottoDcf`, experimental): shares of `1[alpha <= x]` from a 1-bit packed HalfTree DPF key with beta = 1 at the cost of its `Eval`, plus the GPU launcher `HalfTreeGrottoDcfEvalPointGpu` after `HalfTreeGrottoDcfRepackGpu`
+
+### Changed
+
+- Python packaging requires setuptools 84.1.0 or later and a filelock version without known vulnerabilities
+
 ## [1.3.0] - 2026-10-18
 
 ### Added
