@@ -10,6 +10,9 @@ var annotated_dup =
         [ "LocateResult", "structfss_1_1cuckoo__hash_1_1LocateResult.html", "structfss_1_1cuckoo__hash_1_1LocateResult" ],
         [ "PrpHash", "structfss_1_1cuckoo__hash_1_1PrpHash.html", "structfss_1_1cuckoo__hash_1_1PrpHash" ]
       ] ],
+      [ "detail", null, [
+        [ "GrottoTurns", "structfss_1_1detail_1_1GrottoTurns.html", null ]
+      ] ],
       [ "gpu", null, [
         [ "detail", null, [
           [ "GpuWorkspace", "classfss_1_1gpu_1_1detail_1_1GpuWorkspace.html", null ],
@@ -41,6 +44,7 @@ var annotated_dup =
       [ "Dpf", "classfss_1_1Dpf.html", "classfss_1_1Dpf" ],
       [ "GrottoDcf", "classfss_1_1GrottoDcf.html", "classfss_1_1GrottoDcf" ],
       [ "HalfTreeDpf", "classfss_1_1HalfTreeDpf.html", "classfss_1_1HalfTreeDpf" ],
+      [ "HalfTreeGrottoDcf", "classfss_1_1HalfTreeGrottoDcf.html", "classfss_1_1HalfTreeGrottoDcf" ],
       [ "PackedHalfTreeDpf", "classfss_1_1PackedHalfTreeDpf.html", "classfss_1_1PackedHalfTreeDpf" ],
       [ "Vdmpf", "classfss_1_1Vdmpf.html", "classfss_1_1Vdmpf" ],
       [ "Vdpf", "classfss_1_1Vdpf.html", "classfss_1_1Vdpf" ]

@@ -104,14 +104,14 @@ $(document).ready(function(){initNavTree('md_doc_2bench__aes128__soft.html','');
   <div class="headertitle"><div class="title">AES-128 MMO Software PRG: T-table vs Textbook</div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="autotoc_md95"></a> Benchmark comparing two software AES-128 implementations used as PRGs with Matyas-Meyer-Oseas (MMO) mode: <code>out = AES(key, seed) XOR seed</code>. Both use mul=2 (two outputs per call, matching DPF usage).</p>
+<div class="textblock"><p><a class="anchor" id="autotoc_md99"></a> Benchmark comparing two software AES-128 implementations used as PRGs with Matyas-Meyer-Oseas (MMO) mode: <code>out = AES(key, seed) XOR seed</code>. Both use mul=2 (two outputs per call, matching DPF usage).</p>
 <ul>
 <li><code><a class="el" href="classfss_1_1prg_1_1Aes128Soft.html" title="Software AES-128 with Matyas-Meyer-Oseas as a PRG.">fss::prg::Aes128Soft</a>&lt;2&gt;</code> (<code><a class="el" href="aes128__mmo__soft_8cuh.html" title="Software AES-128 with Matyas-Meyer-Oseas as a PRG.">include/fss/prg/aes128_mmo_soft.cuh</a></code>): T-table optimization. Combines SubBytes + MixColumns into 4 uint32_t Te0 lookups per round. Tables (1024B Te0 + 256B sbox) in <code>__shared__</code> memory on GPU.</li>
 <li><code>torchcsprng::Aes128Mmo&lt;2&gt;</code> (<code>third_party/torchcsprng/torchcsprng/aes128_mmo_soft.cuh</code>): Textbook byte-by-byte. Separate SubBytes (16 sbox lookups), ShiftRows (byte shuffles), and MixColumns (xtime per byte) per round. No lookup tables beyond the 256B sbox. Ported from <a href="https://github.com/meta-pytorch/csprng">meta-pytorch/csprng</a>.</li>
 </ul>
 <p>The standalone comparison in <code>third_party/torchcsprng/bench.cu</code> benchmarks raw PRG calls for both implementations. On CPU, construction and key expansion are outside the timed loop. On GPU, both kernels expand keys per thread inside the timed launch. The fss kernel also initializes its shared tables inside that launch. Each call produces two 16-byte blocks, and throughput counts calls.</p>
 <p>The separate <code>fss/{CPU,GPU}/DPF-bytes/AesSoft/Eval</code> cases measure DPF evaluation using the software PRG. Their timings are not raw PRG latency.</p>
-<h1><a class="anchor" id="autotoc_md96"></a>
+<h1><a class="anchor" id="autotoc_md100"></a>
 Settings</h1>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -137,7 +137,7 @@ Settings</h1>
 <div class="fragment"><div class="line">python3 third_party/bench.py run --libraries torchcsprng --platform all \</div>
 <div class="line">  --cpu 24 --gpu 0 --cuda-arch 120 --repetitions 5 --run-id aes-soft</div>
 </div><!-- fragment --><p>Replace the CPU, GPU, and architecture for your host. See <a href="bench_third_parties.md#running">the reproduction guide</a> for prerequisites, governor handling, and report formats.</p>
-<h1><a class="anchor" id="autotoc_md97"></a>
+<h1><a class="anchor" id="autotoc_md101"></a>
 Hardware</h1>
 <p>Measured on cs659b on 2026-10-10 (Asia/Hong_Kong).</p>
 <ul>
@@ -146,7 +146,7 @@ Hardware</h1>
 <li>GPU: NVIDIA RTX PRO 5000 72GB Blackwell, sm_120, 72 GB, GPU 0, driver 595.71.05. GPU host process: CPU 16, performance governor.</li>
 <li>CUDA: 13.2, nvcc V13.2.78. Release build, CUDA architecture 120.</li>
 </ul>
-<h1><a class="anchor" id="autotoc_md98"></a>
+<h1><a class="anchor" id="autotoc_md102"></a>
 GPU Results</h1>
 <p>2^20 parallel raw PRG calls, each returning two 16-byte MMO blocks. Values are medians over five repetitions. CUDA event timing includes per-thread construction and key expansion, PRG generation, and output stores. The fss kernel also initializes Te0 and sbox in shared memory during the timed launch.</p>
 <table class="markdownTable">
@@ -157,7 +157,7 @@ GPU Results</h1>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">torchcsprng textbook   </td><td class="markdownTableBodyNone">34.22   </td><td class="markdownTableBodyNone">32.63   </td><td class="markdownTableBodyNone">30.65 M   </td><td class="markdownTableBodyNone">1×   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md99"></a>
+<h2><a class="anchor" id="autotoc_md103"></a>
 GPU Resource Usage (sm_120)</h2>
 <p>The raw harness was rebuilt with CUDA 13.2 and ptxas resource reporting. <code>AesSoftKernel&lt;true&gt;</code> is the T-table kernel, and <code>AesSoftKernel&lt;false&gt;</code> is the textbook kernel. The compiler reports:</p>
 <table class="markdownTable">
@@ -169,7 +169,7 @@ GPU Resource Usage (sm_120)</h2>
 <td class="markdownTableBodyNone">torchcsprng textbook   </td><td class="markdownTableBodyNone">123   </td><td class="markdownTableBodyNone">608 B   </td><td class="markdownTableBodyNone">0 B   </td><td class="markdownTableBodyNone">0 / 0 B   </td></tr>
 </table>
 <p>The source log is <code>build/third_party/aes-registers.log</code>. Stack-frame storage and register spills are reported separately by ptxas.</p>
-<h1><a class="anchor" id="autotoc_md100"></a>
+<h1><a class="anchor" id="autotoc_md104"></a>
 CPU Results</h1>
 <p>Single-threaded raw PRG latency, five repetitions, median. Construction, table initialization, and key expansion occur before the timed loop. The wall-time and CPU-time columns retain both Google Benchmark clocks. Throughput is its native calls-per-second counter based on CPU time.</p>
 <table class="markdownTable">
@@ -180,7 +180,7 @@ CPU Results</h1>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">torchcsprng textbook   </td><td class="markdownTableBodyNone">305.1   </td><td class="markdownTableBodyNone">304.9   </td><td class="markdownTableBodyNone">3.28 M   </td><td class="markdownTableBodyNone">1×   </td></tr>
 </table>
-<h1><a class="anchor" id="autotoc_md101"></a>
+<h1><a class="anchor" id="autotoc_md105"></a>
 Software-AES DPF Evaluation</h1>
 <p>These separate cases evaluate a DPF point over a 2^20-point domain using <code>Aes128Soft&lt;2&gt;</code> and the bytes group. They include the DPF traversal and are reported separately from the raw PRG calls above.</p>
 <table class="markdownTable">
@@ -191,7 +191,7 @@ Software-AES DPF Evaluation</h1>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">GPU   </td><td class="markdownTableBodyNone">1048576   </td><td class="markdownTableBodyNone">3.21 ms   </td><td class="markdownTableBodyNone">3.06 ns   </td></tr>
 </table>
-<h1><a class="anchor" id="autotoc_md102"></a>
+<h1><a class="anchor" id="autotoc_md106"></a>
 Analysis</h1>
 <p>The textbook implementation's median raw latency is 3.71× the T-table latency on CPU and 86.9× on GPU. The CPU ratio uses wall time, and the GPU ratio uses CUDA event time. The GPU comparison includes each implementation's key expansion and the T-table kernel's shared-memory setup.</p>
 <p>The T-table combines SubBytes and MixColumns through Te0 lookups. The textbook implementation performs the byte substitutions, row shifts, and MixColumns arithmetic separately. The current T-table kernel uses 80 registers per thread compared with 123 for the textbook kernel. Both report zero spill stores and loads, with stack frames of 624 and 608 bytes respectively. The T-table kernel uses 1280 bytes of shared memory per block. These compiler counts provide context for the timing difference. Attributing the speedup to occupancy or a specific bottleneck would require kernel profiling.</p>

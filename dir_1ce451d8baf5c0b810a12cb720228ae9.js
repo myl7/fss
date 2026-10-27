@@ -13,6 +13,7 @@ var dir_1ce451d8baf5c0b810a12cb720228ae9 =
     [ "grotto_dcf.cuh", "grotto__dcf_8cuh.html", "grotto__dcf_8cuh" ],
     [ "group.cuh", "group_8cuh.html", "group_8cuh" ],
     [ "half_tree_dpf.cuh", "half__tree__dpf_8cuh.html", "half__tree__dpf_8cuh" ],
+    [ "half_tree_grotto_dcf.cuh", "half__tree__grotto__dcf_8cuh.html", "half__tree__grotto__dcf_8cuh" ],
     [ "hash.cuh", "hash_8cuh.html", "hash_8cuh" ],
     [ "packed_half_tree_dpf.cuh", "packed__half__tree__dpf_8cuh.html", "packed__half__tree__dpf_8cuh" ],
     [ "point_eval_cpu.cuh", "point__eval__cpu_8cuh.html", "point__eval__cpu_8cuh" ],

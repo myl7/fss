@@ -119,7 +119,7 @@ Classes</h2></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words plus the party's initial seed.  <a href="structfss_1_1GrottoDcf_1_1Key.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html">ParityTree</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a>).  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a1ab708434aed2fa7064df6ee5776316c" title="Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4).">Eval()</a>).  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">PreprocessedTree</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Host-owned preprocessing result.  <a href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html#details">More...</a><br /></td></tr>
@@ -130,6 +130,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a69e20460e207c18a0e40088e4c3a5f4f" id="r_a69e20460e207c18a0e40088e4c3a5f4f"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#a69e20460e207c18a0e40088e4c3a5f4f">Gen</a> (<a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; const int4, 2 &gt; s0s, In a)</td></tr>
 <tr class="memdesc:a69e20460e207c18a0e40088e4c3a5f4f"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1GrottoDcf_1_1Key.html" title="A party&#39;s key: the correction words plus the party&#39;s initial seed.">Key</a> generation method.  <br /></td></tr>
 <tr class="separator:a69e20460e207c18a0e40088e4c3a5f4f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1ab708434aed2fa7064df6ee5776316c" id="r_a1ab708434aed2fa7064df6ee5776316c"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#a1ab708434aed2fa7064df6ee5776316c">Eval</a> (bool b, const <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;key, In x)</td></tr>
+<tr class="memdesc:a1ab708434aed2fa7064df6ee5776316c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4).  <br /></td></tr>
+<tr class="separator:a1ab708434aed2fa7064df6ee5776316c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad0d8de3a892938fd4a54562c9775a304" id="r_ad0d8de3a892938fd4a54562c9775a304"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">PreprocessedTree</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304">Preprocess</a> (bool b, const <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;key)</td></tr>
 <tr class="memdesc:ad0d8de3a892938fd4a54562c9775a304"><td class="mdescLeft">&#160;</td><td class="mdescRight">Preprocess: expand DPF tree and build parity segment tree.  <br /></td></tr>
 <tr class="separator:ad0d8de3a892938fd4a54562c9775a304"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -160,8 +163,64 @@ class fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</div><p>2-party DCF sc
   </dd>
 </dl>
 </div><h2 class="groupheader">Member Function Documentation</h2>
+<a id="a1ab708434aed2fa7064df6ee5776316c" name="a1ab708434aed2fa7064df6ee5776316c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1ab708434aed2fa7064df6ee5776316c">&#9670;&#160;</a></span>Eval() <span class="overload">[1/3]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool <a class="el" href="classfss_1_1GrottoDcf.html">fss::GrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Eval </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="structfss_1_1GrottoDcf_1_1Key.html">Key</a> &amp;&#160;</td>
+          <td class="paramname"><em>key</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>x</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4). </p>
+<p>Walks x's root-to-leaf path and XORs the control bit of every node at which the path turns, taking the edge into the root as a left edge, then the leaf's control bit if the path ends with a left edge. See "Evaluation" in the file details.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
+    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1GrottoDcf.html#a69e20460e207c18a0e40088e4c3a5f4f" title="Key generation method.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">x</td><td>Query point. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>bool share such that share_0 XOR share_1 = 1[alpha &lt;= x]. </dd></dl>
+
+</div>
+</div>
 <a id="a7587b9923a83735146050fa77c410174" name="a7587b9923a83735146050fa77c410174"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7587b9923a83735146050fa77c410174">&#9670;&#160;</a></span>Eval() <span class="overload">[1/2]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a7587b9923a83735146050fa77c410174">&#9670;&#160;</a></span>Eval() <span class="overload">[2/3]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -210,7 +269,7 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 </div>
 </div>
 <a id="aaf43513b3d5db23cb3d9d162620b0d57" name="aaf43513b3d5db23cb3d9d162620b0d57"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aaf43513b3d5db23cb3d9d162620b0d57">&#9670;&#160;</a></span>Eval() <span class="overload">[2/2]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#aaf43513b3d5db23cb3d9d162620b0d57">&#9670;&#160;</a></span>Eval() <span class="overload">[3/3]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -419,11 +478,12 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>Host-owned tree of 2 ** (in_bits + 1) - 1 parity bits, see <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html" title="Host-owned preprocessing result.">PreprocessedTree</a>. Query it through <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a> directly or via view() for a device-usable <a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html" title="Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (se...">ParityTree</a>. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Host-owned tree of 2 ** (in_bits + 1) - 1 parity bits, see <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html" title="Host-owned preprocessing result.">PreprocessedTree</a>. Query it through <a class="el" href="classfss_1_1GrottoDcf.html#a1ab708434aed2fa7064df6ee5776316c" title="Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4).">Eval()</a> directly or via view() for a device-usable <a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html" title="Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (se...">ParityTree</a>. </dd></dl>
 
 </div>
 </div>
-<hr/>The documentation for this class was generated from the following file:<ul>
+<hr/>The documentation for this class was generated from the following files:<ul>
+<li>include/fss/<a class="el" href="dpf_8cuh_source.html">dpf.cuh</a></li>
 <li>include/fss/<a class="el" href="grotto__dcf_8cuh_source.html">grotto_dcf.cuh</a></li>
 </ul>
 </div><!-- contents -->

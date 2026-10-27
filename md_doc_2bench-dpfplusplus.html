@@ -104,17 +104,17 @@ $(document).ready(function(){initNavTree('md_doc_2bench-dpfplusplus.html',''); i
   <div class="headertitle"><div class="title">dpf++ (rh3nry/dpfplusplus) CPU Benchmark</div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="autotoc_md88"></a> </p>
-<h1><a class="anchor" id="autotoc_md89"></a>
+<div class="textblock"><p><a class="anchor" id="autotoc_md92"></a> </p>
+<h1><a class="anchor" id="autotoc_md93"></a>
 Provenance</h1>
 <p>This entry benchmarks the header-only DPF++ library at <a href="https://github.com/rh3nry/dpfplusplus">https://github.com/rh3nry/dpfplusplus</a>, pinned to commit <code>e3f7f0fba75d1736b0da3edb0ce3b22d1b3c73d5</code> ("ancient, yet functional copy of core dpf++ headers"). The library implements Boyle-Gilboa-Ishai style distributed point functions over <code>__m128i</code> nodes with a fixed-key AES-NI PRG (<code>dpf::prg::aes</code>), packing 128 one-bit leaves per node for <code>dpf::dpf_key&lt;bool&gt;</code>; <code>dpf::dpf_key&lt;uint64_t&gt;</code> supports wider point values. It is the "dpf++" lineage: the pinned repository states that it temporarily holds an old copy of dpf++ and will later be replaced by a redirect to the latest version of libdpf++. Upstream ships no examples or build files, so <code>third_party/dpfplusplus-bench/bench.cc</code> drives the header API (<code>gen</code>, <code>eval</code>, <code>evalfull</code>) directly.</p>
-<h1><a class="anchor" id="autotoc_md90"></a>
+<h1><a class="anchor" id="autotoc_md94"></a>
 License status and why nothing is vendored</h1>
 <p>Every upstream header carries a notice that summarizes to: copyright (C) 2019 Anonymous; this is a pre-release version of the DPF++ library distributed anonymously for peer review; a public release under LGPL v2.1 is planned in the near future; please do not redistribute this version of the software. Because redistribution is not permitted, this repository commits zero upstream bytes: the tree is not a Git submodule, and no vendored copy, patched fork, or <code>.patch</code> file with full hunks is stored here. Instead, <code>third_party/dpfplusplus-bench/fetch.sh</code> clones upstream at bench time into the gitignored build directory and applies three scripted text fixes. The fix script quotes only the tiny before/after snippets it needs to locate each edit, which keeps the committed material to interface-level fragments rather than a redistributable copy of the headers.</p>
-<h1><a class="anchor" id="autotoc_md91"></a>
+<h1><a class="anchor" id="autotoc_md95"></a>
 How the bench acquires the code</h1>
 <p><code>bench.py</code> runs <code>bash third_party/dpfplusplus-bench/fetch.sh build/third_party/dpfplusplus</code> during <code>prepare</code>. The script clones the repository into <code>build/third_party/dpfplusplus/src</code>, checks out the pinned commit above, force-resets the tree, and applies the three fixes to <code>src/include/dpf.hpp</code>. Everything lands under the repository's gitignored <code>build/</code> directory, so a fresh checkout contains no upstream bytes and a clean of <code>build/</code> removes them entirely. The script is idempotent: re-runs re-fetch, force-reset to the pinned commit, and re-apply the fixes. It runs under <code>set -euo pipefail</code> and each fix demands an exact match count, so upstream drift or a moved commit fails loudly instead of silently benchmarking something else. The CMake wrapper never calls <code>add_subdirectory</code> on the fetched tree; it only adds the fetched <code>src/include</code> directory to the include path, passed as <code>-DDPFPP_INCLUDE_DIR=&lt;build&gt;/src/include</code>.</p>
-<h1><a class="anchor" id="autotoc_md92"></a>
+<h1><a class="anchor" id="autotoc_md96"></a>
 The three text fixes</h1>
 <p>The authoritative implementation is the <code>python3</code> heredoc in <code>third_party/dpfplusplus-bench/fetch.sh</code>; the prose below describes what and why.</p>
 <ol type="1">
@@ -122,10 +122,10 @@ The three text fixes</h1>
 <li><code>dpf_key::nodes_per_leaf</code> is declared <code>constexpr</code> but initialized with <code>std::ceil</code> on a <code>double</code>, which is not a constant expression before C++23 and fails to compile under C++17. The fix replaces it with the equivalent integer ceil-div <code>(bits_per_leaf + bits_per_node - 1) / bits_per_node</code>.</li>
 <li>Two <code>if constexpr(dpfkey.is_packed)</code> tests, in <code>dpf::eval</code> and <code>dpf::__reeval</code>, read the static member through a function parameter, which is not usable as a constant expression at those sites. The fix names the static class member <code>dpf_key&lt;leaf_t, node_t, prg_t&gt;::is_packed</code> instead, at both occurrences.</li>
 </ol>
-<h1><a class="anchor" id="autotoc_md93"></a>
+<h1><a class="anchor" id="autotoc_md97"></a>
 Build and benchmark shape</h1>
 <p><code>third_party/dpfplusplus-bench/CMakeLists.txt</code> builds the <code>bench</code> executable from <code>bench.cc</code> alone, links Google Benchmark 1.9.5 via FetchContent like the sibling wrappers, and compiles with C++17, <code>-O2</code>, <code>-maes</code>, and <code>-mavx2</code>. The <code>-O2</code> flag is appended after the build-type flags, so it also pins <code>-O2</code> when the runner configures <code>CMAKE_BUILD_TYPE=Release</code>. The upstream headers use x86 SSE/AVX/AES intrinsics unconditionally, so the wrapper refuses to configure on non-x86 hosts; the bench machine is x86 Linux. Benchmark IDs are <code>dpfplusplus/CPU/&lt;Op&gt;/&lt;nbits&gt;</code> with <code>state.range(0)</code> carrying <code>nbits</code>: <code>Gen</code> and <code>Eval</code> at 16 and 20 bits, <code>EvalAll</code> at 16, 20, and 24 bits. <code>Gen</code> times <code>dpf_key&lt;bool&gt;::gen</code> producing both parties' keys, including the internal <code>arc4random_buf</code> root draw. <code>Eval</code> times one <code>key.eval</code> point evaluation per iteration and sweeps the input domain between iterations. <code>EvalAll</code> times one party's <code>evalfull</code> over the full domain and reports every domain output as processed work via <code>SetItemsProcessed</code>; following the upstream API, <code>evalfull</code>'s internal <code>malloc</code>/<code>free</code> of the traversal hint array is inside the timed region. Each benchmark first runs an untimed self-check: both parties' <code>evalfull</code> shares must XOR to exactly the alpha bit across the whole domain, and a <code>dpf_key&lt;uint64_t&gt;</code> variant is spot-checked by point evaluation (value at the target, zero away from it).</p>
-<h1><a class="anchor" id="autotoc_md94"></a>
+<h1><a class="anchor" id="autotoc_md98"></a>
 Reproducing</h1>
 <p>Once <code>bench.py</code> registers the library under the name <code>dpfplusplus</code>, the rows reproduce with:</p>
 <div class="fragment"><div class="line">python3 third_party/bench.py prepare --libraries dpfplusplus --platform cpu</div>

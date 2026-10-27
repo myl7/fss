@@ -104,9 +104,9 @@ $(document).ready(function(){initNavTree('md_doc_2bench__third__parties.html',''
   <div class="headertitle"><div class="title">Third-party DPF/DCF Library Benchmarks</div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="autotoc_md62"></a> The historical tables below use in_bits=20 (domain size 2^20 = 1,048,576). See <a class="el" href="md_doc_2bench__figures.html">benchmark methodology and comparison curves</a> for the current adapters, additive uint128 DCF measurements, and domain sweeps.</p>
+<div class="textblock"><p><a class="anchor" id="autotoc_md66"></a> The historical tables below use in_bits=20 (domain size 2^20 = 1,048,576). See <a class="el" href="md_doc_2bench__figures.html">benchmark methodology and comparison curves</a> for the current adapters, additive uint128 DCF measurements, and domain sweeps.</p>
 <p><code>N</code> is the domain size, <code>T</code> is the CUDA threads per block, and <code>K</code> is the number of keys processed per benchmark iteration or call. Keys per launch is an additional count. In <code>kernel&lt;&lt;&lt;grid_dim, block_dim&gt;&gt;&gt;</code>, <code>block_dim</code> sets the threads per block. The key count and domain size do not specify this launch parameter.</p>
-<h1><a class="anchor" id="autotoc_md63"></a>
+<h1><a class="anchor" id="autotoc_md67"></a>
 Libraries</h1>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -140,7 +140,7 @@ Libraries</h1>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">torchcsprng   </td><td class="markdownTableBodyNone"><a href="https://github.com/meta-pytorch/csprng">meta-pytorch/csprng</a>   </td><td class="markdownTableBodyNone">C++/CUDA   </td><td class="markdownTableBodyNone">CPU+GPU   </td><td class="markdownTableBodyNone"><code>bench.py --libraries torchcsprng</code>   </td></tr>
 </table>
-<h1><a class="anchor" id="autotoc_md64"></a>
+<h1><a class="anchor" id="autotoc_md68"></a>
 Benchmarked Operations</h1>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -182,9 +182,9 @@ Benchmarked Operations</h1>
 </table>
 <p>[^1]: See <code>doc/bench_aes128_soft.md</code> for implementation details and results. [^mastic]: Mastic is a VIDPF: Eval chains the running proof, and EvalAll is <code>eval_tree</code> over the full domain for both parties including the proof digest comparison. Outputs are Field128 shares (prio's 128-bit prime field). [^plasma]: PLASMA is a VIDPF: Eval chains the running proof over u64 shares mod 2^63-25. Upstream has no full-domain API, so no EvalAll is measured. sycret has no DPF rows in this table: it benchmarks equality (EQ) and comparison (CMP) keygen and batched point eval through its C ABI, with additive bit shares mod 2^32 over its fixed 32-bit domain.</p>
 <p>GPU-DPF's GPU operation is a full-domain table reduction. EzPC's <code>EvalAll</code> traverses the domain and returns a packed reduction bit per key. These operations do not materialize all domain outputs. The report keeps their names and counts their throughput in keys. The raw AES comparison is built by the <code>torchcsprng</code> wrapper, which includes both the vendored textbook implementation and fss's T-table implementation. The fss wrapper's software-AES DPF evaluation remains a separate operation.</p>
-<h1><a class="anchor" id="autotoc_md65"></a>
+<h1><a class="anchor" id="autotoc_md69"></a>
 Settings</h1>
-<h2><a class="anchor" id="autotoc_md66"></a>
+<h2><a class="anchor" id="autotoc_md70"></a>
 libdpf (Rust)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -212,7 +212,7 @@ libdpf (Rust)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Criterion 0.5 (default: 5s measurement, 100 samples, 3s warm-up)   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md67"></a>
+<h2><a class="anchor" id="autotoc_md71"></a>
 libfss (C++)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -236,7 +236,7 @@ libfss (C++)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md68"></a>
+<h2><a class="anchor" id="autotoc_md72"></a>
 google_dpf (C++)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -260,7 +260,7 @@ google_dpf (C++)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.8.3 (Bazel module)   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md69"></a>
+<h2><a class="anchor" id="autotoc_md73"></a>
 GPU-DPF CPU (C++)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -286,7 +286,7 @@ GPU-DPF CPU (C++)</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md70"></a>
+<h2><a class="anchor" id="autotoc_md74"></a>
 GPU-DPF GPU (Python/CUDA)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -316,7 +316,7 @@ GPU-DPF GPU (Python/CUDA)</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Python <code>perf_counter_ns</code>, median and raw samples, synchronized end-to-end GPU reduction   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md71"></a>
+<h2><a class="anchor" id="autotoc_md75"></a>
 EzPC (CUDA C++)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -344,7 +344,7 @@ EzPC (CUDA C++)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5 (UseManualTime, CUDA events)   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md72"></a>
+<h2><a class="anchor" id="autotoc_md76"></a>
 fss-rs 0.6.0 (Rust)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -368,7 +368,7 @@ fss-rs 0.6.0 (Rust)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Criterion 0.5.1 (default: 5s measurement, 100 samples)   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md73"></a>
+<h2><a class="anchor" id="autotoc_md77"></a>
 fss 0.7.0 CPU (C)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -394,7 +394,7 @@ fss 0.7.0 CPU (C)</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md74"></a>
+<h2><a class="anchor" id="autotoc_md78"></a>
 fss 0.7.0 GPU (C/CUDA)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -423,7 +423,7 @@ fss 0.7.0 GPU (C/CUDA)</h2>
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5 (UseManualTime, CUDA events)   </td></tr>
 </table>
 <p>The GPU binary crashes at startup on SM 86 (misaligned address in the upstream benchmark), so it only contributes curves on SM 120 hosts and its GPU rows are dropped when the GPU reference is the A6000.</p>
-<h2><a class="anchor" id="autotoc_md75"></a>
+<h2><a class="anchor" id="autotoc_md79"></a>
 fss CPU (C++/CUDA)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -449,7 +449,7 @@ fss CPU (C++/CUDA)</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md76"></a>
+<h2><a class="anchor" id="autotoc_md80"></a>
 fss GPU (C++/CUDA)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -477,7 +477,7 @@ fss GPU (C++/CUDA)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5 (UseManualTime, CUDA events)   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md77"></a>
+<h2><a class="anchor" id="autotoc_md81"></a>
 mastic (Rust)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -505,7 +505,7 @@ mastic (Rust)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Criterion 0.5.1   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md78"></a>
+<h2><a class="anchor" id="autotoc_md82"></a>
 plasma (Rust)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -531,7 +531,7 @@ plasma (Rust)</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Criterion 0.5.1   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md79"></a>
+<h2><a class="anchor" id="autotoc_md83"></a>
 sycret (Rust)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -559,7 +559,7 @@ sycret (Rust)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Criterion 0.5.1   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md80"></a>
+<h2><a class="anchor" id="autotoc_md84"></a>
 dpf-cpp (C++)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -585,7 +585,7 @@ dpf-cpp (C++)</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md81"></a>
+<h2><a class="anchor" id="autotoc_md85"></a>
 dpfplusplus (C++)</h2>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -613,7 +613,7 @@ dpfplusplus (C++)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md82"></a>
+<h2><a class="anchor" id="autotoc_md86"></a>
 torchcsprng (C++/CUDA)</h2>
 <p>See <code>doc/bench_aes128_soft.md</code> for implementation details and results.</p>
 <table class="markdownTable">
@@ -626,7 +626,7 @@ torchcsprng (C++/CUDA)</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone">Bench framework   </td><td class="markdownTableBodyNone">Google Benchmark 1.9.5 (UseManualTime, CUDA events for GPU)   </td></tr>
 </table>
-<h1><a class="anchor" id="autotoc_md83"></a>
+<h1><a class="anchor" id="autotoc_md87"></a>
 Running</h1>
 <p>The reproducible runner is <code>third_party/bench.py</code>. It supports <code>list</code>, <code>prepare</code>, <code>build</code>, <code>run</code>, and <code>summarize</code>. All build trees, environments, caches, logs, and results are under the repository's <code>build/third_party/</code> directory.</p>
 <p>The supported environment is Linux x86_64 with an NVIDIA GPU for GPU runs. Select an idle CPU and GPU on a shared host. The fss and raw AES CPU wrappers also require a CUDA toolkit because their sources include CUDA headers and device code. Rust, libfss, Google DPF, GPU-DPF CPU, and fss 0.7.0 CPU can be selected independently. CPU AES-NI cases require an AES-capable processor.</p>
@@ -670,9 +670,9 @@ Running</h1>
 <div class="fragment"><div class="line">python3 third_party/bench.py summarize build/third_party/results/comparison-gpu</div>
 </div><!-- fragment --><p>The runner preserves partial results and returns nonzero if any process fails. Historical fss 0.7.0 uses separate binaries and PRG providers for each scheme and group on both CPU and GPU. DPF requires a 32-byte PRG output, while DCF requires 64 bytes. Sharing the DCF provider with DPF would overrun its scratch buffer. The wrappers check both-party reconstruction and guarded scratch buffers before timing. GPU operations run in separate processes so the pinned uint DCF alignment failure does not prevent other measurements. That failure remains visible in the report. EzPC registers 1024 and 262144-key Gen/Eval cases, but only the 1024-key full-domain reduction to keep the traversal bounded.</p>
 <p>The <code>main</code> selection runs <code>src/bench_cpu.cu</code> and <code>src/bench_gpu.cu</code> for the README. It is excluded from <code>--libraries all</code> because its groups and operations differ from the comparison harness. Use <code>--libraries main</code> to refresh that separate set of results.</p>
-<h1><a class="anchor" id="autotoc_md84"></a>
+<h1><a class="anchor" id="autotoc_md88"></a>
 Results</h1>
-<h2><a class="anchor" id="autotoc_md85"></a>
+<h2><a class="anchor" id="autotoc_md89"></a>
 Hardware</h2>
 <p>Measured on cs659b on 2026-10-10 (Asia/Hong_Kong).</p>
 <table class="markdownTable">
@@ -692,7 +692,7 @@ Hardware</h2>
 <td class="markdownTableBodyNone">Build   </td><td class="markdownTableBodyNone">Release, CUDA architecture 120   </td></tr>
 </table>
 <p>The tables use medians: five repetitions for Google Benchmark and Python, and Criterion's median estimate from 100 samples with a 3-second warm-up and at least a 1-second measurement window. Each input domain has 2^20 points.</p>
-<h2><a class="anchor" id="autotoc_md86"></a>
+<h2><a class="anchor" id="autotoc_md90"></a>
 CPU</h2>
 <p>Times are per key. <code>EvalAll</code> and Rust <code>FullEval</code> materialize the full domain. Groups, output widths, and PRGs differ as listed in Settings: libdpf packs 1-bit XOR outputs, libfss uses a prime field, and the other CPU rows use their 128-bit XOR or modular groups. GPU-DPF's native CPU row uses software AES.</p>
 <table class="markdownTable">
@@ -719,7 +719,7 @@ CPU</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">fss (uint)   </td><td class="markdownTableBodyNone">978 ns   </td><td class="markdownTableBodyNone">501 ns   </td><td class="markdownTableBodyNone">39.8 ms   </td><td class="markdownTableBodyNone">2.02 µs   </td><td class="markdownTableBodyNone">943 ns   </td><td class="markdownTableBodyNone">—   </td></tr>
 </table>
-<h2><a class="anchor" id="autotoc_md87"></a>
+<h2><a class="anchor" id="autotoc_md91"></a>
 GPU</h2>
 <p>Times below are the median call duration divided by the number of keys in that call, except GPU-DPF generation, which is a separately measured CPU call processing one key. CUDA events time the native GPU kernels. GPU-DPF uses synchronized Python wall time including key conversion, host/device transfers, table reduction, and CPU result construction.</p>
 <table class="markdownTable">

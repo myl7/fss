@@ -124,6 +124,8 @@ $(document).ready(function(){initNavTree('grotto__dcf_8cuh.html',''); initResiza
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1detail_1_1GrottoTurns.html">fss::detail::GrottoTurns</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1GrottoDcf.html">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">2-party DCF scheme over F2 from standard DPF (Grotto construction).  <a href="classfss_1_1GrottoDcf.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -131,7 +133,7 @@ Classes</h2></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words plus the party's initial seed.  <a href="structfss_1_1GrottoDcf_1_1Key.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1ParityTree.html">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::ParityTree</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a>).  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a1ab708434aed2fa7064df6ee5776316c" title="Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4).">Eval()</a>).  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html">fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::PreprocessedTree</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Host-owned preprocessing result.  <a href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html#details">More...</a><br /></td></tr>
@@ -142,9 +144,12 @@ Classes</h2></td></tr>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2023/108"><em>Grotto: Screaming fast (2+1)-PC for Z</em>{2^n} via (2,2)-DPFs_</a> (<a class="el" href="grotto__dcf_8cuh.html#grotto_dcf">1: the published version</a>).</p>
-<p>Key generation is identical to standard BGI DPF. The comparison functionality emerges from prefix-parity of the DPF control bits.</p>
+<p>Key generation is identical to standard BGI DPF. The comparison functionality emerges from prefix-parity of the DPF control bits: the two parties' control bits of a node XOR to the parity of the leaves below it (Theorem 4 of the paper).</p>
 <p>Output shares are in F2 (XOR sharing). Each party holds a single bool per query. For inputs x: share_0 XOR share_1 = 1[alpha &lt;= x].</p>
 <h2><a class="anchor" id="autotoc_md29"></a>
+Evaluation</h2>
+<p>Eval(b, key, x) runs the paper's prefix-parity algorithm (Section 4) on x's root-to-leaf path: in_bits PRG calls per query and no preprocessing, the cost of a DPF point evaluation. Preprocess() instead expands the whole domain, about 2^in_bits PRG calls, into a parity segment tree that Eval(tree, x) then queries without PRG calls. It pays off once a key answers more than about 2^in_bits / in_bits queries. The two routes give different shares that reconstruct to the same value only in pairs, so both parties must use the same route.</p>
+<h2><a class="anchor" id="autotoc_md30"></a>
 References</h2>
 <ol type="1">
 <li>Kyle Storrier, Adithya Vadapalli, Allan Lyons, Ryan Henry: Grotto: Screaming fast (2+1)-PC for Z_{2^n} via (2, 2)-DPFs. CCS 2023: 2143-2157. <a href="https://doi.org/10.1145/3576915.3623147">https://doi.org/10.1145/3576915.3623147</a>. <a href="https://eprint.iacr.org/2023/108">https://eprint.iacr.org/2023/108</a>.<a class="anchor" id="grotto_dcf"></a></li>

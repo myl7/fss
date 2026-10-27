@@ -107,7 +107,7 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 <div class="textblock"><p><a class="anchor" id="md_README"></a> Function secret sharing (FSS) primitives including:</p>
 <ul>
 <li>2-party distributed point function (DPF), based on <a href="https://doi.org/10.1145/2976749.2978429">Boyle et al. (CCS '16)</a> or <a href="https://doi.org/10.1007/978-3-031-30545-0_12">Half-Tree (EUROCRYPT '23)</a>.</li>
-<li>2-party distributed comparison function (DCF), based on <a href="https://doi.org/10.1007/978-3-030-77886-6_30">Boyle et al. (EUROCRYPT '21)</a> or <a href="https://doi.org/10.1145/3576915.3623147">Grotto (CCS '23)</a>.</li>
+<li>2-party distributed comparison function (DCF), based on <a href="https://doi.org/10.1007/978-3-030-77886-6_30">Boyle et al. (EUROCRYPT '21)</a> or <a href="https://doi.org/10.1145/3576915.3623147">Grotto (CCS '23)</a> over a Boyle et al. or packed Half-Tree DPF key.</li>
 <li>2-party verifiable distributed point function (VDPF), based on <a href="https://doi.org/10.1007/978-3-031-06944-4_6">Castro &amp; Polychroniadou (EUROCRYPT '22)</a>.</li>
 <li>2-party verifiable distributed multi-point function (VDMPF), based on <a href="https://doi.org/10.1007/978-3-031-06944-4_6">Castro &amp; Polychroniadou (EUROCRYPT '22)</a>.</li>
 <li>2-party distributed multi-point function (DMPF), the non-verifiable counterpart of VDMPF.</li>
@@ -190,7 +190,7 @@ CPU</h2>
 <div class="ttc" id="aaes128__mmo_8cuh_html"><div class="ttname"><a href="aes128__mmo_8cuh.html">aes128_mmo.cuh</a></div></div>
 <div class="ttc" id="abytes_8cuh_html"><div class="ttname"><a href="bytes_8cuh.html">bytes.cuh</a></div></div>
 <div class="ttc" id="aclassfss_1_1Dcf_html"><div class="ttname"><a href="classfss_1_1Dcf.html">fss::Dcf</a></div><div class="ttdoc">2-party DCF scheme.</div><div class="ttdef"><b>Definition</b> dcf.cuh:82</div></div>
-<div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:66</div></div>
+<div class="ttc" id="aclassfss_1_1Dpf_html"><div class="ttname"><a href="classfss_1_1Dpf.html">fss::Dpf</a></div><div class="ttdoc">2-party DPF scheme.</div><div class="ttdef"><b>Definition</b> dpf.cuh:70</div></div>
 <div class="ttc" id="aclassfss_1_1prg_1_1Aes128Mmo_html"><div class="ttname"><a href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a></div><div class="ttdoc">AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.</div><div class="ttdef"><b>Definition</b> aes128_mmo.cuh:34</div></div>
 <div class="ttc" id="adcf_8cuh_html"><div class="ttname"><a href="dcf_8cuh.html">dcf.cuh</a></div><div class="ttdoc">2-party distributed comparison function (DCF).</div></div>
 <div class="ttc" id="adpf_8cuh_html"><div class="ttname"><a href="dpf_8cuh.html">dpf.cuh</a></div><div class="ttdoc">2-party distributed point function (DPF).</div></div>

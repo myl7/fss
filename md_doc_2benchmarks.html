@@ -104,19 +104,19 @@ $(document).ready(function(){initNavTree('md_doc_2benchmarks.html',''); initResi
   <div class="headertitle"><div class="title">Benchmark coverage</div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="autotoc_md59"></a> What the <code>bench_cpu</code> and <code>bench_gpu</code> binaries built by <code>BUILD_BENCH=ON</code> measure, and the GPU kernel resource usage behind them. Build and run instructions are in the README. Measurement methodology, timing boundaries, and the cross-library comparison curves live in <a class="el" href="md_doc_2bench__figures.html">benchmark curve methodology</a>. Exact measured values are on the comparison site.</p>
-<h1><a class="anchor" id="autotoc_md60"></a>
+<div class="textblock"><p><a class="anchor" id="autotoc_md63"></a> What the <code>bench_cpu</code> and <code>bench_gpu</code> binaries built by <code>BUILD_BENCH=ON</code> measure, and the GPU kernel resource usage behind them. Build and run instructions are in the README. Measurement methodology, timing boundaries, and the cross-library comparison curves live in <a class="el" href="md_doc_2bench__figures.html">benchmark curve methodology</a>. Exact measured values are on the comparison site.</p>
+<h1><a class="anchor" id="autotoc_md64"></a>
 Coverage</h1>
 <ul>
-<li>Schemes: DPF, DCF, VDPF, Half-Tree DPF, packed HalfTree DPF, Grotto DCF, DMPF, and VDMPF.</li>
-<li>Operations: <code>Gen</code>, <code>Eval</code>, host <code>EvalAll</code>, VDPF <code>Prove</code> and the Merkle-fold <code>ProveMerkle</code>/<code>EvalAllMerkle</code>, Grotto DCF <code>Preprocess</code> and <code>PreprocessEvalAll</code>, GPU point eval, and full-domain GPU <code>EvalAll</code> for DPF, HalfTree DPF, packed HalfTree DPF, DCF, and VDPF, plus GPU Grotto DCF <code>Preprocess</code> and <code>EvalAll</code>, and GPU DMPF batch <code>Eval</code> and <code>EvalAll</code>. The lean host point-evaluation fast paths (<code>fss::cpu</code> packed-key walks for DPF and HalfTree DPF, bit-exact with the generic <code>Eval</code>) carry their own rows beside the generic point <code>Eval</code>.</li>
+<li>Schemes: DPF, DCF, VDPF, Half-Tree DPF, packed HalfTree DPF, Grotto DCF, HalfTree Grotto DCF, DMPF, and VDMPF.</li>
+<li>Operations: <code>Gen</code>, <code>Eval</code>, host <code>EvalAll</code>, VDPF <code>Prove</code> and the Merkle-fold <code>ProveMerkle</code>/<code>EvalAllMerkle</code>, Grotto DCF <code>Preprocess</code> and <code>PreprocessEvalAll</code>, GPU point eval, and full-domain GPU <code>EvalAll</code> for DPF, HalfTree DPF, packed HalfTree DPF, DCF, and VDPF, plus GPU point eval for Grotto DCF and HalfTree Grotto DCF, GPU Grotto DCF <code>Preprocess</code> and <code>EvalAll</code>, and GPU DMPF batch <code>Eval</code> and <code>EvalAll</code>. The lean host point-evaluation fast paths (<code>fss::cpu</code> packed-key walks for DPF and HalfTree DPF, bit-exact with the generic <code>Eval</code>) carry their own rows beside the generic point <code>Eval</code>.</li>
 <li>PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics, software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on device.</li>
 <li>Output groups: <code>Uint</code> and <code>Bytes</code>.</li>
 <li>VDPF hashes: SHA-256 and BLAKE3.</li>
 <li>Input domain sizes: 2^20 by default, plus 2^14 and 2^17 for DPF <code>Eval</code>.</li>
 </ul>
 <p>Benchmark names follow <code>BM_&lt;Scheme&gt;&lt;Operation&gt;_&lt;Group&gt;_&lt;Prg&gt;/&lt;bits&gt;</code>: for example, <code>BM_DcfEval_Uint_AesRaw/17</code> times one DCF evaluation in the <code>Uint</code> group with the AES-NI-intrinsics PRG over a 2^17 domain. The PRG suffixes are <code>Aes</code> (OpenSSL MMO), <code>AesRaw</code> (AES-NI intrinsics MMO), <code>AesSoft</code> (software AES-128 MMO), and <code>ChaCha</code>. Grotto DCF and VDPF benchmarks omit the group because they have one native output shape. Names without a suffix are template instantiations that differ in input domain bits through the benchmark argument.</p>
-<h1><a class="anchor" id="autotoc_md61"></a>
+<h1><a class="anchor" id="autotoc_md65"></a>
 GPU kernel register usage</h1>
 <p>Compiled for sm_86 with <code>--ptxas-options=-v</code> (<code>make ptx_info</code> collects the log):</p>
 <table class="markdownTable">

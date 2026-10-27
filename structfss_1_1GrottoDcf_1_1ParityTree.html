@@ -107,11 +107,11 @@ $(document).ready(function(){initNavTree('structfss_1_1GrottoDcf_1_1ParityTree.h
 </div><!--header-->
 <div class="contents">
 
-<p>Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a>).  
+<p>Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a1ab708434aed2fa7064df6ee5776316c" title="Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4).">Eval()</a>).  
  <a href="structfss_1_1GrottoDcf_1_1ParityTree.html#details">More...</a></p>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
-struct fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::ParityTree</div><p>Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a7587b9923a83735146050fa77c410174" title="Prefix-parity query on the parity segment tree.">Eval()</a>). </p>
+struct fss::GrottoDcf&lt; in_bits, Prg, In, par_depth &gt;::ParityTree</div><p>Non-owning view of a parity segment tree over leaf control bits, usable from both host and device (see <a class="el" href="classfss_1_1GrottoDcf.html#a1ab708434aed2fa7064df6ee5776316c" title="Single-path evaluation method, the prefix-parity algorithm of the paper (Section 4).">Eval()</a>). </p>
 <p>The parity bits live in external storage: e.g. the device buffer filled by GrottoDcfPreprocessGpu() for direct on-GPU point evaluation, or the buffer owned by <a class="el" href="structfss_1_1GrottoDcf_1_1PreprocessedTree.html" title="Host-owned preprocessing result.">PreprocessedTree</a> and handed out by view().</p>
 <p>b: party index, needed for reconstructing comparison results. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
