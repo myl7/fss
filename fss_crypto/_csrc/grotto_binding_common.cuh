@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
+#include <ATen/ops/from_blob.h>
 #include <fss/grotto_dcf.cuh>
 #include <fss/half_tree_grotto_dcf.cuh>
 #include "binding_gpu_core.cuh"
@@ -115,7 +116,7 @@ struct GrottoBinding {
       if constexpr (kGpuSupported) {
         c10::cuda::CUDAGuard guard(s0.device());
         auto stream = CurrentStream();
-        auto result = torch::empty({}, s0.options().dtype(torch::kBool));
+        auto result = at::empty({}, s0.options().dtype(at::kBool));
         GrottoScalarKernel<Scheme><<<1, 1, 0, stream>>>(state.Device(stream), b,
             ConstBlocks(s0), ConstCwPtr(cws), input, result.data_ptr<bool>());
         CheckCuda(cudaGetLastError());
@@ -200,11 +201,11 @@ struct GrottoBinding {
       using Owner = decltype(native_owner);
       auto owner = std::make_shared<Owner>(std::move(native_owner));
       auto view = owner->View();
-      auto p = torch::from_blob(const_cast<bool *>(view.p), {TreeEntries()},
-          [owner](void *) {}, torch::TensorOptions().dtype(torch::kBool).device(torch::kCPU));
+      auto p = at::from_blob(const_cast<bool *>(view.p), {TreeEntries()},
+          [owner](void *) {}, c10::TensorOptions().dtype(at::kBool).device(c10::kCPU));
       if constexpr (Packed) {
-        auto blocks = torch::from_blob(const_cast<int4 *>(view.blocks), {TreeLeaves(), 4},
-            [owner](void *) {}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
+        auto blocks = at::from_blob(const_cast<int4 *>(view.blocks), {TreeLeaves(), 4},
+            [owner](void *) {}, c10::TensorOptions().dtype(at::kInt).device(c10::kCPU));
         return py::make_tuple(blocks, p);
       } else return py::cast(p);
     } else throw py::value_error("parity-tree storage is not addressable as a tensor");
@@ -218,7 +219,7 @@ struct GrottoBinding {
       if (p.is_cuda()) {
         c10::cuda::CUDAGuard guard(p.device());
         auto stream = CurrentStream();
-        auto result = torch::empty({}, p.options());
+        auto result = at::empty({}, p.options());
         GrottoTreeScalarKernel<Scheme><<<1, 1, 0, stream>>>(tree, input, Bools(result));
         CheckCuda(cudaGetLastError());
         RecordTensors({p, result}, stream);

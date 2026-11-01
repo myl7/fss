@@ -153,8 +153,8 @@ public:
     state.stream = stream;
     state.pending_use = true;
     if (!state.object.defined()) {
-      auto storage = torch::empty({static_cast<int64_t>(sizeof(T))},
-          torch::TensorOptions().dtype(torch::kUInt8).device(torch::Device(torch::kCUDA, device)));
+      auto storage = at::empty({static_cast<int64_t>(sizeof(T))},
+          c10::TensorOptions().dtype(at::kByte).device(c10::Device(c10::kCUDA, device)));
       CheckAlignment(storage, alignof(T));
       auto factory = make_factory(state);
       CheckCuda(detail::InitializeObjectGpu(static_cast<T *>(storage.data_ptr()), factory, stream));
@@ -257,10 +257,10 @@ public:
       argument.iv[0] = iv_[0];
       argument.iv[1] = iv_[1];
       if constexpr (kSoftBackend<T>) {
-        auto options = torch::TensorOptions().device(torch::Device(torch::kCUDA, device));
-        state.keys = torch::empty({kMultiplier, 16}, options.dtype(torch::kUInt8));
-        state.te0 = torch::empty({256}, options.dtype(torch::kInt32));
-        state.sbox = torch::empty({256}, options.dtype(torch::kUInt8));
+        auto options = c10::TensorOptions().device(c10::Device(c10::kCUDA, device));
+        state.keys = at::empty({kMultiplier, 16}, options.dtype(at::kByte));
+        state.te0 = at::empty({256}, options.dtype(at::kInt));
+        state.sbox = at::empty({256}, options.dtype(at::kByte));
         auto *keys = reinterpret_cast<uint8_t (*)[16]>(state.keys.data_ptr<uint8_t>());
         auto *te0 = reinterpret_cast<uint32_t *>(state.te0.data_ptr<int32_t>());
         auto *sbox = state.sbox.data_ptr<uint8_t>();

@@ -85,7 +85,7 @@ public:
 
   Tensor Into() const {
     if (host_) {
-      auto output = EmptyBlocks(1, torch::TensorOptions().device(torch::kCPU));
+      auto output = EmptyBlocks(1, c10::TensorOptions().device(c10::kCPU));
       Blocks(output)[0] = host_->Into();
       return output.view({4});
     }
@@ -103,7 +103,7 @@ public:
     using Result = decltype(std::declval<const T &>().Value());
     if constexpr (std::is_same_v<Result, int4>) {
       if (host_) {
-        auto output = EmptyBlocks(1, torch::TensorOptions().device(torch::kCPU));
+        auto output = EmptyBlocks(1, c10::TensorOptions().device(c10::kCPU));
         Blocks(output)[0] = host_->Value();
         return py::cast(output.view({4}));
       }
@@ -120,7 +120,7 @@ public:
       c10::cuda::CUDAGuard guard(storage_.device());
       auto stream = CurrentStream();
       Await(stream);
-      auto output = torch::empty({static_cast<int64_t>(sizeof(Result))}, storage_.options());
+      auto output = at::empty({static_cast<int64_t>(sizeof(Result))}, storage_.options());
       auto *output_data = static_cast<Result *>(output.data_ptr());
       GroupValueReadKernel<T, Result><<<1, 1, 0, stream>>>(DeviceData(), output_data);
       CheckCuda(cudaGetLastError());
@@ -164,14 +164,14 @@ private:
 
   explicit NativeGroupValue(T value) : host_(value) {}
 
-  explicit NativeGroupValue(const torch::TensorOptions &options)
-      : storage_(torch::empty({static_cast<int64_t>(sizeof(T))}, options.dtype(torch::kUInt8))) {
+  explicit NativeGroupValue(const c10::TensorOptions &options)
+      : storage_(at::empty({static_cast<int64_t>(sizeof(T))}, options.dtype(at::kByte))) {
     CheckAlignment(storage_, alignof(T));
     CheckCuda(cudaEventCreateWithFlags(&ready_, cudaEventDisableTiming));
   }
 
   static Handle Host(T value) { return Handle(new NativeGroupValue(value)); }
-  static Handle Device(const torch::TensorOptions &options) { return Handle(new NativeGroupValue(options)); }
+  static Handle Device(const c10::TensorOptions &options) { return Handle(new NativeGroupValue(options)); }
   T *DeviceData() const { return static_cast<T *>(storage_.data_ptr()); }
 
   void Finish(cudaStream_t stream) {

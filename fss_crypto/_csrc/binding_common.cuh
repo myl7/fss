@@ -4,7 +4,6 @@
 #include <cuda_runtime.h>
 #include <c10/cuda/CUDAStream.h>
 #include <c10/cuda/CUDAGuard.h>
-#include <torch/extension.h>
 #include <type_traits>
 #include "binding_tensor.cuh"
 #include "binding_state.cuh"

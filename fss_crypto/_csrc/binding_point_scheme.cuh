@@ -2,7 +2,6 @@
 #pragma once
 #include "binding_common.cuh"
 #include "binding_gpu_core.cuh"
-#include <torch/extension.h>
 #include <cuda_runtime.h>
 #include <limits>
 #include <fss/util.cuh>
@@ -90,7 +89,7 @@ Tensor PointEval(NativeState &state, bool b, const Tensor &s0, const Tensor &cws
   CheckBlocks(s0, 1);
   const auto *words = ConstCwPtr(cws, count);
   InType point = ReadInput<InType>(x, kInBits);
-  auto y = torch::empty({4}, s0.options().dtype(torch::kInt32));
+  auto y = at::empty({4}, s0.options().dtype(at::kInt));
   if (s0.is_cuda()) {
     if constexpr (kGpuSupported) {
       c10::cuda::CUDAGuard guard(s0.device());
@@ -205,7 +204,7 @@ uint64_t PackedExtract(NativeState &, const Tensor &block, const py::int_ &x) {
     if constexpr (kGpuSupported) {
       c10::cuda::CUDAGuard guard(block.device());
       auto stream = CurrentStream();
-      auto value = torch::empty({}, block.options().dtype(at::ScalarType::UInt64));
+      auto value = at::empty({}, block.options().dtype(at::ScalarType::UInt64));
       PackedExtractOneKernel<Core><<<1, 1, 0, stream>>>(ConstBlocks(block), point, value.data_ptr<uint64_t>());
       CheckCuda(cudaGetLastError());
       RecordTensors({block, value}, stream);

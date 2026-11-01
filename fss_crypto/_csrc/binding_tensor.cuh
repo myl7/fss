@@ -3,7 +3,10 @@
 #include <cuda_runtime.h>
 #include <c10/cuda/CUDAStream.h>
 #include <c10/cuda/CUDAGuard.h>
-#include <torch/extension.h>
+#include <ATen/core/Tensor.h>
+#include <c10/core/TensorOptions.h>
+#include <ATen/ops/empty.h>
+#include <torch/csrc/utils/pybind.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <cuda/std/array>
 #include <cuda/std/span>
@@ -14,7 +17,7 @@
 
 namespace fss::python {
 namespace py = pybind11;
-using Tensor = torch::Tensor;
+using Tensor = at::Tensor;
 
 inline void CheckCuda(cudaError_t status) {
   TORCH_CHECK(status == cudaSuccess, "cuda operation failed: ", cudaGetErrorString(status));
@@ -174,9 +177,9 @@ inline int64_t AddressableCount(int bits) {
   return int64_t{1} << bits;
 }
 
-inline Tensor EmptyBlocks(int64_t count, const torch::TensorOptions &options) {
+inline Tensor EmptyBlocks(int64_t count, const c10::TensorOptions &options) {
   TORCH_CHECK(count >= 0 && count <= std::numeric_limits<int64_t>::max() / 4, "output allocation size overflows");
-  return torch::empty({count, 4}, options.dtype(torch::kInt32));
+  return at::empty({count, 4}, options.dtype(at::kInt));
 }
 
 }  // namespace fss::python

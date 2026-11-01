@@ -144,8 +144,8 @@ public:
       NativeDeviceFactory<Core> factory{prg_->Device(device, stream), xor_hash_->Device(device, stream),
           hash_->Device(device, stream), prp_->Device(device, stream), instance_seed_};
       if (!state.object.defined()) {
-        Tensor object_storage = torch::empty({static_cast<int64_t>(sizeof(Core))},
-            torch::TensorOptions().dtype(torch::kUInt8).device(torch::Device(torch::kCUDA, device)));
+        Tensor object_storage = at::empty({static_cast<int64_t>(sizeof(Core))},
+            c10::TensorOptions().dtype(at::kByte).device(c10::Device(c10::kCUDA, device)));
         CheckAlignment(object_storage, alignof(Core));
         auto *object = reinterpret_cast<Core *>(object_storage.data_ptr<uint8_t>());
         CheckCuda(detail::InitializeObjectGpu<Core>(object, factory, stream));

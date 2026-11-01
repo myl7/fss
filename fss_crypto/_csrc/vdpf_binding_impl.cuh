@@ -28,7 +28,7 @@ int Gen(NativeState &state, Tensor cws, Tensor cs, Tensor seeds,
   if constexpr (kGpuSupported) {
     c10::cuda::CUDAGuard guard(cws.device());
     auto stream = CurrentStream();
-    auto status = torch::empty({}, cws.options().dtype(torch::kInt32));
+    auto status = at::empty({}, cws.options().dtype(at::kInt));
     CheckCuda(fss::gpu::GenGpu<S>(state.template Device<kGpuSupported, S>(stream),
         cuda::std::span<typename S::Cw,kInBits+1>(words,kInBits+1),
         cuda::std::span<int4,4>(Blocks(cs),4),
@@ -48,7 +48,7 @@ Tensor Eval(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
   CheckSameDevice({seed, cws, cs, y});
   CheckBlocks(seed, 1); CheckBlocks(cs, 4); CheckBlocks(y, 1);
   auto *words = ConstCwPtr(cws, kInBits + 1);
-  auto pi = torch::empty({4, 4}, y.options());
+  auto pi = at::empty({4, 4}, y.options());
   auto *proof = reinterpret_cast<Proof *>(Blocks(pi));
   InType input = ReadIn(x);
   if (y.is_cpu()) *proof = state.Cpu().Eval(b, *ConstBlocks(seed),
