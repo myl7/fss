@@ -11,6 +11,9 @@
 #include <fss/prg/aes128_mmo.cuh>
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include "core_api_test_helpers.cuh"
+#include <atomic>
+#include <thread>
+#include <climits>
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -474,4 +477,183 @@ TEST_F(DcfBytesAesTest, EvalLt) {
     int4 zero = {0, 0, 0, 0};
     EXPECT_EQ(memcmp(&result_buf, &zero, GroupCompareSize<Group>()), 0);
   }
+}
+
+
+namespace {
+
+template <int in_bits, typename Group, fss::DcfPred pred, typename In = uint32_t>
+void CheckDcfRange(In first, In last, In alpha, int par_depth) {
+  using Scheme = fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, In, pred>;
+  Scheme scheme(fss::prg::ChaCha<4>(kNonce0, kNonce1));
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  const int4 beta = {604, 981, 273, 84};
+  struct Corrections {
+    int4 before;
+    typename Scheme::Cw words[in_bits + 1];
+    int4 after;
+  } corrections{};
+  const int4 sentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
+  corrections.before = corrections.after = sentinel;
+  scheme.Gen(corrections.words, seeds, alpha, beta);
+  const auto saved_corrections = corrections;
+  const size_t count = static_cast<size_t>(last - first) + 1;
+  std::vector<int4> shares[2] = {
+      std::vector<int4>(count + 4, sentinel), std::vector<int4>(count + 4, sentinel)};
+  for (int party = 0; party < 2; ++party) {
+    scheme.EvalRange(party, first, last, seeds[party], corrections.words,
+        cuda::std::span<int4>(shares[party].data() + 1, count + 2), par_depth);
+    if (par_depth > 0) {
+      std::vector<int4> sequential(count);
+      scheme.EvalRange(party, first, last, seeds[party], corrections.words,
+          cuda::std::span<int4>(sequential.data(), sequential.size()), 0);
+      EXPECT_EQ(memcmp(shares[party].data() + 1, sequential.data(), count * sizeof(int4)), 0);
+    }
+    for (size_t offset = 0; offset < count; ++offset) {
+      const int4 point = scheme.Eval(party, seeds[party], corrections.words,
+          first + static_cast<In>(offset));
+      EXPECT_EQ(memcmp(&shares[party][offset + 1], &point, sizeof(int4)), 0)
+          << "party=" << party << " offset=" << offset << " depth=" << par_depth;
+    }
+    for (size_t untouched : {size_t{0}, count + 1, count + 2, count + 3}) {
+      EXPECT_EQ(memcmp(&shares[party][untouched], &sentinel, sizeof(int4)), 0);
+    }
+  }
+  EXPECT_EQ(memcmp(&corrections, &saved_corrections, sizeof(corrections)), 0);
+  for (size_t offset = 0; offset < count; ++offset) {
+    const In x = first + static_cast<In>(offset);
+    const bool hit = pred == fss::DcfPred::kLt ? x < alpha : x > alpha;
+    const int4 expected = hit ? Group::From(beta).Into() : Group{}.Into();
+    const int4 actual = (Group::From(shares[0][offset + 1]) +
+        Group::From(shares[1][offset + 1])).Into();
+    EXPECT_EQ(memcmp(&actual, &expected, sizeof(int4)), 0)
+        << "offset=" << offset << " depth=" << par_depth;
+  }
+}
+
+template <typename Group, fss::DcfPred pred>
+void CheckDcfSmallRanges() {
+  for (uint32_t alpha = 0; alpha < 8; ++alpha) {
+    for (uint32_t first = 0; first < 8; ++first) {
+      for (uint32_t last = first; last < 8; ++last) {
+        CheckDcfRange<3, Group, pred>(first, last, alpha, 0);
+        CheckDcfRange<3, Group, pred>(first, last, alpha, 2);
+      }
+    }
+  }
+  for (int depth : {0, 1, 3, 12, INT_MAX}) {
+    CheckDcfRange<8, Group, pred, uint32_t>(0, 255, 107, depth);
+    CheckDcfRange<8, Group, pred, uint32_t>(63, 130, 107, depth);
+    CheckDcfRange<8, Group, pred, uint32_t>(104, 116, 107, depth);
+    CheckDcfRange<8, Group, pred, uint32_t>(255, 255, 255, depth);
+  }
+}
+
+template <typename Group, fss::DcfPred pred>
+void CheckDcfWideRanges() {
+  using In = __uint128_t;
+  const In domain_last = ~In{0};
+  for (int depth : {0, 2, 8}) {
+    CheckDcfRange<128, Group, pred>(domain_last - 12, domain_last, domain_last - 5, depth);
+    CheckDcfRange<128, Group, pred>((In{1} << 64) - 7, (In{1} << 64) + 5, In{1} << 64, depth);
+    CheckDcfRange<128, Group, pred>((In{1} << 100) + 3, (In{1} << 100) + 15,
+        (In{1} << 100) + 8, depth);
+    CheckDcfRange<128, Group, pred>(domain_last, domain_last, domain_last, depth);
+    CheckDcfRange<100, Group, pred>((In{1} << 100) - 13, (In{1} << 100) - 1,
+        (In{1} << 100) - 5, depth);
+    CheckDcfRange<64, Group, pred, uint64_t>(UINT64_MAX - 12, UINT64_MAX, UINT64_MAX - 5, depth);
+  }
+}
+
+struct DcfRangeCalls {
+  std::atomic<int> active{0};
+  std::atomic<int> max_active{0};
+  std::atomic<bool> other_thread{false};
+  std::atomic<bool> parallel_team{false};
+  const std::thread::id caller = std::this_thread::get_id();
+};
+
+class DcfRangeObservedPrg {
+public:
+  explicit DcfRangeObservedPrg(DcfRangeCalls *calls) : calls_(calls), prg_(kNonce0, kNonce1) {}
+
+  __host__ __device__ cuda::std::array<int4, 4> Gen(int4 seed) {
+#ifndef __CUDA_ARCH__
+    if (calls_ != nullptr) {
+      if (std::this_thread::get_id() != calls_->caller) calls_->other_thread = true;
+#ifdef _OPENMP
+      if (omp_in_parallel()) calls_->parallel_team = true;
+#endif
+      const int active = calls_->active.fetch_add(1) + 1;
+      int maximum = calls_->max_active.load();
+      while (active > maximum && !calls_->max_active.compare_exchange_weak(maximum, active)) {}
+    }
+#endif
+    auto result = prg_.Gen(seed);
+#ifndef __CUDA_ARCH__
+    if (calls_ != nullptr) --calls_->active;
+#endif
+    return result;
+  }
+
+private:
+  DcfRangeCalls *calls_;
+  fss::prg::ChaCha<4> prg_;
+};
+
+}  // namespace
+
+TEST(DcfRangeTest, LtBytes) { CheckDcfSmallRanges<BytesGroup, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, GtBytes) { CheckDcfSmallRanges<BytesGroup, fss::DcfPred::kGt>(); }
+TEST(DcfRangeTest, LtUint127) { CheckDcfSmallRanges<Uint127Group, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, GtUint127) { CheckDcfSmallRanges<Uint127Group, fss::DcfPred::kGt>(); }
+TEST(DcfRangeTest, LtGenericGroup) { CheckDcfSmallRanges<Uint64Group, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, GtGenericGroup) { CheckDcfSmallRanges<Uint64Group, fss::DcfPred::kGt>(); }
+TEST(DcfRangeTest, WideLtBytes) { CheckDcfWideRanges<BytesGroup, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, WideGtBytes) { CheckDcfWideRanges<BytesGroup, fss::DcfPred::kGt>(); }
+TEST(DcfRangeTest, WideLtUint127) { CheckDcfWideRanges<Uint127Group, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, WideGtUint127) { CheckDcfWideRanges<Uint127Group, fss::DcfPred::kGt>(); }
+TEST(DcfRangeTest, WideLtGenericGroup) { CheckDcfWideRanges<Uint64Group, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, WideGtGenericGroup) { CheckDcfWideRanges<Uint64Group, fss::DcfPred::kGt>(); }
+
+TEST(DcfRangeTest, ZeroDepthUsesCallerThread) {
+  using Scheme = fss::Dcf<8, BytesGroup, DcfRangeObservedPrg>;
+  Scheme generator(DcfRangeObservedPrg(nullptr));
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  typename Scheme::Cw corrections[9];
+  generator.Gen(corrections, seeds, 107, {604, 981, 273, 84});
+  for (int party = 0; party < 2; ++party) {
+    DcfRangeCalls calls;
+    Scheme scheme{DcfRangeObservedPrg(&calls)};
+    std::vector<int4> outputs(256);
+    scheme.EvalRange(party, 0, 255, seeds[party], corrections,
+        cuda::std::span<int4>(outputs.data(), outputs.size()));
+    EXPECT_EQ(calls.active.load(), 0);
+    EXPECT_EQ(calls.max_active.load(), 1);
+    EXPECT_FALSE(calls.other_thread.load());
+    EXPECT_FALSE(calls.parallel_team.load());
+  }
+}
+
+TEST(DcfRangeTest, RejectsInvalidPreconditions) {
+#ifdef NDEBUG
+  GTEST_SKIP() << "assertion preconditions are disabled";
+#else
+  using Scheme = fss::Dcf<3, BytesGroup, fss::prg::ChaCha<4>>;
+  Scheme scheme(fss::prg::ChaCha<4>(kNonce0, kNonce1));
+  const int4 seed = {13, 27, 45, 66};
+  typename Scheme::Cw corrections[4]{};
+  int4 output[8];
+  auto outputs = cuda::std::span<int4>(output, 8);
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 3, 2, seed, corrections, outputs), "first <= last");
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 8, seed, corrections, outputs), "last <= domain_last");
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, corrections,
+      cuda::std::span<int4>(output, 7)), "ys.size.*>= count");
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, corrections, outputs, -1), "par_depth >= 0");
+  using WideScheme = fss::Dcf<128, BytesGroup, fss::prg::ChaCha<4>, __uint128_t>;
+  WideScheme wide(fss::prg::ChaCha<4>(kNonce0, kNonce1));
+  typename WideScheme::Cw wide_corrections[129]{};
+  EXPECT_DEBUG_DEATH(wide.EvalRange(false, 0, ~__uint128_t{0}, seed,
+      wide_corrections, outputs), "distance <");
+#endif
 }

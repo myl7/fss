@@ -81,7 +81,7 @@ enum class DcfPred {
  * 2-party DCF scheme.
  *
  * Gen() and scalar Eval() support host and device calls when Prg does.
- * EvalAll() is a host operation and supports both DcfPred predicates.
+ * EvalRange() and EvalAll() are host operations and support both predicates.
  * EvalAllGpu() and EvalAllGpuBatch() are host CUDA launch methods.
  *
  * @tparam in_bits Input domain bit size.
@@ -155,6 +155,26 @@ public:
    * @return This party's output share for the selected predicate.
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
+
+  /**
+   * Evaluate the closed input interval [first, last] in input order.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input in the interval.
+   * @param last Last input in the interval, inclusive.
+   * @param s0 This party's initial seed.
+   * @param cws At least in_bits + 1 correction words returned by Gen().
+   * @param ys Output storage. Entry x - first receives this party's share at x.
+   * Extra capacity beyond last - first + 1 entries is unchanged.
+   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs
+   * sequentially on the calling thread. Positive depths require backends that
+   * support concurrent calls.
+   * @pre first <= last and both endpoints are in the input domain.
+   * @pre The interval's output count and byte size fit size_t, and ys has at
+   * least that many entries. The full input domain need not fit size_t.
+   */
+  void EvalRange(bool b, In first, In last, int4 s0, const Cw cws[],
+      cuda::std::span<int4> ys, int par_depth = 0);
 
   /**
    * Evaluate the full domain from a seed and shared correction words.
@@ -243,6 +263,9 @@ private:
   static constexpr bool kGroupIsBytes = std::is_same_v<Group, group::Bytes>;
   static constexpr bool kGroupIsUint127 =
       std::is_same_v<Group, group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>>;
+
+  void EvalRangeSerial(bool b, int4 st, Group value, const Cw cws[], int4 ys[],
+      In first, In last, In node_first, In node_last, int level);
 
   void EvalTree(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, size_t r, int i, int par_depth_, Group v);
 
@@ -586,6 +609,65 @@ inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::Eval(
   }
 
   return v.Into();
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRange(
+    bool b, In first, In last, int4 s0, const Cw cws[],
+    cuda::std::span<int4> ys, int par_depth) {
+  assert(par_depth >= 0);
+  assert(first <= last);
+  constexpr In domain_last = [] {
+    if constexpr (in_bits == sizeof(In) * 8) return static_cast<In>(~In{0});
+    else return static_cast<In>((In{1} << in_bits) - 1);
+  }();
+  assert(last <= domain_last);
+  const __uint128_t distance = static_cast<__uint128_t>(last) - first;
+  assert(distance < std::numeric_limits<size_t>::max() / sizeof(int4));
+  const size_t count = static_cast<size_t>(distance) + 1;
+  assert(ys.size() >= count);
+  const size_t partitions = detail::ResolveParPartitions(par_depth, count);
+  detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
+    const size_t remainder = count % partitions;
+    const size_t begin = partition * (count / partitions) +
+        (partition < remainder ? partition : remainder);
+    const size_t length = count / partitions + (partition < remainder);
+    const In partition_first = first + static_cast<In>(begin);
+    const In partition_last = partition_first + static_cast<In>(length - 1);
+    EvalRangeSerial(b, util::SetLsb(s0, b), Group{}, cws, ys.data() + begin,
+        partition_first, partition_last, In{0}, domain_last, 0);
+  });
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRangeSerial(
+    bool b, int4 st, Group value, const Cw cws[], int4 ys[],
+    In first, In last, In node_first, In node_last, int level) {
+  if (level == in_bits) {
+    const int4 final_correction = cws[in_bits].v;
+    assert(!util::GetLsb(final_correction));
+    auto term = Group::From(util::SetLsb(st, false));
+    if (util::GetLsb(st)) term = term + Group::From(final_correction);
+    if (b) term = -term;
+    ys[static_cast<size_t>(node_first - first)] = (value + term).Into();
+    return;
+  }
+  int4 left, right;
+  Group left_value, right_value;
+  ExpandNode(prg_, st, value, b, cws[level], left, left_value, right, right_value);
+  const In midpoint = node_first + ((node_last - node_first) >> 1);
+  if (first <= midpoint) {
+    EvalRangeSerial(b, left, left_value, cws, ys, first, last,
+        node_first, midpoint, level + 1);
+  }
+  if (last > midpoint) {
+    EvalRangeSerial(b, right, right_value, cws, ys, first, last,
+        midpoint + In{1}, node_last, level + 1);
+  }
 }
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>

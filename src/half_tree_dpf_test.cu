@@ -12,6 +12,8 @@
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include "core_api_test_helpers.cuh"
+#include <atomic>
+#include <limits>
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -684,4 +686,106 @@ TEST(HalfTreeOutput, FinalCorrectionFlagDoesNotChangeEitherParty) {
     ExpectBlock(fss::util::Xor(y0, y1), x == 1 ? beta : int4{});
   }
 }
+}  // namespace
+
+namespace {
+struct HalfTreeRangeHash {
+  fss_test::TestCcrHash backend;
+  std::atomic<size_t> *calls;
+  std::atomic<bool> *parallel;
+
+  __host__ __device__ int4 Hash(int4 input) {
+#ifndef __CUDA_ARCH__
+    calls->fetch_add(1, std::memory_order_relaxed);
+#ifdef _OPENMP
+    if (omp_in_parallel()) parallel->store(true, std::memory_order_relaxed);
+#endif
+#endif
+    return backend.Hash(input);
+  }
+};
+
+template <int bits, typename In, typename Group = BytesGroup>
+void CheckHalfTreeRange(In first, In last, In alpha, int depth) {
+  std::atomic<size_t> calls{0};
+  std::atomic<bool> parallel{false};
+  using Scheme = fss::HalfTreeDpf<bits, Group, HalfTreeRangeHash, In>;
+  Scheme scheme{HalfTreeRangeHash{fss_test::TestCcrHash{}, &calls, &parallel}, {31, 47, 59, 83}};
+  const int4 seeds[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+  const int4 beta = {13, 17, 19, 22};
+  typename Scheme::Cw cws[bits + 1];
+  scheme.Gen(cws, seeds, alpha, beta);
+  const size_t count = static_cast<size_t>(last - first) + 1;
+  const int4 sentinel = {101, 103, 107, 109};
+  std::vector<int4> outputs[2] = {
+      std::vector<int4>(count + 2, sentinel), std::vector<int4>(count + 2, sentinel)};
+  for (int party = 0; party < 2; ++party) {
+    calls = 0;
+    parallel = false;
+    scheme.EvalRange(party, first, last, seeds[party], cws,
+        cuda::std::span<int4>(outputs[party].data() + 1, count + 1), depth);
+    if (depth == 0) EXPECT_FALSE(parallel.load());
+#ifdef _OPENMP
+    if (depth > 0 && count > 1 && omp_get_max_threads() > 1) EXPECT_TRUE(parallel.load());
+#endif
+    if (depth == 0 && count > 2) EXPECT_LT(calls.load(), count * (bits + 1));
+    ExpectBlock(outputs[party].front(), sentinel);
+    ExpectBlock(outputs[party].back(), sentinel);
+    for (size_t j = 0; j < count; ++j) {
+      ExpectBlock(outputs[party][j + 1], scheme.Eval(party, seeds[party], cws, static_cast<In>(first + j)));
+    }
+  }
+  for (size_t j = 0; j < count; ++j) {
+    const int4 actual = (Group::From(outputs[0][j + 1]) + Group::From(outputs[1][j + 1])).Into();
+    const int4 expected = first + j == alpha ? Group::From(beta).Into() : int4{};
+    ExpectBlock(actual, expected);
+  }
+}
+
+TEST(HalfTreeRange, EverySmallClosedInterval) {
+  for (uint8_t first = 0; first < 32; ++first) {
+    for (uint8_t last = first; last < 32; ++last) {
+      for (int depth : {0, 2, 1000}) CheckHalfTreeRange<5>(first, last, uint8_t{17}, depth);
+    }
+  }
+  for (int depth : {0, 3}) {
+    CheckHalfTreeRange<1>(uint8_t{0}, uint8_t{1}, uint8_t{1}, depth);
+    CheckHalfTreeRange<5, uint8_t, Uint127Group>(uint8_t{3}, uint8_t{24}, uint8_t{17}, depth);
+    CheckHalfTreeRange<5, uint8_t, Uint64Group>(uint8_t{3}, uint8_t{24}, uint8_t{17}, depth);
+  }
+}
+
+TEST(HalfTreeRange, WideCoordinatesAndLastInput) {
+  using In = __uint128_t;
+  const In high = (In{1} << 100) + 3;
+  const In last = ~In{0};
+  for (int depth : {0, 3, 1000}) {
+    CheckHalfTreeRange<65>((In{1} << 64) - 3, (In{1} << 64) + 5, In{1} << 64, depth);
+    CheckHalfTreeRange<128>(high, high + 12, high + 5, depth);
+    CheckHalfTreeRange<128>(last - 12, last, last, depth);
+    CheckHalfTreeRange<128>(last, last, last, depth);
+  }
+}
+
+#ifndef NDEBUG
+TEST(HalfTreeRange, RejectsInvalidPreconditions) {
+  using Scheme = fss::HalfTreeDpf<5, BytesGroup, fss_test::TestCcrHash, uint8_t>;
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  Scheme::Cw cws[6]{};
+  int4 seed{};
+  int4 outputs[4]{};
+  auto ys = cuda::std::span<int4>(outputs, 4);
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws, ys, -1), "par_depth");
+  EXPECT_DEATH(scheme.EvalRange(false, 2, 1, seed, cws, ys), "first");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 32, seed, cws, ys), "last");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 4, seed, cws, ys), "ys.size");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, nullptr, ys), "cws");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws,
+      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1})), "ys.data");
+  using Wide = fss::HalfTreeDpf<128, BytesGroup, fss_test::TestCcrHash, __uint128_t>;
+  Wide wide{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  Wide::Cw wide_cws[129]{};
+  EXPECT_DEATH(wide.EvalRange(false, 0, ~__uint128_t{0}, seed, wide_cws, ys), "distance");
+}
+#endif  // NDEBUG
 }  // namespace

@@ -50,7 +50,7 @@ class SchemeAccess;
  *
  * Gen() and scalar Eval() are callable from host and device when the backend supports
  * the execution space and all accessed storage is accessible there.
- * EvalAll() is a host operation. EvalAllGpu() and EvalAllGpuBatch() are host
+ * EvalAll() and EvalRange() are host operations. EvalAllGpu() and EvalAllGpuBatch() are host
  * launch methods compiled with a CUDA compiler; they do not run on the device.
  */
 template <int in_bits, typename Group, typename Hash, typename In = uint>
@@ -130,6 +130,25 @@ public:
    */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
 
+  /**
+   * Evaluate the closed input interval [first, last] on the host.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input in the interval, inclusive.
+   * @param last Last input in the interval, inclusive.
+   * @param s0 This party's initial seed.
+   * @param cws The in_bits + 1 shared corrections returned by Gen().
+   * @param ys Output storage for at least last - first + 1 shares.
+   * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @pre first <= last and both endpoints belong to the input domain.
+   * @pre The output count and byte size fit size_t, and used pointers are nonnull.
+   * @post ys[j] is this party's scalar share at first + j.
+   * Extra output capacity is untouched.
+   */
+  void EvalRange(bool b, In first, In last, int4 s0, const Cw cws[],
+      cuda::std::span<int4> ys, int par_depth = 0);
+
 
   /**
    * Launch full-domain CUDA evaluation from this host-accessible instance.
@@ -205,6 +224,9 @@ private:
 
   Hash hash_;
   int4 instance_seed_;
+
+  void EvalRangeTree(bool b, int4 node, const Cw cws[], int4 ys[],
+      In first, In last, In output_first, In low, In high, int level);
 
   // EvalAll() shape: a scalar prefix of kBatchPrefix levels grows the frontier
   // to 8 nodes and detail::HashBatch() hashes 8 parents per level. The tail fuses the
@@ -521,6 +543,63 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(
     });
   } else {
     EvalBatched8(b, node, cws, Group::From(cws[in_bits].s), ys, 0, 0);
+  }
+}
+
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalRange(
+    bool b, In first, In last, int4 s0, const Cw cws[],
+    cuda::std::span<int4> ys, int par_depth) {
+  assert(par_depth >= 0);
+  In domain_last = static_cast<In>(~In{0});
+  if constexpr (in_bits < sizeof(In) * 8) {
+    domain_last = static_cast<In>((In{1} << in_bits) - 1);
+  }
+  assert(first <= last && last <= domain_last);
+  const __uint128_t distance = static_cast<__uint128_t>(last) - first;
+  assert(distance < std::numeric_limits<size_t>::max() / sizeof(int4));
+  const size_t count = static_cast<size_t>(distance) + 1;
+  assert(ys.size() >= count && ys.data() != nullptr && cws != nullptr);
+
+  const size_t partitions = detail::ResolveParPartitions(par_depth, count);
+  detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
+    const size_t begin = partition * (count / partitions) +
+        (partition < count % partitions ? partition : count % partitions);
+    const size_t end = begin + count / partitions + (partition < count % partitions);
+    EvalRangeTree(b, util::SetLsb(s0, b), cws, ys.data(),
+        static_cast<In>(first + begin), static_cast<In>(first + (end - 1)),
+        first, In{0}, domain_last, 0);
+  });
+}
+
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeTree(
+    bool b, int4 node, const Cw cws[], int4 ys[], In first, In last,
+    In output_first, In low, In high, int level) {
+  if (level == in_bits - 1) {
+    if (first <= low) {
+      ys[static_cast<size_t>(low - output_first)] = ConvertLeaf(
+          b, hash_, instance_seed_, node, false, cws[level], cws[in_bits].s);
+    }
+    if (last >= high) {
+      ys[static_cast<size_t>(high - output_first)] = ConvertLeaf(
+          b, hash_, instance_seed_, node, true, cws[level], cws[in_bits].s);
+    }
+    return;
+  }
+  const In middle = static_cast<In>(low + ((high - low) >> 1));
+  int4 left, right;
+  ExpandNode(hash_, instance_seed_, node, cws[level].s, left, right);
+  if (first <= middle) {
+    EvalRangeTree(b, left, cws, ys, first, last, output_first, low, middle, level + 1);
+  }
+  if (last > middle) {
+    EvalRangeTree(b, right, cws, ys, first, last, output_first,
+        static_cast<In>(middle + 1), high, level + 1);
   }
 }
 

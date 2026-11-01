@@ -67,8 +67,8 @@ class Vdpf(_Scheme):
         """
         self._native.eval_all(b, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth, pi))
 
-    def eval_range(self, b, L, R, s0, cws, cs, ys, pi, *, par_depth: int = 0):
-        """Write shares for Core's inclusive range [L, R] and a CPU chain proof.
+    def eval_range(self, b, first, last, s0, cws, cs, ys, pi, *, par_depth: int = 0):
+        """Write shares for Core's inclusive range [first, last] and a CPU chain proof.
 
         Endpoints may use the full configured input width.
         The range's output count and byte size must fit addressable storage.
@@ -77,7 +77,7 @@ class Vdpf(_Scheme):
         Positive values require OpenMP and a parallel-safe backend.
         This chain-proof operation requires CPU buffers.
         """
-        self._native.eval_range(b, L, R, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth))
+        self._native.eval_range(b, first, last, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth))
 
     def eval_all_merkle(self, b, s0, cws, cs, ys, pi, *, par_depth: int = 0,
                         frontier_depth: int = 16, threads_per_block: int = 256):

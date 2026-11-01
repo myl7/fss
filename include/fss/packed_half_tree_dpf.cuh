@@ -102,7 +102,7 @@ class HalfTreeGrottoDcf;
  *
  * Gen() and scalar Eval() are callable from host and device when the backend supports
  * the execution space and all accessed storage is accessible there.
- * EvalAll() is a host operation. EvalAllGpu() and EvalAllGpuBatch() are host
+ * EvalAll() and EvalRange() are host operations. EvalAllGpu() and EvalAllGpuBatch() are host
  * launch methods compiled with a CUDA compiler; they do not run on the device.
  */
 template <int in_bits, int out_bits, typename Hash, typename In = uint>
@@ -195,9 +195,11 @@ public:
    * The lane is x % kLanes. Pass the original input x, not the block index.
    * For in_bits = 8 and out_bits = 8, kLanes = 16 and x = 42 selects
    * block 2 and lane 10: Extract(ys[2], 42).
+   * For EvalRange() output, x is the relative input index j = input - first.
+   * Use Extract(ys[j / kLanes], j).
    *
-   * @param block A block returned by Eval() or EvalAll(), or the XOR of the two parties' blocks.
-   * @param x The original input in [0, 2^in_bits) whose lane is read.
+   * @param block A packed output block, or the XOR of the two parties' blocks.
+   * @param x The original input for Eval()/EvalAll(), or relative input index for EvalRange().
    * @return The out_bits-bit lane value.
    */
   static __host__ __device__ uint64_t Extract(int4 block, In x);
@@ -222,6 +224,25 @@ public:
    * @pre The packed output element count and byte size fit size_t, and ys is allocated.
    */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
+
+  /**
+   * Evaluate the closed input interval [first, last] on the host.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input in the interval, inclusive.
+   * @param last Last input in the interval, inclusive.
+   * @param s0 This party's initial seed.
+   * @param cws The kDepth + 1 shared corrections returned by Gen().
+   * @param ys Output storage for ceil((last - first + 1) / kLanes) blocks.
+   * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @pre first <= last and both endpoints belong to the input domain.
+   * @pre The output block count and byte size fit size_t, and used pointers are nonnull.
+   * @post Extract(ys[j / kLanes], j) is this party's share at first + j.
+   * Unused lanes in the last output block are zero. Extra capacity is untouched.
+   */
+  void EvalRange(bool b, In first, In last, int4 s0, const Cw cws[],
+      cuda::std::span<int4> ys, int par_depth = 0);
 
 
   /**
@@ -288,6 +309,9 @@ private:
 
   Hash hash_;
   int4 instance_seed_;
+
+  void EvalRangeTree(int4 node, const Cw cws[], int4 ys[], In first,
+      In last, In output_first, In low, In high, int level);
 
   template <int other_bits, typename OtherHash, typename OtherIn>
     requires(ValidForInputBits<OtherIn, other_bits> && CcrHashable<OtherHash>)
@@ -481,6 +505,70 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAll(
     fss::detail::ParallelFor(par_depth, blocks, [&](size_t j) {
       ys[j] = Eval(b, s0, cws, static_cast<In>(j * kLanes));
     });
+  }
+}
+
+template <int in_bits, int out_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
+inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRange(
+    bool b, In first, In last, int4 s0, const Cw cws[],
+    cuda::std::span<int4> ys, int par_depth) {
+  assert(par_depth >= 0);
+  In domain_last = static_cast<In>(~In{0});
+  if constexpr (in_bits < sizeof(In) * 8) {
+    domain_last = static_cast<In>((In{1} << in_bits) - 1);
+  }
+  assert(first <= last && last <= domain_last);
+  const __uint128_t distance = static_cast<__uint128_t>(last) - first;
+  const __uint128_t block_distance = distance / kLanes;
+  assert(block_distance < std::numeric_limits<size_t>::max() / sizeof(int4));
+  const size_t blocks = static_cast<size_t>(block_distance) + 1;
+  assert(ys.size() >= blocks && ys.data() != nullptr && cws != nullptr);
+
+  const size_t partitions = detail::ResolveParPartitions(par_depth, blocks);
+  detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
+    const size_t begin = partition * (blocks / partitions) +
+        (partition < blocks % partitions ? partition : blocks % partitions);
+    const size_t end = begin + blocks / partitions + (partition < blocks % partitions);
+    for (size_t index = begin; index < end; ++index) ys[index] = {0, 0, 0, 0};
+    const __uint128_t begin_offset = static_cast<__uint128_t>(begin) * kLanes;
+    const __uint128_t end_offset = end == blocks ? distance :
+        static_cast<__uint128_t>(end) * kLanes - 1;
+    EvalRangeTree(util::SetLsb(s0, b), cws, ys.data(),
+        static_cast<In>(first + begin_offset), static_cast<In>(first + end_offset),
+        first, In{0}, domain_last, 0);
+  });
+}
+
+template <int in_bits, int out_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
+inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRangeTree(
+    int4 node, const Cw cws[], int4 ys[], In first, In last,
+    In output_first, In low, In high, int level) {
+  if (level == kDepth) {
+    const int4 block = ConvertLeaf(node, cws[kDepth].s);
+    const In begin = first > low ? first : low;
+    const In end = last < high ? last : high;
+    const size_t lanes = static_cast<size_t>(end - begin) + 1;
+    for (size_t lane = 0; lane < lanes; ++lane) {
+      const In x = static_cast<In>(begin + lane);
+      const In offset = static_cast<In>(x - output_first);
+      const size_t index = static_cast<size_t>(offset / kLanes);
+      ys[index] = util::Xor(ys[index], PackBeta(offset, Extract(block, x)));
+    }
+    return;
+  }
+  const In middle = static_cast<In>(low + ((high - low) >> 1));
+  int4 left, right;
+  ExpandNode(node, cws[level].s, left, right);
+  if (first <= middle) {
+    EvalRangeTree(left, cws, ys, first, last, output_first, low, middle, level + 1);
+  }
+  if (last > middle) {
+    EvalRangeTree(right, cws, ys, first, last, output_first,
+        static_cast<In>(middle + 1), high, level + 1);
   }
 }
 

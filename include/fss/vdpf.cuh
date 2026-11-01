@@ -209,27 +209,27 @@ public:
       cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
 
   /**
-   * Evaluate the inclusive range [L, R] and produce a chain proof.
+   * Evaluate the inclusive range [first, last] and produce a chain proof.
    *
    * Under the VDPF security assumptions, successful verification guarantees
    * at most one nonzero reconstructed output within this range, except with
    * negligible probability. It makes no guarantee outside the range.
    *
    * @param b Party index, false for party 0 and true for party 1.
-   * @param L First input, included in evaluation.
-   * @param R Last input, included in evaluation.
+   * @param first First input, included in evaluation.
+   * @param last Last input, included in evaluation.
    * @param s0 This party's initial seed.
    * @param cws At least in_bits + 1 corrections returned by Gen(), including the final output correction.
    * @param cs Shared correction seed returned by Gen().
-   * @param ys Output shares in input order, with at least R - L + 1 entries.
+   * @param ys Output shares in input order, with at least last - first + 1 entries.
    * @param pi Borrowed output storage for four chain-proof blocks for this range.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
-   * @pre L <= R < 2^in_bits. The range output count and byte size fit size_t.
+   * @pre first <= last < 2^in_bits. The range output count and byte size fit size_t.
    * A small range is supported even when the full input domain cannot be
    * materialized in addressable storage.
    */
-  void EvalRange(bool b, In L, In R, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+  void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
 
   /**
@@ -323,7 +323,7 @@ private:
       int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_);
 
   void EvalPrunedTree(int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, In l, In r, int i,
-      int par_depth_, In L, In R);
+      int par_depth_, In first, In last);
 };
 
 // -----------------------------------------------------------------------------
@@ -594,15 +594,15 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
-    bool b, In L, In R, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth) {
   assert(par_depth >= 0);
   In max_input = static_cast<In>(~In{0});
   if constexpr (in_bits < sizeof(In) * 8) {
     max_input = static_cast<In>((In{1} << in_bits) - 1);
   }
-  assert(L <= R && R <= max_input);
-  const __uint128_t distance = static_cast<__uint128_t>(R) - L;
+  assert(first <= last && last <= max_input);
+  const __uint128_t distance = static_cast<__uint128_t>(last) - first;
   assert(distance < static_cast<size_t>(-1) / sizeof(int4));
   const size_t num_inputs = static_cast<size_t>(distance) + 1;
   assert(cws.size() >= in_bits + 1);
@@ -613,13 +613,13 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
 
   // Phase 1: tree traversal, store (s, t) packed into ys temporarily
   if (par_depth_ == 0) {
-    EvalPrunedTree(st, cws, ys, In{0}, max_input, 0, 0, L, R);
+    EvalPrunedTree(st, cws, ys, In{0}, max_input, 0, 0, first, last);
   } else {
     const int threads = fss::detail::ResolveParThreads(par_depth_, num_inputs);
 
 #pragma omp parallel num_threads(threads)
 #pragma omp single
-    EvalPrunedTree(st, cws, ys, In{0}, max_input, 0, par_depth_, L, R);
+    EvalPrunedTree(st, cws, ys, In{0}, max_input, 0, par_depth_, first, last);
   }
   // Phase 2: sequential output computation and proof accumulation
   pi[0] = cs[0];
@@ -631,7 +631,7 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
   assert((ocw.w & 1) == 0);
   auto ocw_group = Group::From(ocw);
   for (size_t offset = 0; offset < num_inputs; ++offset) {
-    const In x = static_cast<In>(L + offset);
+    const In x = static_cast<In>(first + offset);
     int4 sj = ys[offset];
     bool tj = util::GetLsb(sj);
     sj = util::SetLsb(sj, false);
@@ -906,22 +906,22 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalPrunedTree(
     int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, In l, In r, int i,
-    int par_depth_, In L, In R) {
-  // this subtree is outside the range [L, R]
-  if (r < L || l > R) {
+    int par_depth_, In first, In last) {
+  // this subtree is outside the range [first, last]
+  if (r < first || l > last) {
     return;
   }
   // this is a full subtree
-  if (l >= L && r <= R) {
-    const size_t offset = static_cast<size_t>(l - L);
+  if (l >= first && r <= last) {
+    const size_t offset = static_cast<size_t>(l - first);
     const size_t count = static_cast<size_t>(r - l) + 1;
     EvalTree(st, cws, ys.subspan(offset, count), 0, count, i, par_depth_);
     return;
   }
   if (i == in_bits) {
     assert(l == r);
-    // we only write leaves from [L, R]
-    ys[static_cast<size_t>(l - L)] = st;
+    // we only write leaves from [first, last]
+    ys[static_cast<size_t>(l - first)] = st;
     return;
   }
 
@@ -957,21 +957,21 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalPrunedTree(
   const In mid = static_cast<In>(l + (r - l) / 2);
 
   if (i < par_depth_) {
-    if (mid >= L) {
+    if (mid >= first) {
 #pragma omp task
-      EvalPrunedTree(stl, cws, ys, l, mid, i + 1, par_depth_, L, R);
+      EvalPrunedTree(stl, cws, ys, l, mid, i + 1, par_depth_, first, last);
     }
-    if (mid < R) {
+    if (mid < last) {
 #pragma omp task
-      EvalPrunedTree(str, cws, ys, static_cast<In>(mid + 1), r, i + 1, par_depth_, L, R);
+      EvalPrunedTree(str, cws, ys, static_cast<In>(mid + 1), r, i + 1, par_depth_, first, last);
     }
 #pragma omp taskwait
   } else {
-    if (mid >= L) {
-      EvalPrunedTree(stl, cws, ys, l, mid, i + 1, par_depth_, L, R);
+    if (mid >= first) {
+      EvalPrunedTree(stl, cws, ys, l, mid, i + 1, par_depth_, first, last);
     }
-    if (mid < R) {
-      EvalPrunedTree(str, cws, ys, static_cast<In>(mid + 1), r, i + 1, par_depth_, L, R);
+    if (mid < last) {
+      EvalPrunedTree(str, cws, ys, static_cast<In>(mid + 1), r, i + 1, par_depth_, first, last);
     }
   }
 }

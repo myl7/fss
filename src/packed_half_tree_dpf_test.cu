@@ -10,6 +10,8 @@
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include "core_api_test_helpers.cuh"
+#include <atomic>
+#include <limits>
 
 constexpr uint16_t kAlpha = 107;
 constexpr int kAlphaBits = 16;
@@ -698,4 +700,139 @@ concept PackedOutputWidth = requires {
 };
 static_assert(PackedOutputWidth<1> && PackedOutputWidth<64>);
 static_assert(!PackedOutputWidth<0> && !PackedOutputWidth<3> && !PackedOutputWidth<65>);
+}  // namespace
+
+namespace {
+struct PackedRangeHash {
+  fss_test::TestCcrHash backend;
+  std::atomic<size_t> *calls;
+  std::atomic<bool> *parallel;
+
+  __host__ __device__ int4 Hash(int4 input) {
+#ifndef __CUDA_ARCH__
+    calls->fetch_add(1, std::memory_order_relaxed);
+#ifdef _OPENMP
+    if (omp_in_parallel()) parallel->store(true, std::memory_order_relaxed);
+#endif
+#endif
+    return backend.Hash(input);
+  }
+};
+
+template <int bits, int width, typename In>
+void CheckPackedRange(In first, In last, In alpha, int depth) {
+  std::atomic<size_t> calls{0};
+  std::atomic<bool> parallel{false};
+  using Scheme = fss::PackedHalfTreeDpf<bits, width, PackedRangeHash, In>;
+  Scheme scheme{PackedRangeHash{fss_test::TestCcrHash{}, &calls, &parallel}, {31, 47, 59, 83}};
+  const int4 seeds[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+  constexpr uint64_t beta = width == 64 ? ~uint64_t{0} : (uint64_t{1} << width) - 1;
+  typename Scheme::Cw cws[Scheme::kDepth + 1];
+  scheme.Gen(cws, seeds, alpha, beta);
+  const size_t count = static_cast<size_t>(last - first) + 1;
+  const size_t blocks = count / Scheme::kLanes + (count % Scheme::kLanes != 0);
+  const int4 sentinel = {101, 103, 107, 109};
+  std::vector<int4> outputs[2] = {
+      std::vector<int4>(blocks + 2, sentinel), std::vector<int4>(blocks + 2, sentinel)};
+  for (int party = 0; party < 2; ++party) {
+    calls = 0;
+    parallel = false;
+    scheme.EvalRange(party, first, last, seeds[party], cws,
+        cuda::std::span<int4>(outputs[party].data() + 1, blocks + 1), depth);
+    if (depth == 0) EXPECT_FALSE(parallel.load());
+#ifdef _OPENMP
+    if (depth > 0 && blocks > 1 && omp_get_max_threads() > 1) EXPECT_TRUE(parallel.load());
+#endif
+    const size_t source_blocks = static_cast<size_t>(last / Scheme::kLanes - first / Scheme::kLanes) + 1;
+    if (depth == 0 && source_blocks > 1) EXPECT_LT(calls.load(), source_blocks * (Scheme::kDepth + 1));
+    EXPECT_TRUE(EqualInt4(outputs[party].front(), sentinel));
+    EXPECT_TRUE(EqualInt4(outputs[party].back(), sentinel));
+    for (size_t j = 0; j < count; ++j) {
+      const In x = static_cast<In>(first + j);
+      const uint64_t expected = Scheme::Extract(scheme.Eval(party, seeds[party], cws, x), x);
+      EXPECT_EQ(Scheme::Extract(outputs[party][1 + j / Scheme::kLanes], static_cast<In>(j)), expected);
+    }
+    for (size_t j = count; j < blocks * Scheme::kLanes; ++j) {
+      EXPECT_EQ(Scheme::Extract(outputs[party][1 + j / Scheme::kLanes], static_cast<In>(j)), 0);
+    }
+  }
+  for (size_t j = 0; j < count; ++j) {
+    const int4 reconstructed = fss::util::Xor(
+        outputs[0][1 + j / Scheme::kLanes], outputs[1][1 + j / Scheme::kLanes]);
+    EXPECT_EQ(Scheme::Extract(reconstructed, static_cast<In>(j)), first + j == alpha ? beta : 0);
+  }
+}
+
+template <int width>
+void CheckPackedRangeBoundaries() {
+  using In = uint16_t;
+  constexpr In lanes = 128 / width;
+  for (int depth : {0, 3, 1000}) {
+    for (In first : {In{0}, In{1}, static_cast<In>(lanes - 1), lanes,
+             static_cast<In>(lanes + 1), In{255}, In{65535}}) {
+      for (In length : {In{1}, In{2}, static_cast<In>(lanes - 1), lanes,
+               static_cast<In>(lanes + 1), static_cast<In>(2 * lanes + 1)}) {
+        if (static_cast<unsigned>(first) + length > 65536) continue;
+        const In last = static_cast<In>(first + length - 1);
+        CheckPackedRange<16, width>(first, last, static_cast<In>(first + length / 2), depth);
+        CheckPackedRange<16, width>(first, last, static_cast<In>(last ^ 32768), depth);
+      }
+    }
+  }
+}
+
+TEST(PackedHalfTreeRange, EverySmallClosedInterval) {
+  for (uint8_t first = 0; first < 32; ++first) {
+    for (uint8_t last = first; last < 32; ++last) {
+      for (int depth : {0, 2, 1000}) {
+        CheckPackedRange<5, 8>(first, last, uint8_t{17}, depth);
+      }
+    }
+  }
+}
+
+TEST(PackedHalfTreeRange, AllWidthsAndNonalignedBoundaries) {
+  CheckPackedRangeBoundaries<1>();
+  CheckPackedRangeBoundaries<2>();
+  CheckPackedRangeBoundaries<4>();
+  CheckPackedRangeBoundaries<8>();
+  CheckPackedRangeBoundaries<16>();
+  CheckPackedRangeBoundaries<32>();
+  CheckPackedRangeBoundaries<64>();
+}
+
+TEST(PackedHalfTreeRange, WideCoordinatesAndLastInput) {
+  using In = __uint128_t;
+  const In high = (In{1} << 100) + 3;
+  const In last = ~In{0};
+  for (int depth : {0, 3, 1000}) {
+    CheckPackedRange<65, 1>((In{1} << 64) - 3, (In{1} << 64) + 5, In{1} << 64, depth);
+    CheckPackedRange<128, 1>(high, high + 130, high + 5, depth);
+    CheckPackedRange<128, 8>(last - 18, last, last, depth);
+    CheckPackedRange<128, 64>(last - 12, last, last, depth);
+    CheckPackedRange<128, 1>(last, last, last, depth);
+  }
+}
+
+#ifndef NDEBUG
+TEST(PackedHalfTreeRange, RejectsInvalidPreconditions) {
+  using Scheme = fss::PackedHalfTreeDpf<8, 8, fss_test::TestCcrHash, uint16_t>;
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  Scheme::Cw cws[Scheme::kDepth + 1]{};
+  int4 seed{};
+  int4 outputs[1]{};
+  auto ys = cuda::std::span<int4>(outputs, 1);
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws, ys, -1), "par_depth");
+  EXPECT_DEATH(scheme.EvalRange(false, 2, 1, seed, cws, ys), "first");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 256, seed, cws, ys), "last");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 16, seed, cws, ys), "ys.size");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, nullptr, ys), "cws");
+  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws,
+      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1})), "ys.data");
+  using Wide = fss::PackedHalfTreeDpf<128, 1, fss_test::TestCcrHash, __uint128_t>;
+  Wide wide{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  Wide::Cw wide_cws[Wide::kDepth + 1]{};
+  EXPECT_DEATH(wide.EvalRange(false, 0, ~__uint128_t{0}, seed, wide_cws, ys), "block_distance");
+}
+#endif  // NDEBUG
 }  // namespace

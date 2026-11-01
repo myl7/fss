@@ -76,7 +76,7 @@ class GrottoDcf;
  *
  * Gen() and scalar Eval() are callable from host and device when the backend supports
  * the execution space and all accessed storage is accessible there.
- * EvalAll() is a host operation. EvalAllGpu() and EvalAllGpuBatch() are host
+ * EvalRange() and EvalAll() are host operations. EvalAllGpu() and EvalAllGpuBatch() are host
  * launch methods compiled with a CUDA compiler; they do not run on the device.
  */
 template <int in_bits, typename Group, typename Prg, typename In = uint>
@@ -139,6 +139,27 @@ public:
    * @pre x is in [0, 2^in_bits).
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
+
+  /**
+   * Evaluate the closed input interval [first, last] on the host.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input in the interval.
+   * @param last Last input in the interval, included in the output.
+   * @param s0 This party's seed from generation.
+   * @param cws Shared corrections returned by Gen(), containing in_bits+1 words.
+   * @param ys Output storage with at least last-first+1 elements.
+   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @pre first <= last and both endpoints are in [0, 2^in_bits).
+   * @pre The interval's output element count and byte size fit size_t.
+   * The full input domain does not need to fit size_t.
+   * @pre cws and ys.data() are nonnull and refer to accessible host storage.
+   * @post ys[x-first] contains this party's output share for each x in the interval.
+   * Any extra elements of ys remain unchanged.
+   */
+  void EvalRange(bool b, In first, In last, int4 s0, const Cw cws[],
+      cuda::std::span<int4> ys, int par_depth = 0);
 
   /**
    * Evaluate the full domain on the host using caller-owned storage.
@@ -254,6 +275,9 @@ private:
   // visit(t, x_bit) sees the control bit of every expanded node and the branch x takes from it.
   template <typename Visit>
   __host__ __device__ int4 Walk(bool b, int4 s0, const Cw cws[], In x, Visit &&visit);
+
+  // Closed node bounds avoid representing an unaddressable full-domain end.
+  void EvalRangeSerial(bool b, In first, In last, int4 s0, const Cw cws[], int4 ys[]);
 
   // GCC 12.4.0 can discard these writes before the OpenMP walk after IPA
   // effect analysis. Keep this boundary opaque on GCC 12 releases before 12.5.
@@ -529,6 +553,70 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(bool b, int4 
   int4 state = Walk(b, s0, cws, x, [](bool, bool) {});
   assert((cws[in_bits].s.w & 1) == 0);
   return ConvertLeaf(b, state, cws[in_bits].s);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+inline void Dpf<in_bits, Group, Prg, In>::EvalRange(bool b, In first, In last,
+    int4 s0, const Cw cws[], cuda::std::span<int4> ys, int par_depth) {
+  assert(par_depth >= 0);
+  assert(first <= last);
+  if constexpr (in_bits < sizeof(In) * 8) assert((last >> in_bits) == 0);
+  const __uint128_t difference = static_cast<__uint128_t>(last) - first;
+  assert(difference < std::numeric_limits<size_t>::max() / sizeof(int4));
+  const size_t count = static_cast<size_t>(difference) + 1;
+  assert(ys.size() >= count && cws != nullptr && ys.data() != nullptr);
+  assert((cws[in_bits].s.w & 1) == 0);
+  const size_t partitions = detail::ResolveParPartitions(par_depth, count);
+  detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
+    const size_t remainder = count % partitions;
+    const size_t begin = partition * (count / partitions) +
+        (partition < remainder ? partition : remainder);
+    const size_t length = count / partitions + (partition < remainder);
+    const In partition_first = first + static_cast<In>(begin);
+    const In partition_last = partition_first + static_cast<In>(length - 1);
+    EvalRangeSerial(b, partition_first, partition_last, s0, cws, ys.data() + begin);
+  });
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+inline void Dpf<in_bits, Group, Prg, In>::EvalRangeSerial(bool b, In first, In last,
+    int4 s0, const Cw cws[], int4 ys[]) {
+  constexpr In domain_last = [] {
+    if constexpr (in_bits == sizeof(In) * 8) return static_cast<In>(~In{0});
+    else return static_cast<In>((In{1} << in_bits) - 1);
+  }();
+  struct Frame {
+    int4 state;
+    In low;
+    In high;
+    int level;
+  };
+  cuda::std::array<Frame, in_bits + 1> stack;
+  size_t pending = 1;
+  stack[0] = {util::SetLsb(s0, b), In{0}, domain_last, 0};
+  while (pending != 0) {
+    const Frame node = stack[--pending];
+    if (node.level == in_bits) {
+      ys[static_cast<size_t>(node.low - first)] = ConvertLeaf(b, node.state, cws[in_bits].s);
+      continue;
+    }
+    const In middle = node.low + ((node.high - node.low) >> 1);
+    int4 left;
+    int4 right;
+    ExpandNode(prg_, node.state, cws[node.level].s, cws[node.level].tr, left, right);
+    if (last > middle) {
+      assert(pending < stack.size());
+      stack[pending++] = {right, static_cast<In>(middle + 1), node.high, node.level + 1};
+    }
+    if (first <= middle) {
+      assert(pending < stack.size());
+      stack[pending++] = {left, node.low, middle, node.level + 1};
+    }
+  }
 }
 
 template <int in_bits, typename Group, typename Prg, typename In>

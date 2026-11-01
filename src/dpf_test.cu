@@ -12,6 +12,8 @@
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
 #include "core_api_test_helpers.cuh"
+#include <atomic>
+#include <thread>
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -527,4 +529,155 @@ TEST(DpfSmallDomainTest, EvalAllChaChaBelowBatchDepth) {
     int4 expected_buf = x == kAlpha5 ? BytesGroup::From(b_buf).Into() : zero;
     EXPECT_EQ(memcmp(&result_buf, &expected_buf, sizeof(int4)), 0) << "Reconstruction mismatch at x=" << x;
   }
+}
+
+
+namespace {
+
+template <int bits, typename Group, typename Prg, typename In>
+void CheckDpfRange(Prg prg, In first, In last, In alpha, int par_depth) {
+  using Scheme = fss::Dpf<bits, Group, Prg, In>;
+  Scheme scheme(prg);
+  typename Scheme::Cw corrections[bits + 1];
+  const int4 seeds[2] = {{0x12345678, 0x1234abcd, 0x13579bdf, 0x2468ace0},
+      {0x7abc1234, 0x01bc3456, 0x4567abcd, 0x76892344}};
+  const int4 beta = Group::From(make_int4(0x5abc0123, 0x44556677, 0x12345678, 0x6abc1234)).Into();
+  scheme.Gen(corrections, seeds, alpha, beta);
+  const size_t count = static_cast<size_t>(static_cast<__uint128_t>(last) - first) + 1;
+  const int4 sentinel = make_int4(0x9876, 0x1234, 0x5678, 0xabcd);
+  std::vector<int4> outputs[2] = {
+      std::vector<int4>(count + 3, sentinel), std::vector<int4>(count + 3, sentinel)};
+  for (int party = 0; party < 2; ++party) {
+    scheme.EvalRange(party, first, last, seeds[party], corrections,
+        cuda::std::span<int4>(outputs[party].data() + 1, count + 2), par_depth);
+    EXPECT_EQ(memcmp(&outputs[party][0], &sentinel, sizeof(int4)), 0);
+    EXPECT_EQ(memcmp(&outputs[party][count + 1], &sentinel, sizeof(int4)), 0);
+    EXPECT_EQ(memcmp(&outputs[party][count + 2], &sentinel, sizeof(int4)), 0);
+    for (size_t offset = 0; offset < count; ++offset) {
+      const In point = first + static_cast<In>(offset);
+      const int4 scalar = scheme.Eval(party, seeds[party], corrections, point);
+      EXPECT_EQ(memcmp(&outputs[party][offset + 1], &scalar, sizeof(int4)), 0)
+          << "party=" << party << " offset=" << offset << " par_depth=" << par_depth;
+    }
+  }
+  for (size_t offset = 0; offset < count; ++offset) {
+    const In point = first + static_cast<In>(offset);
+    const int4 actual = (Group::From(outputs[0][offset + 1]) + Group::From(outputs[1][offset + 1])).Into();
+    const int4 expected = point == alpha ? beta : Group().Into();
+    EXPECT_EQ(memcmp(&actual, &expected, sizeof(int4)), 0) << "offset=" << offset;
+  }
+}
+
+template <typename Group, typename Prg>
+void CheckDpfRangeSuite(Prg prg) {
+  for (unsigned first = 0; first < 32; ++first) {
+    for (unsigned last = first; last < 32; ++last) {
+      CheckDpfRange<5, Group>(prg, static_cast<uint8_t>(first),
+          static_cast<uint8_t>(last), uint8_t{11}, 0);
+    }
+  }
+  using Wide = __uint128_t;
+  const Wide boundary = Wide{1} << 64;
+  const Wide high = (Wide{1} << 100) + 3;
+  const Wide maximum = ~Wide{0};
+  for (int depth : {0, 1, 3, 100}) {
+    CheckDpfRange<8, Group>(prg, uint16_t{64}, uint16_t{127}, uint16_t{96}, depth);
+    CheckDpfRange<8, Group>(prg, uint16_t{243}, uint16_t{255}, uint16_t{242}, depth);
+    CheckDpfRange<65, Group>(prg, boundary - 6, boundary + 6, boundary, depth);
+    CheckDpfRange<128, Group>(prg, high, high + 12, high + 6, depth);
+    CheckDpfRange<128, Group>(prg, maximum - 12, maximum, maximum, depth);
+    CheckDpfRange<128, Group>(prg, maximum, maximum, maximum, depth);
+  }
+}
+
+struct DpfRangeCalls {
+  std::atomic<int> inside{0};
+  std::atomic<int> maximum{0};
+  std::atomic<bool> other_thread{false};
+  std::atomic<bool> active_team{false};
+  const std::thread::id caller = std::this_thread::get_id();
+};
+
+template <typename Prg>
+struct DpfRangeObservedPrg {
+  Prg prg;
+  DpfRangeCalls *calls;
+
+  __host__ __device__ cuda::std::array<int4, 2> Gen(int4 seed) {
+#ifndef __CUDA_ARCH__
+    if (std::this_thread::get_id() != calls->caller) calls->other_thread = true;
+#ifdef _OPENMP
+    if (omp_in_parallel()) calls->active_team = true;
+#endif
+    const int current = calls->inside.fetch_add(1) + 1;
+    int previous = calls->maximum.load();
+    while (current > previous && !calls->maximum.compare_exchange_weak(previous, current)) {}
+#endif
+    auto result = prg.Gen(seed);
+#ifndef __CUDA_ARCH__
+    --calls->inside;
+#endif
+    return result;
+  }
+};
+
+}  // namespace
+
+TEST(DpfRangeTest, ChaChaBytesScalarAndPointOracles) {
+  CheckDpfRangeSuite<BytesGroup>(fss::prg::ChaCha<2>(kNonce0, kNonce1));
+}
+
+TEST(DpfRangeTest, ChaChaUint127ScalarAndPointOracles) {
+  CheckDpfRangeSuite<Uint127Group>(fss::prg::ChaCha<2>(kNonce0, kNonce1));
+}
+
+TEST(DpfRangeTest, AesSoftScalarAndPointOracles) {
+  uint32_t table[256];
+  uint8_t sbox[256];
+  uint8_t keys[2][16];
+  for (int key = 0; key < 2; ++key) {
+    for (int byte = 0; byte < 16; ++byte) keys[key][byte] = static_cast<uint8_t>(key * 29 + byte * 7);
+  }
+  fss::prg::aes_detail::InitTe0(table);
+  fss::prg::aes_detail::InitSbox(sbox);
+  fss::prg::Aes128Soft<2> prg(keys, table, sbox);
+  CheckDpfRangeSuite<BytesGroup>(prg);
+  CheckDpfRangeSuite<Uint127Group>(prg);
+}
+
+TEST(DpfRangeTest, ZeroDepthConfinesUnsafeAesBackendToCaller) {
+  using Prg = fss::prg::Aes128Mmo<2>;
+  const unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8};
+  const unsigned char key1[16] = {8, 7, 6, 5, 4, 3, 2, 1};
+  const unsigned char *keys[2] = {key0, key1};
+  auto contexts = Prg::CreateCtxs(keys);
+  DpfRangeCalls calls;
+  DpfRangeObservedPrg observed{Prg(contexts), &calls};
+  CheckDpfRange<5, BytesGroup>(observed, uint8_t{3}, uint8_t{29}, uint8_t{11}, 0);
+  const __uint128_t maximum = ~__uint128_t{0};
+  CheckDpfRange<128, Uint127Group>(observed, maximum - 12, maximum, maximum, 0);
+  EXPECT_EQ(calls.inside.load(), 0);
+  EXPECT_EQ(calls.maximum.load(), 1);
+  EXPECT_FALSE(calls.other_thread.load());
+  EXPECT_FALSE(calls.active_team.load());
+  Prg::FreeCtxs(contexts);
+}
+
+TEST(DpfRangeTest, PositiveDepthUsesConcurrentSafeBackend) {
+  DpfRangeCalls calls;
+  DpfRangeObservedPrg observed{fss::prg::ChaCha<2>(kNonce0, kNonce1), &calls};
+#ifdef _OPENMP
+  const int old_dynamic = omp_get_dynamic();
+  const int old_threads = omp_get_max_threads();
+  omp_set_dynamic(0);
+  omp_set_num_threads(2);
+#endif
+  CheckDpfRange<8, BytesGroup>(observed, uint16_t{3}, uint16_t{244}, uint16_t{111}, 3);
+  EXPECT_EQ(calls.inside.load(), 0);
+#ifdef _OPENMP
+  EXPECT_TRUE(calls.other_thread.load());
+  EXPECT_TRUE(calls.active_team.load());
+  omp_set_num_threads(old_threads);
+  omp_set_dynamic(old_dynamic);
+#endif
 }
