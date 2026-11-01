@@ -20,6 +20,15 @@ class PackedHalfTreeDpf(_Scheme):
         super().__init__("packed_half_tree_dpf", in_bits=in_bits, out_bits=out_bits,
                          hash=hash, instance_seed=instance_seed, in_type=in_type)
 
+    @classmethod
+    def precompile(cls, in_bits: int, out_bits: int, hash, *, in_type=None,
+                   frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Prepare the compiled configuration without creating native state."""
+        cls._precompile_config("packed_half_tree_dpf", in_bits=in_bits, out_bits=out_bits, hash=hash,
+                               in_type=in_type,
+                               frontier_depth=frontier_depth,
+                               threads_per_block=threads_per_block)
+
     @property
     def kDepth(self) -> int:
         """Number of tree levels expanded before packed output lanes."""

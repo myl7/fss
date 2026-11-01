@@ -257,6 +257,38 @@ y1 = dpf.eval(b=True, s0=s0s[1], cws=cws, x=42)
 assert torch.equal(torch.bitwise_xor(y0, y1), b_buf)
 ```
 
+Prepare compiled plugins before ordinary construction with the same constructor configuration, excluding runtime `instance_seed`:
+
+```python
+from fss_crypto import Dpf, HalfTreeDpf, group, hash, jit, prg
+
+with jit.cache(write_root="./build/fss-plugins"):
+    output_group = group.Bytes()
+    chacha = prg.ChaCha(nonce=(0, 0), mul=2)
+    Dpf.precompile(8, output_group, chacha)
+    Dpf.precompile(8, output_group, chacha, threads_per_block=128)
+    ccr = hash.Aes128Ccr(prg.Aes128Soft(mul=1, keys=(bytes(16),)))
+    HalfTreeDpf.precompile(8, output_group, ccr)
+    ccr.precompile()
+
+with jit.cache(read_roots=("./build/fss-plugins",), write_root=None):
+    dpf = Dpf(8, group.Bytes(), prg.ChaCha(nonce=(19, 27), mul=2))
+```
+
+Preparation reads backend template specifications without constructing native owners, tensors or device state, and does not serialize runtime keys or nonces.
+It includes nested primitive dependencies and the default scheme launch specialization, plus any requested launch specialization.
+With a write root, successful preparation guarantees reusable disk entries for the complete closure in that root, including when modules were already in memory.
+With `write_root=None`, every prepared entry must be available from the read roots.
+Loading still checks the current compiler, Python, PyTorch, flags and headers, so these plugins require the same toolchain.
+
+Outside a scope, compiled plugins use `~/.cache/fss_crypto`.
+Within a scope, lookups search `read_roots` in order, followed by `write_root` when present.
+Read roots receive no files or locks and must not overlap the write root.
+Read-only ordinary execution may reuse compatible modules already in memory, while a missing plugin raises an error without compiling.
+Paths resolve on scope entry, nested scopes restore the preceding locations, and a new thread must establish its own scope.
+A scheme retains the locations selected during construction for later launch specializations.
+Ordinary constructors continue to load their default modules eagerly.
+
 Run the complete Python examples after installation:
 
 ```bash

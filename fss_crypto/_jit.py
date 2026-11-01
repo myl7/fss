@@ -1,6 +1,7 @@
 """JIT compilation manager for FSS C++ extensions."""
 
 import hashlib
+import builtins
 import importlib.util
 import json
 import os
@@ -13,11 +14,16 @@ import sys
 import sysconfig
 import threading
 import warnings
+import tempfile
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 import torch
-from torch.utils.cpp_extension import load as _cpp_load
+from filelock import FileLock
+
+from .jit import _Locations, _current_locations
+from ._jit_worker import _torch_identity
 
 # Check for CUDA toolkit at import time.
 try:
@@ -37,9 +43,11 @@ except (ImportError, OSError, RuntimeError):
     )
 
 _EXT_CACHE: dict[str, object] = {}
+_ARTIFACT_PATHS: dict[str, Path] = {}
+_KEY_LOCKS: dict[str, threading.RLock] = {}
+_KEY_LOCKS_LOCK = threading.Lock()
 
-# Serializes the temporary TORCH_CUDA_ARCH_LIST export below across threads
-# that build different extensions in one process.
+# Keeps worker environment snapshots synchronized across local builds.
 _BUILD_ENV_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
@@ -84,8 +92,8 @@ def _source_tree_hash(include_dir: str, csrc_dir: str) -> str:
 # identity must record the effective architectures even when the caller
 # leaves the environment unset. Torch releases before 2.7 still resolve
 # their own arch list inside load() from the environment or the visible
-# devices and never inspect extra_cuda_cflags for arch flags, so load()
-# additionally exports the resolved value around the build call only.
+# devices and never inspect extra_cuda_cflags for arch flags. The isolated
+# worker supplies the resolved value without changing the parent environment.
 _NAMED_ARCHES = {
     "Kepler+Tesla": "3.7", "Kepler": "3.5+PTX", "Maxwell+Tegra": "5.3",
     "Maxwell": "5.0;5.2+PTX", "Pascal": "6.0;6.1+PTX", "Volta+Tegra": "7.2",
@@ -200,10 +208,7 @@ def _build_manifest(source: str, include_dir: str, csrc_dir: str,
         "headers": _source_tree_hash(include_dir, csrc_dir),
         "python": {"version": sys.version, "soabi": sysconfig.get_config_var("SOABI"),
                    "platform": platform.platform(), "executable": sys.executable},
-        "torch": {"version": str(torch.__version__), "cuda": torch.version.cuda,
-                  "cxx11_abi": getattr(torch._C, "_GLIBCXX_USE_CXX11_ABI", None),
-                  "pybind_abi": [getattr(torch._C, name, None) for name in
-                                 ("_PYBIND11_COMPILER_TYPE", "_PYBIND11_STDLIB", "_PYBIND11_BUILD_ABI")]},
+        "torch": _torch_identity(),
         "compilers": {"cxx": _compiler_identity(os.environ.get("CXX", "c++")),
                       "nvcc": _compiler_identity(nvcc),
                       "cc": _compiler_identity(os.environ.get("CC", "cc"))},
@@ -324,7 +329,7 @@ def _generate_primitive_source(spec: dict) -> str:
     return "\n".join(lines)
 
 
-def load(scheme: str, in_bits: int, *, group=None, prg=None, pred: str = "lt", out_bits: int | None = None,
+def _scheme_request(scheme: str, in_bits: int, *, group=None, prg=None, pred: str = "lt", out_bits: int | None = None,
          max_points: int | None = None, bucket_bits: int | None = None, xor_hash=None, hash=None,
          prp=None, in_type: str | None = None,
          ch_lambda: int = 80, frontier_depth: int = 16,
@@ -347,7 +352,7 @@ def load(scheme: str, in_bits: int, *, group=None, prg=None, pred: str = "lt", o
         raise ValueError("in_bits must exceed log2(128 / out_bits)")
     if scheme == "half_tree_grotto_dcf" and in_bits <= 7:
         raise ValueError("HalfTreeGrottoDcf requires in_bits > 7")
-    return _load_generated(scheme, _generate_source(scheme, in_bits, knobs), knobs)
+    return scheme, _generate_source(scheme, in_bits, knobs), knobs
 
 
 def _check_scheme_config(scheme: str, knobs: dict) -> None:
@@ -398,77 +403,283 @@ def _check_gpu_launch(frontier_depth, threads_per_block):
         raise ValueError("threads_per_block must be a power of two in [1, 1024]")
 
 
-def load_primitive(config) -> object:
+def load_primitive(config, *, _locations=None) -> object:
     """Compile the selected public Group, PRG, Hash or PRP implementation."""
     spec = _normalize_backend(config)
     if spec is None:
         raise ValueError("primitive configuration is required")
     knobs = {"primitive": spec}
-    return _load_generated("primitive", _generate_primitive_source(spec), knobs)
+    return _load_generated("primitive", _generate_primitive_source(spec), knobs, locations=_locations)
 
 
-def _load_generated(label: str, source: str, knobs: dict) -> object:
+@dataclass(frozen=True)
+class _Prepared:
+    label: str
+    raw_source: str
+    source: str
+    knobs: dict
+    key: str
+    native_abi: str
+    manifest_text: str
+    options: tuple[list[str], list[str], list[str]]
+    include_dir: str
+    csrc_dir: str
+
+
+def _prepare_generated(label: str, source: str, knobs: dict) -> _Prepared:
     include_dir = _find_include_dir()
     csrc_dir = str(_CSRC_DIR)
     options = _build_options(knobs)
     manifest = _build_manifest(source, include_dir, csrc_dir, options)
-    # Per-module OpenMP, AES instruction and link flags do not change the bridge layout.
-    # New user-supplied ABI-affecting options must be included in this identity.
     native_identity = {name: manifest[name] for name in
                        ("headers", "python", "torch", "compilers", "environment")}
     native_identity["bridge_schema"] = 1
     native_abi = hashlib.sha256(json.dumps(native_identity, sort_keys=True).encode()).hexdigest()[:20]
+    raw_source = source
     source = f"#define FSS_NATIVE_ABI abi_{native_abi}\n" + source
     manifest["source"] = source
     manifest["native_abi"] = native_abi
     manifest_text = json.dumps(manifest, sort_keys=True, indent=2)
     fingerprint = hashlib.sha256(manifest_text.encode()).hexdigest()[:20]
-    key = f"fss_{label}_{fingerprint}"
-    if key in _EXT_CACHE:
-        return _EXT_CACHE[key]
+    return _Prepared(label, raw_source, source, knobs, f"fss_{label}_{fingerprint}",
+                     native_abi, manifest_text, options, include_dir, csrc_dir)
 
-    build_dir = Path.home() / ".cache" / "fss_crypto" / key
-    build_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = build_dir / "build_inputs.json"
-    so_path = build_dir / f"{key}.so"
-    if so_path.exists() and manifest_path.exists() and manifest_path.read_text() == manifest_text:
-        try:
-            ext = _import_built(key, str(so_path))
-            _EXT_CACHE[key] = ext
-            return ext
-        except (ImportError, OSError):
-            pass
 
-    src_path = build_dir / f"{key}.cu"
-    if not src_path.exists() or src_path.read_text() != source:
-        src_path.write_text(source)
-    cflags, cuda_flags, ldflags = options
-    # Torch releases before 2.7 crash in their own arch resolution when
-    # TORCH_CUDA_ARCH_LIST is unset and no device is visible, regardless of
-    # the arch flags passed above. Export the resolved list for the duration
-    # of the build call and restore the caller's environment afterwards.
-    arch_env = ";".join(_resolved_arches())
+def _assert_native_abi(expected: str) -> None:
+    spec = {"kind": "bytes"}
+    current = _prepare_generated("primitive", _generate_primitive_source(spec), {"primitive": spec})
+    if current.native_abi != expected:
+        raise RuntimeError("native ABI changed during construction; create a new scheme")
+
+
+def _revalidate(prepared: _Prepared) -> None:
+    current = _prepare_generated(prepared.label, prepared.raw_source, prepared.knobs)
+    if current.manifest_text != prepared.manifest_text:
+        raise RuntimeError("jit build inputs changed during preparation; retry the operation")
+
+
+def _primitive_dependencies(config):
+    """Share recursive dependency ordering with native owner construction."""
+    spec = _normalize_backend(config)
+    if spec is None:
+        raise ValueError("primitive configuration is required")
+    if spec["kind"] == "aes128_ccr":
+        yield config["aes_mmo"] if isinstance(config, dict) else config.aes_mmo
+
+
+def _primitive_requests(config):
+    for dependency in _primitive_dependencies(config):
+        yield from _primitive_requests(dependency)
+    spec = _normalize_backend(config)
+    if spec is None:
+        raise ValueError("primitive configuration is required")
+    yield "primitive", _generate_primitive_source(spec), {"primitive": spec}
+
+
+def load(scheme: str, in_bits: int, *, _locations=None, **kwargs) -> object:
+    """Load the selected scheme specialization using full build identity."""
+    return _load_generated(*_scheme_request(scheme, in_bits, **kwargs), locations=_locations)
+
+
+def _precompile_requests(requests) -> None:
+    locations = _current_locations()
+    prepared = list({item.key: item for item in
+                     (_prepare_generated(*request) for request in requests)}.values())
+    if len({item.native_abi for item in prepared}) != 1:
+        raise RuntimeError("native ABI changed during preparation; retry the operation")
+    for item in prepared:
+        _load_prepared(item, locations, materialize=True)
+    for item in prepared:
+        _revalidate(item)
+
+
+def precompile(scheme: str, in_bits: int, **kwargs) -> None:
+    """Prepare the material-free dependency closure and selected launches."""
+    selected = _scheme_request(scheme, in_bits, **kwargs)
+    requests = []
+    for role in ("group", "prg", "xor_hash", "hash", "prp"):
+        config = selected[2][role]
+        if config is not None:
+            requests.extend(_primitive_requests(config))
+    default_kwargs = dict(kwargs, frontier_depth=16, threads_per_block=256)
+    requests.append(_scheme_request(scheme, in_bits, **default_kwargs))
+    requests.append(selected)
+    _precompile_requests(requests)
+
+
+def precompile_primitive(config) -> None:
+    """Prepare a primitive and every separately loaded dependency."""
+    _precompile_requests(list(_primitive_requests(config)))
+
+
+def _load_generated(label: str, source: str, knobs: dict, *, locations=None) -> object:
+    return _load_prepared(_prepare_generated(label, source, knobs), locations)
+
+
+def _matching_artifact(root: Path, prepared: _Prepared) -> Path | None:
+    directory = root / prepared.key
+    try:
+        if not (directory / f"{prepared.key}.so").stat().st_size:
+            return None
+        if (directory / "build_inputs.json").read_text() != prepared.manifest_text:
+            return None
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError, UnicodeError):
+        return None
+    return directory
+
+
+def _remember(prepared: _Prepared, module, directory: Path):
+    module._fss_native_abi = prepared.native_abi
+    _ARTIFACT_PATHS[prepared.key] = directory
+    _EXT_CACHE[prepared.key] = module
+    return module
+
+
+def _import_artifact(prepared: _Prepared, directory: Path):
+    return _import_built(prepared.key, str(directory / f"{prepared.key}.so"))
+
+
+def _validate_artifact(prepared: _Prepared, directory: Path) -> None:
+    # CPython can reuse a loaded extension after its on-disk file was replaced.
+    # Only a fresh process establishes that explicit preparation remains reusable.
     with _BUILD_ENV_LOCK:
-        saved_arch_env = os.environ.get("TORCH_CUDA_ARCH_LIST")
-        if saved_arch_env is None:
-            os.environ["TORCH_CUDA_ARCH_LIST"] = arch_env
+        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(_PACKAGE_DIR / "_jit_worker.py"), "--validate",
+             prepared.key, str(directory / f"{prepared.key}.so"),
+             json.dumps(json.loads(prepared.manifest_text)["torch"])], env=environment,
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except OSError as error:
+        raise RuntimeError(f"cannot start artifact validation worker for {prepared.key}") from error
+    prefix = "FSS_ARTIFACT_VALIDATION="
+    try:
+        status = json.loads(result.stdout.rsplit(prefix, 1)[1])
+    except (IndexError, ValueError) as error:
+        raise RuntimeError(f"artifact validation worker failed for {prepared.key}:\n{result.stdout}") from error
+    kind = status.get("kind")
+    if kind not in ("ok", "miss", "error") or result.returncode != (0 if kind == "ok" else 1):
+        raise RuntimeError(f"artifact validation worker failed for {prepared.key}:\n{result.stdout}")
+    if kind == "ok":
+        return
+    message = f"artifact validation failed for {prepared.key}:\n{result.stdout}"
+    if status["kind"] == "miss":
+        raise ImportError(message)
+    error_type = getattr(builtins, status.get("type", ""), None)
+    error = RuntimeError(message)
+    if status.get("module") == "builtins" and isinstance(error_type, type) and issubclass(error_type, Exception):
         try:
-            ext = _cpp_load(
-                name=key,
-                sources=[str(src_path)],
-                extra_include_paths=[include_dir, csrc_dir],
-                extra_cflags=cflags,
-                extra_cuda_cflags=cuda_flags,
-                extra_ldflags=ldflags or None,
-                build_directory=str(build_dir),
-            )
-        finally:
-            if saved_arch_env is None:
-                os.environ.pop("TORCH_CUDA_ARCH_LIST", None)
-    # Publish the manifest only after a successful build. PyTorch retains its
-    # build lock and performs source dependency checks on the compile path.
-    temporary = manifest_path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
-    temporary.write_text(manifest_text)
-    temporary.replace(manifest_path)
-    _EXT_CACHE[key] = ext
-    return ext
+            error = error_type(*status["args"])
+        except TypeError:
+            pass
+    raise error from RuntimeError(message)
+
+
+def _build_worker(prepared: _Prepared, staging: Path) -> None:
+    source = staging / f"{prepared.key}.cu"
+    source.write_text(prepared.source)
+    cflags, cuda_flags, ldflags = prepared.options
+    request = {"name": prepared.key, "sources": [str(source)],
+               "extra_include_paths": [prepared.include_dir, prepared.csrc_dir],
+               "extra_cflags": cflags, "extra_cuda_cflags": cuda_flags,
+               "extra_ldflags": ldflags or None, "build_directory": str(staging),
+               "arch_list": ";".join(_resolved_arches()),
+               "torch_identity": json.loads(prepared.manifest_text)["torch"]}
+    request_path = staging / "build_request.json"
+    request_path.write_text(json.dumps(request))
+    # Capture environment consistently with other FSS builds in this process.
+    with _BUILD_ENV_LOCK:
+        environment = os.environ.copy()
+    result = subprocess.run([sys.executable, str(_PACKAGE_DIR / "_jit_worker.py"),
+                             str(request_path)], env=environment, text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    (staging / "build.log").write_text(result.stdout)
+    if result.returncode:
+        raise RuntimeError(f"jit build failed for {prepared.key}:\n{result.stdout}")
+
+
+def _publish(prepared: _Prepared, locations: _Locations, source: Path | None):
+    root = locations.write_root
+    root.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{prepared.key}.", dir=root))
+    try:
+        if source is None:
+            _revalidate(prepared)
+            _build_worker(prepared, staging)
+        else:
+            shutil.copyfile(source / f"{prepared.key}.so", staging / f"{prepared.key}.so")
+        _revalidate(prepared)
+        module = _import_artifact(prepared, staging)
+        (staging / "build_inputs.json").write_text(prepared.manifest_text)
+        destination = root / prepared.key
+        # Compilers run in separate staging directories. Only publication is locked.
+        with FileLock(str(root / f".{prepared.key}.publish.lock")):
+            existing = _matching_artifact(root, prepared)
+            if existing is not None:
+                try:
+                    _validate_artifact(prepared, existing)
+                except (ImportError, OSError):
+                    existing = None
+            _revalidate(prepared)
+            if existing is None:
+                if destination.exists() or destination.is_symlink():
+                    stale = root / f".{prepared.key}.stale.{os.getpid()}.{threading.get_ident()}"
+                    destination.rename(stale)
+                    try:
+                        staging.rename(destination)
+                    finally:
+                        if stale.is_dir() and not stale.is_symlink():
+                            shutil.rmtree(stale)
+                        else:
+                            stale.unlink()
+                else:
+                    staging.rename(destination)
+            module.__file__ = str(destination / f"{prepared.key}.so")
+        return _remember(prepared, module, destination)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _load_prepared(prepared: _Prepared, locations=None, *, materialize=False):
+    locations = locations or _current_locations()
+    with _KEY_LOCKS_LOCK:
+        lock = _KEY_LOCKS.setdefault(prepared.key, threading.RLock())
+    with lock:
+        _revalidate(prepared)
+        cached = _EXT_CACHE.get(prepared.key)
+        if cached is not None and not materialize:
+            return cached
+        roots = list(locations.read_roots)
+        if locations.write_root is not None:
+            roots.append(locations.write_root)
+        source = None
+        last_error = None
+        for root in roots:
+            directory = _matching_artifact(root, prepared)
+            if directory is None:
+                continue
+            try:
+                if materialize:
+                    _validate_artifact(prepared, directory)
+                module = _import_artifact(prepared, directory)
+            except (ImportError, OSError) as exc:
+                last_error = exc
+                continue
+            source = directory
+            if not materialize or locations.write_root is None or root == locations.write_root:
+                return _remember(prepared, module, directory)
+            break
+        if locations.write_root is None:
+            raise RuntimeError(f"no compatible compiled plugin for {prepared.key} in read-only cache") from last_error
+        # A warm module alone cannot satisfy explicit preparation at a new root.
+        if source is None and cached is not None:
+            origin = _ARTIFACT_PATHS.get(prepared.key)
+            if origin is not None:
+                candidate = _matching_artifact(origin.parent, prepared)
+                if candidate is not None:
+                    try:
+                        _validate_artifact(prepared, candidate)
+                        source = candidate
+                    except (ImportError, OSError):
+                        pass
+        return _publish(prepared, locations, source)

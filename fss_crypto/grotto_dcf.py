@@ -60,6 +60,14 @@ class GrottoDcf(_Scheme):
         super().__init__("grotto_dcf", in_bits=in_bits, prg=prg,
                          in_type=in_type)
 
+    @classmethod
+    def precompile(cls, in_bits: int, prg, *, in_type=None,
+                   frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Prepare the compiled configuration without creating native state."""
+        cls._precompile_config("grotto_dcf", in_bits=in_bits, prg=prg, in_type=in_type,
+                               frontier_depth=frontier_depth,
+                               threads_per_block=threads_per_block)
+
     def gen(self, cws, s0s: torch.Tensor, a: int) -> None:
         """Fill corrections with one Core ``Gen`` call, preserving ``s0s``."""
         self._native.gen(self._cws(cws), s0s, a)

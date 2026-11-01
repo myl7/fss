@@ -13,6 +13,12 @@ class DcfPred(_Enum):
     GT = "gt"
 
 
+def _predicate_value(pred):
+    if not isinstance(pred, DcfPred):
+        raise TypeError("pred must be a DcfPred")
+    return pred.value
+
+
 class Dcf(_Scheme):
     """Configure DCF with explicit backend values and a C++ predicate.
 
@@ -24,10 +30,18 @@ class Dcf(_Scheme):
 
     def __init__(self, in_bits: int, group, prg, pred: DcfPred = DcfPred.LT, *,
                  in_type=None):
-        if not isinstance(pred, DcfPred):
-            raise TypeError("pred must be a DcfPred")
         super().__init__("dcf", in_bits=in_bits, group=group, prg=prg,
-                         pred=pred.value, in_type=in_type)
+                         pred=_predicate_value(pred), in_type=in_type)
+
+    @classmethod
+    def precompile(cls, in_bits: int, group, prg, pred: DcfPred = DcfPred.LT, *,
+                   in_type=None,
+                   frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Prepare the compiled configuration without creating native state."""
+        cls._precompile_config("dcf", in_bits=in_bits, group=group, prg=prg,
+                               pred=_predicate_value(pred), in_type=in_type,
+                               frontier_depth=frontier_depth,
+                               threads_per_block=threads_per_block)
 
     def gen(self, cws, s0s: torch.Tensor, a: int, b_buf: torch.Tensor) -> None:
         """Fill caller-owned corrections once, preserving the two seeds.

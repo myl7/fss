@@ -4,21 +4,33 @@ import threading
 
 import torch
 
-from ._jit import load_primitive
+from . import _jit
 
 _NATIVE_LOCK = threading.RLock()
 
 
-def native(config):
-    """Construct one native instance and retain its resource owner."""
+def native(config, *, locations=None, expected_abi=None):
+    """Retain one binding per current ABI while old owners remain valid."""
     with _NATIVE_LOCK:
-        handle = getattr(config, "_primitive_handle", None)
-        if handle is None:
-            values = ({"aes_mmo": native(config.aes_mmo)._backend()}
-                      if config._kind == "aes128_ccr" else config._runtime())
-            handle = load_primitive(config).NativePrimitive(values)
-            object.__setattr__(config, "_primitive_handle", handle)
-        return handle
+        module = _jit.load_primitive(config, _locations=locations)
+        abi = module._fss_native_abi
+        if expected_abi is not None and abi != expected_abi:
+            raise RuntimeError("native ABI changed during construction; create a new scheme")
+        binding = getattr(config, "_primitive_binding", None)
+        if binding is None or binding[0] != abi:
+            dependencies = list(_jit._primitive_dependencies(config))
+            values = ({"aes_mmo": native(dependencies[0], locations=locations,
+                                         expected_abi=abi)._backend()}
+                      if dependencies else config._runtime())
+            handle = module.NativePrimitive(values)
+            object.__setattr__(config, "_primitive_binding", (abi, handle))
+        return config._primitive_binding[1]
+
+
+class _PrecompileOperations:
+    def precompile(self) -> None:
+        """Prepare compiled plugins without constructing runtime material."""
+        _jit.precompile_primitive(self)
 
 
 def blocks(value, shape):
@@ -31,7 +43,7 @@ def blocks(value, shape):
     return value
 
 
-class GroupOperations:
+class GroupOperations(_PrecompileOperations):
     def zero(self, *, device="cpu"):
         """Return the additive identity on the requested device."""
         prototype = torch.empty(4, dtype=torch.int32, device=device)
@@ -85,13 +97,13 @@ class Group:
         return self._create(self._group, self._native.negate())
 
 
-class PrgOperations:
+class PrgOperations(_PrecompileOperations):
     def gen(self, seed):
         """Expand one int4 seed into mul int4 blocks."""
         return native(self).gen(blocks(seed, (4,)))
 
 
-class HashOperations:
+class HashOperations(_PrecompileOperations):
     def hash(self, msg):
         """Call the C++ block, four-block, or two-block tuple overload."""
         if self._kind == "aes128_ccr":
@@ -103,7 +115,7 @@ class HashOperations:
         return native(self).hash(msg)
 
 
-class PrpOperations:
+class PrpOperations(_PrecompileOperations):
     def permu(self, seed, x: int, domain_size: int) -> int:
         """Permute x within [0, domain_size), using the explicit int4 seed."""
         return native(self).permu(blocks(seed, (4,)), x, domain_size)

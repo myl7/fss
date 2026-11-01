@@ -31,17 +31,24 @@ def mock_jit(monkeypatch, tmp_path):
     monkeypatch.setattr(_jit.torch.cuda, "device_count", lambda: 0)
     _jit._EXT_CACHE.clear()
 
-    def build(**kwargs):
-        kwargs["torch_arch_env"] = os.environ.get("TORCH_CUDA_ARCH_LIST")
-        calls["build"].append(kwargs)
-        (Path(kwargs["build_directory"]) / (kwargs["name"] + ".so")).touch()
-        return object()
+    def build(prepared, staging):
+        cflags, cuda_flags, ldflags = prepared.options
+        calls["build"].append({
+            "name": prepared.key,
+            "build_directory": str(staging.parent / prepared.key),
+            "extra_cflags": cflags,
+            "extra_cuda_cflags": cuda_flags,
+            "extra_ldflags": ldflags,
+            "torch_arch_env": ";".join(_jit._resolved_arches()),
+        })
+        (staging / (prepared.key + ".so")).write_bytes(b"native")
 
     def import_built(name, path):
         calls["import"].append((name, path))
-        return object()
+        return SimpleNamespace()
 
-    monkeypatch.setattr(_jit, "_cpp_load", build)
+    monkeypatch.setattr(_jit, "_build_worker", build)
+    monkeypatch.setattr(_jit, "_validate_artifact", lambda *args: None)
     monkeypatch.setattr(_jit, "_import_built", import_built)
     yield calls
     _jit._EXT_CACHE.clear()
@@ -55,7 +62,7 @@ def test_jit_memory_and_manifest_cache(mock_jit):
     assert manifest.is_file()
     _jit._EXT_CACHE.clear()
     _load_dpf()
-    assert len(mock_jit["import"]) == 1 and len(mock_jit["build"]) == 1
+    assert len(mock_jit["import"]) == 2 and len(mock_jit["build"]) == 1
     manifest.write_text("{}")
     _jit._EXT_CACHE.clear()
     _load_dpf()

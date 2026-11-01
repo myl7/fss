@@ -19,6 +19,17 @@ class Dmpf(_Scheme):
                          prp=prp, in_type=in_type,
                          ch_lambda=ch_lambda)
 
+    @classmethod
+    def precompile(cls, in_bits, max_points, bucket_bits, group, prg, prp, *,
+                   in_type=None, ch_lambda=80,
+                   frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Prepare the compiled configuration without creating native state."""
+        cls._precompile_config("dmpf", in_bits=in_bits, max_points=max_points,
+                               bucket_bits=bucket_bits, group=group, prg=prg,
+                               prp=prp, in_type=in_type, ch_lambda=ch_lambda,
+                               frontier_depth=frontier_depth,
+                               threads_per_block=threads_per_block)
+
     @property
     def kMinPoints(self) -> int:
         """Smallest supported point count for the configured bucket width."""

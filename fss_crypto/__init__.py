@@ -1,6 +1,6 @@
 """Thin PyTorch bindings for the public FSS C++ API."""
 
-from fss_crypto import group, hash, prg, prp, util
+from fss_crypto import group, hash, jit, prg, prp, util
 from fss_crypto.dcf import Dcf, DcfPred
 from fss_crypto.dmpf import Dmpf
 from fss_crypto.dpf import Dpf
@@ -15,5 +15,5 @@ __all__ = [
     "Dcf", "DcfPred", "Dmpf", "Dpf", "GrottoDcf", "HalfTreeDpf", "HalfTreeGrottoDcf",
     "PackedHalfTreeDpf", "Vdpf", "Vdmpf", "ParityTreeView",
     "OwnedParityTree", "PackedParityTreeView", "OwnedPackedParityTree",
-    "group", "hash", "prg", "prp", "util",
+    "group", "hash", "jit", "prg", "prp", "util",
 ]

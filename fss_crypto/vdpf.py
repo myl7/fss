@@ -16,6 +16,15 @@ class Vdpf(_Scheme):
         super().__init__("vdpf", in_bits=in_bits, group=group, prg=prg,
                          xor_hash=xor_hash, hash=hash, in_type=in_type)
 
+    @classmethod
+    def precompile(cls, in_bits, group, prg, xor_hash, hash, *, in_type=None,
+                   frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Prepare the compiled configuration without creating native state."""
+        cls._precompile_config("vdpf", in_bits=in_bits, group=group, prg=prg,
+                               xor_hash=xor_hash, hash=hash, in_type=in_type,
+                               frontier_depth=frontier_depth,
+                               threads_per_block=threads_per_block)
+
     def gen(self, cws, cs, s0s, a, b_buf):
         """Write corrections once, preserving s0s. Return 0 on success or 1.
 

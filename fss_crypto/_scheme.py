@@ -8,6 +8,10 @@ from fss_crypto._primitive import native
 
 
 class _Scheme:
+    @classmethod
+    def _precompile_config(cls, scheme: str, **config) -> None:
+        _jit.precompile(scheme, **config)
+
     def __init__(self, scheme: str, *, in_bits: int, group=None, prg=None,
                  hash=None, xor_hash=None, prp=None, instance_seed=None,
                  in_type=None, out_bits=None,
@@ -25,19 +29,24 @@ class _Scheme:
         self._load_config = dict(configurations, in_type=in_type, out_bits=out_bits,
                                  max_points=max_points, bucket_bits=bucket_bits,
                                  ch_lambda=ch_lambda, pred=pred)
-        self._ext = _jit.load(scheme, in_bits, **self._load_config)
-        backends = {name: native(value)._backend() for name, value in configurations.items()
+        self._locations = _jit._current_locations()
+        self._ext = _jit.load(scheme, in_bits, **self._load_config,
+                              _locations=self._locations)
+        self._native_abi = self._ext._fss_native_abi
+        backends = {name: native(value, locations=self._locations,
+                                 expected_abi=self._native_abi)._backend()
+                    for name, value in configurations.items()
                     if value is not None}
         self._backend_handles = backends
         self._instance_seed = instance_seed
+        _jit._assert_native_abi(self._native_abi)
         self._native = self._ext.NativeScheme(backends, instance_seed)
         self._gpu_specializations = {(16, 256): self._native}
         self._gpu_modules = {(16, 256): self._ext}
         self._scheme = scheme
         self._in_bits = in_bits
-        self._in_type = in_type or next(name for name, bits in
-            (("uint8", 8), ("uint16", 16), ("uint32", 32), ("uint64", 64), ("uint128", 128))
-            if bits >= in_bits)
+        cpp_input = _jit._input_type(in_bits, in_type)
+        self._in_type = "uint128" if cpp_input == "__uint128_t" else cpp_input.removesuffix("_t")
 
     def _execution_native(self, output, frontier_depth=16, threads_per_block=256):
         """Select launch code without reconstructing the configured backends."""
@@ -48,7 +57,10 @@ class _Scheme:
         if key not in self._gpu_specializations:
             module = _jit.load(self._scheme, self._in_bits, **self._load_config,
                                frontier_depth=frontier_depth,
-                               threads_per_block=threads_per_block)
+                               threads_per_block=threads_per_block,
+                               _locations=self._locations)
+            if module._fss_native_abi != self._native_abi:
+                raise RuntimeError("native ABI changed; create a new scheme before requesting new launch code")
             self._gpu_modules[key] = module
             self._gpu_specializations[key] = module.NativeScheme(
                 self._backend_handles, self._instance_seed)

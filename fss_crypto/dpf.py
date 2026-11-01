@@ -20,6 +20,15 @@ class Dpf(_Scheme):
         super().__init__("dpf", in_bits=in_bits, group=group, prg=prg,
                          in_type=in_type)
 
+    @classmethod
+    def precompile(cls, in_bits: int, group, prg, *, in_type=None,
+                   frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Prepare the compiled configuration without creating native state."""
+        cls._precompile_config("dpf", in_bits=in_bits, group=group, prg=prg,
+                               in_type=in_type,
+                               frontier_depth=frontier_depth,
+                               threads_per_block=threads_per_block)
+
     def gen(self, cws, s0s: torch.Tensor, a: int, b_buf: torch.Tensor) -> None:
         """Fill caller-owned corrections with one Core ``Gen`` call.
 

@@ -20,6 +20,17 @@ class Vdmpf(_Scheme):
                          xor_hash=xor_hash, hash=hash, prp=prp, in_type=in_type,
                          ch_lambda=ch_lambda)
 
+    @classmethod
+    def precompile(cls, in_bits, max_points, bucket_bits, group, prg, xor_hash, hash, prp, *,
+                   in_type=None, ch_lambda=80,
+                   threads_per_block: int = 256) -> None:
+        """Prepare the compiled configuration without creating native state."""
+        cls._precompile_config("vdmpf", in_bits=in_bits, max_points=max_points,
+                               bucket_bits=bucket_bits, group=group, prg=prg,
+                               xor_hash=xor_hash, hash=hash, prp=prp,
+                               in_type=in_type, ch_lambda=ch_lambda,
+                               threads_per_block=threads_per_block)
+
     @property
     def kMinPoints(self) -> int:
         """Smallest supported point count for the configured bucket width."""
