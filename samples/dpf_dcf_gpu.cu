@@ -11,6 +11,8 @@
 #include <fss/dcf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/prg/chacha.cuh>
+#include <openssl/rand.h>
+#include <vector>
 
 constexpr int kN = 1024;  // Number of parallel instances
 constexpr int kInBits = 8;
@@ -45,7 +47,10 @@ __global__ void DpfGenKernel(Dpf::Key *k0s, Dpf::Key *k1s, const int4 *seeds, co
   Dpf dpf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  dpf.Gen(k0s[tid], k1s[tid], cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
+  dpf.Gen(k0s[tid].cws, s, alphas[tid], betas[tid]);
+  k0s[tid].s0 = s[0];
+  k1s[tid].s0 = s[1];
+  for (int i = 0; i <= kInBits; ++i) k1s[tid].cws[i] = k0s[tid].cws[i];
 }
 
 __global__ void DpfEvalKernel(int4 *ys, bool party, const Dpf::Key *keys, const In *xs) {
@@ -55,7 +60,7 @@ __global__ void DpfEvalKernel(int4 *ys, bool party, const Dpf::Key *keys, const 
   DpfPrg prg(kNonce0, kNonce1);
   Dpf dpf{prg};
 
-  ys[tid] = dpf.Eval(party, keys[tid], xs[tid]);
+  ys[tid] = dpf.Eval(party, keys[tid].s0, keys[tid].cws, xs[tid]);
 }
 
 // --- DCF Kernels ---
@@ -68,7 +73,10 @@ __global__ void DcfGenKernel(Dcf::Key *k0s, Dcf::Key *k1s, const int4 *seeds, co
   Dcf dcf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  dcf.Gen(k0s[tid], k1s[tid], cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
+  dcf.Gen(k0s[tid].cws, s, alphas[tid], betas[tid]);
+  k0s[tid].s0 = s[0];
+  k1s[tid].s0 = s[1];
+  for (int i = 0; i <= kInBits; ++i) k1s[tid].cws[i] = k0s[tid].cws[i];
 }
 
 __global__ void DcfEvalKernel(int4 *ys, bool party, const Dcf::Key *keys, const In *xs) {
@@ -78,7 +86,7 @@ __global__ void DcfEvalKernel(int4 *ys, bool party, const Dcf::Key *keys, const 
   DcfPrg prg(kNonce0, kNonce1);
   Dcf dcf{prg};
 
-  ys[tid] = dcf.Eval(party, keys[tid], xs[tid]);
+  ys[tid] = dcf.Eval(party, keys[tid].s0, keys[tid].cws, xs[tid]);
 }
 
 // --- Host helpers ---
@@ -107,14 +115,19 @@ static void DpfSample() {
   int4 h_betas[kN];
   In h_xs[kN];
 
-  srand(42);
+  srand(42);  // Only the public demonstration inputs use rand().
   for (int i = 0; i < kN; i++) {
-    h_seeds[i * 2] = {rand(), rand(), rand(), rand() & ~1};
-    h_seeds[i * 2 + 1] = {rand(), rand(), rand(), rand() & ~1};
+
+
     h_alphas[i] = rand() & 0xFF;
     h_betas[i] = {rand(), rand(), rand(), rand() & ~1};
     // Eval at alpha for even indices, random x for odd
     h_xs[i] = (i % 2 == 0) ? h_alphas[i] : (rand() & 0xFF);
+  }
+
+  if (RAND_bytes(reinterpret_cast<unsigned char *>(h_seeds), sizeof(h_seeds)) != 1) {
+    fprintf(stderr, "seed generation failed\n");
+    exit(1);
   }
 
   // Copy to device
@@ -175,13 +188,18 @@ static void DcfSample() {
   int4 h_betas[kN];
   In h_xs[kN];
 
-  srand(123);
+  srand(123);  // Only the public demonstration inputs use rand().
   for (int i = 0; i < kN; i++) {
-    h_seeds[i * 2] = {rand(), rand(), rand(), rand() & ~1};
-    h_seeds[i * 2 + 1] = {rand(), rand(), rand(), rand() & ~1};
+
+
     h_alphas[i] = 1 + (rand() % 254);  // alpha in [1, 254] to allow x < and x > cases
     h_betas[i] = {rand(), rand(), rand(), rand() & ~1};
     h_xs[i] = rand() & 0xFF;
+  }
+
+  if (RAND_bytes(reinterpret_cast<unsigned char *>(h_seeds), sizeof(h_seeds)) != 1) {
+    fprintf(stderr, "seed generation failed\n");
+    exit(1);
   }
 
   // Copy to device
@@ -233,9 +251,67 @@ static void DcfSample() {
   cudaFree(d_ys);
 }
 
+// Full-domain launches do not require the caller to write an evaluation kernel.
+// ChaCha is self-contained, so this host scheme has no borrowed device tables.
+template <typename Scheme>
+static void FullDomainSample(Scheme scheme, const char *name, bool comparison) {
+  constexpr int kKeys = 2;
+  constexpr int kOutputs = 1 << kInBits;
+  constexpr int kCorrections = kInBits + 1;
+  int4 seeds[kKeys][2];
+  if (RAND_bytes(reinterpret_cast<unsigned char *>(seeds), sizeof(seeds)) != 1) {
+    fprintf(stderr, "seed generation failed\n");
+    exit(1);
+  }
+  typename Scheme::Cw corrections[kKeys][kCorrections];
+  int4 party0[kKeys], party1[kKeys];
+  const int4 beta = {7, 0, 0, 0};
+  for (int i = 0; i < kKeys; ++i) {
+    scheme.Gen(corrections[i], seeds[i], static_cast<In>(42 + i), beta);
+    party0[i] = seeds[i][0];
+    party1[i] = seeds[i][1];
+  }
+  auto *device_cws = ToDevice(&corrections[0][0], kKeys * kCorrections);
+  auto *device_seeds = ToDevice(party0, kKeys);
+  int4 *device_y0, *device_y1;
+  CUDA_CHECK(cudaMalloc(&device_y0, kKeys * kOutputs * sizeof(int4)));
+  CUDA_CHECK(cudaMalloc(&device_y1, kKeys * kOutputs * sizeof(int4)));
+
+  // Corrections and outputs are key-major; the party is shared by the batch.
+  CUDA_CHECK(scheme.EvalAllGpuBatch(false,
+      cuda::std::span<const int4>(device_seeds, kKeys),
+      cuda::std::span<const typename Scheme::Cw>(device_cws, kKeys * kCorrections),
+      cuda::std::span<int4>(device_y0, kKeys * kOutputs)));
+  for (int i = 0; i < kKeys; ++i) {
+    CUDA_CHECK(scheme.EvalAllGpu(true, party1[i],
+        cuda::std::span<const typename Scheme::Cw>(device_cws + i * kCorrections, kCorrections),
+        cuda::std::span<int4>(device_y1 + i * kOutputs, kOutputs)));
+  }
+  CUDA_CHECK(cudaDeviceSynchronize());
+  std::vector<int4> y0(kKeys * kOutputs), y1(kKeys * kOutputs);
+  ToHost(y0.data(), device_y0, kKeys * kOutputs);
+  ToHost(y1.data(), device_y1, kKeys * kOutputs);
+  int mismatches = 0;
+  for (int i = 0; i < kKeys; ++i) {
+    for (int x = 0; x < kOutputs; ++x) {
+      const bool active = comparison ? x < 42 + i : x == 42 + i;
+      int4 expected = active ? beta : int4{0, 0, 0, 0};
+      int4 actual = (Group::From(y0[i * kOutputs + x]) + Group::From(y1[i * kOutputs + x])).Into();
+      if (memcmp(&actual, &expected, sizeof(int4)) != 0) ++mismatches;
+    }
+  }
+  printf("  %s EvalAllGpu/Batch: mismatches: %d\n", name, mismatches);
+  CUDA_CHECK(cudaFree(device_cws));
+  CUDA_CHECK(cudaFree(device_seeds));
+  CUDA_CHECK(cudaFree(device_y0));
+  CUDA_CHECK(cudaFree(device_y1));
+}
+
 int main() {
   DpfSample();
   printf("\n");
   DcfSample();
+  FullDomainSample(Dpf{DpfPrg{kNonce0, kNonce1}}, "DPF", false);
+  FullDomainSample(Dcf{DcfPrg{kNonce0, kNonce1}}, "DCF", true);
   return 0;
 }

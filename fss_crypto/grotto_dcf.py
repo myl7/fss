@@ -1,130 +1,124 @@
-"""Python wrapper for the Grotto DCF (distributed comparison function) scheme."""
+"""Thin binding of ``fss::GrottoDcf`` and its parity-tree members."""
+
+from dataclasses import dataclass, field
 
 import torch
 
-from fss_crypto._int import split_uint128
-from fss_crypto._jit import load
-from fss_crypto._validate import (
-    validate_alpha,
-    validate_cpu_only,
-    validate_cws,
-    validate_device_match,
-    validate_domain_value,
-    validate_in_bits,
-    validate_par_depth,
-    validate_party,
-    validate_prg,
-    validate_s0,
-    validate_s0s,
-)
+from fss_crypto._scheme import _Scheme, _parallel_depth
 
 
-class GrottoDcf:
-    """2-party distributed comparison function over F2 (Grotto construction).
+@dataclass(frozen=True)
+class ParityTreeView:
+    """Borrow a level-order bool tree of ``2**(in_bits + 1) - 1`` entries.
 
-    Output shares are single bits: share_0 XOR share_1 = 1[alpha <= x].
-
-    Args:
-        in_bits: Input domain bit size (1..128).
-        prg: PRG type, "chacha" or "aes128_mmo".
-        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
-            automatically, and positive values bound the split depth.
+    For ``N = 2**in_bits``, p is a contiguous bool tensor of shape
+    ``(2*N-1,)`` with ``2*N-1`` payload bytes per party.
+    Root is p[0], leaf x is p[N-1+x], and each internal node is its
+    two children's XOR. For in_bits=8, p has 511 entries, not 256.
+    Both parties' trees use twice that payload. Key buffers, evaluation
+    outputs, allocator overhead, and GPU temporary storage are separate.
+    Counts and bytes must fit tensor address limits.
+    Keeping this view alive keeps its tensor storage alive.
+    Do not mutate the storage while evaluation is in flight.
     """
 
-    def __init__(self, in_bits: int, prg: str = "chacha", *, par_depth: int = 0):
-        validate_par_depth(par_depth)
-        validate_in_bits(in_bits)
-        validate_prg(prg, "grotto_dcf")
+    p: torch.Tensor
+    _native_views: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
-        self.par_depth = int(par_depth)
-        self.in_bits = in_bits
-        self.prg = prg
-        self._ext = load("grotto_dcf", in_bits, prg=prg, par_depth=self.par_depth)
+    def _native_view(self, module):
+        native_type = module.NativeParityTreeView
+        if native_type not in self._native_views:
+            self._native_views[native_type] = native_type(self.p)
+        return self._native_views[native_type]
 
-    def gen(self, s0s: torch.Tensor, alpha: int) -> torch.Tensor:
-        """Generate DCF keys.
 
-        Args:
-            s0s: (2, 4) int32 tensor of initial seeds.
-            alpha: Secret comparison threshold in [0, 2^in_bits).
+class OwnedParityTree:
+    """Host storage allocated by the C++ scheme's ``PreprocessOwned`` member.
 
-        Returns:
-            (in_bits+1, 8) int32 tensor of correction words.
+    The owned bool tensor has ``2**(in_bits + 1) - 1`` entries and payload
+    bytes per party. The owner object and allocator overhead are separate.
+    """
+
+    def __init__(self, *args, **kwargs):
+        raise TypeError("use scheme.preprocess_owned() to obtain an owned tree")
+
+    @classmethod
+    def _from_native(cls, p: torch.Tensor):
+        result = object.__new__(cls)
+        result._p = p
+        return result
+
+    def view(self) -> ParityTreeView:
+        """Borrow this allocation, retaining its lifetime through the tensor."""
+        return ParityTreeView(self._p)
+
+
+class GrottoDcf(_Scheme):
+    """Configure comparison shares with an explicit PRG constructor value."""
+
+    def __init__(self, in_bits: int, prg, *, in_type=None):
+        super().__init__("grotto_dcf", in_bits=in_bits, prg=prg,
+                         in_type=in_type)
+
+    def gen(self, cws, s0s: torch.Tensor, a: int) -> None:
+        """Fill corrections with one Core ``Gen`` call, preserving ``s0s``."""
+        self._native.gen(self._cws(cws), s0s, a)
+
+    def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> bool:
+        """Return one raw Core share. A CUDA bool result synchronizes its stream."""
+        return self._native.eval(b, s0, self._cws(cws), x)
+
+    def eval_all(self, b: bool, s0: torch.Tensor, cws, ys: torch.Tensor,
+                 *, par_depth: int = 0, frontier_depth: int = 16,
+                 threads_per_block: int = 256) -> None:
+        """Fill bool outputs using Core's leaf-prefix full-domain route.
+
+        This route can differ from raw scalar ``eval`` for each party.
+
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
+        CUDA calls ignore par_depth and use frontier_depth/threads_per_block.
+        CPU calls ignore frontier_depth/threads_per_block.
         """
-        validate_s0s(s0s)
-        validate_alpha(alpha, self.in_bits)
-        validate_cpu_only(s0s, fn_name="gen")
+        self._execution_native(ys, frontier_depth, threads_per_block).eval_all(b, s0, self._cws(cws), ys, _parallel_depth(par_depth, ys))
 
-        alpha_lo, alpha_hi = split_uint128(alpha)
-        return self._ext.gen(s0s, alpha_lo, alpha_hi)
+    def preprocess(self, b: bool, s0: torch.Tensor, cws, p: torch.Tensor,
+                   *, par_depth: int = 0, frontier_depth: int = 16,
+                   threads_per_block: int = 256) -> None:
+        """Fill caller-owned parity storage for ``ParityTreeView(p)``.
 
-    def preprocess(self, party: int, s0: torch.Tensor,
-                   cws: torch.Tensor) -> torch.Tensor:
-        """Preprocess a party's key into a parity segment tree.
+        With ``N = 2**in_bits``, allocate contiguous bool p with shape
+        ``(2*N-1,)``. Its payload is ``2*N-1`` bytes per party.
+        For in_bits=8, allocate 511 bool entries. Two parties require two
+        such buffers. Keys and evaluation outputs are separate.
+        Counts and bytes must fit tensor address limits.
 
-        Args:
-            party: Party index, 0 or 1.
-            s0: (4,) int32 tensor, the party's initial seed.
-            cws: (in_bits+1, 8) int32 tensor from gen().
-
-        Returns:
-            (2*2^in_bits-1,) bool tensor, the level-order parity segment tree,
-            on the same device as the inputs. CUDA tensors need
-            in_bits <= 38 (launch grid) and enough device memory for the tree.
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
+        CUDA calls ignore par_depth and use frontier_depth/threads_per_block.
+        CPU calls ignore frontier_depth/threads_per_block.
         """
-        validate_party(party)
-        validate_s0(s0)
-        validate_cws(cws, self.in_bits)
-        validate_device_match(s0, cws)
+        self._execution_native(p, frontier_depth, threads_per_block).preprocess(b, s0, self._cws(cws), p, _parallel_depth(par_depth, p))
 
-        return self._ext.preprocess(party, s0, cws)
+    def preprocess_owned(self, b: bool, s0: torch.Tensor, cws, *, par_depth: int = 0) -> OwnedParityTree:
+        """Allocate a host tree through the C++ ``PreprocessOwned`` member.
 
-    def eval(self, party: int, tree: torch.Tensor, x: int) -> bool:
-        """Evaluate a preprocessed tree on a single input (CPU only).
+        For ``N = 2**in_bits``, the tree contains ``2*N-1`` bool entries
+        and uses ``2*N-1`` payload bytes per party.
+        The owner object and allocator overhead are separate.
 
-        The tree must come from preprocess() of the same party.
-
-        Args:
-            party: Party index the tree was preprocessed for, 0 or 1.
-            tree: (2*2^in_bits-1,) bool tensor from preprocess().
-            x: Input to evaluate.
-
-        Returns:
-            bool share such that share_0 XOR share_1 = 1[alpha <= x].
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
         """
-        validate_party(party)
-        self._validate_tree(tree)
-        validate_cpu_only(tree, fn_name="eval")
-        validate_domain_value("x", x, self.in_bits)
+        return OwnedParityTree._from_native(self._native.preprocess_owned(b, s0, self._cws(cws), _parallel_depth(par_depth)))
 
-        x_lo, x_hi = split_uint128(x)
-        return self._ext.eval(party, tree, x_lo, x_hi)
+    def eval_tree(self, pt: ParityTreeView, x: int) -> bool:
+        """Evaluate a preprocessed view without a party or raw key."""
+        return self._native.eval_tree(pt._native_view(self._ext), x)
 
-    def eval_all(self, party: int, s0: torch.Tensor,
-                 cws: torch.Tensor) -> torch.Tensor:
-        """Evaluate DCF on the full input domain.
+    def eval_all_tree(self, pt: ParityTreeView, ys: torch.Tensor) -> None:
+        """Fill outputs from a preprocessed view."""
+        self._native.eval_all_tree(pt._native_view(self._ext), ys)
 
-        Args:
-            party: Party index, 0 or 1.
-            s0: (4,) int32 tensor, CPU or CUDA.
-            cws: (in_bits+1, 8) int32 tensor on the same device.
 
-        Returns:
-            (2^in_bits,) bool tensor of output shares on the same device.
-            CUDA tensors need in_bits <= 38 (launch grid) and enough device
-            memory for the output.
-        """
-        validate_party(party)
-        validate_s0(s0)
-        validate_cws(cws, self.in_bits)
-        validate_device_match(s0, cws)
-
-        return self._ext.eval_all(party, s0, cws)
-
-    def _validate_tree(self, tree: torch.Tensor) -> None:
-        expected = (2 * (1 << self.in_bits) - 1,)
-        if tree.shape != expected or tree.dtype != torch.bool:
-            raise TypeError(
-                f"tree must be a {expected} bool tensor, "
-                f"got shape {tuple(tree.shape)} dtype {tree.dtype}"
-            )
+__all__ = ['GrottoDcf', 'ParityTreeView', 'OwnedParityTree']

@@ -21,7 +21,6 @@
 #include <cuda_runtime.h>
 #include <cuda/std/array>
 #include <cstdint>
-#include <cassert>
 
 #ifndef __CUDA_ARCH__
   #include <wmmintrin.h>
@@ -34,83 +33,21 @@ namespace fss::prg {
 /**
  * AES-128 with Matyas-Meyer-Oseas and AES-NI intrinsics as a PRG.
  *
- * Only for host side.
+ * Host-only. Device calls to Gen() and Gen8() are not supported.
  *
  * @tparam mul See Prgable mul.
  */
 template <int mul>
 class Aes128MmoRaw {
-private:
-  static constexpr int kRoundKeys = 11;
-  static constexpr int kRoundKeySize = kRoundKeys * 16;  // 176 bytes
-  alignas(16) uint8_t round_keys_[mul][kRoundKeySize];
-
-#ifndef __CUDA_ARCH__
-  static __m128i KeyExpStep(__m128i key, __m128i kg) {
-    kg = _mm_shuffle_epi32(kg, _MM_SHUFFLE(3, 3, 3, 3));
-    key = _mm_xor_si128(key, _mm_slli_si128(key, 4));
-    key = _mm_xor_si128(key, _mm_slli_si128(key, 4));
-    key = _mm_xor_si128(key, _mm_slli_si128(key, 4));
-    return _mm_xor_si128(key, kg);
-  }
-
-  static void ExpandKey(const uint8_t *key, uint8_t *rk_bytes) {
-    __m128i rk[kRoundKeys];
-    rk[0] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(key));
-    rk[1] = KeyExpStep(rk[0], _mm_aeskeygenassist_si128(rk[0], 0x01));
-    rk[2] = KeyExpStep(rk[1], _mm_aeskeygenassist_si128(rk[1], 0x02));
-    rk[3] = KeyExpStep(rk[2], _mm_aeskeygenassist_si128(rk[2], 0x04));
-    rk[4] = KeyExpStep(rk[3], _mm_aeskeygenassist_si128(rk[3], 0x08));
-    rk[5] = KeyExpStep(rk[4], _mm_aeskeygenassist_si128(rk[4], 0x10));
-    rk[6] = KeyExpStep(rk[5], _mm_aeskeygenassist_si128(rk[5], 0x20));
-    rk[7] = KeyExpStep(rk[6], _mm_aeskeygenassist_si128(rk[6], 0x40));
-    rk[8] = KeyExpStep(rk[7], _mm_aeskeygenassist_si128(rk[7], 0x80));
-    rk[9] = KeyExpStep(rk[8], _mm_aeskeygenassist_si128(rk[8], 0x1b));
-    rk[10] = KeyExpStep(rk[9], _mm_aeskeygenassist_si128(rk[9], 0x36));
-    for (int i = 0; i < kRoundKeys; ++i) _mm_store_si128(reinterpret_cast<__m128i *>(rk_bytes + i * 16), rk[i]);
-  }
-#endif
-
 public:
   /**
      * Constructor.
      *
      * @param keys mul 16-byte AES-128 keys.
      */
-  Aes128MmoRaw(const uint8_t keys[][16]) {
-#ifndef __CUDA_ARCH__
-    for (int i = 0; i < mul; ++i) ExpandKey(keys[i], round_keys_[i]);
-#endif
-  }
+  Aes128MmoRaw(const uint8_t keys[][16]);
 
-  __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
-    cuda::std::array<int4, mul> out{};
-
-#ifdef __CUDA_ARCH__
-    assert(false && "Aes128MmoRaw is not supported on device side");
-    __trap();
-#else
-    __m128i s = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seed));
-    for (int i = 0; i < mul; ++i) {
-      const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i]);
-      __m128i b = _mm_xor_si128(s, _mm_load_si128(rk));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 1));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 2));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 3));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 4));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 5));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 6));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 7));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 8));
-      b = _mm_aesenc_si128(b, _mm_load_si128(rk + 9));
-      b = _mm_aesenclast_si128(b, _mm_load_si128(rk + 10));
-      b = _mm_xor_si128(b, s);
-      _mm_storeu_si128(reinterpret_cast<__m128i *>(&out[i]), b);
-    }
-#endif
-
-    return out;
-  }
+  __host__ cuda::std::array<int4, mul> Gen(int4 seed);
 
   /**
      * Batched 8-seed version of Gen().
@@ -125,37 +62,114 @@ public:
      * @param seeds 8 independent 16B seeds.
      * @return For each seed j, the mul MMO output blocks out[j][i] = E_{keys[i]}(seeds[j]) ^ seeds[j].
      */
-  __host__ __device__ cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(const cuda::std::array<int4, 8> &seeds) {
-    cuda::std::array<cuda::std::array<int4, mul>, 8> out{};
+  __host__ cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(cuda::std::span<const int4, 8> seeds);
 
-#ifdef __CUDA_ARCH__
-    assert(false && "Aes128MmoRaw is not supported on device side");
-    __trap();
-#else
-    __m128i s[8];
-    __m128i b[8];
-    for (int j = 0; j < 8; ++j) s[j] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seeds[j]));
+private:
+  static constexpr int kRoundKeys = 11;
+  static constexpr int kRoundKeySize = kRoundKeys * 16;  // 176 bytes
+  alignas(16) uint8_t round_keys_[mul][kRoundKeySize];
 
-    for (int i = 0; i < mul; ++i) {
-      const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i]);
-      __m128i k = _mm_load_si128(rk);
-      for (int j = 0; j < 8; ++j) b[j] = _mm_xor_si128(s[j], k);
-      for (int r = 1; r < 10; ++r) {
-        k = _mm_load_si128(rk + r);
-        for (int j = 0; j < 8; ++j) b[j] = _mm_aesenc_si128(b[j], k);
-      }
-      k = _mm_load_si128(rk + 10);
-      for (int j = 0; j < 8; ++j) {
-        b[j] = _mm_aesenclast_si128(b[j], k);
-        b[j] = _mm_xor_si128(b[j], s[j]);
-        _mm_storeu_si128(reinterpret_cast<__m128i *>(&out[j][i]), b[j]);
-      }
-    }
+#ifndef __CUDA_ARCH__
+  static __m128i KeyExpStep(__m128i key, __m128i kg);
+
+  static void ExpandKey(const uint8_t *key, uint8_t *rk_bytes);
+#endif
+};
+// -----------------------------------------------------------------------------
+
+#ifndef __CUDA_ARCH__
+template <int mul>
+inline __m128i Aes128MmoRaw<mul>::KeyExpStep(__m128i key, __m128i kg) {
+  kg = _mm_shuffle_epi32(kg, _MM_SHUFFLE(3, 3, 3, 3));
+  key = _mm_xor_si128(key, _mm_slli_si128(key, 4));
+  key = _mm_xor_si128(key, _mm_slli_si128(key, 4));
+  key = _mm_xor_si128(key, _mm_slli_si128(key, 4));
+  return _mm_xor_si128(key, kg);
+}
 #endif
 
-    return out;
+#ifndef __CUDA_ARCH__
+template <int mul>
+inline void Aes128MmoRaw<mul>::ExpandKey(const uint8_t *key, uint8_t *rk_bytes) {
+  __m128i rk[kRoundKeys];
+  rk[0] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(key));
+  rk[1] = KeyExpStep(rk[0], _mm_aeskeygenassist_si128(rk[0], 0x01));
+  rk[2] = KeyExpStep(rk[1], _mm_aeskeygenassist_si128(rk[1], 0x02));
+  rk[3] = KeyExpStep(rk[2], _mm_aeskeygenassist_si128(rk[2], 0x04));
+  rk[4] = KeyExpStep(rk[3], _mm_aeskeygenassist_si128(rk[3], 0x08));
+  rk[5] = KeyExpStep(rk[4], _mm_aeskeygenassist_si128(rk[4], 0x10));
+  rk[6] = KeyExpStep(rk[5], _mm_aeskeygenassist_si128(rk[5], 0x20));
+  rk[7] = KeyExpStep(rk[6], _mm_aeskeygenassist_si128(rk[6], 0x40));
+  rk[8] = KeyExpStep(rk[7], _mm_aeskeygenassist_si128(rk[7], 0x80));
+  rk[9] = KeyExpStep(rk[8], _mm_aeskeygenassist_si128(rk[8], 0x1b));
+  rk[10] = KeyExpStep(rk[9], _mm_aeskeygenassist_si128(rk[9], 0x36));
+  for (int i = 0; i < kRoundKeys; ++i) _mm_store_si128(reinterpret_cast<__m128i *>(rk_bytes + i * 16), rk[i]);
+}
+#endif
+
+template <int mul>
+inline Aes128MmoRaw<mul>::Aes128MmoRaw(const uint8_t keys[][16]) {
+#ifndef __CUDA_ARCH__
+  for (int i = 0; i < mul; ++i) ExpandKey(keys[i], round_keys_[i]);
+#endif
+}
+
+template <int mul>
+__host__ inline cuda::std::array<int4, mul> Aes128MmoRaw<mul>::Gen(int4 seed) {
+  cuda::std::array<int4, mul> out{};
+
+#ifndef __CUDA_ARCH__
+  __m128i s = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seed));
+  for (int i = 0; i < mul; ++i) {
+    const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i]);
+    __m128i b = _mm_xor_si128(s, _mm_load_si128(rk));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 1));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 2));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 3));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 4));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 5));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 6));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 7));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 8));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 9));
+    b = _mm_aesenclast_si128(b, _mm_load_si128(rk + 10));
+    b = _mm_xor_si128(b, s);
+    _mm_storeu_si128(reinterpret_cast<__m128i *>(&out[i]), b);
   }
-};
+#endif
+
+  return out;
+}
+
+template <int mul>
+__host__ inline cuda::std::array<cuda::std::array<int4, mul>, 8> Aes128MmoRaw<mul>::Gen8(cuda::std::span<const int4, 8> seeds) {
+  cuda::std::array<cuda::std::array<int4, mul>, 8> out{};
+
+#ifndef __CUDA_ARCH__
+  __m128i s[8];
+  __m128i b[8];
+  for (int j = 0; j < 8; ++j) s[j] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seeds[j]));
+
+  for (int i = 0; i < mul; ++i) {
+    const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i]);
+    __m128i k = _mm_load_si128(rk);
+    for (int j = 0; j < 8; ++j) b[j] = _mm_xor_si128(s[j], k);
+    for (int r = 1; r < 10; ++r) {
+      k = _mm_load_si128(rk + r);
+      for (int j = 0; j < 8; ++j) b[j] = _mm_aesenc_si128(b[j], k);
+    }
+    k = _mm_load_si128(rk + 10);
+    for (int j = 0; j < 8; ++j) {
+      b[j] = _mm_aesenclast_si128(b[j], k);
+      b[j] = _mm_xor_si128(b[j], s[j]);
+      _mm_storeu_si128(reinterpret_cast<__m128i *>(&out[j][i]), b[j]);
+    }
+  }
+#endif
+
+  return out;
+}
+
 static_assert(Prgable<Aes128MmoRaw<1>, 1> && Prgable<Aes128MmoRaw<2>, 2> && Prgable<Aes128MmoRaw<4>, 4>);
 
 }  // namespace fss::prg

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 #include <memory>
+#include <openssl/rand.h>
 
 #include <fss/grotto_dcf.cuh>
 #include <fss/prg/aes128_mmo.cuh>
@@ -34,37 +35,39 @@ int main() {
   // Secret input: alpha (threshold)
   In alpha = 42;
 
-  // Random seeds (LSB of .w must be 0)
-  int4 seeds[2] = {
-      {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-  };
+  // Gen sets the party control bit; initial seeds are independent random blocks.
+  int4 seeds[2];
+  if (RAND_bytes(reinterpret_cast<unsigned char *>(seeds), sizeof(seeds)) != 1) {
+    fprintf(stderr, "seed generation failed\n");
+    GdcfPrg::FreeCtxs(ctxs);
+    return 1;
+  }
 
   // Key generation (done by a trusted dealer)
-  Gdcf::Key k0, k1;
-  dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha);
+  Gdcf::Cw cws[kInBits + 1];
+  dcf.Gen(cws, seeds, alpha);
 
   // Preprocess: each party expands its tree and builds a parity segment tree.
   // The result owns its 2*N-1 parity bits and answers Eval() queries in O(log N).
   constexpr size_t N = size_t{1} << kInBits;
-  auto tree0 = dcf.Preprocess(false, k0);
-  auto tree1 = dcf.Preprocess(true, k1);
+  auto tree0 = dcf.PreprocessOwned(false, seeds[0], cws);
+  auto tree1 = dcf.PreprocessOwned(true, seeds[1], cws);
 
   // Evaluation: the parties XOR their bool shares; the result is x >= alpha
-  bool y0 = Gdcf::Eval(tree0, alpha);
-  bool y1 = Gdcf::Eval(tree1, alpha);
+  bool y0 = Gdcf::Eval(tree0.View(), alpha);
+  bool y1 = Gdcf::Eval(tree1.View(), alpha);
   printf("  Eval(x=%d == alpha): y0^y1 == 1? %s\n", alpha, (y0 ^ y1) ? "yes" : "NO");
 
   In x = 10;
-  y0 = Gdcf::Eval(tree0, x);
-  y1 = Gdcf::Eval(tree1, x);
+  y0 = Gdcf::Eval(tree0.View(), x);
+  y1 = Gdcf::Eval(tree1.View(), x);
   printf("  Eval(x=%d  < alpha): y0^y1 == 0? %s\n", x, !(y0 ^ y1) ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, k0, cuda::std::span<bool>(ys0.get(), N));
-  dcf.EvalAll(true, k1, cuda::std::span<bool>(ys1.get(), N));
+  Gdcf::EvalAll(tree0.View(), ys0.get());
+  Gdcf::EvalAll(tree1.View(), ys1.get());
 
   int mismatches = 0;
   for (size_t i = 0; i < N; ++i) {

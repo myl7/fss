@@ -18,7 +18,7 @@ add_executable(dpf_dcf_cpu dpf_dcf_cpu.cu)
 target_link_libraries(dpf_dcf_cpu PRIVATE fss OpenSSL::Crypto)
 
 add_executable(dpf_dcf_gpu dpf_dcf_gpu.cu)
-target_link_libraries(dpf_dcf_gpu PRIVATE fss)
+target_link_libraries(dpf_dcf_gpu PRIVATE fss OpenSSL::Crypto)
 
 add_executable(half_tree_dpf_cpu half_tree_dpf_cpu.cu)
 target_link_libraries(half_tree_dpf_cpu PRIVATE fss OpenSSL::Crypto)

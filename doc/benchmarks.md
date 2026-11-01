@@ -16,9 +16,8 @@ the comparison site.
   GPU point eval, and full-domain GPU `EvalAll` for DPF, HalfTree DPF, packed
   HalfTree DPF, DCF, and VDPF, plus GPU point eval for Grotto DCF and HalfTree
   Grotto DCF, GPU Grotto DCF `Preprocess` and `EvalAll`, and GPU DMPF batch
-  `Eval` and `EvalAll`. The lean host point-evaluation fast
-  paths (`fss::cpu` packed-key walks for DPF and HalfTree DPF, bit-exact with
-  the generic `Eval`) carry their own rows beside the generic point `Eval`.
+  `Eval` and `EvalAll`. The internal compact host point-evaluation experiments for DPF and HalfTree DPF carry separate rows beside the public Core point `Eval`.
+  These experiments are not a public API or a validated performance advantage.
 - PRGs: AES-128 MMO over OpenSSL, AES-128 MMO over AES-NI intrinsics,
   software AES-128 MMO, and ChaCha. The CPU benchmarks cover all four. The
   GPU benchmarks cover ChaCha and software AES-128 MMO, the two that run on
@@ -31,14 +30,20 @@ Benchmark names follow `BM_<Scheme><Operation>_<Group>_<Prg>/<bits>`: for
 example, `BM_DcfEval_Uint_AesRaw/17` times one DCF evaluation in the `Uint`
 group with the AES-NI-intrinsics PRG over a 2^17 domain. The PRG suffixes are
 `Aes` (OpenSSL MMO), `AesRaw` (AES-NI intrinsics MMO), `AesSoft` (software
-AES-128 MMO), and `ChaCha`. Grotto DCF and VDPF benchmarks omit the group
-because they have one native output shape. Names without a suffix are
+AES-128 MMO), and `ChaCha`. Grotto DCF benchmarks omit the group because their output shares are in F2.
+VDPF uses the configured output group. Names without a suffix are
 template instantiations that differ in input domain bits through the
 benchmark argument.
 
-## GPU kernel register usage
+A batch row times the whole API call, while `SetItemsProcessed` may count keys, queries or full-domain outputs.
+Preparation such as key packing may be outside that timed call.
+Check both boundaries in the source before comparing throughput or deriving latency per item.
 
-Compiled for sm_86 with `--ptxas-options=-v` (`make ptx_info` collects the
+## Historical GPU kernel register usage
+
+The following measurements precede the current public API and Helper changes.
+They do not validate current register counts, spills or relative performance.
+They were compiled for sm_86 with `--ptxas-options=-v` (`make ptx_info` collects the
 log):
 
 | Kernel               | Group | PRG             | Registers | Stack | Smem  |
@@ -80,7 +85,7 @@ the registers of ChaCha for the same scheme and group and is the only backend
 here with a T-table in shared memory (see
 [the software AES study](bench_aes128_soft.md)). The `mul` parameter is part
 of the PRG type because it sets how many 16B blocks one `Gen` call produces.
-All kernels shown have zero spill stores and zero spill loads.
-The `(z=...)` rows are the deep-frontier tilings the Python bindings dispatch
-to for domains above a 16-bit frontier (25-bit domain shown, per-thread tail
-depth 4).
+In this historical snapshot, all kernels shown had zero spill stores and zero spill loads.
+The `(z=...)` rows record the earlier deep-frontier experiment for domains above a 16-bit frontier (25-bit domain shown, per-thread tail depth 4).
+They are not a Python dispatch contract.
+Current execution parameters are explicit Helper inputs and need fresh measurements before selecting defaults.

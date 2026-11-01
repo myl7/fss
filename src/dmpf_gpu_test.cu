@@ -7,12 +7,12 @@
 #include <random>
 #include <vector>
 #include <fss/dmpf.cuh>
-#include <fss/eval_all_gpu.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
-#include <fss/point_eval_gpu.cuh>
+#include <fss/repack_gpu.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/chacha_feistel.cuh>
+#include "core_api_test_helpers.cuh"
 
 namespace {
 
@@ -69,7 +69,7 @@ void ExpectOutput(int4 actual, int4 expected, size_t input) {
   EXPECT_EQ(actual.w, expected.w) << "input " << input;
 }
 
-template <typename Group, int ch_lambda = 80, int par_depth = -1>
+template <typename Group, int ch_lambda = 80, int par_depth = 0>
 class DmpfGpuTest : public ::testing::Test {
 protected:
   static constexpr int kInBits = 16;
@@ -79,12 +79,11 @@ protected:
 
   using Prg = fss::prg::ChaCha<2>;
   using Prp = fss::prp::ChaChaFeistel;
-  using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t, 3, ch_lambda, par_depth>;
-  using Cw = typename DmpfType::InnerDpf::Cw;
+  using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t, ch_lambda>;
+  using Cw = typename DmpfType::Cw;
 
-  static constexpr int m = DmpfType::m;
+  static constexpr int m = DmpfType::kBucketCount;
   static constexpr size_t kDomain = size_t{1} << kInBits;
-  static constexpr size_t kBucketDomain = size_t{1} << kBucketBits;
 
   uint16_t alphas[kT] = {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
       1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 2800, 2900, 3000};
@@ -112,11 +111,12 @@ protected:
     std::mt19937 gen(rd());
 
     sigma = RandomSeed(gen);
-    cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
+    cuda::std::array<int4, size_t{m} * 2> s0s;
     for (int i = 0; i < m; ++i) {
-      s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
+      s0s[i] = RandomSeed(gen);
+      s0s[size_t{m} + i] = RandomSeed(gen);
     }
-    ASSERT_EQ(dmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
+    ASSERT_EQ(fss_test::GenMulti(dmpf, k0, k1, sigma, cuda::std::span<const int4>(s0s),
                   cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT),
         0);
   }
@@ -146,7 +146,7 @@ protected:
     GenKeys(k0, k1, sigma);
     DmpfType dmpf{prg, prp_};
     int m_rt = k0.m_rt;
-    int b_rt = k0.b_size_rt;
+    __uint128_t b_rt = k0.b_size_rt;
 
     // All alphas plus random non-alpha points.
     std::vector<uint16_t> xs(alphas, alphas + kT);
@@ -171,7 +171,7 @@ protected:
     DeviceBuffer<int4> d_s0s[2];
     DeviceBuffer<Cw> d_cws;
     DeviceBuffer<int4> d_cw_s, d_out_cw;
-    DeviceBuffer<fss::gpu::ExtBits<kBucketBits>> d_extra;
+    DeviceBuffer<fss::gpu::detail::ExtBits<kBucketBits>> d_extra;
     ASSERT_EQ(d_xs.Allocate(n), cudaSuccess);
     ASSERT_EQ(d_xs.Upload(xs.data(), n), cudaSuccess);
     for (int p = 0; p < 2; ++p) {
@@ -186,15 +186,21 @@ protected:
     ASSERT_EQ(d_extra.Allocate(m_rt), cudaSuccess);
 
     // Both parties share the correction words, so one repack serves both.
-    fss::gpu::DpfRepackGpu<kBucketBits, Group, Prg, uint, par_depth>(
-        d_cws.data(), m_rt, d_cw_s.data(), d_extra.data(), d_out_cw.data());
+    fss::gpu::RepackGpu<fss::Dpf<kBucketBits, Group, Prg, __uint128_t>>({d_cws.data(), h_cws.size()},
+        m_rt,
+        {d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt},
+        {d_extra.data(), static_cast<size_t>(m_rt)},
+        {d_out_cw.data(), static_cast<size_t>(m_rt)});
 
-    fss::gpu::DmpfBatchEvalGpu(false, static_cast<const uint16_t *>(nullptr), nullptr, 0, sigma, m_rt, b_rt, nullptr,
-        nullptr, nullptr, nullptr, dmpf);
+    const cuda::std::span<const int4> corrections(d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt);
+    const cuda::std::span<const fss::gpu::detail::ExtBits<kBucketBits>> controls(d_extra.data(), m_rt);
+    const cuda::std::span<const int4> terminals(d_out_cw.data(), m_rt);
+    fss::gpu::detail::DmpfBatchEvalGpu(false, static_cast<const uint16_t *>(nullptr), nullptr, 0,
+        {}, 0, 0, nullptr, nullptr, nullptr, nullptr, dmpf);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::DmpfBatchEvalGpu(p != 0, d_xs.data(), d_ys[p].data(), n, sigma, m_rt, b_rt, d_s0s[p].data(),
-          d_cw_s.data(), d_extra.data(), d_out_cw.data(), dmpf);
+      fss::gpu::detail::DmpfBatchEvalGpu(p != 0, d_xs.data(), d_ys[p].data(), n,
+          sigma, m_rt, b_rt, d_s0s[p].data(), corrections.data(), controls.data(), terminals.data(), dmpf);
     }
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
@@ -221,7 +227,7 @@ protected:
     // Bit-exact against the host batch evaluation per party.
     std::vector<int4> host_ys(n);
     for (int p = 0; p < 2; ++p) {
-      dmpf.BatchEval(p != 0, p == 0 ? k0 : k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(host_ys));
+      fss_test::BatchEvalKey(dmpf, p != 0, p == 0 ? k0 : k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(host_ys));
       for (int i = 0; i < n; ++i) ExpectOutput(ys[p][i], host_ys[i], xs[i]);
     }
   }
@@ -239,7 +245,7 @@ protected:
     GenKeys(k0, k1, sigma);
     DmpfType dmpf{prg, prp_};
     int m_rt = k0.m_rt;
-    int b_rt = k0.b_size_rt;
+    __uint128_t b_rt = k0.b_size_rt;
 
     std::vector<int4> h_s0s[2];
     std::vector<Cw> h_cws;
@@ -249,7 +255,6 @@ protected:
     DeviceBuffer<int4> d_ys[2];
     DeviceBuffer<int4> d_s0s[2];
     DeviceBuffer<Cw> d_cws;
-    DeviceBuffer<int4> d_bucket_ys;
     for (int p = 0; p < 2; ++p) {
       ASSERT_EQ(d_ys[p].Allocate(kDomain), cudaSuccess);
       ASSERT_EQ(d_s0s[p].Allocate(m_rt), cudaSuccess);
@@ -257,11 +262,12 @@ protected:
     }
     ASSERT_EQ(d_cws.Allocate(h_cws.size()), cudaSuccess);
     ASSERT_EQ(d_cws.Upload(h_cws.data(), h_cws.size()), cudaSuccess);
-    ASSERT_EQ(d_bucket_ys.Allocate(static_cast<size_t>(m_rt) * kBucketDomain), cudaSuccess);
 
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::DmpfEvalAllGpu(
-          p != 0, sigma, m_rt, b_rt, d_s0s[p].data(), d_cws.data(), d_bucket_ys.data(), d_ys[p].data(), dmpf);
+      ASSERT_EQ(dmpf.EvalAllGpu(
+          p != 0, sigma, m_rt, b_rt, {d_s0s[p].data(), static_cast<size_t>(m_rt)},
+          {d_cws.data(), h_cws.size()},
+          {d_ys[p].data(), kDomain}), cudaSuccess);
     }
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
@@ -285,7 +291,7 @@ protected:
     // Bit-exact against the host full-domain evaluation per party.
     std::vector<int4> host_ys(kDomain);
     for (int p = 0; p < 2; ++p) {
-      dmpf.EvalAll(p != 0, p == 0 ? k0 : k1, cuda::std::span<int4>(host_ys));
+      fss_test::EvalAllKey<par_depth>(dmpf, p != 0, p == 0 ? k0 : k1, cuda::std::span<int4>(host_ys));
       for (size_t i = 0; i < kDomain; ++i) ExpectOutput(ys[p][i], host_ys[i], i);
     }
   }

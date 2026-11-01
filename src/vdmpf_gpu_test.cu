@@ -9,10 +9,11 @@
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/hash/blake3.cuh>
-#include <fss/point_eval_gpu.cuh>
+#include <fss/repack_gpu.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/chacha_feistel.cuh>
 #include <fss/vdmpf.cuh>
+#include "core_api_test_helpers.cuh"
 
 namespace {
 
@@ -82,10 +83,10 @@ protected:
   using Prg = fss::prg::ChaCha<2>;
   using Prp = fss::prp::ChaChaFeistel;
   using Blake3 = fss::hash::Blake3;
-  using VdmpfT = fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Blake3, Blake3, Prp, uint16_t, 3, ch_lambda>;
-  using Cw = typename VdmpfT::InnerVdpf::Cw;
+  using VdmpfT = fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Blake3, Blake3, Prp, uint16_t, ch_lambda>;
+  using Cw = typename VdmpfT::Cw;
 
-  static constexpr int m = VdmpfT::m;
+  static constexpr int m = VdmpfT::kBucketCount;
 
   uint16_t alphas[kT] = {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
       1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 2800, 2900, 3000};
@@ -115,16 +116,17 @@ protected:
     std::mt19937 gen(rd());
 
     sigma = RandomSeed(gen);
-    cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
+    cuda::std::array<int4, size_t{m} * 2> s0s;
     for (int i = 0; i < m; ++i) {
-      s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
+      s0s[i] = RandomSeed(gen);
+      s0s[size_t{m} + i] = RandomSeed(gen);
     }
-    ASSERT_EQ(vdmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
-                  cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT, 1000, true),
+    ASSERT_EQ(fss_test::GenMulti(vdmpf, k0, k1, sigma, cuda::std::span<const int4>(s0s),
+                  cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT, 1000),
         0);
   }
 
-  void TestBatchEval() {
+  void TestBatchEval(bool check_execution_parameters = false) {
     int devices = 0;
     const cudaError_t status = cudaGetDeviceCount(&devices);
     if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver ||
@@ -137,7 +139,7 @@ protected:
     GenKeys(k0, k1, sigma);
     VdmpfT vdmpf{prg, xor_hash, hash, prp_};
     int m_rt = k0.m_rt;
-    int b_rt = k0.b_size_rt;
+    __uint128_t b_rt = k0.b_size_rt;
 
     // All alphas plus random non-alpha points.
     std::vector<uint16_t> xs(alphas, alphas + kT);
@@ -154,13 +156,11 @@ protected:
 
     std::vector<int4> h_s0s[2];
     std::vector<Cw> h_cws;
-    std::vector<int4> h_ocws(m_rt);
     std::vector<cuda::std::array<int4, 4>> h_cs(m);
-    h_cws.resize(static_cast<size_t>(m_rt) * kBucketBits);
+    h_cws.resize(static_cast<size_t>(m_rt) * (kBucketBits + 1));
     for (int i = 0; i < m_rt; ++i) {
-      h_ocws[i] = k0.bks[i].ocw;
-      for (int j = 0; j < kBucketBits; ++j) {
-        h_cws[static_cast<size_t>(i) * kBucketBits + j] = k0.bks[i].cws[j];
+      for (int j = 0; j <= kBucketBits; ++j) {
+        h_cws[static_cast<size_t>(i) * (kBucketBits + 1) + j] = k0.bks[i].cws[j];
       }
     }
     for (int i = 0; i < 2; ++i) {
@@ -170,7 +170,8 @@ protected:
       }
     }
     // cs is shared between the parties; the fold covers all m buckets.
-    for (int i = 0; i < m; ++i) h_cs[i] = k0.bks[i].cs;
+    for (int i = 0; i < m; ++i)
+      for (int j = 0; j < 4; ++j) h_cs[i][j] = k0.bks[i].cs[j];
 
     DeviceBuffer<uint16_t> d_xs;
     DeviceBuffer<int4> d_ys[2];
@@ -179,7 +180,7 @@ protected:
     DeviceBuffer<Cw> d_cws;
     DeviceBuffer<int4> d_cw_s, d_ocws;
     DeviceBuffer<cuda::std::array<int4, 4>> d_cs;
-    DeviceBuffer<fss::gpu::ExtBits<kBucketBits>> d_extra;
+    DeviceBuffer<fss::gpu::detail::ExtBits<kBucketBits>> d_extra;
     ASSERT_EQ(d_xs.Allocate(n), cudaSuccess);
     ASSERT_EQ(d_xs.Upload(xs.data(), n), cudaSuccess);
     for (int p = 0; p < 2; ++p) {
@@ -191,32 +192,41 @@ protected:
     ASSERT_EQ(d_cws.Allocate(h_cws.size()), cudaSuccess);
     ASSERT_EQ(d_cws.Upload(h_cws.data(), h_cws.size()), cudaSuccess);
     ASSERT_EQ(d_ocws.Allocate(m_rt), cudaSuccess);
-    ASSERT_EQ(d_ocws.Upload(h_ocws.data(), m_rt), cudaSuccess);
     ASSERT_EQ(d_cs.Allocate(m), cudaSuccess);
     ASSERT_EQ(d_cs.Upload(h_cs.data(), m), cudaSuccess);
     ASSERT_EQ(d_cw_s.Allocate(static_cast<size_t>(kBucketBits) * m_rt), cudaSuccess);
     ASSERT_EQ(d_extra.Allocate(m_rt), cudaSuccess);
 
     // Both parties share the correction words, so one repack serves both.
-    fss::gpu::VdpfRepackGpu<kBucketBits, Group, Prg, Blake3, Blake3, uint>(
-        d_cws.data(), m_rt, d_cw_s.data(), d_extra.data());
+    fss::gpu::RepackGpu<fss::Vdpf<kBucketBits, Group, Prg, Blake3, Blake3, __uint128_t>>({d_cws.data(), h_cws.size()},
+        m_rt,
+        {d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt},
+        {d_extra.data(), static_cast<size_t>(m_rt)},
+        {d_ocws.data(), static_cast<size_t>(m_rt)},
+        {d_cs.data(), static_cast<size_t>(m)},
+        {d_cs.data(), static_cast<size_t>(m)});
 
-    // Empty batches use every bucket's cs and require no query/key buffers.
+    const cuda::std::span<const int4> corrections(d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt);
+    const cuda::std::span<const fss::gpu::detail::ExtBits<kBucketBits>> controls(d_extra.data(), m_rt);
+    const cuda::std::span<const int4> terminals(d_ocws.data(), m_rt);
+    const cuda::std::span<const cuda::std::array<int4, 4>> checks(d_cs.data(), m);
+    // Empty batches use every bucket's cs and require no query or key buffers.
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::VdmpfBatchEvalMerkleGpu(p != 0, static_cast<const uint16_t *>(nullptr), nullptr, d_pi[p].data(), 0,
-          sigma, m_rt, b_rt, nullptr, nullptr, nullptr, d_cs.data(), nullptr, vdmpf);
+      fss::gpu::detail::VdmpfBatchEvalMerkleGpu(p != 0, static_cast<const uint16_t *>(nullptr),
+          nullptr, d_pi[p].data(), 0, {}, 0, 0, nullptr, nullptr, nullptr, checks.data(), nullptr, vdmpf);
       ASSERT_EQ(cudaGetLastError(), cudaSuccess);
       ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
       cuda::std::array<int4, 4> expected, actual;
-      vdmpf.BatchEvalMerkle(
+      fss_test::BatchEvalMerkleKey(vdmpf,
           p != 0, p == 0 ? k0 : k1, cuda::std::span<const uint16_t>(), cuda::std::span<int4>(), expected);
       ASSERT_EQ(d_pi[p].Download(&actual, 1), cudaSuccess);
       for (int w = 0; w < 4; ++w) ExpectOutput(actual[w], expected[w], w);
     }
 
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::VdmpfBatchEvalGpu(p != 0, d_xs.data(), d_ys[p].data(), d_pi[p].data(), n, sigma, m_rt, b_rt,
-          d_s0s[p].data(), d_cw_s.data(), d_extra.data(), d_cs.data(), d_ocws.data(), vdmpf);
+      fss::gpu::detail::VdmpfBatchEvalMerkleGpu(p != 0, d_xs.data(), d_ys[p].data(), d_pi[p].data(), n,
+          sigma, m_rt, b_rt, d_s0s[p].data(), corrections.data(), controls.data(), checks.data(),
+          terminals.data(), vdmpf);
     }
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
@@ -251,11 +261,66 @@ protected:
     std::vector<int4> host_ys(n);
     cuda::std::array<int4, 4> host_pi;
     for (int p = 0; p < 2; ++p) {
-      vdmpf.BatchEvalMerkle(
+      fss_test::BatchEvalMerkleKey(vdmpf,
           p != 0, p == 0 ? k0 : k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(host_ys), host_pi);
       for (int i = 0; i < n; ++i) ExpectOutput(ys[p][i], host_ys[i], xs[i]);
       for (int w = 0; w < 4; ++w) ExpectOutput(pi[p][w], host_pi[w], w);
     }
+
+    if (check_execution_parameters) {
+      constexpr int kCapacity = 513;
+      DeviceBuffer<uint16_t> tuning_xs;
+      DeviceBuffer<int4> tuning_ys;
+      DeviceBuffer<cuda::std::array<int4, 4>> tuning_pi;
+      ASSERT_EQ(tuning_xs.Allocate(kCapacity), cudaSuccess);
+      ASSERT_EQ(tuning_ys.Allocate(kCapacity), cudaSuccess);
+      ASSERT_EQ(tuning_pi.Allocate(1), cudaSuccess);
+      // Repeated queries concentrate records into a few buckets. The tails
+      // cross several possible GPU chunk boundaries without changing the tree.
+      for (int count : {0, 1, 257, 513}) {
+        SCOPED_TRACE(::testing::Message() << "queries=" << count);
+        std::vector<uint16_t> repeated(count, alphas[0]);
+        if (count != 0) ASSERT_EQ(tuning_xs.Upload(repeated.data(), count), cudaSuccess);
+        std::vector<int4> expected_ys[2];
+        cuda::std::array<int4, 4> expected_pi[2];
+        for (int party = 0; party < 2; ++party) {
+          expected_ys[party].resize(count);
+          fss_test::BatchEvalMerkleKey(vdmpf, party != 0, party == 0 ? k0 : k1,
+              cuda::std::span<const uint16_t>(repeated), cuda::std::span<int4>(expected_ys[party]),
+              expected_pi[party]);
+        }
+        auto check_configuration = [&]<int chunk_size, int threads>() {
+          SCOPED_TRACE(::testing::Message() << "chunk=" << chunk_size << ", threads=" << threads);
+          for (int party = 0; party < 2; ++party) {
+            SCOPED_TRACE(::testing::Message() << "party=" << party);
+            fss::gpu::detail::VdmpfBatchEvalMerkleGpu<4, chunk_size, threads>(party != 0,
+                tuning_xs.data(), tuning_ys.data(), tuning_pi.data(), count,
+                count == 0 ? int4{} : sigma, count == 0 ? 0 : m_rt,
+                count == 0 ? __uint128_t{} : b_rt,
+                count == 0 ? nullptr : d_s0s[party].data(),
+                count == 0 ? nullptr : corrections.data(),
+                count == 0 ? nullptr : controls.data(), checks.data(),
+                count == 0 ? nullptr : terminals.data(), vdmpf);
+            ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+            ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+            cuda::std::array<int4, 4> actual_pi;
+            ASSERT_EQ(tuning_pi.Download(&actual_pi, 1), cudaSuccess);
+            for (int word = 0; word < 4; ++word) ExpectOutput(actual_pi[word], expected_pi[party][word], word);
+            if (count != 0) {
+              std::vector<int4> actual_ys(count);
+              ASSERT_EQ(tuning_ys.Download(actual_ys.data(), count), cudaSuccess);
+              for (int i = 0; i < count; ++i) ExpectOutput(actual_ys[i], expected_ys[party][i], i);
+            }
+          }
+        };
+        check_configuration.template operator()<1, 64>();
+        check_configuration.template operator()<32, 64>();
+        check_configuration.template operator()<128, 128>();
+        check_configuration.template operator()<256, 256>();
+        check_configuration.template operator()<512, 128>();
+      }
+    }
+
   }
 };
 
@@ -263,7 +328,7 @@ using VdmpfBytesGpuTest = VdmpfGpuTest<fss::group::Bytes>;
 using VdmpfUint128GpuTest = VdmpfGpuTest<Uint127Group>;
 
 TEST_F(VdmpfBytesGpuTest, BatchEval) {
-  TestBatchEval();
+  TestBatchEval(true);
 }
 
 TEST_F(VdmpfUint128GpuTest, BatchEval) {
@@ -273,7 +338,30 @@ TEST_F(VdmpfUint128GpuTest, BatchEval) {
 using VdmpfCustomSecurityGpuTest = VdmpfGpuTest<fss::group::Bytes, 60>;
 TEST_F(VdmpfCustomSecurityGpuTest, BatchEval) {
   TestBatchEval();
-  EXPECT_EQ(fss::gpu::ReleaseGpuWorkspaces(), cudaSuccess);
 }
 
+}  // namespace
+
+namespace {
+namespace query_bounds {
+using Group = fss::group::Bytes;
+using Prg = fss::prg::ChaCha<2>;
+using Prp = fss::prp::ChaChaFeistel;
+using ProofHash = fss::hash::Blake3;
+ProofHash MakeProofHash() {
+  const int4 iv[2] = {{2, 3, 5, 7}, {11, 13, 17, 19}};
+  return ProofHash{iv};
+}
+TEST(VdmpfGpuArguments, RejectsOversizedQueryCount) {
+  using Vdmpf = fss::Vdmpf<8, 30, 4, Group, Prg, ProofHash, ProofHash, Prp, uint8_t>;
+  Vdmpf scheme{Prg{23, 47}, MakeProofHash(), MakeProofHash(), Prp{}};
+
+  auto evaluate = [&](int count) {
+    fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, static_cast<const uint8_t *>(nullptr),
+        nullptr, nullptr, count, {}, Vdmpf::kBucketCount, Vdmpf::kBucketSize,
+        nullptr, nullptr, nullptr, nullptr, nullptr, scheme);
+  };
+  EXPECT_THROW(evaluate(std::numeric_limits<int>::max() / 3 + 1), std::invalid_argument);
+}
+}  // namespace query_bounds
 }  // namespace

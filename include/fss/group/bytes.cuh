@@ -15,31 +15,46 @@ namespace fss::group {
 
 /**
  * Bytes with XOR as a group.
+ * @ingroup fss_api
  */
-struct Bytes {
-  int4 val;
+class Bytes {
+public:
+  // Groupable interface.
 
+  /** Return the group sum, the bitwise XOR of both values. */
   __host__ __device__ Bytes operator+(Bytes rhs) const {
-    return util::Xor(val, rhs.val);
+    return util::Xor(val_, rhs.val_);
   }
 
+  /** Return the additive inverse, which is this value in the XOR group. */
   __host__ __device__ Bytes operator-() const {
     return *this;
   }
 
-  __host__ __device__ Bytes() : val({0, 0, 0, 0}) {}
+  /** Construct the additive identity. */
+  __host__ __device__ Bytes() : val_({0, 0, 0, 0}) {}
 
+  /** Wrap a clamped block as a group element. */
   __host__ __device__ static Bytes From(int4 buf) {
     assert((buf.w & 1) == 0);
     return Bytes(buf);
   }
 
+  /** Return this group element as a clamped block. */
   __host__ __device__ int4 Into() const {
-    return val;
+    return val_;
   }
 
+  // Additional public API.
+  // Temporary access for the host DCF full-domain fast path. Revisit after
+  // comparing it with the generic Groupable implementation.
+  /** Return a copy of the underlying block. */
+  __host__ __device__ int4 Value() const { return val_; }
+
 private:
-  __host__ __device__ Bytes(int4 buf) : val(buf) {}
+  int4 val_;
+
+  __host__ __device__ Bytes(int4 buf) : val_(buf) {}
 };
 static_assert(Groupable<Bytes>);
 

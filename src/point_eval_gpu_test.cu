@@ -6,10 +6,9 @@
 #include <cuda/std/span>
 #include <fss/group/bytes.cuh>
 #include <fss/hash/blake3.cuh>
-#include <fss/point_eval_gpu.cuh>
+#include <fss/repack_gpu.cuh>
 #include <fss/prg/chacha.cuh>
-#include <thread>
-#include <limits>
+#include "core_api_test_helpers.cuh"
 
 namespace {
 
@@ -65,7 +64,7 @@ std::vector<In> MakePoints(const std::vector<In> &alphas) {
   return xs;
 }
 
-template <int bits, typename In, int keys = 8, int par_depth = -1, typename Query = In, bool released = false>
+template <int bits, typename In, int keys = 8, typename Query = In>
 void CheckDpfPoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -75,7 +74,7 @@ void CheckDpfPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
   using Group = fss::group::Bytes;
-  using Scheme = fss::Dpf<bits, Group, Prg, In, par_depth>;
+  using Scheme = fss::Dpf<bits, Group, Prg, In>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kStride = bits + 1;
@@ -89,13 +88,13 @@ void CheckDpfPoint() {
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
-    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
+    fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
     for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_cw_s, device_out_cw, device_seeds, device_ys;
   DeviceBuffer<Query> device_xs;
-  DeviceBuffer<fss::gpu::ExtBits<bits>> device_extra;
+  DeviceBuffer<fss::gpu::detail::ExtBits<bits>> device_extra;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
   ASSERT_EQ(device_cw_s.Allocate(bits * keys), cudaSuccess);
@@ -108,27 +107,27 @@ void CheckDpfPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  if constexpr (released) {
-    fss::gpu::DpfRelayoutGpu<bits, Group, Prg, In>(
-        device_cws.data(), keys, device_cw_s.data(), device_extra.data(), device_out_cw.data(), stream);
-  } else {
-    fss::gpu::DpfRepackGpu<bits, Group, Prg, In, par_depth>(
-        device_cws.data(), keys, device_cw_s.data(), device_extra.data(), device_out_cw.data(), stream);
-  }
+  fss::gpu::RepackGpu<fss::Dpf<bits, Group, Prg, In>>({device_cws.data(), cws.size()},
+      keys,
+      {device_cw_s.data(), bits * keys},
+      {device_extra.data(), keys},
+      {device_out_cw.data(), keys},
+      stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
-    fss::gpu::DpfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_extra.data(),
-        device_out_cw.data(), device_xs.data(), device_ys.data(), keys, scheme, stream);
+    fss::gpu::detail::DpfEvalPointGpu(party != 0,
+        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_out_cw.data(), device_xs.data(), device_ys.data(),
+        keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
     for (int k = 0; k < keys; ++k) {
       SCOPED_TRACE(::testing::Message() << "key " << k);
       const Key &party_key = party == 0 ? keys0[k] : keys1[k];
-      ExpectInt4(actual[k], scheme.Eval(party != 0, party_key, xs[k]), k);
+      ExpectInt4(actual[k], fss_test::EvalKey(scheme, party != 0, party_key, xs[k]), k);
       if (party == 0) first[k] = actual[k];
       else {
         int4 sum = (Group::From(first[k]) + Group::From(actual[k])).Into();
@@ -139,7 +138,7 @@ void CheckDpfPoint() {
   ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }
 
-template <int bits, typename In, int keys = 8, int par_depth = -1, typename Query = In, bool released = false>
+template <int bits, typename In, int keys = 8, typename Query = In>
 void CheckHalfTreePoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -147,26 +146,25 @@ void CheckHalfTreePoint() {
     GTEST_SKIP() << "no CUDA device available";
   }
   ASSERT_EQ(status, cudaSuccess);
-  using Prg = fss::prg::ChaCha<1>;
+  using Prg = fss_test::TestCcrHash;
   using Group = fss::group::Bytes;
-  using Scheme = fss::HalfTreeDpf<bits, Group, Prg, In, par_depth>;
+  using Scheme = fss::HalfTreeDpf<bits, Group, fss_test::CcrBackend<Prg>, In>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
-  constexpr int kStride = bits;
+  constexpr int kStride = bits + 1;
   const int4 hash_key = {11, 22, 33, 44};
-  Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), hash_key};
+  Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), hash_key};
   const int4 beta = {7, 19, 23, 42};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakePoints<bits, In>(alphas);
   std::vector<Cw> cws(keys * kStride);
   std::vector<Key> keys0(keys), keys1(keys);
-  std::vector<int4> seeds(2 * keys), party_seeds(keys), ocws(keys);
+  std::vector<int4> seeds(2 * keys), party_seeds(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
-    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
+    fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
     for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
-    ocws[k] = keys0[k].ocw;
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_cw_s, device_ocws, device_seeds, device_ys;
@@ -177,7 +175,6 @@ void CheckHalfTreePoint() {
   ASSERT_EQ(device_cw_s.Allocate(bits * keys), cudaSuccess);
   ASSERT_EQ(device_extra.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ocws.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_ocws.Upload(ocws.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -185,27 +182,27 @@ void CheckHalfTreePoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  if constexpr (released) {
-    fss::gpu::HalfTreeDpfRelayoutGpu<bits, Group, Prg, In>(
-        device_cws.data(), keys, device_cw_s.data(), device_extra.data(), stream);
-  } else {
-    fss::gpu::HalfTreeDpfRepackGpu<bits, Group, Prg, In, par_depth>(
-        device_cws.data(), keys, device_cw_s.data(), device_extra.data(), stream);
-  }
+  fss::gpu::RepackGpu<fss::HalfTreeDpf<bits, Group, fss_test::CcrBackend<Prg>, In>>({device_cws.data(), cws.size()},
+      keys,
+      {device_cw_s.data(), bits * keys},
+      {device_extra.data(), keys},
+      {device_ocws.data(), keys},
+      stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
-    fss::gpu::HalfTreeDpfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_extra.data(),
-        device_ocws.data(), device_xs.data(), device_ys.data(), keys, scheme, stream);
+    fss::gpu::detail::HalfTreeDpfEvalPointGpu(party != 0,
+        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_ocws.data(), device_xs.data(), device_ys.data(),
+        keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
     for (int k = 0; k < keys; ++k) {
       SCOPED_TRACE(::testing::Message() << "key " << k);
       const Key &party_key = party == 0 ? keys0[k] : keys1[k];
-      ExpectInt4(actual[k], scheme.Eval(party != 0, party_key, xs[k]), k);
+      ExpectInt4(actual[k], fss_test::EvalKey(scheme, party != 0, party_key, xs[k]), k);
       if (party == 0) first[k] = actual[k];
       else {
         int4 sum = (Group::From(first[k]) + Group::From(actual[k])).Into();
@@ -232,7 +229,7 @@ std::vector<In> MakeBoundaryPoints(const std::vector<In> &alphas) {
 }
 
 // Packed HalfTree DPF point evaluation against the host Eval and the two-party reconstruction.
-template <int bits, typename In, int out_bits, int keys = 37, typename Query = In, int par_depth = -1>
+template <int bits, typename In, int out_bits, int keys = 37, typename Query = In>
 void CheckPackedPoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -240,24 +237,23 @@ void CheckPackedPoint() {
     GTEST_SKIP() << "no CUDA device available";
   }
   ASSERT_EQ(status, cudaSuccess);
-  using Prg = fss::prg::ChaCha<1>;
-  using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, Prg, In, par_depth>;
+  using Prg = fss_test::TestCcrHash;
+  using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, fss_test::CcrBackend<Prg>, In>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kDepth = Scheme::kDepth;
-  Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), {11, 22, 33, 44}};
-  const uint64_t beta = out_bits == 1 ? 1 : Scheme::kBetaMax - 2;
+  Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), {11, 22, 33, 44}};
+  const uint64_t beta = out_bits == 1 ? 1 : (out_bits == 64 ? ~uint64_t{0} : (uint64_t{1} << out_bits) - 1) - 2;
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakeBoundaryPoints<bits, In, kDepth>(alphas);
-  std::vector<Cw> cws(keys * kDepth);
+  std::vector<Cw> cws(keys * (kDepth + 1));
   std::vector<Key> keys0(keys), keys1(keys);
-  std::vector<int4> seeds(2 * keys), party_seeds(keys), fcws(keys);
+  std::vector<int4> seeds(2 * keys), party_seeds(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
-    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
-    for (int i = 0; i < kDepth; ++i) cws[k * kDepth + i] = keys0[k].cws[i];
-    fcws[k] = keys0[k].fcw;
+    fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
+    for (int i = 0; i <= kDepth; ++i) cws[k * (kDepth + 1) + i] = keys0[k].cws[i];
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_cw_s, device_fcws, device_seeds, device_ys;
@@ -266,7 +262,6 @@ void CheckPackedPoint() {
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
   ASSERT_EQ(device_cw_s.Allocate(kDepth * keys), cudaSuccess);
   ASSERT_EQ(device_fcws.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_fcws.Upload(fcws.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -274,14 +269,18 @@ void CheckPackedPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::PackedHalfTreeDpfRepackGpu<bits, out_bits, Prg, In, par_depth>(
-      device_cws.data(), keys, device_cw_s.data(), stream);
+  fss::gpu::RepackGpu<fss::PackedHalfTreeDpf<bits, out_bits, fss_test::CcrBackend<Prg>, In>>({device_cws.data(), cws.size()},
+        keys,
+        {device_cw_s.data(), kDepth * keys},
+        {device_fcws.data(), keys},
+        stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
-    fss::gpu::PackedHalfTreeDpfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_fcws.data(),
+    fss::gpu::detail::PackedHalfTreeDpfEvalPointGpu(party != 0,
+        device_seeds.data(), device_cw_s.data(), device_fcws.data(),
         device_xs.data(), device_ys.data(), keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
@@ -289,12 +288,12 @@ void CheckPackedPoint() {
     for (int k = 0; k < keys; ++k) {
       SCOPED_TRACE(::testing::Message() << "key " << k);
       const Key &party_key = party == 0 ? keys0[k] : keys1[k];
-      ExpectInt4(actual[k], scheme.Eval(party != 0, party_key, xs[k]), k);
+      ExpectInt4(actual[k], fss_test::EvalKey(scheme, party != 0, party_key, xs[k]), k);
       if (party == 0) {
         first[k] = actual[k];
       } else {
         const bool same_block = (xs[k] >> (bits - kDepth)) == (alphas[k] >> (bits - kDepth));
-        const int4 expected = same_block ? Scheme::PackBeta(alphas[k], beta) : int4{0, 0, 0, 0};
+        const int4 expected = same_block ? fss_test::PackBetaReference<128 / Scheme::kLanes>(alphas[k], beta) : int4{0, 0, 0, 0};
         ExpectInt4(fss::util::Xor(first[k], actual[k]), expected, k);
       }
     }
@@ -303,7 +302,7 @@ void CheckPackedPoint() {
 }
 
 // HalfTree Grotto DCF point evaluation against the host Eval and the two-party reconstruction.
-template <int bits, typename In, int keys = 37, typename Query = In, int par_depth = -1>
+template <int bits, typename In, int keys = 37, typename Query = In>
 void CheckHalfTreeGrottoPoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -311,12 +310,12 @@ void CheckHalfTreeGrottoPoint() {
     GTEST_SKIP() << "no CUDA device available";
   }
   ASSERT_EQ(status, cudaSuccess);
-  using Prg = fss::prg::ChaCha<1>;
-  using Scheme = fss::HalfTreeGrottoDcf<bits, Prg, In, par_depth>;
+  using Prg = fss_test::TestCcrHash;
+  using Scheme = fss::HalfTreeGrottoDcf<bits, fss_test::CcrBackend<Prg>, In>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kDepth = Scheme::kDepth;
-  Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u)), {11, 22, 33, 44}};
+  Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), {11, 22, 33, 44}};
   // Every other run of six keys flips alpha's last tree bit, so each boundary point meets both
   // leaf parity sides.
   std::vector<In> alphas = MakeAlphas<bits, In>(keys);
@@ -324,15 +323,14 @@ void CheckHalfTreeGrottoPoint() {
     if ((k / 6) % 2 == 1) alphas[k] = static_cast<In>(alphas[k] ^ (static_cast<In>(1) << (bits - kDepth)));
   }
   const std::vector<In> xs = MakeBoundaryPoints<bits, In, kDepth>(alphas);
-  std::vector<Cw> cws(keys * kDepth);
+  std::vector<Cw> cws(keys * (kDepth + 1));
   std::vector<Key> keys0(keys), keys1(keys);
-  std::vector<int4> seeds(2 * keys), party_seeds(keys), fcws(keys);
+  std::vector<int4> seeds(2 * keys), party_seeds(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
-    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k]);
-    for (int i = 0; i < kDepth; ++i) cws[k * kDepth + i] = keys0[k].cws[i];
-    fcws[k] = keys0[k].fcw;
+    fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k]);
+    for (int i = 0; i <= kDepth; ++i) cws[k * (kDepth + 1) + i] = keys0[k].cws[i];
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_cw_s, device_fcws, device_seeds;
@@ -342,7 +340,6 @@ void CheckHalfTreeGrottoPoint() {
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
   ASSERT_EQ(device_cw_s.Allocate(kDepth * keys), cudaSuccess);
   ASSERT_EQ(device_fcws.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_fcws.Upload(fcws.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -350,13 +347,18 @@ void CheckHalfTreeGrottoPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::HalfTreeGrottoDcfRepackGpu<bits, Prg, In, par_depth>(device_cws.data(), keys, device_cw_s.data(), stream);
+  fss::gpu::RepackGpu<fss::HalfTreeGrottoDcf<bits, fss_test::CcrBackend<Prg>, In>>({device_cws.data(), cws.size()},
+        keys,
+        {device_cw_s.data(), kDepth * keys},
+        {device_fcws.data(), keys},
+        stream);
   std::vector<uint8_t> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
-    fss::gpu::HalfTreeGrottoDcfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_fcws.data(),
+    fss::gpu::detail::HalfTreeGrottoDcfEvalPointGpu(party != 0,
+        device_seeds.data(), device_cw_s.data(), device_fcws.data(),
         device_xs.data(), device_ys.data(), keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
@@ -364,7 +366,7 @@ void CheckHalfTreeGrottoPoint() {
     for (int k = 0; k < keys; ++k) {
       SCOPED_TRACE(::testing::Message() << "key " << k);
       const Key &party_key = party == 0 ? keys0[k] : keys1[k];
-      EXPECT_EQ(actual[k] != 0, scheme.Eval(party != 0, party_key, xs[k]));
+      EXPECT_EQ(actual[k] != 0, fss_test::EvalKey(scheme, party != 0, party_key, xs[k]));
       if (party == 0) {
         first[k] = actual[k];
       } else {
@@ -376,7 +378,7 @@ void CheckHalfTreeGrottoPoint() {
 }
 
 // Grotto DCF single-path evaluation against the host Eval and the two-party reconstruction.
-template <int bits, typename In, int keys = 37, typename Query = In, int par_depth = -1>
+template <int bits, typename In, int keys = 37, typename Query = In>
 void CheckGrottoPoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -385,7 +387,7 @@ void CheckGrottoPoint() {
   }
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
-  using Scheme = fss::GrottoDcf<bits, Prg, In, par_depth>;
+  using Scheme = fss::GrottoDcf<bits, Prg, In>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
@@ -397,12 +399,12 @@ void CheckGrottoPoint() {
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
-    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k]);
+    fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k]);
     for (int i = 0; i <= bits; ++i) cws[k * (bits + 1) + i] = keys0[k].cws[i];
   }
   DeviceBuffer<Cw> device_cws;
   DeviceBuffer<int4> device_cw_s, device_seeds;
-  DeviceBuffer<fss::gpu::ExtBits<bits>> device_extra;
+  DeviceBuffer<fss::gpu::detail::ExtBits<bits>> device_extra;
   DeviceBuffer<bool> device_ys;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
@@ -416,22 +418,27 @@ void CheckGrottoPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::GrottoDcfRepackGpu<bits, Prg, In, par_depth>(
-      device_cws.data(), keys, device_cw_s.data(), device_extra.data(), stream);
+  fss::gpu::RepackGpu<fss::GrottoDcf<bits, Prg, In>>({device_cws.data(), cws.size()},
+        keys,
+        {device_cw_s.data(), bits * keys},
+        {device_extra.data(), keys},
+        {},
+        stream);
   std::vector<uint8_t> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
-    fss::gpu::GrottoDcfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_extra.data(),
-        device_xs.data(), device_ys.data(), keys, scheme, stream);
+    fss::gpu::detail::GrottoDcfEvalPointGpu(party != 0,
+        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_xs.data(), device_ys.data(),
+        keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(bool), cudaMemcpyDeviceToHost), cudaSuccess);
     for (int k = 0; k < keys; ++k) {
       SCOPED_TRACE(::testing::Message() << "key " << k);
       const Key &party_key = party == 0 ? keys0[k] : keys1[k];
-      EXPECT_EQ(actual[k] != 0, scheme.Eval(party != 0, party_key, xs[k]));
+      EXPECT_EQ(actual[k] != 0, fss_test::EvalKey(scheme, party != 0, party_key, xs[k]));
       if (party == 0) {
         first[k] = actual[k];
       } else {
@@ -442,8 +449,7 @@ void CheckGrottoPoint() {
   ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }
 
-template <int bits, typename In, int keys = 8, fss::DcfPred pred = fss::DcfPred::kLt, int par_depth = -1,
-    typename Query = In, bool released = false>
+template <int bits, typename In, int keys = 8, fss::DcfPred pred = fss::DcfPred::kLt, typename Query = In>
 void CheckDcfPoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -453,7 +459,7 @@ void CheckDcfPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<4>;
   using Group = fss::group::Bytes;
-  using Scheme = fss::Dcf<bits, Group, Prg, In, pred, par_depth>;
+  using Scheme = fss::Dcf<bits, Group, Prg, In, pred>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kStride = bits + 1;
@@ -467,7 +473,7 @@ void CheckDcfPoint() {
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
-    scheme.Gen(keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
+    fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
     for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
   }
   DeviceBuffer<Cw> device_cws;
@@ -485,27 +491,27 @@ void CheckDcfPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  if constexpr (released) {
-    fss::gpu::DcfRelayoutGpu<bits, Group, Prg, In>(
-        device_cws.data(), keys, device_cw_s.data(), device_cw_v.data(), device_out_cw.data(), stream);
-  } else {
-    fss::gpu::DcfRepackGpu<bits, Group, Prg, In, pred, par_depth>(
-        device_cws.data(), keys, device_cw_s.data(), device_cw_v.data(), device_out_cw.data(), stream);
-  }
+  fss::gpu::RepackGpu<fss::Dcf<bits, Group, Prg, In, pred>>({device_cws.data(), cws.size()},
+      keys,
+      {device_cw_s.data(), bits * keys},
+      {device_cw_v.data(), bits * keys},
+      {device_out_cw.data(), keys},
+      stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
-    fss::gpu::DcfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_cw_v.data(),
-        device_out_cw.data(), device_xs.data(), device_ys.data(), keys, scheme, stream);
+    fss::gpu::detail::DcfEvalPointGpu(party != 0,
+        device_seeds.data(), device_cw_s.data(), device_cw_v.data(), device_out_cw.data(), device_xs.data(), device_ys.data(),
+        keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
     for (int k = 0; k < keys; ++k) {
       SCOPED_TRACE(::testing::Message() << "key " << k);
       const Key &party_key = party == 0 ? keys0[k] : keys1[k];
-      ExpectInt4(actual[k], scheme.Eval(party != 0, party_key, xs[k]), k);
+      ExpectInt4(actual[k], fss_test::EvalKey(scheme, party != 0, party_key, xs[k]), k);
       if (party == 0) first[k] = actual[k];
       else {
         const bool hit = pred == fss::DcfPred::kLt ? xs[k] < alphas[k] : xs[k] > alphas[k];
@@ -517,7 +523,7 @@ void CheckDcfPoint() {
   ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }
 
-template <int bits, typename In, int keys = 8, int par_depth = -1, typename Query = In, bool released = false>
+template <int bits, typename In, int keys = 8, typename Query = In>
 void CheckVdpfPoint() {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
@@ -528,10 +534,10 @@ void CheckVdpfPoint() {
   using Prg = fss::prg::ChaCha<2>;
   using Blake3 = fss::hash::Blake3;
   using Group = fss::group::Bytes;
-  using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In, par_depth>;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>;
   using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
-  constexpr int kStride = bits;
+  constexpr int kStride = bits + 1;
   // Blake3 copies the IV by value at construction.
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   Blake3 hash{cuda::std::span<const int4, 2>(iv, 2)};
@@ -541,20 +547,20 @@ void CheckVdpfPoint() {
   const std::vector<In> xs = MakePoints<bits, In>(alphas);
   std::vector<Cw> cws(keys * kStride);
   std::vector<Key> keys0(keys), keys1(keys);
-  std::vector<int4> seeds(2 * keys), party_seeds(keys), ocws(keys);
+  std::vector<int4> seeds(2 * keys), party_seeds(keys);
   std::vector<cuda::std::array<int4, 4>> cs(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
-    ASSERT_EQ(scheme.Gen(keys0[k], keys1[k], cuda::std::span<int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta), 0);
+    ASSERT_EQ(fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta), 0);
     for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
-    cs[k] = keys0[k].cs;
-    ocws[k] = keys0[k].ocw;
+    for (int i = 0; i < 4; ++i) cs[k][i] = keys0[k].cs[i];
   }
   DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_ocws, device_seeds, device_ys, device_pi;
+  DeviceBuffer<int4> device_cw_s, device_ocws, device_seeds, device_ys;
+  DeviceBuffer<cuda::std::array<int4, 4>> device_pi;
   DeviceBuffer<cuda::std::array<int4, 4>> device_cs;
-  DeviceBuffer<fss::gpu::ExtBits<bits>> device_extra;
+  DeviceBuffer<fss::gpu::detail::ExtBits<bits>> device_extra;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
@@ -563,30 +569,30 @@ void CheckVdpfPoint() {
   ASSERT_EQ(device_cs.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_cs.Upload(cs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_ocws.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_ocws.Upload(ocws.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_pi.Allocate(4 * keys), cudaSuccess);
+  ASSERT_EQ(device_pi.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
   const std::vector<Query> query_buffer(xs.begin(), xs.end());
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  if constexpr (released) {
-    fss::gpu::VdpfRelayoutGpu<bits, Group, Prg, Blake3, Blake3, In>(
-        device_cws.data(), keys, device_cw_s.data(), device_extra.data(), stream);
-  } else {
-    fss::gpu::VdpfRepackGpu<bits, Group, Prg, Blake3, Blake3, In, par_depth>(
-        device_cws.data(), keys, device_cw_s.data(), device_extra.data(), stream);
-  }
+  fss::gpu::RepackGpu<fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>>({device_cws.data(), cws.size()},
+      keys,
+      {device_cw_s.data(), bits * keys},
+      {device_extra.data(), keys},
+      {device_ocws.data(), keys},
+      {device_cs.data(), keys},
+      cuda::std::span<const cuda::std::array<int4, 4>>(device_cs.data(), keys),
+      stream);
   std::vector<int4> actual(keys), first(keys), gpu_pi(2 * 4 * keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
-    fss::gpu::VdpfEvalPointGpu(party != 0, device_seeds.data(), device_cw_s.data(), device_extra.data(),
-        device_cs.data(), device_ocws.data(), device_xs.data(), device_ys.data(), device_pi.data(), keys, scheme,
-        stream);
+    fss::gpu::detail::VdpfEvalPointGpu(party != 0,
+        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_cs.data(), device_ocws.data(), device_xs.data(), device_ys.data(), device_pi.data(),
+        keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
@@ -596,7 +602,7 @@ void CheckVdpfPoint() {
     for (int k = 0; k < keys; ++k) {
       SCOPED_TRACE(::testing::Message() << "key " << k);
       const Key &party_key = party == 0 ? keys0[k] : keys1[k];
-      auto expected = scheme.Eval(party != 0, party_key, xs[k]);
+      auto expected = fss_test::EvalKey(scheme, party != 0, party_key, xs[k]);
       ExpectInt4(actual[k], expected.y, k);
       for (int j = 0; j < 4; ++j) {
         ExpectInt4(gpu_pi[party * 4 * keys + 4 * k + j], expected.pi_tilde[j], k);
@@ -655,9 +661,8 @@ TEST(PointEvalGpu, PackedHalfTreeManyBlocks) {
 TEST(PointEvalGpu, PackedHalfTreeDepth1Uint8) {
   CheckPackedPoint<8, uint8_t, 1>();
 }
-TEST(PointEvalGpu, PackedHalfTreeConfiguredDepths) {
-  CheckPackedPoint<10, uint32_t, 1, 8, uint32_t, 0>();
-  CheckPackedPoint<10, uint32_t, 1, 8, uint32_t, 2>();
+TEST(PointEvalGpu, PackedHalfTree10Bits) {
+  CheckPackedPoint<10, uint32_t, 1, 8, uint32_t>();
 }
 
 TEST(PointEvalGpu, GrottoDcf) {
@@ -678,9 +683,8 @@ TEST(PointEvalGpu, GrottoDcfUint32QueriesForNarrowInputs) {
 TEST(PointEvalGpu, GrottoDcfManyBlocks) {
   CheckGrottoPoint<20, uint32_t, 1000>();
 }
-TEST(PointEvalGpu, GrottoDcfConfiguredDepths) {
-  CheckGrottoPoint<10, uint32_t, 8, uint32_t, 0>();
-  CheckGrottoPoint<10, uint32_t, 8, uint32_t, 2>();
+TEST(PointEvalGpu, GrottoDcf10Bits) {
+  CheckGrottoPoint<10, uint32_t, 8, uint32_t>();
 }
 
 TEST(PointEvalGpu, HalfTreeGrottoDcf) {
@@ -698,9 +702,8 @@ TEST(PointEvalGpu, HalfTreeGrottoDcfUint32QueriesForNarrowInputs) {
 TEST(PointEvalGpu, HalfTreeGrottoDcfManyBlocks) {
   CheckHalfTreeGrottoPoint<20, uint32_t, 1000>();
 }
-TEST(PointEvalGpu, HalfTreeGrottoDcfConfiguredDepths) {
-  CheckHalfTreeGrottoPoint<10, uint32_t, 8, uint32_t, 0>();
-  CheckHalfTreeGrottoPoint<10, uint32_t, 8, uint32_t, 2>();
+TEST(PointEvalGpu, HalfTreeGrottoDcf10Bits) {
+  CheckHalfTreeGrottoPoint<10, uint32_t, 8, uint32_t>();
 }
 
 TEST(PointEvalGpu, DcfBytes) {
@@ -724,96 +727,12 @@ TEST(PointEvalGpu, VdpfUint128) {
   CheckVdpfPoint<128, __uint128_t>();
 }
 
-TEST(PointEvalGpu, ReleasedUint32QueriesForNarrowInputs) {
-  CheckDpfPoint<16, uint16_t, 8, -1, uint32_t, true>();
-  CheckHalfTreePoint<16, uint16_t, 8, -1, uint32_t, true>();
-  CheckDcfPoint<16, uint16_t, 8, fss::DcfPred::kLt, -1, uint32_t, true>();
-  CheckVdpfPoint<16, uint16_t, 8, -1, uint32_t, true>();
+TEST(PointEvalGpu, Uint32QueriesForNarrowInputs) {
+  CheckDpfPoint<16, uint16_t, 8, uint32_t>();
+  CheckHalfTreePoint<16, uint16_t, 8, uint32_t>();
+  CheckDcfPoint<16, uint16_t, 8, fss::DcfPred::kLt, uint32_t>();
+  CheckVdpfPoint<16, uint16_t, 8, uint32_t>();
 }
 
-TEST(PointEvalGpu, ConfiguredDepthsAndPreparation) {
-  CheckDpfPoint<10, uint, 8, 0>();
-  CheckDpfPoint<10, uint, 8, 2>();
-  CheckHalfTreePoint<10, uint, 8, 0>();
-  CheckHalfTreePoint<10, uint, 8, 2>();
-  CheckDcfPoint<10, uint, 8, fss::DcfPred::kLt, 0>();
-  CheckDcfPoint<10, uint, 8, fss::DcfPred::kGt, 2>();
-  CheckVdpfPoint<10, uint, 8, 0>();
-  CheckVdpfPoint<10, uint, 8, 2>();
-}
-
-TEST(GpuWorkspace, CapacityReuseAndAllocationFailure) {
-  int devices = 0;
-  if (cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0) GTEST_SKIP();
-  int device = 0;
-  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
-  fss::gpu::detail::GpuWorkspace workspace(device);
-  auto *first = workspace.Ensure<int4>(0, 64);
-  EXPECT_EQ(workspace.Ensure<int4>(0, 32), first);
-  EXPECT_THROW(workspace.Ensure<unsigned char>(0, std::numeric_limits<size_t>::max() / 2), std::runtime_error);
-  cudaGetLastError();
-  EXPECT_EQ(workspace.Ensure<int4>(0, 64), first);
-  EXPECT_EQ(workspace.Release(), cudaSuccess);
-}
-
-TEST(GpuWorkspace, ThreadExitReleasesPendingScratch) {
-  int devices = 0;
-  if (cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0) GTEST_SKIP();
-  int device = 0;
-  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
-  ASSERT_EQ(fss::gpu::ReleaseGpuWorkspaces(), cudaSuccess);
-  for (int i = 0; i < 3; ++i) {
-    unsigned char *scratch = nullptr;
-    std::thread([device, &scratch] {
-      ASSERT_EQ(cudaSetDevice(device), cudaSuccess);
-      static const int kTag = 0;
-      auto &workspace = fss::gpu::detail::GetGpuWorkspaceCache().Get(&kTag);
-      scratch = workspace.Ensure<unsigned char>(0, 8 * 1024 * 1024);
-      cudaPointerAttributes attributes{};
-      ASSERT_EQ(cudaPointerGetAttributes(&attributes, scratch), cudaSuccess);
-      ASSERT_EQ(attributes.type, cudaMemoryTypeDevice);
-      ASSERT_EQ(cudaMemsetAsync(scratch, 0x42, 8 * 1024 * 1024), cudaSuccess);
-    }).join();
-    ASSERT_NE(scratch, nullptr);
-    // Inspect this context's allocation, because device-wide free memory can
-    // change when another process or test allocates on the same GPU.
-    cudaPointerAttributes attributes{};
-    const cudaError_t status = cudaPointerGetAttributes(&attributes, scratch);
-    cudaGetLastError();
-    if (status == cudaSuccess) {
-      EXPECT_EQ(attributes.type, cudaMemoryTypeUnregistered);
-    } else {
-      EXPECT_EQ(status, cudaErrorInvalidValue);
-    }
-  }
-}
-
-TEST(GpuWorkspace, DeviceOwnershipAndReleaseRestoresDevice) {
-  int devices = 0;
-  if (cudaGetDeviceCount(&devices) != cudaSuccess || devices < 2) GTEST_SKIP() << "requires two CUDA devices";
-  int original = 0;
-  ASSERT_EQ(cudaGetDevice(&original), cudaSuccess);
-  static const int kTag = 0;
-  unsigned char *first = nullptr;
-  for (int device : {0, 1, 0}) {
-    ASSERT_EQ(cudaSetDevice(device), cudaSuccess);
-    auto *scratch = fss::gpu::detail::GetGpuWorkspaceCache().Get(&kTag).Ensure<unsigned char>(0, 1024);
-    cudaPointerAttributes attributes{};
-    ASSERT_EQ(cudaPointerGetAttributes(&attributes, scratch), cudaSuccess);
-    EXPECT_EQ(attributes.device, device);
-    if (device == 0) {
-      if (first != nullptr) EXPECT_EQ(scratch, first);
-      first = scratch;
-    }
-    ASSERT_EQ(cudaMemsetAsync(scratch, device, 1024), cudaSuccess);
-    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
-  }
-  ASSERT_EQ(cudaSetDevice(1), cudaSuccess);
-  ASSERT_EQ(fss::gpu::ReleaseGpuWorkspaces(), cudaSuccess);
-  int current = 0;
-  ASSERT_EQ(cudaGetDevice(&current), cudaSuccess);
-  EXPECT_EQ(current, 1);
-  ASSERT_EQ(cudaSetDevice(original), cudaSuccess);
-}
 
 }  // namespace

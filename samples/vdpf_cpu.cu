@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <cuda_runtime.h>
+#include <openssl/rand.h>
 
 #include <fss/vdpf.cuh>
 #include <fss/group/bytes.cuh>
@@ -31,10 +32,9 @@ static int4 Reconstruct(int4 y0, int4 y1) {
   return (Group::From(y0) + Group::From(y1)).Into();
 }
 
-// Deterministic LSB-cleared initial seeds
-static void MakeSeeds(int4 seeds[2]) {
-  seeds[0] = {0x11111111, 0x22222222, 0x33333333, 0x44444440};
-  seeds[1] = {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)};
+// Draw a fresh uniform seed block from OpenSSL's cryptographic RNG.
+static bool RandomSeed(int4 &seed) {
+  return RAND_bytes(reinterpret_cast<unsigned char *>(&seed), sizeof(seed)) == 1;
 }
 
 int main() {
@@ -58,20 +58,32 @@ int main() {
   In alpha = 42;
   int4 beta = {7, 0, 0, 0};
 
-  // Key generation. Gen() retries internally with perturbed seeds on the rare
-  // bad-seed cases, and writes the effective seeds back into `seeds`.
-  Vdpf::Key k0, k1;
+  // The sample owns its retry budget. Each attempt uses two fresh seeds.
+  Vdpf::Cw cws[kInBits + 1];
+  int4 cs[4];
   int4 seeds[2];
-  MakeSeeds(seeds);
-  if (vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(seeds, 2), alpha, beta) != 0) {
-    fprintf(stderr, "vdpf gen failed after retries\n");
+  constexpr int kMaxAttempts = 128;
+  int status = 1;
+  for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+    if (!RandomSeed(seeds[0]) || !RandomSeed(seeds[1])) {
+      fprintf(stderr, "seed generation failed\n");
+      VdpfPrg::FreeCtxs(ctxs);
+      return 1;
+    }
+    status = vdpf.Gen(cws, cuda::std::span<int4, 4>(cs),
+        cuda::std::span<const int4, 2>(seeds), alpha, beta);
+    if (status == 0) break;
+  }
+  if (status != 0) {
+    fprintf(stderr, "vdpf gen failed after %d attempts\n", kMaxAttempts);
     VdpfPrg::FreeCtxs(ctxs);
     return 1;
   }
 
   // Evaluation with proof. Each party also gets pi_tilde at every point.
-  auto [y0, pi_tilde0] = vdpf.Eval(false, k0, alpha);
-  auto [y1, pi_tilde1] = vdpf.Eval(true, k1, alpha);
+  int4 y0, y1;
+  auto pi_tilde0 = vdpf.Eval(false, seeds[0], cws, cs, alpha, y0);
+  auto pi_tilde1 = vdpf.Eval(true, seeds[1], cws, cs, alpha, y1);
   int4 sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
 
@@ -79,19 +91,19 @@ int main() {
   // With one evaluation the proof just aggregates that point's pi_tilde.
   cuda::std::array<int4, 4> pi0, pi1;
   vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(&pi_tilde0, 1),
-      cuda::std::span<const int4, 4>(k0.cs), pi0);
+      cuda::std::span<const int4, 4>(cs), pi0);
   vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(&pi_tilde1, 1),
-      cuda::std::span<const int4, 4>(k1.cs), pi1);
+      cuda::std::span<const int4, 4>(cs), pi1);
 
-  // Verify: the two parties' proofs match iff they evaluated the same key
+  // Compare proofs accumulated with the same method and ordered query inputs.
   printf("  Verify(pi0, pi1) == true?           %s\n",
       Vdpf::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)) ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
   int4 ys1[1 << kInBits];
-  vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys0), pi0);
-  vdpf.EvalAll(true, k1, cuda::std::span<int4>(ys1), pi1);
+  vdpf.EvalAll(false, seeds[0], cws, cs, cuda::std::span<int4>(ys0), pi0);
+  vdpf.EvalAll(true, seeds[1], cws, cs, cuda::std::span<int4>(ys1), pi1);
 
   int4 zero = {0, 0, 0, 0};
   int mismatches = 0;

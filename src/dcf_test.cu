@@ -10,6 +10,7 @@
 #include <fss/prg/chacha.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include <fss/prg/aes128_mmo_raw.cuh>
+#include "core_api_test_helpers.cuh"
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -61,13 +62,13 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     constexpr size_t n = 1ULL << kAlphaBits;
     std::vector<int4> ys0(n), ys1(n);
 
-    dcf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dcf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey(dcf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey(dcf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -94,7 +95,7 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -104,8 +105,8 @@ protected:
     for (int i = 0; i < 50; i++) {
       uint16_t x = dis_lt(gen);
 
-      int4 y0 = dcf.Eval(false, k0, x);
-      int4 y1 = dcf.Eval(true, k1, x);
+      int4 y0 = fss_test::EvalKey(dcf, false, k0, x);
+      int4 y1 = fss_test::EvalKey(dcf, true, k1, x);
 
       auto g0 = Group::From(y0);
       auto g1 = Group::From(y1);
@@ -122,8 +123,8 @@ protected:
     for (int i = 0; i < 50; i++) {
       uint16_t x = dis_ge(gen);
 
-      int4 y0 = dcf.Eval(false, k0, x);
-      int4 y1 = dcf.Eval(true, k1, x);
+      int4 y0 = fss_test::EvalKey(dcf, false, k0, x);
+      int4 y1 = fss_test::EvalKey(dcf, true, k1, x);
 
       auto g0 = Group::From(y0);
       auto g1 = Group::From(y1);
@@ -145,10 +146,10 @@ protected:
 // (par_depth = 0) beside the frontier-width split (par_depth > 0). Bit-exactness is
 // gated against the scalar point Eval(), which the frontier rewrite leaves untouched.
 template <int in_bits, typename Group, typename Prg, typename In = uint32_t,
-    fss::DcfPred pred = fss::DcfPred::kLt, int par_depth = -1>
+    fss::DcfPred pred = fss::DcfPred::kLt, int par_depth = 0>
 class DcfFrontierTestBase : public ::testing::Test {
 protected:
-  using DcfType = fss::Dcf<in_bits, Group, Prg, In, pred, par_depth>;
+  using DcfType = fss::Dcf<in_bits, Group, Prg, In, pred>;
 
   int4 s0s[2];
   typename DcfType::Key k0, k1;
@@ -189,12 +190,12 @@ protected:
     DcfType dcf{prg};
 
     int4 b_buf = MakeBBuf();
-    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     constexpr size_t n = size_t{1} << in_bits;
     std::vector<int4> ys0(n), ys1(n);
-    dcf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dcf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey<par_depth>(dcf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey<par_depth>(dcf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -219,16 +220,16 @@ protected:
     DcfType dcf{prg};
 
     int4 b_buf = MakeBBuf();
-    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     constexpr size_t n = size_t{1} << in_bits;
     std::vector<int4> ys0(n), ys1(n);
-    dcf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dcf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey<par_depth>(dcf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey<par_depth>(dcf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     for (size_t x = 0; x < n; ++x) {
-      int4 e0 = dcf.Eval(false, k0, static_cast<In>(x));
-      int4 e1 = dcf.Eval(true, k1, static_cast<In>(x));
+      int4 e0 = fss_test::EvalKey(dcf, false, k0, static_cast<In>(x));
+      int4 e1 = fss_test::EvalKey(dcf, true, k1, static_cast<In>(x));
       EXPECT_EQ(memcmp(&ys0[x], &e0, sizeof(int4)), 0) << "Party 0 mismatch at x=" << x;
       EXPECT_EQ(memcmp(&ys1[x], &e1, sizeof(int4)), 0) << "Party 1 mismatch at x=" << x;
     }
@@ -434,7 +435,7 @@ TEST_F(DcfBytesAesTest, EvalLt) {
 
   int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
       static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-  dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+  fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -444,8 +445,8 @@ TEST_F(DcfBytesAesTest, EvalLt) {
   for (int i = 0; i < 50; i++) {
     uint16_t x = dis_lt(gen);
 
-    int4 y0 = dcf.Eval(false, k0, x);
-    int4 y1 = dcf.Eval(true, k1, x);
+    int4 y0 = fss_test::EvalKey(dcf, false, k0, x);
+    int4 y1 = fss_test::EvalKey(dcf, true, k1, x);
 
     auto g0 = Group::From(y0);
     auto g1 = Group::From(y1);
@@ -462,8 +463,8 @@ TEST_F(DcfBytesAesTest, EvalLt) {
   for (int i = 0; i < 50; i++) {
     uint16_t x = dis_ge(gen);
 
-    int4 y0 = dcf.Eval(false, k0, x);
-    int4 y1 = dcf.Eval(true, k1, x);
+    int4 y0 = fss_test::EvalKey(dcf, false, k0, x);
+    int4 y1 = fss_test::EvalKey(dcf, true, k1, x);
 
     auto g0 = Group::From(y0);
     auto g1 = Group::From(y1);

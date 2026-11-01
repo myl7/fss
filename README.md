@@ -106,186 +106,100 @@ target_link_libraries(your_target fss)
 
 ### CPU
 
-This walks through using DPF and DCF on the CPU with AES-128 MMO PRG.
-This PRG requires OpenSSL.
+Core methods operate on caller-owned correction words and party seeds.
+Configure the output group and backend independently of the input domain.
+For example, a byte-output DPF with an 8-bit input domain uses:
 
-1. Include the headers and set up type aliases:
+```cpp
+#include <fss/dpf.cuh>
+#include <fss/group/bytes.cuh>
+#include <fss/prg/chacha.cuh>
 
-   ```cpp
-   #include <fss/dpf.cuh>
-   #include <fss/dcf.cuh>
-   #include <fss/group/bytes.cuh>
-   #include <fss/prg/aes128_mmo.cuh>
+constexpr int kInBits = 8;
+using In = uint8_t;
+using Group = fss::group::Bytes;
+using Prg = fss::prg::ChaCha<2>;
+using Dpf = fss::Dpf<kInBits, Group, Prg, In, 0>;
 
-   constexpr int kInBits = 8;  // Input domain: 2^8 = 256 values
-   using In = uint8_t;
-   using Group = fss::group::Bytes;
+Dpf dpf{Prg{1, 2}};
+int4 s0s[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+int4 b_buf = {7, 0, 0, 0};
+Dpf::Cw cws[kInBits + 1];
+dpf.Gen(cws, s0s, In{42}, b_buf);
 
-   // DPF uses mul=2, DCF uses mul=4
-   using DpfPrg = fss::prg::Aes128Mmo<2>;
-   using DcfPrg = fss::prg::Aes128Mmo<4>;
-   using Dpf = fss::Dpf<kInBits, Group, DpfPrg, In>;
-   using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
-   ```
+int4 y0 = dpf.Eval(false, s0s[0], cws, In{42});
+int4 y1 = dpf.Eval(true, s0s[1], cws, In{42});
+int4 reconstructed = (Group::From(y0) + Group::From(y1)).Into();
+```
 
-2. Create the PRG with AES keys and instantiate DPF/DCF:
+`reconstructed` equals `b_buf` at input 42 and zero elsewhere.
+The seed and value blocks follow the clamping contract documented by `Groupable`.
+DPF, HalfTree and verifiable schemes keep the terminal output correction in the final `cws` entry.
+The declaration comments describe each scheme's correction count and fields.
 
-   ```cpp
-   // DPF PRG needs 2 AES keys
-   unsigned char key0[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-   unsigned char key1[16] = {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
-   const unsigned char *keys[2] = {key0, key1};
-   auto ctxs = DpfPrg::CreateCtxs(keys);
+VDPF, DMPF and VDMPF `Gen` methods make one attempt and preserve their seed inputs.
+Their declaration comments explain which seeds the caller resamples after failure.
+The caller owns randomness, attempt limits and failure handling.
 
-   DpfPrg prg(ctxs);
-   Dpf dpf{prg};
-   ```
-
-3. Run `Gen` to generate correction words (keys) from secret inputs:
-
-   ```cpp
-   In alpha = 42;                  // Secret point / threshold
-   int4 beta = {7, 0, 0, 0};      // Secret payload (LSB of .w must be 0)
-
-   // Random seeds for the two parties (LSB of .w must be 0)
-   int4 seeds[2] = {
-       {0x11111111, 0x22222222, 0x33333333, 0x44444440},
-       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
-   };
-
-   Dpf::Key k0, k1;
-   dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
-   ```
-
-4. Run `Eval` on each party and reconstruct using the group:
-
-   ```cpp
-   // Each party evaluates independently with its own key
-   int4 y0 = dpf.Eval(false, k0, alpha);
-   int4 y1 = dpf.Eval(true, k1, alpha);
-
-   // Reconstruct via the group: convert to group elements, add, convert back
-   // For Bytes group this is XOR; for Uint group this is arithmetic addition
-   int4 sum = (Group::From(y0) + Group::From(y1)).Into();
-   // sum == beta at x == alpha, 0 otherwise
-   ```
-
-5. Free the AES contexts when done:
-
-   ```cpp
-   DpfPrg::FreeCtxs(ctxs);
-   ```
-
-DCF follows the same pattern — use `DcfPrg` (mul=4, needs 4 AES keys) and `Dcf`; `Gen` fills one `Key` per party.
-The reconstructed output equals `beta` when `x < alpha` and `0` otherwise.
-
-Link with OpenSSL in your `CMakeLists.txt`:
+ChaCha and software AES can execute on host and device.
+OpenSSL AES-MMO, AES-NI Raw AES-MMO, OpenSSL Feistel and Raw Feistel are host-only backends.
+OpenSSL context lifetime and concurrency rules are documented on their constructors and operations.
+When using those backends, link OpenSSL:
 
 ```cmake
 find_package(OpenSSL REQUIRED)
 target_link_libraries(your_target fss OpenSSL::Crypto)
 ```
 
-See `samples/dpf_dcf_cpu.cu` for the complete working example.
-
-### CPU Point Evaluation Fast Path
-
-`include/fss/point_eval_cpu.cuh` provides an optional fast path for host-side point evaluation of DPF and Half-Tree DPF keys.
-`fss::cpu::DpfPackPoint()` and `fss::cpu::HalfTreeDpfPackPoint()` convert a key from `Gen()` into a packed point key, which keeps one 16 B correction word per level and the per-level control bits in a single word.
-`fss::cpu::DpfEvalPoint()` and `fss::cpu::HalfTreeDpfEvalPoint()` evaluate a packed key faster than the normal `Eval()`, with bit-exact outputs.
-The pack runs once per key, so the cost amortizes over repeated point evaluations of that key; a one-off evaluation gains nothing and should call `Eval()`, which remains the default interface.
-
-This path is host-only and requires x86-64 with SSE4.1.
-Compile with `-msse4.1`, plus `-maes` when the PRG itself uses AES-NI (e.g. `Aes128MmoRaw`); the repository compiles its tests with `-maes -msse4.2` for that reason.
-A plain PRG such as ChaCha needs no AES flag.
-A packed key must be used with the scheme configuration it was generated with: pass the same PRG instance, and for Half-Tree DPF also the same hash key.
-
-```cpp
-// Continuing the DPF setup from the CPU section above, after dpf.Gen(k0, k1, ...)
-const fss::cpu::DpfPointKey<kInBits> pk0 = fss::cpu::DpfPackPoint<kInBits, Group, DpfPrg, In>(k0);
-
-// Repeated point evaluations; bit-exact with dpf.Eval(false, k0, x)
-int4 y0 = fss::cpu::DpfEvalPoint<kInBits, Group, DpfPrg, In>(false, pk0, x, prg);
-```
+Host full-domain operations use the call's explicit `par_depth` configuration.
+Compile and link OpenMP support when required by the selected toolchain, for example with `-Xcompiler=-fopenmp` under nvcc.
+GPU execution parameters are separate from host partitioning.
+See `samples/dpf_dcf_cpu.cu` for a complete CPU example.
 
 ### GPU
 
-This walks through using DPF and DCF on the GPU with ChaCha PRG.
+DPF provides host member launch methods in `fss/dpf.cuh`; no extra Helper header is required for these calls.
+For caller-allocated device corrections and output, the CPU example's configured `dpf` can launch:
 
-1. Include the headers and set up type aliases:
+```cpp
+cudaError_t status = dpf.EvalAllGpu(false, s0s[0],
+    cuda::std::span<const Dpf::Cw>(device_cws, kInBits + 1),
+    cuda::std::span<int4>(device_ys, size_t{1} << kInBits), stream);
+```
 
-   ```cpp
-   #include <fss/dpf.cuh>
-   #include <fss/dcf.cuh>
-   #include <fss/group/bytes.cuh>
-   #include <fss/prg/chacha.cuh>
+The caller allocates and uploads `device_cws`, provides `device_ys` and `stream`, and prepares any device resources referenced by the backend.
+The host `dpf` is not a device pointer; its value configuration travels as normal kernel arguments.
+The method performs no allocation, upload, deep copy or synchronization.
+`EvalAllGpuBatch` accepts device seed and flattened correction spans and derives the key count from the seed span.
+Both methods accept optional `<frontier_depth, threads_per_block>` template arguments with fixed defaults `<16, 256>`.
+Small domains only cap these dimensions to their tree width; deeper domains require an explicit frontier_depth if more than eight tail levels remain.
+Launch members require CUDA compilation, and their return status does not establish asynchronous completion.
 
-   constexpr int kInBits = 8;
-   using In = uint8_t;
-   using Group = fss::group::Bytes;
+The public GPU Helpers repack correction buffers and provide prepared multipoint query operations.
+They accept an explicit CUDA stream.
+The headers' declaration comments define the storage, execution-space and lifetime requirements:
 
-   // DPF uses mul=2, DCF uses mul=4
-   using DpfPrg = fss::prg::ChaCha<2>;
-   using DcfPrg = fss::prg::ChaCha<4>;
-   using Dpf = fss::Dpf<kInBits, Group, DpfPrg, In>;
-   using Dcf = fss::Dcf<kInBits, Group, DcfPrg, In>;
-   ```
+| Header | Purpose |
+| --- | --- |
+| `fss/repack_gpu.cuh` | Correction repacking |
 
-2. Write a `Gen` kernel; the PRG stores its nonce by value, so one PRG instance works on host and device:
+`RepackGpu<Scheme>` converts caller-owned corrections into the documented prepared layout.
+Prepared GPU evaluation implementations remain internal while the Core coalesced-access interface is reviewed.
+HalfTreeDpf, PackedHalfTreeDpf and Dcf provide `EvalAllGpu` and `EvalAllGpuBatch` host members in their Core headers.
+GrottoDcf and HalfTreeGrottoDcf provide `PreprocessGpu` and raw or parity-tree `EvalAllGpu` methods.
+Vdpf provides `EvalAllMerkleGpu`, and Dmpf provides `EvalAllGpu`.
+Vdmpf provides CPU `EvalAll` and `EvalAllMerkle`, plus GPU `EvalAllMerkleGpu`.
+GPU convenience methods prepare any required temporary device storage internally and release it in the supplied stream.
+Callers still prepare keys, final outputs and device resources referenced by backends.
+There is no public Workspace configuration or hidden backend upload, deep copy or synchronization.
+Users can also call Core `Gen` and `Eval` from their own CUDA kernels.
 
-   ```cpp
-   __global__ void GenKernel(Dpf::Key *keys0, Dpf::Key *keys1, const int4 *seeds, const In *alphas,
-       const int4 *betas) {
-       int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-       DpfPrg prg(0x12345678, 0x9abcdef0);
-       Dpf dpf{prg};
-
-       int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-       dpf.Gen(keys0[tid], keys1[tid], cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
-   }
-   ```
-
-3. Prepare host data, copy to device, and launch the `Gen` kernel:
-
-   ```cpp
-   int4 *d_seeds = /* cudaMalloc + cudaMemcpy seeds to device */;
-   In *d_alphas = /* cudaMalloc + cudaMemcpy alphas to device */;
-   int4 *d_betas = /* cudaMalloc + cudaMemcpy betas to device */;
-
-   Dpf::Key *d_k0s, *d_k1s;
-   cudaMalloc(&d_k0s, sizeof(Dpf::Key) * N);
-   cudaMalloc(&d_k1s, sizeof(Dpf::Key) * N);
-
-   GenKernel<<<blocks, kThreadsPerBlock>>>(d_k0s, d_k1s, d_seeds, d_alphas, d_betas);
-   ```
-
-4. Write and launch an `Eval` kernel for each party, then copy results back:
-
-   ```cpp
-   __global__ void EvalKernel(int4 *ys, bool party, const Dpf::Key *keys, const In *xs) {
-       int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-       DpfPrg prg(0x12345678, 0x9abcdef0);
-       Dpf dpf{prg};
-
-       ys[tid] = dpf.Eval(party, keys[tid], xs[tid]);
-   }
-
-   // Launch for party 0 and party 1, then copy d_ys back to host
-   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, false, d_k0s, d_xs);
-   EvalKernel<<<blocks, kThreadsPerBlock>>>(d_ys, true, d_k1s, d_xs);
-   ```
-
-5. Reconstruct on the host using the group, same as the CPU case:
-
-   ```cpp
-   int4 sum = (Group::From(h_y0s[i]) + Group::From(h_y1s[i])).Into();
-   ```
-
-DCF follows the same pattern — use `DcfPrg` (mul=4) and `Dcf` with its own `Key`.
-
-See `samples/dpf_dcf_gpu.cu` for the complete working example.
+Check the status after each call and check execution errors when completing stream work.
+Keep every borrowed allocation alive until that work completes.
+Call device Core methods from your own kernels, or use the scheme GPU members described above.
+Their declaration comments document launch parameters and asynchronous resource lifetimes.
+Chain and Merkle operations have separate names, and changing valid Merkle execution parameters does not change the canonical proof.
+See `samples/dpf_dcf_gpu.cu` for direct Core calls inside CUDA kernels.
 
 ### Samples
 
@@ -301,7 +215,7 @@ cmake --build build/samples
 | ---------------------- | ------------- | -------------------------------------------------------------------- |
 | `dpf_dcf_cpu.cu`       | DPF, DCF      | Host `Gen`/`Eval` with AES-128 MMO PRG                               |
 | `dpf_dcf_gpu.cu`       | DPF, DCF      | `Gen`/`Eval` inside CUDA kernels with ChaCha PRG                     |
-| `half_tree_dpf_cpu.cu` | Half-Tree DPF | `Gen`/`Eval`/`EvalAll` with a mul=1 PRG and a separate hash key      |
+| `half_tree_dpf_cpu.cu` | Half-Tree DPF | `Gen`/`Eval`/`EvalAll` with an explicit CCR hash and public instance seed      |
 | `packed_half_tree_dpf_cpu.cu` | Packed Half-Tree DPF (experimental) | Sub-128-bit packed outputs: `Gen`/`Eval`/`EvalAll`/`Extract` over packed blocks |
 | `grotto_dcf_cpu.cu`    | Grotto DCF    | `Gen`/`Preprocess`/`Eval` over a parity segment tree, plus `EvalAll` |
 | `vdpf_cpu.cu`          | VDPF          | `Gen`/`Eval`/`EvalAll` plus the `Prove`/`Verify` check               |
@@ -312,65 +226,86 @@ The CPU samples link OpenSSL, and `EvalAll` uses OpenMP when it is found.
 
 ### Python
 
-The `fss_crypto` package exposes PyTorch wrappers for every scheme: `Dpf`, `Dcf`, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, `Vdpf`, `Dmpf`, and `Vdmpf`.
-It is published on PyPI as `fss-crypto`.
-`eval` and full-domain `eval_all` accept CUDA tensors (where the scheme has a GPU path); key generation stays on CPU.
-The cuckoo-hashed multi-point schemes (`Dmpf`, `Vdmpf`) evaluate on CUDA when constructed with `prp="chacha_feistel"`; a VDMPF proof comes from the CPU sequential chains or the CUDA Merkle fold, so both parties must evaluate on the same device.
+`fss_crypto` binds the C++ schemes, Groups, PRGs, hashes and PRPs to PyTorch.
+Scheme methods take caller-owned tensors for seeds, corrections, outputs and proofs.
+They make one Core generation attempt; callers handle any reported retry status.
 
-Install it with pip:
-
-```bash
-pip install fss-crypto
-```
-
-Or add it to a uv project:
-
-```bash
-uv add fss-crypto
-```
-
-The package requires Python >= 3.10 and PyTorch >= 2.6.
-CI is configured for Python 3.10 with PyTorch 2.6 and CUDA 12.6, and Python 3.13 with PyTorch 2.13 and CUDA 13.4.
-CI checks compilation and CPU execution.
-GPU tests are skipped because CI runners have no GPU.
-For JIT compilation, use a local CUDA toolkit with the same major version as `torch.version.cuda`.
-The first use of each parameter set JIT-compiles a small CUDA extension with `torch.utils.cpp_extension.load`, so the CUDA toolkit is required even when the example below runs on CPU tensors.
-The `aes128_mmo` PRG also links OpenSSL at JIT time.
-Compiled extensions are cached under `~/.cache/fss_crypto`.
-
-```python
-import torch
-import fss_crypto
-
-dpf = fss_crypto.Dpf(in_bits=8, group="bytes", prg="chacha")
-
-s0s = torch.tensor(
-    [
-        [0x11111111, 0x22222222, 0x33333333, 0x44444440],
-        [0x55555555, 0x66666666, 0x77777777, -0x77777780],
-    ],
-    dtype=torch.int32,
-)
-beta = torch.tensor([7, 0, 0, 0], dtype=torch.int32)
-
-cws = dpf.gen(s0s, alpha=42, beta=beta)
-y0 = dpf.eval(party=0, s0=s0s[0], cws=cws, x=42)
-y1 = dpf.eval(party=1, s0=s0s[1], cws=cws, x=42)
-
-assert torch.bitwise_xor(y0, y1).equal(beta)
-```
-
-Key generation runs on CPU. CUDA point and full-domain evaluation are available for supported schemes with ChaCha; the [API capability table](doc/api-capabilities.md) lists the exact combinations and proof accumulators.
-Python bulk evaluators default to `par_depth=0`, which keeps all host work on the calling thread. Set the keyword to `-1` for automatic OpenMP partitioning or a positive split depth; C++ schemes retain their released default of `-1`.
-The OpenSSL AES backend uses independent contexts per host thread and supports CPU execution.
-JIT caches include the source tree, compiler, Python/PyTorch ABI, CUDA architectures, and configuration. On a host without a visible GPU, the JIT chooses a fallback architecture without changing the process environment.
-
-To develop against a checkout instead, install the dev extra and run the tests:
+Install from a checkout with the declared dependencies:
 
 ```bash
 uv sync --extra dev
-uv run pytest
 ```
+
+The package requires Python >= 3.10 and PyTorch >= 2.6.
+JIT compilation requires a CUDA toolkit compatible with the installed PyTorch CUDA major version, including for CPU operations.
+OpenSSL backends also require development headers and libraries.
+
+```python
+import secrets
+import torch
+from fss_crypto import Dpf, group, prg
+
+dpf = Dpf(8, group.Bytes(), prg.ChaCha(nonce=(1, 2), mul=2))
+# A dealer samples independent seeds for both parties.
+words = [secrets.randbits(32) - 2**31 for _ in range(8)]
+s0s = torch.tensor(words, dtype=torch.int32).reshape(2, 4)
+b_buf = torch.tensor([7, 0, 0, 0], dtype=torch.int32)
+cws = torch.empty(dpf.cws_shape, dtype=torch.uint8)
+dpf.gen(cws, s0s, a=42, b_buf=b_buf)
+y0 = dpf.eval(b=False, s0=s0s[0], cws=cws, x=42)
+y1 = dpf.eval(b=True, s0=s0s[1], cws=cws, x=42)
+assert torch.equal(torch.bitwise_xor(y0, y1), b_buf)
+```
+
+Run the complete Python examples after installation:
+
+```bash
+python samples/python/point_functions.py --device cpu
+python samples/python/point_functions.py --device cuda:0
+python samples/python/grotto.py --device cpu
+python samples/python/grotto.py --device cuda:0
+python samples/python/verifiable.py
+python samples/python/verifiable.py --cuda
+python samples/python/multi_point.py
+python samples/python/multi_point.py --cuda
+python samples/python/primitives.py --device cpu
+python samples/python/primitives.py --device cuda:0
+```
+
+[Point and comparison functions](samples/python/point_functions.py) cover DPF, DCF, HalfTreeDPF and PackedHalfTreeDPF, including full-domain evaluation, batched GPU keys and native Python Group conversions.
+[Grotto trees](samples/python/grotto.py) cover both Grotto variants, caller-provided preprocessing storage and CPU-owned trees.
+[Verifiable evaluation](samples/python/verifiable.py) covers VDPF generation, corrected hashes and proof aggregation.
+[Multi-point functions](samples/python/multi_point.py) cover DMPF and VDMPF generation, failure-dependent resampling and evaluation.
+[Primitive operations](samples/python/primitives.py) cover Groups, PRGs, hashes, permutations and seed control bits.
+These examples keep both parties in one process to check reconstruction; a deployed party receives only its own seed and the shared key material.
+
+DMPF and VDMPF generation take party-first seeds with shape `(2, scheme.kBucketCount, 4)`.
+Allocate this contiguous `torch.int32` tensor directly in that order.
+The view `seeds[party]` has shape `(scheme.kBucketCount, 4)` and is already contiguous for evaluation, without a transpose or copy.
+
+All buffers of an operation must be contiguous and on the same device, including the CUDA device index.
+`cws` is a `torch.uint8` tensor with `scheme.cws_shape`, containing complete native C++ correction records including padding.
+It is not a serialized key format.
+For CUDA, prepare the input and output tensors on the selected device or explicitly transfer them with `.to(device)` before the operation.
+Bindings use PyTorch's current stream and retain native backend resource owners.
+A backend that does not support CUDA is rejected; there is no CPU fallback.
+
+`eval_all` dispatches from tensor devices.
+On CPU, `par_depth=0` is sequential; positive depths require OpenMP and a parallel-safe backend.
+On CUDA, `par_depth` is ignored.
+GPU methods expose launch parameters only where their Core counterparts support them, using fixed Core defaults rather than hardware-dependent auto-tuning.
+`eval_all_gpu_batch` accepts multiple independent keys for the same party and scheme configuration; it is distinct from querying multiple coordinates with `batch_eval`.
+
+The first Core GPU launch on each device and launch specialization synchronizes to prepare its private host launch view.
+Single-key GPU full evaluation and Grotto preprocessing also synchronize to read their seed value; multi-point full evaluation reads sigma.
+The batched point-function GPU operation passes seed arrays directly.
+Returning Python integers, booleans or bytes from CUDA likewise transfers the result to CPU.
+These convenience paths are not promises of fully asynchronous scalar use.
+
+For DCF, select `DcfPred.LT` or `DcfPred.GT` instead of a string.
+Packed outputs retain multiple logical results per int4 block; use the scheme's `extract` operation and `kLanes` when reading them.
+Chain and Merkle proofs remain separate protocols, and both parties must use the same protocol and ordered inputs.
+VDMPF chain full evaluation remains CPU-only; its Merkle full evaluation supports CPU and CUDA.
 
 ### Compiler Warnings
 
@@ -389,7 +324,8 @@ See `third_party/fss/bench.cu` for an example.
 ## Benchmarks
 
 See [benchmark methodology and comparison curves](doc/bench_figures.md) for the current full-output adapters and domain sweeps.
-The binaries below are built on [Google Benchmark](https://github.com/google/benchmark) and time single operations.
+The binaries below use [Google Benchmark](https://github.com/google/benchmark).
+Each row times its named operation; batch and full-domain operations process multiple outputs per iteration.
 The [benchmark coverage](doc/benchmarks.md) page lists what they measure and the GPU kernel register usage.
 
 Configure with `BUILD_BENCH=ON` and build the targets:

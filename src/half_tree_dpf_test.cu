@@ -11,6 +11,7 @@
 #include <fss/prg/aes128_mmo_soft.cuh>
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo.cuh>
+#include "core_api_test_helpers.cuh"
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -33,19 +34,19 @@ constexpr __uint128_t kBeta = 604;
 
 constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
-// ChaCha-based test fixture
+// Owned-table AES-CCR test fixture
 template <typename Group>
-class HalfTreeDpfChaChaTest : public ::testing::Test {
+class HalfTreeDpfOwnedAesCcrTest : public ::testing::Test {
 protected:
-  using Prg = fss::prg::ChaCha<1>;
-  using DpfType = fss::HalfTreeDpf<kAlphaBits, Group, Prg, uint16_t>;
+  using Prg = fss_test::TestCcrHash;
+  using DpfType = fss::HalfTreeDpf<kAlphaBits, Group, fss_test::CcrBackend<Prg>, uint16_t>;
 
   int4 s0s[2];
   typename DpfType::Key k0, k1;
   Prg prg;
   int4 hash_key;
 
-  HalfTreeDpfChaChaTest() : prg(kNonce0, kNonce1) {}
+  HalfTreeDpfOwnedAesCcrTest() : prg(kNonce0, kNonce1) {}
 
   void SetUp() override {
     std::random_device rd;
@@ -63,13 +64,13 @@ protected:
   }
 
   void TestEvalAtAlpha() {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
-    int4 y0 = dpf.Eval(false, k0, kAlpha);
-    int4 y1 = dpf.Eval(true, k1, kAlpha);
+    int4 y0 = fss_test::EvalKey(dpf, false, k0, kAlpha);
+    int4 y1 = fss_test::EvalKey(dpf, true, k1, kAlpha);
 
     auto g0 = Group::From(y0);
     auto g1 = Group::From(y1);
@@ -83,10 +84,10 @@ protected:
   }
 
   void TestEvalAtNonAlpha() {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -96,8 +97,8 @@ protected:
       uint16_t x = dis(gen);
       if (x == kAlpha) continue;
 
-      int4 y0 = dpf.Eval(false, k0, x);
-      int4 y1 = dpf.Eval(true, k1, x);
+      int4 y0 = fss_test::EvalKey(dpf, false, k0, x);
+      int4 y1 = fss_test::EvalKey(dpf, true, k1, x);
 
       auto g0 = Group::From(y0);
       auto g1 = Group::From(y1);
@@ -111,16 +112,16 @@ protected:
   }
 
   void TestEvalAll() {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     constexpr size_t n = 1ULL << kAlphaBits;
     std::vector<int4> ys0(n), ys1(n);
 
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -141,37 +142,37 @@ protected:
   }
 };
 
-using HalfTreeDpfBytesChaChaTest = HalfTreeDpfChaChaTest<BytesGroup>;
-using HalfTreeDpfUint128ChaChaTest = HalfTreeDpfChaChaTest<Uint127Group>;
-using HalfTreeDpfUint64ChaChaTest = HalfTreeDpfChaChaTest<Uint64Group>;
+using HalfTreeDpfBytesOwnedAesCcrTest = HalfTreeDpfOwnedAesCcrTest<BytesGroup>;
+using HalfTreeDpfUint128OwnedAesCcrTest = HalfTreeDpfOwnedAesCcrTest<Uint127Group>;
+using HalfTreeDpfUint64OwnedAesCcrTest = HalfTreeDpfOwnedAesCcrTest<Uint64Group>;
 
-TEST_F(HalfTreeDpfBytesChaChaTest, EvalAtAlpha) {
+TEST_F(HalfTreeDpfBytesOwnedAesCcrTest, EvalAtAlpha) {
   TestEvalAtAlpha();
 }
-TEST_F(HalfTreeDpfBytesChaChaTest, EvalAtNonAlpha) {
+TEST_F(HalfTreeDpfBytesOwnedAesCcrTest, EvalAtNonAlpha) {
   TestEvalAtNonAlpha();
 }
-TEST_F(HalfTreeDpfBytesChaChaTest, EvalAll) {
+TEST_F(HalfTreeDpfBytesOwnedAesCcrTest, EvalAll) {
   TestEvalAll();
 }
 
-TEST_F(HalfTreeDpfUint128ChaChaTest, EvalAtAlpha) {
+TEST_F(HalfTreeDpfUint128OwnedAesCcrTest, EvalAtAlpha) {
   TestEvalAtAlpha();
 }
-TEST_F(HalfTreeDpfUint128ChaChaTest, EvalAtNonAlpha) {
+TEST_F(HalfTreeDpfUint128OwnedAesCcrTest, EvalAtNonAlpha) {
   TestEvalAtNonAlpha();
 }
-TEST_F(HalfTreeDpfUint128ChaChaTest, EvalAll) {
+TEST_F(HalfTreeDpfUint128OwnedAesCcrTest, EvalAll) {
   TestEvalAll();
 }
 
-TEST_F(HalfTreeDpfUint64ChaChaTest, EvalAtAlpha) {
+TEST_F(HalfTreeDpfUint64OwnedAesCcrTest, EvalAtAlpha) {
   TestEvalAtAlpha();
 }
-TEST_F(HalfTreeDpfUint64ChaChaTest, EvalAtNonAlpha) {
+TEST_F(HalfTreeDpfUint64OwnedAesCcrTest, EvalAtNonAlpha) {
   TestEvalAtNonAlpha();
 }
-TEST_F(HalfTreeDpfUint64ChaChaTest, EvalAll) {
+TEST_F(HalfTreeDpfUint64OwnedAesCcrTest, EvalAll) {
   TestEvalAll();
 }
 
@@ -180,7 +181,7 @@ template <typename Group>
 class HalfTreeDpfAesSoftTest : public ::testing::Test {
 protected:
   using Prg = fss::prg::Aes128Soft<1>;
-  using DpfType = fss::HalfTreeDpf<kAlphaBits, Group, Prg, uint16_t>;
+  using DpfType = fss::HalfTreeDpf<kAlphaBits, Group, fss_test::CcrBackend<Prg>, uint16_t>;
 
   int4 s0s[2];
   typename DpfType::Key k0, k1;
@@ -208,13 +209,13 @@ protected:
     fss::prg::aes_detail::InitTe0(te0);
     fss::prg::aes_detail::InitSbox(sbox);
     Prg prg(aes_key, te0, sbox);
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
-    int4 y0 = dpf.Eval(false, k0, kAlpha);
-    int4 y1 = dpf.Eval(true, k1, kAlpha);
+    int4 y0 = fss_test::EvalKey(dpf, false, k0, kAlpha);
+    int4 y1 = fss_test::EvalKey(dpf, true, k1, kAlpha);
 
     auto result = Group::From(y0) + Group::From(y1);
     auto expected = Group::From(b_buf);
@@ -230,10 +231,10 @@ protected:
     fss::prg::aes_detail::InitTe0(te0);
     fss::prg::aes_detail::InitSbox(sbox);
     Prg prg(aes_key, te0, sbox);
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -243,8 +244,8 @@ protected:
       uint16_t x = dis(gen);
       if (x == kAlpha) continue;
 
-      int4 y0 = dpf.Eval(false, k0, x);
-      int4 y1 = dpf.Eval(true, k1, x);
+      int4 y0 = fss_test::EvalKey(dpf, false, k0, x);
+      int4 y1 = fss_test::EvalKey(dpf, true, k1, x);
 
       auto result = Group::From(y0) + Group::From(y1);
       int4 result_buf = result.Into();
@@ -259,16 +260,16 @@ protected:
     fss::prg::aes_detail::InitTe0(te0);
     fss::prg::aes_detail::InitSbox(sbox);
     Prg prg(aes_key, te0, sbox);
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     constexpr size_t n = 1ULL << kAlphaBits;
     std::vector<int4> ys0(n), ys1(n);
 
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -327,8 +328,8 @@ TEST_F(HalfTreeDpfUint64AesSoftTest, EvalAll) {
 template <typename Group>
 class HalfTreeDpfOneBitTest : public ::testing::Test {
 protected:
-  using Prg = fss::prg::ChaCha<1>;
-  using DpfType = fss::HalfTreeDpf<1, Group, Prg, uint8_t>;
+  using Prg = fss_test::TestCcrHash;
+  using DpfType = fss::HalfTreeDpf<1, Group, fss_test::CcrBackend<Prg>, uint8_t>;
 
   int4 s0s[2];
   typename DpfType::Key k0, k1;
@@ -353,14 +354,14 @@ protected:
   }
 
   void TestEvalAtAlpha() {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
     uint8_t alpha = 1;
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
-    int4 y0 = dpf.Eval(false, k0, alpha);
-    int4 y1 = dpf.Eval(true, k1, alpha);
+    int4 y0 = fss_test::EvalKey(dpf, false, k0, alpha);
+    int4 y1 = fss_test::EvalKey(dpf, true, k1, alpha);
 
     auto result = Group::From(y0) + Group::From(y1);
     auto expected = Group::From(b_buf);
@@ -371,15 +372,15 @@ protected:
   }
 
   void TestEvalAtNonAlpha() {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
     uint8_t alpha = 1;
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     uint8_t x = 0;
-    int4 y0 = dpf.Eval(false, k0, x);
-    int4 y1 = dpf.Eval(true, k1, x);
+    int4 y0 = fss_test::EvalKey(dpf, false, k0, x);
+    int4 y1 = fss_test::EvalKey(dpf, true, k1, x);
 
     auto result = Group::From(y0) + Group::From(y1);
     int4 result_buf = result.Into();
@@ -388,15 +389,15 @@ protected:
   }
 
   void TestEvalAll() {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
     uint8_t alpha = 1;
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     int4 ys0[2], ys1[2];
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0, 2));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1, 2));
+    fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0, 2));
+    fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1, 2));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -455,12 +456,12 @@ TEST_F(HalfTreeDpfUint64OneBitTest, EvalAll) {
 // point walk, in_bits = 4 is the smallest batched domain and clamps the split
 // depth to 0, and larger in_bits run both the sequential batched walk
 // (par_depth = 0) and the frontier-width split (par_depth > 0).
-template <int in_bits, int par_depth = -1>
+template <int in_bits, int par_depth = 0>
 class HalfTreeDpfAesRawTestBase : public ::testing::Test {
 protected:
   using Group = BytesGroup;
   using Prg = fss::prg::Aes128MmoRaw<1>;
-  using DpfType = fss::HalfTreeDpf<in_bits, Group, Prg, uint16_t, par_depth>;
+  using DpfType = fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<Prg>, uint16_t>;
 
   static constexpr uint8_t kKeys[1][16] = {
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -490,15 +491,15 @@ protected:
 
   // Full-domain share sum: beta at alpha, identity elsewhere.
   void TestEvalAll(uint16_t alpha) {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     constexpr size_t n = 1ULL << in_bits;
     std::vector<int4> ys0(n), ys1(n);
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -518,19 +519,19 @@ protected:
 
   // Bit-exactness of the batched EvalAll() against the scalar point Eval().
   void TestEvalAllMatchesEval(uint16_t alpha) {
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     constexpr size_t n = 1ULL << in_bits;
     std::vector<int4> ys0(n), ys1(n);
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     for (size_t x = 0; x < n; ++x) {
-      int4 e0 = dpf.Eval(false, k0, static_cast<uint16_t>(x));
-      int4 e1 = dpf.Eval(true, k1, static_cast<uint16_t>(x));
+      int4 e0 = fss_test::EvalKey(dpf, false, k0, static_cast<uint16_t>(x));
+      int4 e1 = fss_test::EvalKey(dpf, true, k1, static_cast<uint16_t>(x));
       EXPECT_EQ(memcmp(&ys0[x], &e0, sizeof(int4)), 0) << "Party 0 mismatch at x=" << x;
       EXPECT_EQ(memcmp(&ys1[x], &e1, sizeof(int4)), 0) << "Party 1 mismatch at x=" << x;
     }
@@ -594,7 +595,7 @@ class HalfTreeDpfBytesAesTest : public ::testing::Test {
 protected:
   using Group = BytesGroup;
   using Prg = fss::prg::Aes128Mmo<1>;
-  using DpfType = fss::HalfTreeDpf<kAlphaBits, Group, Prg, uint16_t>;
+  using DpfType = fss::HalfTreeDpf<kAlphaBits, Group, fss_test::CcrBackend<Prg>, uint16_t>;
 
   int4 s0s[2];
   typename DpfType::Key k0, k1;
@@ -626,15 +627,15 @@ protected:
 
   void TestEvalAll() {
     Prg prg(ctxs);
-    DpfType dpf{prg, hash_key};
+    DpfType dpf{fss_test::Ccr(prg), hash_key};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     constexpr size_t n = 1ULL << kAlphaBits;
     std::vector<int4> ys0(n), ys1(n);
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -656,3 +657,31 @@ protected:
 TEST_F(HalfTreeDpfBytesAesTest, EvalAll) {
   TestEvalAll();
 }
+
+namespace {
+void ExpectBlock(int4 actual, int4 expected) {
+  EXPECT_EQ(actual.x, expected.x);
+  EXPECT_EQ(actual.y, expected.y);
+  EXPECT_EQ(actual.z, expected.z);
+  EXPECT_EQ(actual.w, expected.w);
+}
+
+TEST(HalfTreeOutput, FinalCorrectionFlagDoesNotChangeEitherParty) {
+  using Scheme = fss::HalfTreeDpf<1, BytesGroup, fss_test::TestCcrHash, uint8_t>;
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  const int4 seeds[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+  const int4 beta = {13, 17, 19, 22};
+  Scheme::Cw cws[2];
+  scheme.Gen(cws, seeds, uint8_t{1}, beta);
+  EXPECT_FALSE(cws[1].extra);
+  for (uint8_t x = 0; x < 2; ++x) {
+    cws[1].extra = false;
+    int4 y0 = scheme.Eval(false, seeds[0], cws, x);
+    int4 y1 = scheme.Eval(true, seeds[1], cws, x);
+    cws[1].extra = true;
+    ExpectBlock(scheme.Eval(false, seeds[0], cws, x), y0);
+    ExpectBlock(scheme.Eval(true, seeds[1], cws, x), y1);
+    ExpectBlock(fss::util::Xor(y0, y1), x == 1 ? beta : int4{});
+  }
+}
+}  // namespace

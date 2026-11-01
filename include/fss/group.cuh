@@ -11,7 +11,16 @@
 #include <type_traits>
 
 /**
+ * @defgroup fss_api Public API
+ *
+ * Classes in this group expose all of their public members as API.
+ * Private members and entities in detail namespaces are implementation details.
+ * Field access does not imply a portable serialized format or a stable binary layout.
+ */
+
+/**
  * Group interface.
+ * @ingroup fss_api
  *
  * For the output domain of DPF/DCF.
  *

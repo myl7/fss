@@ -4,7 +4,7 @@
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl7.org>.
  * @author Yulong Ming <i@myl7.org>
  *
- * @brief Cuckoo-hashing utility for VDMPF.
+ * @brief Cuckoo-hashing utility for DMPF and VDMPF.
  *
  * The scheme is from the paper, [_Lightweight, Maliciously Secure Verifiable Function Secret
  * Sharing_](https://eprint.iacr.org/2021/580) (@ref cuckoo_hash "1: the published version"),
@@ -26,6 +26,90 @@
 #include <fss/prp.cuh>
 
 namespace fss::cuckoo_hash {
+
+/**
+ * @ingroup fss_api
+ * Estimate the number of buckets for three-choice Cuckoo hashing.
+ *
+ * Uses the fit in Lemma 5 of the paper, simplified per Remark 1 for t >= 30:
+ * e = (lambda + 130 + log2(t)) / 123.5 and m = ceil(e * t).
+ * This estimate is monotonic in t.
+ *
+ * @param t Number of elements, at least 30.
+ * @param lambda Target Cuckoo-hashing failure exponent in bits.
+ * @return Estimated bucket count m.
+ * @pre The estimated bucket count is representable by int.
+ */
+constexpr int ChBucket(int t, int lambda);
+
+namespace detail {
+
+/** Bucket identifier and 128-bit position returned by PrpHash::Locate(). */
+struct LocateResult {
+  int bucket;  ///< Bucket index.
+  __uint128_t index;  ///< Position within a bucket.
+};
+
+/**
+ * Three PRP-based Cuckoo-hash choices from Equations (1) and (2) of the paper.
+ *
+ * @tparam Prp Permutation backend satisfying Permutable.
+ * @tparam In Unsigned input type, up to __uint128_t.
+ */
+template <typename Prp, typename In>
+  requires Permutable<Prp>
+struct PrpHash {
+  Prp prp;  ///< Permutation backend.
+
+  /**
+   * Locate x using choice k, where y = PRP(sigma, x + n * k, 3 * n).
+   * The bucket is y / b_size and the local position is y % b_size.
+   *
+   * @param sigma Public permutation seed.
+   * @param x Input in [0, n).
+   * @param k Hash-function index, 0, 1, or 2.
+   * @param n Original input domain size.
+   * @param b_size Positive bucket domain size.
+   * @return Bucket identifier and local position.
+   * @pre 3 * n fits __uint128_t and the bucket identifier fits int.
+   * Calls support host and device execution when Prp does.
+   */
+  __host__ __device__ LocateResult Locate(int4 sigma, In x, int k, __uint128_t n, __uint128_t b_size);
+};
+
+/**
+ * Compact three-choice Cuckoo hashing using Algorithm 4 of the paper.
+ *
+ * @tparam Prp Permutation backend satisfying Permutable.
+ * @tparam In Unsigned input type, up to __uint128_t.
+ */
+template <typename Prp, typename In>
+  requires Permutable<Prp>
+struct Compact {
+  Prp prp;  ///< Permutation backend.
+
+  /**
+   * Place elements into a bucket table using random-walk evictions.
+   *
+   * Each entry stores an index into as and its hash-function index.
+   * An empty entry contains (-1, -1).
+   *
+   * @param as Input elements in [0, n), with a count representable by int.
+   * @param m Positive number of buckets.
+   * @param sigma Public permutation seed.
+   * @param n Original input domain size, with 3 * n representable by __uint128_t.
+   * @param b_size Bucket domain size, equal to ceil(3 * n / m).
+   * @param max_evictions Maximum number of evictions before failure.
+   * @param table Output table with at least m entries.
+   * @return 0 on success or 1 if the eviction limit is exceeded.
+   */
+  int Run(std::span<const In> as, int m, int4 sigma, __uint128_t n, __uint128_t b_size, int max_evictions,
+      std::span<std::pair<int, int>> table);
+};
+
+}  // namespace detail
+
+// -----------------------------------------------------------------------------
 
 namespace detail {
 
@@ -57,22 +141,6 @@ constexpr double Ceil(double x) {
 
 }  // namespace detail
 
-/**
- * Compute the number of Cuckoo-hash buckets from Lemma 5 of the paper, simplified per Remark 1.
- * This formula assumes kappa = 3 hash functions.
- *
- * For sufficiently large t (>= 30), the Normal CDF factors in Lemma 5 become effectively 1,
- * giving the simplified formula:
- *   lambda = 123.5 * e - 130 - log2(t)
- *   e = (lambda + 130 + log2(t)) / 123.5
- *   m = ceil(e * t)
- *
- * This formula is monotonic in t, so ChBucket(max_t) >= ChBucket(t) for all t <= max_t.
- *
- * @param t Number of elements. Must be >= 30.
- * @param lambda Cuckoo-hashing security parameter in bits.
- * @return Number of buckets m.
- */
 constexpr int ChBucket(int t, int lambda) {
   // Remark 1 applies for t >= 30.
   // For smaller t, the full Lemma 5 formula with Normal CDF factors is needed,
@@ -83,133 +151,69 @@ constexpr int ChBucket(int t, int lambda) {
   return static_cast<int>(detail::Ceil(e * td));
 }
 
-/**
- * Locate result: a Locate() bucket and the position inside it. A plain
- * aggregate instead of std::pair because std::pair's constructor is host-only
- * under nvcc and Locate is __host__ __device__.
- */
-struct LocateResult {
-  int bucket;  ///< Bucket index.
-  int index;   ///< Within-bucket index.
-};
+namespace detail {
 
-/**
- * PRP-based hash for Cuckoo hashing.
- *
- * Implements the hash functions from Equations (1) and (2) of the paper using a PRP.
- *
- * @tparam Prp PRP type satisfying Permutable.
- * @tparam In Input domain type (unsigned integer up to __uint128_t).
- */
-template <typename Prp, typename In, int kappa = 3>
+template <typename Prp, typename In>
   requires Permutable<Prp>
-struct PrpHash {
-  Prp prp;
+inline __host__ __device__ LocateResult PrpHash<Prp, In>::Locate(
+    int4 sigma, In x, int k, __uint128_t n, __uint128_t b_size) {
+  __uint128_t val = static_cast<__uint128_t>(x) + n * k;
+  __uint128_t domain_size = n * 3;
+  __uint128_t y = prp.Permu(sigma, val, domain_size);
 
-  /**
-     * Compute bucket index and within-bucket index for hash function k.
-     *
-     * Implements the paper's Equations (1) and (2):
-     *   y = PRP(sigma, x + n * k)
-     *   bucket = y / b_size
-     *   index  = y % b_size
-     *
-     * @param sigma PRP seed.
-     * @param x Input element.
-     * @param k Hash function index (0-indexed, in [0, kappa)).
-     * @param n Domain size (N = 2^{in_bits}).
-     * @param b_size Bucket size B.
-     * @return (bucket_index, within_bucket_index).
-     *
-     * Usable from both host and device when the Prp backend is (ChaChaFeistel
-     * is; Aes128Feistel is not because of its OpenSSL context).
-     */
-  __host__ __device__ LocateResult Locate(int4 sigma, In x, int k, __uint128_t n, int b_size) {
-    __uint128_t val = static_cast<__uint128_t>(x) + n * k;
-    __uint128_t domain = n * kappa;
-    __uint128_t y = prp.Permu(sigma, val, domain);
+  int bucket = static_cast<int>(y / b_size);
+  __uint128_t index = y % b_size;
+  return {bucket, index};
+}
 
-    auto bs = static_cast<__uint128_t>(b_size);
-    int bucket = static_cast<int>(y / bs);
-    int index = static_cast<int>(y % bs);
-    return {bucket, index};
+template <typename Prp, typename In>
+  requires Permutable<Prp>
+inline int Compact<Prp, In>::Run(std::span<const In> as, int m, int4 sigma, __uint128_t n,
+    __uint128_t b_size, int max_evictions, std::span<std::pair<int, int>> table) {
+  PrpHash<Prp, In> hasher{prp};
+  int t = static_cast<int>(as.size());
+
+  // Initialize table to empty.
+  for (int i = 0; i < m; ++i) {
+    table[i] = {-1, -1};
   }
-};
 
-/**
- * Compact Cuckoo hashing (Algorithm 4 from the paper).
- *
- * Inserts elements into m buckets using kappa hash functions via Cuckoo hashing with random walk
- * eviction.
- *
- * @tparam Prp PRP type satisfying Permutable.
- * @tparam In Input domain type (unsigned integer up to __uint128_t).
- */
-template <typename Prp, typename In, int kappa = 3>
-  requires Permutable<Prp>
-struct Compact {
-  Prp prp;
+  std::mt19937 rng(42);
 
-  /**
-     * Run Cuckoo hashing to place elements into a table.
-     *
-     * Each table entry stores (index_into_as, hash_fn_k), or (-1, -1) if empty.
-     *
-     * @param as Input elements.
-     * @param m Number of buckets.
-     * @param sigma PRP seed.
-     * @param n Domain size (N = 2^{in_bits}).
-     * @param b_size Bucket size B.
-     * @param ch_retry Max eviction attempts before failure.
-     * @param table Pre-allocated span of size m. Filled on success.
-     * @return 0 on success, 1 on failure (too many evictions).
-     */
-  int Run(std::span<const In> as, int m, int4 sigma, __uint128_t n, int b_size, int ch_retry,
-      std::span<std::pair<int, int>> table) {
-    PrpHash<Prp, In, kappa> hasher{prp};
-    int t = static_cast<int>(as.size());
+  for (int omega = 0; omega < t; ++omega) {
+    int cur_idx = omega;
+    int cur_k = static_cast<int>(rng() % 3);
+    int evictions = 0;
 
-    // Initialize table to empty.
-    for (int i = 0; i < m; ++i) {
-      table[i] = {-1, -1};
-    }
+    for (;;) {
+      auto [bucket, _index] = hasher.Locate(sigma, as[cur_idx], cur_k, n, b_size);
+      // Clamp bucket to [0, m).
+      bucket = bucket % m;
 
-    std::mt19937 rng(42);
-
-    for (int omega = 0; omega < t; ++omega) {
-      int cur_idx = omega;
-      int cur_k = static_cast<int>(rng() % kappa);
-      int evictions = 0;
-
-      for (;;) {
-        auto [bucket, _index] = hasher.Locate(sigma, as[cur_idx], cur_k, n, b_size);
-        // Clamp bucket to [0, m).
-        bucket = bucket % m;
-
-        if (table[bucket].first == -1) {
-          // Empty slot found.
-          table[bucket] = {cur_idx, cur_k};
-          break;
-        }
-
-        // Evict the existing entry and take its place.
-        int evicted_idx = table[bucket].first;
-        int evicted_k = table[bucket].second;
+      if (table[bucket].first == -1) {
+        // Empty slot found.
         table[bucket] = {cur_idx, cur_k};
+        break;
+      }
 
-        // The evicted element becomes the current element with a new random hash.
-        cur_idx = evicted_idx;
-        cur_k = static_cast<int>(rng() % kappa);
+      // Evict the existing entry and take its place.
+      int evicted_idx = table[bucket].first;
+      table[bucket] = {cur_idx, cur_k};
 
-        ++evictions;
-        if (evictions > ch_retry) {
-          return 1;
-        }
+      // The evicted element becomes the current element with a new random hash.
+      cur_idx = evicted_idx;
+      cur_k = static_cast<int>(rng() % 3);
+
+      ++evictions;
+      if (evictions > max_evictions) {
+        return 1;
       }
     }
-
-    return 0;
   }
-};
+
+  return 0;
+}
+
+}  // namespace detail
 
 }  // namespace fss::cuckoo_hash

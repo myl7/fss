@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file point_eval_cpu.cuh
+ * @internal
+ * CPU optimization candidates retained for benchmark comparison, outside the
+ * supported public API.
  * @copyright Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <i@myl7.org>.
  * @author Yulong Ming <i@myl7.org>
  *
@@ -57,10 +60,10 @@
 #define FSS_POINT_EVAL_UNROLL_4 _Pragma("GCC unroll 4")
 #endif
 
-namespace fss::cpu {
+namespace fss::detail::cpu {
 
 // The narrowest unsigned primitive holding one tr bit per level, in_bits bits
-// in total. Mirrors fss::gpu::ExtBits so common in_bits <= 32 keys keep the
+// in total. Mirrors fss::gpu::detail::ExtBits so common in_bits <= 32 keys keep the
 // uint32_t layout.
 template <int bits>
 using ExtBits = std::conditional_t<bits <= 32, uint32_t,
@@ -147,39 +150,33 @@ inline ExtBits<in_bits> ReverseDomainBits(In x) {
  *
  * cws[i] keeps level i's correction word with tl in its LSB, as in
  * Dpf::Cw::s. The per-level tr bits are packed into the single tr word,
- * bit i = level i. out_cw is the output correction word
- * cws[in_bits].s, whose LSB is 0.
+ * bit i = level i. cws[in_bits] holds the output correction, whose LSB is 0.
  *
  * Both parties share the same correction words and differ in the seed.
  */
 template <int in_bits>
 struct DpfPointKey {
   int4 s0;
-  int4 cws[in_bits];
+  int4 cws[in_bits + 1];
   ExtBits<in_bits> tr;
-  int4 out_cw;
 };
 
 /**
  * A party's HalfTree DPF key in the compact point-evaluation layout.
  *
  * cws[i] holds level i's correction word for i = 0 .. in_bits - 2. The
- * last level keeps HCW with LCW_0 in hcw_lcw0's LSB, LCW_1 in lcw1, and
- * the output correction word in ocw, as packed by HalfTreeDpf::Gen(). The
+ * last level keeps HCW with LCW_0 in cws[in_bits - 1]'s LSB and LCW_1 in
+ * lcw1. cws[in_bits] holds the output correction from HalfTreeDpf::Gen(). The
  * hash key stays on the scheme instance and is passed to
  * HalfTreeDpfEvalPoint().
- *
- * cws has size 1 and is unused when in_bits == 1.
  *
  * Both parties share the same correction words and differ in the seed.
  */
 template <int in_bits>
 struct HalfTreeDpfPointKey {
   int4 s0;
-  int4 cws[in_bits > 1 ? in_bits - 1 : 1];
-  int4 hcw_lcw0;
+  int4 cws[in_bits + 1];
   bool lcw1;
-  int4 ocw;
 };
 
 /**
@@ -189,12 +186,12 @@ struct HalfTreeDpfPointKey {
  * @tparam Group Type for the output domain. See Groupable.
  * @tparam Prg See Prgable. Requires mul=2, same as Dpf.
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
- * @param key A party's key returned by Dpf::Gen().
+ * @param key An owning key assembled from Dpf::Gen() outputs.
  * @return The packed key.
  */
-template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
-    typename Key = typename Dpf<in_bits, Group, Prg, In, par_depth>::Key>
-  requires(std::is_same_v<Key, typename Dpf<in_bits, Group, Prg, In, Key::kParDepth>::Key>)
+template <int in_bits, typename Group, typename Prg, typename In,
+    typename Key = typename Dpf<in_bits, Group, Prg, In>::Key>
+  requires(std::is_same_v<Key, typename Dpf<in_bits, Group, Prg, In>::Key>)
 DpfPointKey<in_bits> DpfPackPoint(const Key &key) {
   DpfPointKey<in_bits> packed = {};
   packed.s0 = key.s0;
@@ -204,14 +201,14 @@ DpfPointKey<in_bits> DpfPackPoint(const Key &key) {
     if (key.cws[i].tr) tr |= static_cast<ExtBits<in_bits>>(1) << i;
   }
   packed.tr = tr;
-  packed.out_cw = key.cws[in_bits].s;
-  assert((packed.out_cw.w & 1) == 0);
+  packed.cws[in_bits] = key.cws[in_bits].s;
+  assert((packed.cws[in_bits].w & 1) == 0);
   return packed;
 }
 
 /**
  * CPU point evaluation of a packed DPF key: the output is bit-exact with
- * Dpf::Eval(b, key, x) for the key DpfPackPoint() was called on.
+ * raw Dpf::Eval() for the corresponding unpacked key material.
  *
  * @tparam in_bits Input domain bit size.
  * @tparam Group Type for the output domain. See Groupable.
@@ -219,26 +216,28 @@ DpfPointKey<in_bits> DpfPackPoint(const Key &key) {
  *   reference because Prg::Gen() is not const, same as Dpf::Eval().
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
  * @param b Party index. False for 0 and true for 1.
- * @param key The packed key from DpfPackPoint().
+ * @param s0 Party seed from DpfPackPoint().
+ * @param cws in_bits tree corrections followed by the output correction.
+ * @param tr Packed right-branch control bits.
  * @param x Evaluated input.
  * @param prg The DPF instance's PRG.
  * @return Output share.
  */
 template <int in_bits, typename Group, typename Prg, typename In>
-int4 DpfEvalPoint(bool b, const DpfPointKey<in_bits> &key, In x, Prg &prg) {
+int4 DpfEvalPoint(bool b, int4 s0, const int4 cws[], ExtBits<in_bits> tr, In x, Prg &prg) {
 #ifndef __CUDA_ARCH__
   // The control bit rides in the seed's LSB between levels: the level
   // correction XORs the same cw into both children, so it cancels in the
   // child select and the selected child's LSB is the next control bit up to
   // the cw's tl/tr difference, fixed branchlessly as xb & d & t below.
-  __m128i s = detail::SetLsb(detail::ToVec(key.s0), b);
+  __m128i s = detail::SetLsb(detail::ToVec(s0), b);
   int t = static_cast<int>(b);
-  const ExtBits<in_bits> ex = key.tr;
+  const ExtBits<in_bits> ex = tr;
   const ExtBits<in_bits> xbits = detail::ReverseDomainBits<in_bits>(x);
 
   FSS_POINT_EVAL_UNROLL_4
   for (int i = 0; i < in_bits; ++i) {
-    const __m128i scw = detail::ToVec(key.cws[i]);
+    const __m128i scw = detail::ToVec(cws[i]);
     const int d = detail::GetLsb(scw) ^ detail::GetBit(ex, i);
 
     const auto g = prg.Gen(detail::FromVec(detail::ClrLsb(s)));
@@ -254,12 +253,12 @@ int4 DpfEvalPoint(bool b, const DpfPointKey<in_bits> &key, In x, Prg &prg) {
   }
 
   auto y = Group::From(detail::FromVec(detail::ClrLsb(s)));
-  if (t) y = y + Group::From(key.out_cw);
+  if (t) y = y + Group::From(cws[in_bits]);
   if (b) y = -y;
   return y.Into();
 #else
-  assert(false && "DpfEvalPoint is host-only");
-  __trap();
+  // This is a host function, so the device pass only parses it and never emits code for it.
+  // The SSE path is unavailable there, so this stub stands in to keep the parse valid.
   return make_int4(0, 0, 0, 0);
 #endif
 }
@@ -270,47 +269,47 @@ int4 DpfEvalPoint(bool b, const DpfPointKey<in_bits> &key, In x, Prg &prg) {
  *
  * @tparam in_bits Input domain bit size.
  * @tparam Group Type for the output domain. See Groupable.
- * @tparam Prg See Prgable. Requires mul=1, same as HalfTreeDpf.
+ * @tparam Hash See CcrHashable, as in HalfTreeDpf.
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
- * @param key A party's key returned by HalfTreeDpf::Gen().
+ * @param key An owning key assembled from HalfTreeDpf::Gen() outputs.
  * @return The packed key.
  */
-template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
-    typename Key = typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Key>
-  requires(std::is_same_v<Key, typename HalfTreeDpf<in_bits, Group, Prg, In, Key::kParDepth>::Key>)
+template <int in_bits, typename Group, typename Hash, typename In,
+    typename Key = typename HalfTreeDpf<in_bits, Group, Hash, In>::Key>
+  requires(std::is_same_v<Key, typename HalfTreeDpf<in_bits, Group, Hash, In>::Key>)
 HalfTreeDpfPointKey<in_bits> HalfTreeDpfPackPoint(const Key &key) {
   HalfTreeDpfPointKey<in_bits> packed = {};
   packed.s0 = key.s0;
   for (int i = 0; i < in_bits - 1; ++i) packed.cws[i] = key.cws[i].s;
-  packed.hcw_lcw0 = key.cws[in_bits - 1].s;
+  packed.cws[in_bits - 1] = key.cws[in_bits - 1].s;
   packed.lcw1 = key.cws[in_bits - 1].extra;
-  packed.ocw = key.ocw;
+  packed.cws[in_bits] = key.cws[in_bits].s;
   return packed;
 }
 
 /**
  * CPU point evaluation of a packed HalfTree DPF key: the output is bit-exact
- * with HalfTreeDpf::Eval(b, key, x) for the key HalfTreeDpfPackPoint() was
- * called on.
+ * with raw HalfTreeDpf::Eval() for the corresponding unpacked key material.
  *
  * @tparam in_bits Input domain bit size.
  * @tparam Group Type for the output domain. See Groupable.
- * @tparam Prg See Prgable. Requires mul=1, same as HalfTreeDpf. Passed by
- *   non-const reference because Prg::Gen() is not const, same as
- *   HalfTreeDpf::Eval().
+ * @tparam Hash See CcrHashable. Passed by non-const reference, as in HalfTreeDpf::Eval().
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
  * @param b Party index. False for 0 and true for 1.
- * @param key The packed key from HalfTreeDpfPackPoint().
+ * @param s0 Party seed from HalfTreeDpfPackPoint().
+ * @param cws in_bits tree corrections followed by the output correction.
+ * The last tree correction stores LCW_0 in its least significant bit.
+ * @param lcw1 Last tree-level LCW_1.
  * @param x Evaluated input.
- * @param prg The scheme instance's PRG.
- * @param hash_key The scheme instance's hash key.
+ * @param hash The scheme instance's CCR hash.
+ * @param instance_seed The scheme instance's public seed S.
  * @return Output share.
  */
-template <int in_bits, typename Group, typename Prg, typename In>
-int4 HalfTreeDpfEvalPoint(bool b, const HalfTreeDpfPointKey<in_bits> &key, In x, Prg &prg, int4 hash_key) {
+template <int in_bits, typename Group, typename Hash, typename In>
+int4 HalfTreeDpfEvalPoint(bool b, int4 s0, const int4 cws[], bool lcw1, In x, Hash &hash, int4 instance_seed) {
 #ifndef __CUDA_ARCH__
-  __m128i node = detail::SetLsb(detail::ToVec(key.s0), b);
-  const __m128i hk = detail::ToVec(hash_key);
+  __m128i node = detail::SetLsb(detail::ToVec(s0), b);
+  const __m128i hk = detail::ToVec(instance_seed);
   const ExtBits<in_bits> xbits = detail::ReverseDomainBits<in_bits>(x);
 
   FSS_POINT_EVAL_UNROLL_4
@@ -318,8 +317,8 @@ int4 HalfTreeDpfEvalPoint(bool b, const HalfTreeDpfPointKey<in_bits> &key, In x,
     const int xb = detail::GetBit(xbits, i);
     const int t = detail::GetLsb(node);
 
-    const __m128i h = detail::ToVec(prg.Gen(detail::FromVec(_mm_xor_si128(hk, node)))[0]);
-    const __m128i cw = detail::ToVec(key.cws[i]);
+    const __m128i h = detail::ToVec(hash.Hash(detail::FromVec(_mm_xor_si128(hk, node))));
+    const __m128i cw = detail::ToVec(cws[i]);
 
     node = _mm_xor_si128(_mm_xor_si128(h, _mm_and_si128(node, detail::BitMask(xb))),
         _mm_and_si128(cw, detail::BitMask(t)));
@@ -327,11 +326,11 @@ int4 HalfTreeDpfEvalPoint(bool b, const HalfTreeDpfPointKey<in_bits> &key, In x,
 
   const int xn = detail::GetBit(xbits, in_bits - 1);
   const int t = detail::GetLsb(node);
-  const __m128i h = detail::ToVec(prg.Gen(detail::FromVec(_mm_xor_si128(hk, detail::SetLsb(node, xn != 0))))[0]);
+  const __m128i h = detail::ToVec(hash.Hash(detail::FromVec(_mm_xor_si128(hk, detail::SetLsb(node, xn != 0)))));
 
-  const __m128i hcw_lcw0 = detail::ToVec(key.hcw_lcw0);
-  const int lcw_xn = xn != 0 ? static_cast<int>(key.lcw1) : detail::GetLsb(hcw_lcw0);
-  const __m128i hcw = detail::ClrLsb(hcw_lcw0);
+  const __m128i hcw_vector = detail::ToVec(cws[in_bits - 1]);
+  const int lcw_xn = xn != 0 ? static_cast<int>(lcw1) : detail::GetLsb(hcw_vector);
+  const __m128i hcw = detail::ClrLsb(hcw_vector);
 
   __m128i high = detail::ClrLsb(h);
   int low = detail::GetLsb(h);
@@ -340,17 +339,17 @@ int4 HalfTreeDpfEvalPoint(bool b, const HalfTreeDpfPointKey<in_bits> &key, In x,
   low = low ^ (lcw_xn & t);
 
   auto y = Group::From(detail::FromVec(high));
-  if (low) y = y + Group::From(key.ocw);
+  if (low) y = y + Group::From(cws[in_bits]);
   if (b) y = -y;
   return y.Into();
 #else
-  assert(false && "HalfTreeDpfEvalPoint is host-only");
-  __trap();
+  // This is a host function, so the device pass only parses it and never emits code for it.
+  // The SSE path is unavailable there, so this stub stands in to keep the parse valid.
   return make_int4(0, 0, 0, 0);
 #endif
 }
 
-}  // namespace fss::cpu
+}  // namespace fss::detail::cpu
 
 #undef FSS_POINT_EVAL_UNROLL_4
 

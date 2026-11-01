@@ -6,6 +6,7 @@
 #include <memory>
 #include <fss/grotto_dcf.cuh>
 #include <fss/prg/chacha.cuh>
+#include "core_api_test_helpers.cuh"
 
 constexpr uint16_t kAlpha = 107;
 constexpr int kAlphaBits = 16;
@@ -31,7 +32,7 @@ protected:
     s0s[1] = {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
 
     GrottoDcfType dcf{prg};
-    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha);
+    fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha);
   }
 };
 
@@ -40,12 +41,12 @@ TEST_F(GrottoDcfChaChaTest, PreprocessEvalAll) {
   GrottoDcfType dcf{prg};
   constexpr size_t N = 1ULL << kAlphaBits;
 
-  auto tree0 = dcf.Preprocess(false, k0);
-  auto tree1 = dcf.Preprocess(true, k1);
+  auto tree0 = fss_test::PreprocessKey(dcf, false, k0);
+  auto tree1 = fss_test::PreprocessKey(dcf, true, k1);
 
   for (size_t x = 0; x < N; ++x) {
-    bool share0 = GrottoDcfType::Eval(tree0, static_cast<uint16_t>(x));
-    bool share1 = GrottoDcfType::Eval(tree1, static_cast<uint16_t>(x));
+    bool share0 = GrottoDcfType::Eval(tree0.View(), static_cast<uint16_t>(x));
+    bool share1 = GrottoDcfType::Eval(tree1.View(), static_cast<uint16_t>(x));
     bool result = share0 ^ share1;
     bool expected = (kAlpha <= x);
     EXPECT_EQ(result, expected) << "Failed at x=" << x;
@@ -60,8 +61,8 @@ TEST_F(GrottoDcfChaChaTest, EvalAll) {
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
 
-  dcf.EvalAll(false, k0, cuda::std::span<bool>(ys0.get(), N));
-  dcf.EvalAll(true, k1, cuda::std::span<bool>(ys1.get(), N));
+  fss_test::EvalAllKey(dcf, false, k0, cuda::std::span<bool>(ys0.get(), N));
+  fss_test::EvalAllKey(dcf, true, k1, cuda::std::span<bool>(ys1.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
     bool result = ys0[x] ^ ys1[x];
@@ -75,16 +76,19 @@ TEST_F(GrottoDcfChaChaTest, PreprocessEvalMatchesEvalAll) {
   GrottoDcfType dcf{prg};
   constexpr size_t N = 1ULL << kAlphaBits;
 
-  // Preprocess path
-  auto tree0 = dcf.Preprocess(false, k0);
+  for (bool party : {false, true}) {
+    const auto &key = party ? k1 : k0;
+    auto tree = fss_test::PreprocessKey(dcf, party, key);
+    auto raw_ys = std::make_unique<bool[]>(N);
+    auto tree_ys = std::make_unique<bool[]>(N);
+    fss_test::EvalAllKey(dcf, party, key, cuda::std::span<bool>(raw_ys.get(), N));
+    GrottoDcfType::EvalAll(tree.View(), tree_ys.get());
 
-  // EvalAll path
-  auto ys0 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, k0, cuda::std::span<bool>(ys0.get(), N));
-
-  for (size_t x = 0; x < N; ++x) {
-    bool from_preprocess = GrottoDcfType::Eval(tree0, static_cast<uint16_t>(x));
-    EXPECT_EQ(from_preprocess, ys0[x]) << "Mismatch at x=" << x;
+    for (size_t x = 0; x < N; ++x) {
+      bool from_preprocess = GrottoDcfType::Eval(tree.View(), static_cast<uint16_t>(x));
+      EXPECT_EQ(from_preprocess, raw_ys[x]) << "party " << party << ", input " << x;
+      EXPECT_EQ(tree_ys[x], raw_ys[x]) << "party " << party << ", input " << x;
+    }
   }
 }
 
@@ -94,13 +98,13 @@ TEST_F(GrottoDcfChaChaTest, EdgeAlphaZero) {
   constexpr size_t N = 1ULL << kAlphaBits;
 
   GrottoDcfType::Key edge_k0, edge_k1;
-  dcf.Gen(edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2),
+  fss_test::GenPair(dcf, edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2),
       static_cast<uint16_t>(0));
 
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, edge_k0, cuda::std::span<bool>(ys0.get(), N));
-  dcf.EvalAll(true, edge_k1, cuda::std::span<bool>(ys1.get(), N));
+  fss_test::EvalAllKey(dcf, false, edge_k0, cuda::std::span<bool>(ys0.get(), N));
+  fss_test::EvalAllKey(dcf, true, edge_k1, cuda::std::span<bool>(ys1.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
     bool result = ys0[x] ^ ys1[x];
@@ -115,12 +119,12 @@ TEST_F(GrottoDcfChaChaTest, EdgeAlphaMax) {
 
   uint16_t alpha_max = static_cast<uint16_t>(N - 1);
   GrottoDcfType::Key edge_k0, edge_k1;
-  dcf.Gen(edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2), alpha_max);
+  fss_test::GenPair(dcf, edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2), alpha_max);
 
   auto ys0 = std::make_unique<bool[]>(N);
   auto ys1 = std::make_unique<bool[]>(N);
-  dcf.EvalAll(false, edge_k0, cuda::std::span<bool>(ys0.get(), N));
-  dcf.EvalAll(true, edge_k1, cuda::std::span<bool>(ys1.get(), N));
+  fss_test::EvalAllKey(dcf, false, edge_k0, cuda::std::span<bool>(ys0.get(), N));
+  fss_test::EvalAllKey(dcf, true, edge_k1, cuda::std::span<bool>(ys1.get(), N));
 
   for (size_t x = 0; x < N; ++x) {
     bool result = ys0[x] ^ ys1[x];
@@ -141,10 +145,10 @@ void CheckSinglePathSweep() {
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
   for (uint32_t alpha = 0; alpha < n; ++alpha) {
     typename Gdcf::Key k0, k1;
-    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), static_cast<uint8_t>(alpha));
+    fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), static_cast<uint8_t>(alpha));
     for (uint32_t x = 0; x < n; ++x) {
-      bool y0 = dcf.Eval(false, k0, static_cast<uint8_t>(x));
-      bool y1 = dcf.Eval(true, k1, static_cast<uint8_t>(x));
+      bool y0 = fss_test::EvalKey(dcf, false, k0, static_cast<uint8_t>(x));
+      bool y1 = fss_test::EvalKey(dcf, true, k1, static_cast<uint8_t>(x));
       ASSERT_EQ(y0 != y1, alpha <= x) << "in_bits=" << InBits << " alpha=" << alpha << " x=" << x;
     }
   }
@@ -178,13 +182,13 @@ void CheckSinglePathWide() {
         {static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng())}};
     In alpha = random_in();
     typename Gdcf::Key k0, k1;
-    dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
+    fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
     const In top_bit = static_cast<In>(static_cast<In>(1) << (InBits - 1));
     const In xs[] = {alpha, static_cast<In>((alpha - 1) & mask), static_cast<In>((alpha + 1) & mask),
         static_cast<In>(alpha ^ 1), static_cast<In>(alpha ^ top_bit), random_in()};
     for (In x : xs) {
-      bool y0 = dcf.Eval(false, k0, x);
-      bool y1 = dcf.Eval(true, k1, x);
+      bool y0 = fss_test::EvalKey(dcf, false, k0, x);
+      bool y1 = fss_test::EvalKey(dcf, true, k1, x);
       ASSERT_EQ(y0 != y1, alpha <= x) << "in_bits=" << InBits << " trial=" << trial;
     }
   }

@@ -42,31 +42,6 @@ namespace fss::prp {
  * domain.
  */
 class ChaChaFeistel {
-  static __host__ __device__ int CeilLog2(__uint128_t x) {
-    if (x <= 1) return 0;
-    int bits = 0;
-    __uint128_t v = x - 1;
-    while (v > 0) {
-      v >>= 1;
-      ++bits;
-    }
-    return bits;
-  }
-
-  static __host__ __device__ int4 Round(int4 key, __uint128_t right) {
-    prg::ChaCha<1> chacha(static_cast<int>(right), static_cast<int>(right >> 32));
-    return chacha.Gen(key)[0];
-  }
-
-  static __host__ __device__ __uint128_t Unpack(int4 v) {
-    __uint128_t r = 0;
-    r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.x));
-    r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.y)) << 32;
-    r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.z)) << 64;
-    r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.w)) << 96;
-    return r;
-  }
-
 public:
   /**
    * Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.
@@ -76,39 +51,75 @@ public:
    * @param domain Domain size. Must be >= 2.
    * @return Output in [0, domain).
    */
-  __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain) {
-    assert(x < domain);
-    if (domain <= 1) return 0;
+  __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
 
-    int b = CeilLog2(domain);
-    int half = (b + 1) / 2;
-    __uint128_t mask = (half >= 128) ? ~__uint128_t(0) : (__uint128_t(1) << half) - 1;
+private:
+  static __host__ __device__ int CeilLog2(__uint128_t x);
 
-    __uint128_t val = x;
-    do {
-      __uint128_t left = (val >> half) & mask;
-      __uint128_t right = val & mask;
+  static __host__ __device__ int4 Round(int4 key, __uint128_t right);
 
-      for (int r = 0; r < 4; ++r) {
-        // Derive per-round key by XORing round number into the seed.
-        int4 round_key = seed;
-        round_key.x ^= r;
-
-        // PRF: ChaCha keyed by round_key, right in the 64-bit nonce slot -> truncate to half bits.
-        __uint128_t f = Unpack(Round(round_key, right)) & mask;
-
-        left = left ^ f;
-        __uint128_t tmp = left;
-        left = right;
-        right = tmp;
-      }
-
-      val = (left << half) | right;
-    } while (val >= domain);
-
-    return val;
-  }
+  static __host__ __device__ __uint128_t Unpack(int4 v);
 };
+// -----------------------------------------------------------------------------
+
+__host__ __device__ inline int ChaChaFeistel::CeilLog2(__uint128_t x) {
+  if (x <= 1) return 0;
+  int bits = 0;
+  __uint128_t v = x - 1;
+  while (v > 0) {
+    v >>= 1;
+    ++bits;
+  }
+  return bits;
+}
+
+__host__ __device__ inline int4 ChaChaFeistel::Round(int4 key, __uint128_t right) {
+  prg::ChaCha<1> chacha(static_cast<int>(right), static_cast<int>(right >> 32));
+  return chacha.Gen(key)[0];
+}
+
+__host__ __device__ inline __uint128_t ChaChaFeistel::Unpack(int4 v) {
+  __uint128_t r = 0;
+  r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.x));
+  r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.y)) << 32;
+  r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.z)) << 64;
+  r |= static_cast<__uint128_t>(static_cast<unsigned int>(v.w)) << 96;
+  return r;
+}
+
+__host__ __device__ inline __uint128_t ChaChaFeistel::Permu(int4 seed, __uint128_t x, __uint128_t domain) {
+  assert(x < domain);
+  if (domain <= 1) return 0;
+
+  int b = CeilLog2(domain);
+  int half = (b + 1) / 2;
+  __uint128_t mask = (__uint128_t(1) << half) - 1;
+
+  __uint128_t val = x;
+  do {
+    __uint128_t left = (val >> half) & mask;
+    __uint128_t right = val & mask;
+
+    for (int r = 0; r < 4; ++r) {
+      // Derive per-round key by XORing round number into the seed.
+      int4 round_key = seed;
+      round_key.x ^= r;
+
+      // PRF: ChaCha keyed by round_key, right in the 64-bit nonce slot -> truncate to half bits.
+      __uint128_t f = Unpack(Round(round_key, right)) & mask;
+
+      left = left ^ f;
+      __uint128_t tmp = left;
+      left = right;
+      right = tmp;
+    }
+
+    val = (left << half) | right;
+  } while (val >= domain);
+
+  return val;
+}
+
 static_assert(Permutable<ChaChaFeistel>);
 
 }  // namespace fss::prp

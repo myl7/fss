@@ -1,28 +1,23 @@
 /**
  * GPU point evaluation of FSS keys in level-major correction-word layout.
  *
- * The scheme headers store each key's correction words contiguously (per-key
- * layout, 32B stride per level), so a thread walking one key's path touches a
- * different 128B line at every level and the warp's 32 threads touch 32 lines.
- * The DRAM traffic is then ~4x the bytes the data needs, which caps 20-level
- * point evaluation well below the ChaCha ALU floor. These kernels read a
- * level-major layout instead (level i of every key adjacent), so each level
- * load is one coalesced 128B transaction per warp. The VDPF kernel keeps its
- * per-key cs/ocw: each is read once per evaluation, not once per level.
+ * Repacking places one level's corrections for adjacent keys next to each
+ * other, so neighboring threads can read neighboring corrections. Separate
+ * terminal and verification buffers carry values read once per evaluation.
+ * Performance depends on the scheme, batch, backend, and GPU.
  *
  * Run the matching Repack*Gpu() once per key after Gen(); the repack cost
- * amortizes over every later point evaluation, same as Gen itself sits outside
- * the timed loop.
+ * can be amortized over later evaluations. Benchmarks must report whether they
+ * include generation and repacking.
  *
  * The query points use the scheme's In type, so these kernels cover the same
  * input-domain widths as the host Eval, through __uint128_t. The packed tr
  * bits (extra) hold one bit per level and widen to uint64_t or __uint128_t
- * once in_bits passes 32 or 64. Released uint32_t query arrays remain
- * supported for domains of at most 32 bits, even when In is narrower. Each
- * uint32_t element is loaded at its own stride and converted to In.
+ * once in_bits passes 32 or 64. Query element types may be unsigned integers wide enough for the domain.
+ * Values must belong to that domain; each element is loaded at its own stride.
  */
-#ifndef FSS_POINT_EVAL_GPU_CUH_
-#define FSS_POINT_EVAL_GPU_CUH_
+#ifndef FSS_REPACK_GPU_CUH_
+#define FSS_REPACK_GPU_CUH_
 
 #include <cstdint>
 #include <cstddef>
@@ -41,17 +36,118 @@
 #include <fss/util.cuh>
 #include <fss/vdpf.cuh>
 #include <fss/vdmpf.cuh>
-#include <fss/internal/gpu_workspace.cuh>
+#include <cuda/std/span>
+#include <limits>
+#include <stdexcept>
 
 namespace fss::gpu {
 
-// The narrowest unsigned primitive holding one tr bit per level, in_bits bits
-// in total. Common in_bits <= 32 keys keep the uint32_t layout, so existing
-// callers see no change.
+namespace detail {
+
+// Packed right-control bits for the prepared layout.
 template <int bits>
 using ExtBits = std::conditional_t<bits <= 32, uint32_t, std::conditional_t<bits <= 64, uint64_t, __uint128_t>>;
 
+enum class RepackKind { kPoint, kPacked, kDcf, kVerifiable };
+template <typename Scheme>
+struct RepackTraits;
+
+inline void CheckGpuArguments(bool valid) {
+  if (!valid) throw std::invalid_argument("gpu buffer dimensions do not match the operation");
+}
+template <typename Query, int bits>
+concept QueryFor = !std::is_same_v<Query, bool> &&
+    (std::is_unsigned_v<Query> || std::is_same_v<Query, __uint128_t>) && sizeof(Query) * 8 >= bits;
+}
+
+/**
+ * Repack Dpf, HalfTreeDpf or GrottoDcf corrections into caller-owned buffers.
+ * Specify Scheme explicitly. words contains key_count complete correction rows,
+ * each including the terminal correction, in key-major order. words has at
+ * least (in_bits + 1) * key_count entries.
+ * cw_s has at least in_bits * key_count entries in [level * key_count + key] order.
+ * control has at least key_count entries. Dpf and GrottoDcf store
+ * right-control bit i at bit i and the left-control bit in cw_s's low bit.
+ * HalfTreeDpf stores its last-level extra bit at control[key]'s low bit.
+ * terminal has at least key_count entries for Dpf and HalfTreeDpf. GrottoDcf
+ * ignores terminal, which may be empty.
+ * All buffers are device-accessible and must outlive work queued on stream.
+ * @ingroup fss_api
+ */
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kPoint)
+void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s,
+    cuda::std::span<typename detail::RepackTraits<Scheme>::Control> control,
+    cuda::std::span<int4> terminal, cudaStream_t stream = 0);
+
+/**
+ * Repack packed HalfTree corrections into caller-owned device buffers.
+ * Scheme is PackedHalfTreeDpf or HalfTreeGrottoDcf. words contains key_count
+ * complete key-major correction rows, including the final correction. words
+ * has at least (kDepth + 1) * key_count entries.
+ * cw_s has at least kDepth * key_count entries in
+ * [level * key_count + key] order. terminal has at least key_count entries.
+ * All storage must outlive work queued on stream.
+ * @ingroup fss_api
+ */
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kPacked)
+void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s, cuda::std::span<int4> terminal, cudaStream_t stream = 0);
+
+/**
+ * Repack Dcf corrections into separate caller-owned device buffers.
+ * words has at least (in_bits + 1) * key_count entries in key-major order.
+ * cw_s and cw_v each have at least in_bits * key_count entries in
+ * [level * key_count + key] order. terminal has at least key_count entries.
+ * All storage must outlive work queued on stream.
+ * @ingroup fss_api
+ */
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kDcf)
+void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s, cuda::std::span<int4> cw_v,
+    cuda::std::span<int4> terminal, cudaStream_t stream = 0);
+
+/**
+ * Repack Vdpf corrections and copy one four-block check record per key.
+ * words has at least (in_bits + 1) * key_count entries in key-major order.
+ * cw_s has at least in_bits * key_count entries in
+ * [level * key_count + key] order, with the left-control
+ * bit in each block's low bit. control has at least key_count entries, with
+ * right-control bit i stored at bit i of control[key].
+ * terminal has at least key_count entries. input_cs and output_cs each
+ * contain at least key_count records. All buffers are device-accessible and
+ * must outlive work queued on stream.
+ * @ingroup fss_api
+ */
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kVerifiable)
+void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s,
+    cuda::std::span<typename detail::RepackTraits<Scheme>::Control> control,
+    cuda::std::span<int4> terminal, cuda::std::span<cuda::std::array<int4, 4>> output_cs,
+    cuda::std::span<const cuda::std::array<int4, 4>> input_cs, cudaStream_t stream = 0);
+
+
+
+
+
+
+
+
+
+
+// -----------------------------------------------------------------------------
+
 namespace detail {
+
+__global__ void CopyPointChecksKernel(const cuda::std::array<int4, 4> *in,
+    cuda::std::array<int4, 4> *out, int count) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < count) out[i] = in[i];
+}
 
 __device__ __host__ inline int4 Zero4() {
   return {0, 0, 0, 0};
@@ -62,18 +158,19 @@ __device__ __host__ inline bool GetBit(T x, int i) {
   return ((x >> i) & 1) != 0;
 }
 
-// Pack per-key HalfTree DPF cws (stride in_bits) into level-major cw_s and the
+// Pack per-key HalfTree DPF cws (stride in_bits + 1) into level-major cw_s and the
 // last-level extra bit (bit 0 of extra[k]).
 template <int in_bits, typename Cw>
-__global__ void HalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int nkeys) {
+__global__ void HalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int4 *terminal, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   uint32_t e = 0;
   for (int i = 0; i < in_bits; ++i) {
-    cw_s[(size_t)i * nkeys + k] = pk[(size_t)k * in_bits + i].s;
-    if (i == in_bits - 1 && pk[(size_t)k * in_bits + i].extra) e = 1;
+    cw_s[(size_t)i * nkeys + k] = pk[(size_t)k * (in_bits + 1) + i].s;
+    if (i == in_bits - 1 && pk[(size_t)k * (in_bits + 1) + i].extra) e = 1;
   }
   extra[k] = e;
+  terminal[k] = pk[(size_t)k * (in_bits + 1) + in_bits].s;
 }
 
 // Pack per-key DPF cws (stride in_bits + 1) into level-major cw_s, the tr bits
@@ -92,18 +189,19 @@ __global__ void DpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extr
   if (out_cw != nullptr) out_cw[k] = pk[(size_t)k * (in_bits + 1) + in_bits].s;
 }
 
-// Pack per-key VDPF cws (stride in_bits) into level-major cw_s and the tr
+// Pack per-key VDPF cws (stride in_bits + 1) into level-major cw_s and the tr
 // bits (bit i of extra[k] = level i).
 template <int in_bits, typename Cw>
-__global__ void VdpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extra, int nkeys) {
+__global__ void VdpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extra, int4 *terminal, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   ExtBits<in_bits> e = 0;
   for (int i = 0; i < in_bits; ++i) {
-    cw_s[(size_t)i * nkeys + k] = pk[(size_t)k * in_bits + i].s;
-    if (pk[(size_t)k * in_bits + i].tr) e |= static_cast<ExtBits<in_bits>>(1) << i;
+    cw_s[(size_t)i * nkeys + k] = pk[(size_t)k * (in_bits + 1) + i].s;
+    if (pk[(size_t)k * (in_bits + 1) + i].tr) e |= static_cast<ExtBits<in_bits>>(1) << i;
   }
   extra[k] = e;
+  terminal[k] = pk[(size_t)k * (in_bits + 1) + in_bits].s;
 }
 
 // Pack per-key DCF cws (stride in_bits + 1) into level-major cw_s and cw_v and
@@ -121,9 +219,9 @@ __global__ void DcfRepackKernel(const Cw *pk, int4 *cw_s, int4 *cw_v, int4 *out_
 
 // Point-evaluate in_bits-level HalfTree DPF keys: one thread per key, one
 // output value per key at xs[tid]. cw_s/extra come from HalfTreeDpfRepackKernel.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In, typename Query = In>
+template <int in_bits, int unroll, bool b, typename Group, typename Hash, typename In, typename Query = In>
 __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const uint32_t *extra,
-    const int4 *ocws, const Query *xs, int nkeys, Prg prg, int4 hash_key) {
+    const int4 *ocws, const Query *xs, int nkeys, Hash hash, int4 instance_seed) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
@@ -134,14 +232,14 @@ __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const in
   for (int i = 0; i < in_bits - 1; ++i) {
     bool x_bit = GetBit(x, in_bits - 1 - i);
     bool t = fss::util::GetLsb(node);
-    int4 h = prg.Gen(fss::util::Xor(hash_key, node))[0];
+    int4 h = hash.Hash(fss::util::Xor(instance_seed, node));
     int4 cw = cw_s[(size_t)i * nkeys + tid];
     node = fss::util::Xor(fss::util::Xor(h, x_bit ? node : Zero4()), t ? cw : Zero4());
   }
 
   bool x_n = GetBit(x, 0);
   bool t = fss::util::GetLsb(node);
-  int4 h = prg.Gen(fss::util::Xor(hash_key, fss::util::SetLsb(node, x_n)))[0];
+  int4 h = hash.Hash(fss::util::Xor(instance_seed, fss::util::SetLsb(node, x_n)));
   int4 cw = cw_s[(size_t)(in_bits - 1) * nkeys + tid];
   int4 hcw = fss::util::SetLsb(cw, false);
   bool lcw_xn = x_n ? ((extra[tid] & 1) != 0) : fss::util::GetLsb(cw);
@@ -159,20 +257,21 @@ __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const in
 
 // Pack per-key Packed HalfTree DPF cws (stride depth) into level-major cw_s.
 template <int depth, typename Cw>
-__global__ void PackedHalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, int nkeys) {
+__global__ void PackedHalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, int4 *terminal, int nkeys) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
-  for (int i = 0; i < depth; ++i) cw_s[(size_t)i * nkeys + k] = pk[(size_t)k * depth + i].s;
+  for (int i = 0; i < depth; ++i) cw_s[(size_t)i * nkeys + k] = pk[(size_t)k * (depth + 1) + i].s;
+  terminal[k] = pk[(size_t)k * (depth + 1) + depth].s;
 }
 
 // Point-evaluate Packed HalfTree DPF keys, one thread per key. ys[tid] is x's output block, or
 // with cmp the 1[alpha <= x] share of HalfTreeGrottoDcf::Eval(). cw_s comes from
 // PackedHalfTreeDpfRepackKernel.
-template <int in_bits, int out_bits, int unroll, bool b, bool cmp, typename Prg, typename In, int par_depth,
+template <int in_bits, int out_bits, int unroll, bool b, bool cmp, typename Hash, typename In,
     typename Query, typename Y>
 __global__ void PackedHalfTreeDpfEvalPointKernel(
-    Y *ys, const int4 *seeds, const int4 *cw_s, const int4 *fcws, const Query *xs, int nkeys, Prg prg, int4 hash_key) {
-  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>;
+    Y *ys, const int4 *seeds, const int4 *cw_s, const int4 *fcws, const Query *xs, int nkeys, Hash hash, int4 instance_seed) {
+  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Hash, In>;
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
   int4 node = fss::util::SetLsb(seeds[tid], b);
@@ -184,33 +283,34 @@ __global__ void PackedHalfTreeDpfEvalPointKernel(
     bool x_bit = GetBit(x, in_bits - 1 - i);
     bool t = fss::util::GetLsb(node);
     if constexpr (cmp) turns(t, x_bit);
-    int4 h = prg.Gen(fss::util::Xor(hash_key, node))[0];
+    int4 h = hash.Hash(fss::util::Xor(instance_seed, node));
     int4 cw = cw_s[(size_t)i * nkeys + tid];
     node = fss::util::Xor(fss::util::Xor(h, x_bit ? node : Zero4()), t ? cw : Zero4());
   }
 
-  int4 leaf = prg.Gen(fss::util::Xor(hash_key, node))[0];
+  int4 leaf = hash.Hash(fss::util::Xor(instance_seed, node));
   if (fss::util::GetLsb(node)) leaf = fss::util::Xor(leaf, fcws[tid]);
   if constexpr (cmp) {
-    ys[tid] = turns.share ^ HalfTreeGrottoDcf<in_bits, Prg, In, par_depth>::LeafParity(leaf, x);
+    ys[tid] = turns.share ^ fss::detail::SchemeAccess::HalfTreeGrottoLeafParity<
+        HalfTreeGrottoDcf<in_bits, Hash, In>>(leaf, x);
   } else {
     ys[tid] = leaf;
   }
 }
 
-template <int unroll, bool cmp, int in_bits, int out_bits, typename Prg, typename In, int par_depth, typename Query,
+template <int unroll, bool cmp, int in_bits, int out_bits, typename Hash, typename In, typename Query,
     typename Y>
 void PackedHalfTreeDpfEvalPointLaunch(bool b, const int4 *seeds, const int4 *cw_s, const int4 *fcws, const Query *xs,
-    Y *ys, int nkeys, Prg prg, int4 hash_key, cudaStream_t stream) {
+    Y *ys, int nkeys, Hash hash, int4 instance_seed, cudaStream_t stream) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    PackedHalfTreeDpfEvalPointKernel<in_bits, out_bits, unroll, true, cmp, Prg, In, par_depth, Query, Y>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, fcws, xs, nkeys, prg, hash_key);
+    PackedHalfTreeDpfEvalPointKernel<in_bits, out_bits, unroll, true, cmp, Hash, In, Query, Y>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, fcws, xs, nkeys, hash, instance_seed);
   } else {
-    PackedHalfTreeDpfEvalPointKernel<in_bits, out_bits, unroll, false, cmp, Prg, In, par_depth, Query, Y>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, fcws, xs, nkeys, prg, hash_key);
+    PackedHalfTreeDpfEvalPointKernel<in_bits, out_bits, unroll, false, cmp, Hash, In, Query, Y>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, fcws, xs, nkeys, hash, instance_seed);
   }
 }
 
@@ -289,8 +389,7 @@ void DpfEvalPointLaunch(bool b, const int4 *seeds, const int4 *cw_s, const ExtBi
 }
 
 // Point-evaluate in_bits-level DCF keys, one thread per key. cw_s/cw_v/out_cw
-// come from DcfRepackKernel. v starts at zero, which is the value the
-// library Eval relies on the compiler to produce for its uninitialized v.
+// come from DcfRepackKernel. Group default construction provides the additive identity.
 template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In, typename Query = In>
 __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw,
     const Query *xs, int nkeys, Prg prg) {
@@ -361,12 +460,12 @@ __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
 
 // Point-evaluate in_bits-level VDPF keys, one thread per key. Same seed walk
 // as the DPF kernel plus the per-point verification hash; the walk carries no
-// hash cost, the tail does one Blake3 and, when t, the cs correction.
+// hash cost, the tail applies the verification hash and, when t, the cs correction.
 // cw_s/extra come from VdpfRepackKernel. cs and ocws stay per-key: each is
 // read once per evaluation, not once per level.
 template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash, typename In,
     typename Query = In>
-__global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const int4 *cw_s,
+__global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, const int4 *seeds, const int4 *cw_s,
     const ExtBits<in_bits> *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs, int nkeys,
     Prg prg, XorHash xor_hash) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
@@ -413,13 +512,13 @@ __global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const
   if constexpr (b) y = -y;
   ys[tid] = y.Into();
 
-  int4 x_buf = util::Pack(x);
+  int4 x_buf = fss::detail::Pack(x);
   auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
   if (t) {
     pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs[tid]));
   }
 #pragma unroll
-  for (int j = 0; j < 4; ++j) pi[(size_t)tid * 4 + j] = pi_tilde[j];
+  for (int j = 0; j < 4; ++j) pi[tid][j] = pi_tilde[j];
 }
 
 // Batch-evaluate a DMPF key: one thread per input point. Each thread runs the
@@ -429,19 +528,17 @@ __global__ void VdpfEvalPointKernel(int4 *ys, int4 *pi, const int4 *seeds, const
 // active bucket keys; a warp's bucket indices are pseudorandom, so per-level
 // loads scatter inside the level's row instead of following the per-key
 // layout's one-line-per-thread pattern.
-template <int in_bits, int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename Prp, typename In,
-    int kappa>
-__global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma, int m_rt, int b_rt, const int4 *s0s,
+template <int in_bits, int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename Prp, typename In>
+__global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma, int m_rt, __uint128_t b_rt, const int4 *s0s,
     const int4 *cw_s, const ExtBits<bucket_bits> *extra, const int4 *out_cw, Prg prg, Prp prp) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
-  static_assert(bucket_bits <= 32, "the bucket point type is fixed to uint");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   In x = xs[tid];
   constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
-  cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
+  cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp};
   auto acc = Group::From(Zero4());
-  for (int k = 0; k < kappa; ++k) {
+  for (int k = 0; k < 3; ++k) {
     auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
     if (bucket >= m_rt) continue;
 
@@ -493,17 +590,17 @@ __global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma, i
 // point); a stable radix sort later groups the records by bucket while keeping
 // the (point, hash) order inside each bucket, which is exactly the canonical
 // order the host BatchEvalMerkle folds its per-bucket leaves in.
-template <int in_bits, typename Prp, typename In, int kappa>
+template <int in_bits, typename Prp, typename In>
 __global__ void VdmpfLocateKernel(
-    const In *xs, int n, int4 sigma, int m_rt, int b_rt, uint32_t *keys, uint64_t *vals, uint32_t *counts, Prp prp) {
+    const In *xs, int n, int4 sigma, int m_rt, __uint128_t b_rt, uint32_t *keys, uint64_t *vals, uint32_t *counts, Prp prp) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   In x = xs[tid];
   constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
-  cuckoo_hash::PrpHash<Prp, In, kappa> prp_hash{prp};
-  for (int k = 0; k < kappa; ++k) {
+  cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp};
+  for (int k = 0; k < 3; ++k) {
     auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
-    size_t idx = static_cast<size_t>(tid) * kappa + k;
+    size_t idx = static_cast<size_t>(tid) * 3 + k;
     keys[idx] = static_cast<uint32_t>(bucket);
     vals[idx] = (static_cast<uint64_t>(idx) << 32) | static_cast<uint32_t>(j);
     if (bucket < m_rt) atomicAdd(&counts[bucket], 1u);
@@ -514,16 +611,15 @@ __global__ void VdmpfLocateKernel(
 // contributions (from the Locate records) and writes each corrected per-point
 // hash pi_tilde at its contribution index. cw_s/extra come from VdpfRepackGpu
 // over the m_rt active bucket keys; cs and ocws are indexed by bucket.
-template <int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash, typename In, int kappa>
-__global__ void VdmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int m_rt, const int4 *s0s, const int4 *cw_s,
+template <int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash>
+__global__ void VdmpfBatchEvalKernel(int4 *ys, int n, int m_rt, const int4 *s0s, const int4 *cw_s,
     const ExtBits<bucket_bits> *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws,
     cuda::std::array<int4, 4> *pi_tilde_buf, const uint32_t *keys, const uint64_t *vals, Prg prg, XorHash xor_hash) {
-  static_assert(bucket_bits <= 32, "the bucket point type is fixed to uint");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   auto acc = Group::From(Zero4());
-  for (int k = 0; k < kappa; ++k) {
-    size_t idx = static_cast<size_t>(tid) * kappa + k;
+  for (int k = 0; k < 3; ++k) {
+    size_t idx = static_cast<size_t>(tid) * 3 + k;
     int bucket = static_cast<int>(keys[idx]);
     if (bucket >= m_rt) continue;
     uint j = static_cast<uint>(static_cast<uint32_t>(vals[idx]));
@@ -568,7 +664,7 @@ __global__ void VdmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int m_rt, co
     if constexpr (b) y = -y;
     acc = acc + y;
 
-    int4 x_buf = fss::util::Pack(j);
+    int4 x_buf = fss::detail::Pack(j);
     auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
     if (t) {
       cuda::std::array<int4, 4> corrected = pi_tilde;
@@ -600,7 +696,7 @@ __global__ void VdmpfFoldSetupKernel(
   chunk_offsets[m_buckets] = chunks;
 }
 
-// Fold one kMerkleChunkSize-leaf chunk of the sorted Locate records into a
+// Fold one execution chunk of the sorted Locate records into a
 // chunk root. One block per chunk: the leaves (hashes of the corrected
 // per-point hashes, gathered through the sorted records) fold pairwise level
 // by level with an odd trailing node carrying unchanged - the same rule as the
@@ -631,22 +727,21 @@ __global__ void VdmpfChunkFoldKernel(cuda::std::array<int4, 2> *chunk_roots, con
 
   cuda::std::array<int4, 2> *cur = s_a;
   cuda::std::array<int4, 2> *next = s_b;
-  if (threadIdx.x < take) {
-    uint32_t p = leaf_base + threadIdx.x;
+  for (uint32_t j = threadIdx.x; j < take; j += blockDim.x) {
+    uint32_t p = leaf_base + j;
     uint32_t idx = static_cast<uint32_t>(sorted_vals[p] >> 32);
-    cur[threadIdx.x] = hash.Hash(cuda::std::span<const int4, 4>(pi_tilde_buf[idx]));
+    cur[j] = hash.Hash(cuda::std::span<const int4, 4>(pi_tilde_buf[idx]));
   }
   __syncthreads();
 
   uint32_t count = take;
   while (count > 1) {
     uint32_t pairs = count / 2;
-    if (threadIdx.x < pairs) {
-      int4 msg[4] = {
-          cur[2 * threadIdx.x][0], cur[2 * threadIdx.x][1], cur[2 * threadIdx.x + 1][0], cur[2 * threadIdx.x + 1][1]};
-      next[threadIdx.x] = hash.Hash(cuda::std::span<const int4, 4>(msg));
+    for (uint32_t j = threadIdx.x; j < pairs; j += blockDim.x) {
+      int4 msg[4] = {cur[2 * j][0], cur[2 * j][1], cur[2 * j + 1][0], cur[2 * j + 1][1]};
+      next[j] = hash.Hash(cuda::std::span<const int4, 4>(msg));
     }
-    if (count % 2 != 0 && threadIdx.x == pairs) {
+    if (count % 2 != 0 && threadIdx.x == 0) {
       next[pairs] = cur[count - 1];
     }
     __syncthreads();
@@ -658,10 +753,42 @@ __global__ void VdmpfChunkFoldKernel(cuda::std::array<int4, 2> *chunk_roots, con
   if (threadIdx.x == 0) chunk_roots[chunk] = cur[0];
 }
 
-// Combine the chunk roots into per-bucket nodes and the bucket nodes into the
-// final proof. One block: every bucket thread left-chains its chunk roots
-// starting from the bucket's hashed cs, then the m bucket nodes fold level by
-// level with the same odd-carry rule as the chunks.
+// Reduce one level of every bucket's chunk roots. Buffers are disjoint so
+// no parent write can race another thread's child reads. Each bucket keeps its
+// original chunk-offset segment, including after its root is already complete.
+// Power-of-two chunks align with the canonical leaf tree. Its incomplete last
+// chunk is carried unchanged through any missing levels before this reduction.
+template <typename Hash>
+__global__ void VdmpfChunkRootsFoldKernel(cuda::std::array<int4, 2> *out,
+    const cuda::std::array<int4, 2> *in, const uint32_t *chunk_offsets,
+    int m_buckets, uint32_t stride, Hash hash) {
+  size_t slot = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (slot >= chunk_offsets[m_buckets]) return;
+  int lo = 0, hi = m_buckets - 1;
+  while (lo < hi) {
+    int mid = (lo + hi) / 2;
+    if (slot < chunk_offsets[mid + 1]) hi = mid;
+    else lo = mid + 1;
+  }
+  int bucket = lo;
+  uint32_t base = chunk_offsets[bucket];
+  uint32_t local = static_cast<uint32_t>(slot) - base;
+  uint32_t chunks = chunk_offsets[bucket + 1] - base;
+  uint32_t count = (chunks + stride - 1) / stride;
+  uint32_t parents = (count + 1) / 2;
+  if (local >= parents) return;
+  auto left = in[base + 2 * local];
+  if (2 * local + 1 < count) {
+    auto right = in[base + 2 * local + 1];
+    int4 msg[4] = {left[0], left[1], right[0], right[1]};
+    out[slot] = hash.Hash(cuda::std::span<const int4, 4>(msg));
+  } else {
+    out[slot] = left;
+  }
+}
+
+// Bind each nonempty bucket's canonical leaf root to its hashed cs, then fold
+// the bucket nodes level by level. Execution chunk sizes do not enter the proof.
 template <int m_buckets, typename Hash>
 __global__ void VdmpfBucketFoldKernel(cuda::std::array<int4, 4> *pi, const cuda::std::array<int4, 2> *chunk_roots,
     const uint32_t *chunk_offsets, const cuda::std::array<int4, 4> *cs, Hash hash) {
@@ -670,9 +797,9 @@ __global__ void VdmpfBucketFoldKernel(cuda::std::array<int4, 4> *pi, const cuda:
   int i = threadIdx.x;
   if (i < m_buckets) {
     cuda::std::array<int4, 2> node = hash.Hash(cuda::std::span<const int4, 4>(cs[i]));
-    for (uint32_t q = chunk_offsets == nullptr ? 0 : chunk_offsets[i];
-        chunk_offsets != nullptr && q < chunk_offsets[i + 1]; ++q) {
-      int4 msg[4] = {node[0], node[1], chunk_roots[q][0], chunk_roots[q][1]};
+    if (chunk_offsets != nullptr && chunk_offsets[i] != chunk_offsets[i + 1]) {
+      auto root = chunk_roots[chunk_offsets[i]];
+      int4 msg[4] = {node[0], node[1], root[0], root[1]};
       node = hash.Hash(cuda::std::span<const int4, 4>(msg));
     }
     s_a[i] = node;
@@ -700,34 +827,34 @@ __global__ void VdmpfBucketFoldKernel(cuda::std::array<int4, 4> *pi, const cuda:
   if (i == 0) *pi = {cur[0][0], cur[0][1], int4{0, 0, 0, 0}, int4{0, 0, 0, 0}};
 }
 
-}  // namespace detail
 
-/**
+
+/*
  * One-time repack of per-key HalfTree DPF keys into the level-major layout
  * consumed by HalfTreeDpfEvalPointGpu. cw_s has in_bits * nkeys int4s,
  * extra and ocws have nkeys entries each.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
- * @param cws Correction words returned by Gen(), key-major, stride in_bits.
+ * @param cws Correction words returned by Gen(), key-major, stride in_bits + 1.
  * @param nkeys Number of keys.
  * @param cw_s Output level-major correction words, cw_s[i * nkeys + k].
  * @param extra Output packed last-level extra bits.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
-void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys,
-    int4 *cw_s, uint32_t *extra, cudaStream_t stream = 0) {
+template <int in_bits, typename Group, typename Hash, typename In>
+void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Hash, In>::Cw *cws, int nkeys,
+    int4 *cw_s, uint32_t *extra, int4 *terminal, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::HalfTreeDpfRepackKernel<in_bits, typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw>
-      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nkeys);
+  detail::HalfTreeDpfRepackKernel<in_bits, typename HalfTreeDpf<in_bits, Group, Hash, In>::Cw>
+      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, terminal, nkeys);
 }
 
-/**
+/*
  * One-time repack of per-key Packed HalfTree DPF keys into the level-major
  * layout consumed by PackedHalfTreeDpfEvalPointGpu. cw_s has kDepth * nkeys
- * int4s. fcws need no repack: each is read once per evaluation.
+ * int4s. The final correction is extracted into terminal.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @tparam out_bits Output width of the keys.
@@ -736,22 +863,21 @@ void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In, pa
  * @param cw_s Output level-major correction words, cw_s[i * nkeys + k].
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, int out_bits, typename Prg, typename In, int par_depth = -1>
-void PackedHalfTreeDpfRepackGpu(const typename PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>::Cw *cws,
-    int nkeys, int4 *cw_s, cudaStream_t stream = 0) {
+template <int in_bits, int out_bits, typename Hash, typename In>
+void PackedHalfTreeDpfRepackGpu(const typename PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Cw *cws,
+    int nkeys, int4 *cw_s, int4 *terminal, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
-  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth>;
+  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Hash, In>;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   detail::PackedHalfTreeDpfRepackKernel<Scheme::kDepth, typename Scheme::Cw>
-      <<<blocks, kBs, 0, stream>>>(cws, cw_s, nkeys);
+      <<<blocks, kBs, 0, stream>>>(cws, cw_s, terminal, nkeys);
 }
 
-/**
+/*
  * One-time repack of per-key HalfTree Grotto DCF keys into the level-major
  * layout consumed by HalfTreeGrottoDcfEvalPointGpu, the layout of
- * PackedHalfTreeDpfRepackGpu. cw_s has kDepth * nkeys int4s. fcws need no
- * repack: each is read once per evaluation.
+ * PackedHalfTreeDpfRepackGpu. The final correction is extracted into terminal.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param cws Correction words returned by Gen(), key-major, stride kDepth.
@@ -759,13 +885,13 @@ void PackedHalfTreeDpfRepackGpu(const typename PackedHalfTreeDpf<in_bits, out_bi
  * @param cw_s Output level-major correction words, cw_s[i * nkeys + k].
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Prg, typename In, int par_depth = -1>
-void HalfTreeGrottoDcfRepackGpu(const typename HalfTreeGrottoDcf<in_bits, Prg, In, par_depth>::Cw *cws, int nkeys,
-    int4 *cw_s, cudaStream_t stream = 0) {
-  PackedHalfTreeDpfRepackGpu<in_bits, 1, Prg, In, par_depth>(cws, nkeys, cw_s, stream);
+template <int in_bits, typename Hash, typename In>
+void HalfTreeGrottoDcfRepackGpu(const typename HalfTreeGrottoDcf<in_bits, Hash, In>::Cw *cws, int nkeys,
+    int4 *cw_s, int4 *terminal, cudaStream_t stream = 0) {
+  PackedHalfTreeDpfRepackGpu<in_bits, 1, Hash, In>(cws, nkeys, cw_s, terminal, stream);
 }
 
-/**
+/*
  * One-time repack of per-key DPF keys into the level-major layout consumed
  * by DpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra and out_cw have
  * nkeys entries each.
@@ -778,17 +904,17 @@ void HalfTreeGrottoDcfRepackGpu(const typename HalfTreeGrottoDcf<in_bits, Prg, I
  * @param out_cw Output correction words cws[k][in_bits].s, one per key.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
-void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
+template <int in_bits, typename Group, typename Prg, typename In>
+void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
     ExtBits<in_bits> *extra, int4 *out_cw, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DpfRepackKernel<in_bits, typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw>
+  detail::DpfRepackKernel<in_bits, typename Dpf<in_bits, Group, Prg, In>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, out_cw, nkeys);
 }
 
-/**
+/*
  * One-time repack of per-key DCF keys into the level-major layout consumed
  * by DcfEvalPointGpu. cw_s and cw_v have in_bits * nkeys int4s each; out_cw
  * has nkeys entries.
@@ -802,17 +928,17 @@ void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw *cw
  * @param out_cw Output final correction words' v parts, one per key.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred = DcfPred::kLt, int par_depth = -1>
-void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred = DcfPred::kLt>
+void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred>::Cw *cws, int nkeys, int4 *cw_s,
     int4 *cw_v, int4 *out_cw, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw>
+  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In, pred>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, cw_v, out_cw, nkeys);
 }
 
-/**
+/*
  * One-time repack of per-key Grotto DCF keys into the level-major layout
  * consumed by GrottoDcfEvalPointGpu. cw_s has in_bits * nkeys int4s and extra
  * has nkeys entries.
@@ -824,20 +950,20 @@ void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::
  * @param extra Output packed tr bits, bit i of extra[k] = level i.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Prg, typename In, int par_depth = -1>
-void GrottoDcfRepackGpu(const typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
+template <int in_bits, typename Prg, typename In>
+void GrottoDcfRepackGpu(const typename GrottoDcf<in_bits, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
     ExtBits<in_bits> *extra, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DpfRepackKernel<in_bits, typename GrottoDcf<in_bits, Prg, In, par_depth>::Cw>
+  detail::DpfRepackKernel<in_bits, typename GrottoDcf<in_bits, Prg, In>::Cw>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nullptr, nkeys);
 }
 
-/**
+/*
  * One-time repack of per-key VDPF keys into the level-major layout consumed
  * by VdpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra has nkeys
- * entries. cs and ocws need no repack: each is read once per evaluation.
+ * entries. The final correction is extracted into terminal.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param cws Correction words returned by Gen(), key-major, stride in_bits.
@@ -846,44 +972,25 @@ void GrottoDcfRepackGpu(const typename GrottoDcf<in_bits, Prg, In, par_depth>::C
  * @param extra Output packed tr bits, bit i of extra[k] = level i.
  * @param stream CUDA stream to launch on.
  */
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In, int par_depth = -1>
-void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw *cws, int nkeys,
-    int4 *cw_s, ExtBits<in_bits> *extra, cudaStream_t stream = 0) {
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws, int nkeys,
+    int4 *cw_s, ExtBits<in_bits> *extra, int4 *terminal, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::VdpfRepackKernel<in_bits, typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw>
-      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nkeys);
+  detail::VdpfRepackKernel<in_bits, typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
+      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, terminal, nkeys);
 }
 
-// Released names remain available with their original packed-control layout.
-template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
-void HalfTreeDpfRelayoutGpu(const typename HalfTreeDpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys,
-    int4 *cw_s, uint32_t *extra, cudaStream_t stream = 0) {
-  HalfTreeDpfRepackGpu<in_bits, Group, Prg, In, par_depth>(cws, nkeys, cw_s, extra, stream);
-}
 
-template <int in_bits, typename Group, typename Prg, typename In, int par_depth = -1>
-void DpfRelayoutGpu(const typename Dpf<in_bits, Group, Prg, In, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
-    uint32_t *extra, int4 *out_cw, cudaStream_t stream = 0) {
-  static_assert(in_bits <= 32, "released packed control words support at most 32 levels");
-  DpfRepackGpu<in_bits, Group, Prg, In, par_depth>(cws, nkeys, cw_s, extra, out_cw, stream);
-}
 
-template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred = DcfPred::kLt, int par_depth = -1>
-void DcfRelayoutGpu(const typename Dcf<in_bits, Group, Prg, In, pred, par_depth>::Cw *cws, int nkeys, int4 *cw_s,
-    int4 *cw_v, int4 *out_cw, cudaStream_t stream = 0) {
-  DcfRepackGpu<in_bits, Group, Prg, In, pred, par_depth>(cws, nkeys, cw_s, cw_v, out_cw, stream);
-}
 
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In, int par_depth = -1>
-void VdpfRelayoutGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth>::Cw *cws, int nkeys,
-    int4 *cw_s, uint32_t *extra, cudaStream_t stream = 0) {
-  static_assert(in_bits <= 32, "released packed control words support at most 32 levels");
-  VdpfRepackGpu<in_bits, Group, Prg, XorHash, Hash, In, par_depth>(cws, nkeys, cw_s, extra, stream);
-}
 
-/**
+
+
+
+
+/*
  * GPU point evaluation of nkeys HalfTree DPF keys: ys[k] = Eval(b, seeds[k],
  * cws, ocws[k], xs[k]). One thread per key. cw_s/extra must come from
  * HalfTreeDpfRepackGpu.
@@ -894,32 +1001,36 @@ void VdpfRelayoutGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In,
  * @param seeds Party seeds, one per key.
  * @param cw_s Level-major correction words from HalfTreeDpfRepackGpu.
  * @param extra Packed last-level extra bits from HalfTreeDpfRepackGpu.
- * @param ocws Output correction words returned by Gen(), one per key.
+ * @param ocws Output corrections cws[in_bits].s, one per key.
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
  * @param nkeys Number of keys.
- * @param dpf A HalfTreeDpf instance (holds the PRG and hash key).
+ * @param dpf A HalfTreeDpf instance (holds the CCR hash and instance seed).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
+template <int unroll = 4, int in_bits, typename Group, typename Hash, typename In,
     typename Query = In>
-  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+  requires detail::QueryFor<Query, in_bits>
 void HalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const uint32_t *extra, const int4 *ocws,
-    const Query *xs, int4 *ys, int nkeys, const HalfTreeDpf<in_bits, Group, Prg, In, par_depth> &dpf,
+    const Query *xs, int4 *ys, int nkeys, const HalfTreeDpf<in_bits, Group, Hash, In> &dpf,
     cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Group, Prg, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys, dpf.prg, dpf.hash_key);
+    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Group, Hash, In, Query>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys,
+        fss::detail::SchemeAccess::GetHash(dpf),
+        fss::detail::SchemeAccess::GetInstanceSeed(dpf));
   } else {
-    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys, dpf.prg, dpf.hash_key);
+    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Group, Hash, In, Query>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys,
+        fss::detail::SchemeAccess::GetHash(dpf),
+        fss::detail::SchemeAccess::GetInstanceSeed(dpf));
   }
 }
 
-/**
+/*
  * GPU point evaluation of nkeys Packed HalfTree DPF keys: ys[k] = Eval(b,
  * key[k], xs[k]), the output block containing xs[k]. Extract() reads the lane.
  * One thread per key. cw_s must come from PackedHalfTreeDpfRepackGpu.
@@ -933,18 +1044,20 @@ void HalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const 
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
  * @param nkeys Number of keys.
- * @param dpf A PackedHalfTreeDpf instance (holds the PRG and hash key).
+ * @param dpf A PackedHalfTreeDpf instance (holds the CCR hash and instance seed).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, int out_bits, typename Prg, typename In, int par_depth = -1, typename Query = In>
-  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+template <int unroll = 4, int in_bits, int out_bits, typename Hash, typename In, typename Query = In>
+  requires detail::QueryFor<Query, in_bits>
 void PackedHalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *fcws, const Query *xs,
-    int4 *ys, int nkeys, const PackedHalfTreeDpf<in_bits, out_bits, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
-  detail::PackedHalfTreeDpfEvalPointLaunch<unroll, false, in_bits, out_bits, Prg, In, par_depth>(
-      b, seeds, cw_s, fcws, xs, ys, nkeys, dpf.prg, dpf.hash_key, stream);
+    int4 *ys, int nkeys, const PackedHalfTreeDpf<in_bits, out_bits, Hash, In> &dpf, cudaStream_t stream = 0) {
+  detail::PackedHalfTreeDpfEvalPointLaunch<unroll, false, in_bits, out_bits, Hash, In>(
+      b, seeds, cw_s, fcws, xs, ys, nkeys,
+        fss::detail::SchemeAccess::GetHash(dpf),
+        fss::detail::SchemeAccess::GetInstanceSeed(dpf), stream);
 }
 
-/**
+/*
  * GPU point evaluation of nkeys HalfTree Grotto DCF keys: ys[k] = Eval(b,
  * key[k], xs[k]), the party's share of 1[alpha <= xs[k]]. One thread per key.
  * cw_s must come from HalfTreeGrottoDcfRepackGpu.
@@ -958,18 +1071,20 @@ void PackedHalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, 
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one share bit per key.
  * @param nkeys Number of keys.
- * @param dcf A HalfTreeGrottoDcf instance (holds the PRG and hash key).
+ * @param dcf A HalfTreeGrottoDcf instance (holds the CCR hash and instance seed).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Prg, typename In, int par_depth = -1, typename Query = In>
-  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+template <int unroll = 4, int in_bits, typename Hash, typename In, typename Query = In>
+  requires detail::QueryFor<Query, in_bits>
 void HalfTreeGrottoDcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *fcws, const Query *xs,
-    bool *ys, int nkeys, const HalfTreeGrottoDcf<in_bits, Prg, In, par_depth> &dcf, cudaStream_t stream = 0) {
-  detail::PackedHalfTreeDpfEvalPointLaunch<unroll, true, in_bits, 1, Prg, In, par_depth>(
-      b, seeds, cw_s, fcws, xs, ys, nkeys, dcf.prg, dcf.hash_key, stream);
+    bool *ys, int nkeys, const HalfTreeGrottoDcf<in_bits, Hash, In> &dcf, cudaStream_t stream = 0) {
+  detail::PackedHalfTreeDpfEvalPointLaunch<unroll, true, in_bits, 1, Hash, In>(
+      b, seeds, cw_s, fcws, xs, ys, nkeys,
+        fss::detail::SchemeAccess::GetHash(dcf),
+        fss::detail::SchemeAccess::GetInstanceSeed(dcf), stream);
 }
 
-/**
+/*
  * GPU point evaluation of nkeys DPF keys: ys[k] = Eval(b, seeds[k], cws[k],
  * xs[k]). One thread per key. cw_s/extra/out_cw must come from DpfRepackGpu.
  *
@@ -986,16 +1101,16 @@ void HalfTreeGrottoDcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, 
  * @param dpf A Dpf instance (holds the PRG).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, int par_depth = -1,
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In,
     typename Query = In>
-  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+  requires detail::QueryFor<Query, in_bits>
 void DpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra, const int4 *out_cw,
-    const Query *xs, int4 *ys, int nkeys, const Dpf<in_bits, Group, Prg, In, par_depth> &dpf, cudaStream_t stream = 0) {
-  detail::DpfEvalPointLaunch<unroll, false, in_bits, Group, Prg, In>(
-      b, seeds, cw_s, extra, out_cw, xs, ys, nkeys, dpf.prg, stream);
+    const Query *xs, int4 *ys, int nkeys, const Dpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+  detail::DpfCoreEvalPointLaunch<unroll, Dpf<in_bits, Group, Prg, In>>(
+      b, seeds, cw_s, extra, out_cw, xs, ys, nkeys, fss::detail::SchemeAccess::GetPrg(dpf), stream);
 }
 
-/**
+/*
  * GPU point evaluation of nkeys DCF keys: ys[k] = Eval(b, seeds[k], cws[k],
  * xs[k]). One thread per key. cw_s/cw_v/out_cw must come from DcfRepackGpu.
  *
@@ -1009,28 +1124,27 @@ void DpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
  * @param nkeys Number of keys.
- * @param dcf A Dcf instance (holds the PRG). Used on the host side. Any predicate and
- *   par_depth instantiation; both are deduced from the argument.
+ * @param dcf A Dcf instance (holds the PRG). Used on the host side. The predicate is deduced from the argument.
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, DcfPred pred, int par_depth,
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, DcfPred pred,
     typename Query = In>
-  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+  requires detail::QueryFor<Query, in_bits>
 void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw, const Query *xs,
-    int4 *ys, int nkeys, const Dcf<in_bits, Group, Prg, In, pred, par_depth> &dcf, cudaStream_t stream = 0) {
+    int4 *ys, int nkeys, const Dcf<in_bits, Group, Prg, In, pred> &dcf, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
     detail::DcfEvalPointKernel<in_bits, unroll, true, Group, Prg, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, dcf.prg);
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, fss::detail::SchemeAccess::GetPrg(dcf));
   } else {
     detail::DcfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, dcf.prg);
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, fss::detail::SchemeAccess::GetPrg(dcf));
   }
 }
 
-/**
+/*
  * GPU single-path evaluation of nkeys Grotto DCF keys: ys[k] = Eval(b, key[k],
  * xs[k]), the party's share of 1[alpha <= xs[k]]. One thread per key, with
  * in_bits PRG calls and no preprocessing. cw_s/extra must come from
@@ -1048,15 +1162,15 @@ void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw
  * @param dcf A GrottoDcf instance (holds the PRG).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Prg, typename In, int par_depth = -1, typename Query = In>
-  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+template <int unroll = 4, int in_bits, typename Prg, typename In, typename Query = In>
+  requires detail::QueryFor<Query, in_bits>
 void GrottoDcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
-    const Query *xs, bool *ys, int nkeys, const GrottoDcf<in_bits, Prg, In, par_depth> &dcf, cudaStream_t stream = 0) {
+    const Query *xs, bool *ys, int nkeys, const GrottoDcf<in_bits, Prg, In> &dcf, cudaStream_t stream = 0) {
   detail::DpfEvalPointLaunch<unroll, true, in_bits, fss::group::Bytes, Prg, In>(
-      b, seeds, cw_s, extra, nullptr, xs, ys, nkeys, dcf.prg, stream);
+      b, seeds, cw_s, extra, nullptr, xs, ys, nkeys, fss::detail::SchemeAccess::GetPrg(dcf), stream);
 }
 
-/**
+/*
  * GPU point evaluation of nkeys VDPF keys: ys[k] = Eval(b, seeds[k], cws[k],
  * cs[k], ocws[k], xs[k])[0] and pi[k] = its corrected verification hash. One
  * thread per key. cw_s/extra must come from VdpfRepackGpu.
@@ -1076,25 +1190,28 @@ void GrottoDcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const Ex
  * @param vdpf A Vdpf instance (holds the PRG and hashes).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In,
-    int par_depth = -1, typename Query = In>
-  requires(std::is_same_v<Query, In> || (in_bits <= 32 && std::is_same_v<Query, uint32_t>))
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In, typename Query = In>
+  requires detail::QueryFor<Query, in_bits>
 void VdpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits<in_bits> *extra,
-    const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs, int4 *ys, int4 *pi, int nkeys,
-    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In, par_depth> &vdpf, cudaStream_t stream = 0) {
+    const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs, int4 *ys, cuda::std::array<int4, 4> *pi, int nkeys,
+    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
     detail::VdpfEvalPointKernel<in_bits, unroll, true, Group, Prg, XorHash, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys, vdpf.prg, vdpf.xor_hash);
+        <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys,
+        fss::detail::SchemeAccess::GetPrg(vdpf),
+        fss::detail::SchemeAccess::GetXorHash(vdpf));
   } else {
     detail::VdpfEvalPointKernel<in_bits, unroll, false, Group, Prg, XorHash, In, Query>
-        <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys, vdpf.prg, vdpf.xor_hash);
+        <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys,
+        fss::detail::SchemeAccess::GetPrg(vdpf),
+        fss::detail::SchemeAccess::GetXorHash(vdpf));
   }
 }
 
-/**
+/*
  * GPU batch evaluation of a DMPF key: ys[i] = BatchEval(b, key, xs)[i]. One
  * thread per input point; each thread runs its kappa Cuckoo Locate calls and
  * the located bucket descents itself, so no atomics and no synchronization.
@@ -1121,34 +1238,38 @@ void VdpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits
  * @param stream CUDA stream to launch on.
  */
 template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp,
-    typename In, int kappa, int ch_lambda, int par_depth>
-void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_rt, int b_rt, const int4 *s0s,
+    typename In, int ch_lambda>
+void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_rt, __uint128_t b_rt, const int4 *s0s,
     const int4 *cw_s, const ExtBits<bucket_bits> *extra, const int4 *out_cw,
-    const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, kappa, ch_lambda, par_depth> &dmpf,
+    const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda> &dmpf,
     cudaStream_t stream = 0) {
   if (n == 0) return;
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
   constexpr int kBs = 256;
   int blocks = (n + kBs - 1) / kBs;
   if (b) {
-    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Group, Prg, Prp, In, kappa>
-        <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw, dmpf.prg, dmpf.prp);
+    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Group, Prg, Prp, In>
+        <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw,
+        fss::detail::SchemeAccess::GetPrg(dmpf),
+        fss::detail::SchemeAccess::GetPrp(dmpf));
   } else {
-    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Group, Prg, Prp, In, kappa>
-        <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw, dmpf.prg, dmpf.prp);
+    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Group, Prg, Prp, In>
+        <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw,
+        fss::detail::SchemeAccess::GetPrg(dmpf),
+        fss::detail::SchemeAccess::GetPrp(dmpf));
   }
 }
 
-/**
+/*
  * GPU batch evaluation of a VDMPF key with the Merkle-fold proof:
  * ys[i] = BatchEvalMerkle(b, key, xs)[i] and d_pi receives the proof. Launches
  * on the stream: a Locate pass writes per-(point, hash) Cuckoo records, a
  * stable CUB radix sort groups them by bucket in the same canonical order the
  * host BatchEvalMerkle walks its per-bucket lists, an evaluation pass computes
  * every point's kappa contributions and corrected per-point hashes, and the
- * fold passes reduce the leaves chunk-wise, per bucket from the hashed cs, and
- * across the m buckets. The proof is bit-exact with the host
- * BatchEvalMerkle over the same construction.
+ * fold passes compute each bucket's canonical Merkle root, bind it to the
+ * bucket's hashed cs, and fold across all buckets. Execution chunk and block
+ * sizes do not change the proof, which matches host BatchEvalMerkle().
  *
  * cw_s/extra must come from VdpfRepackGpu run over the m_rt active bucket keys
  * (nkeys = m_rt, in_bits = bucket_bits of the Vdmpf), s0s and ocws hold party
@@ -1157,18 +1278,22 @@ void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_r
  * the buckets past m_rt as well. The Prp backend must be device-callable:
  * ChaChaFeistel qualifies, Aes128Feistel does not.
  *
+ * The compact Locate records support bucket_bits <= 32.
  * The Locate records, sorted copies, bucket counts, per-contribution hashes,
- * chunk roots, and CUB temporary storage are cached per host thread and CUDA
- * device. Calls from one thread on different streams must not overlap.
- * ReleaseGpuWorkspaces completes outstanding work and releases this thread's
- * caches. Call it before cudaDeviceReset. Thread exit also releases scratch.
- *
+ * chunk roots, reduction scratch, and CUB temporary storage are local to this call.
+ * Temporary device storage is allocated and released on the supplied stream for this call.
  * @tparam unroll Unroll factor of the level loop.
+ * @tparam chunk_size Power-of-two leaf count per execution chunk, in [1, 512].
+ * Defaults to 256. Two shared node buffers use 64*chunk_size bytes, at most
+ * 32 KiB. This implementation limit is independent of the proof definition.
+ * @tparam threads Threads per execution block, a multiple of 32 in [32, 1024].
+ * Defaults to 256. Chunk work is strided when chunk_size exceeds threads.
  * @param b Party index. False for 0 and true for 1.
  * @param xs Evaluation points (device memory), n entries.
  * @param ys Output array (device memory), one int4 per point.
  * @param d_pi Proof output (device memory), four int4s.
- * @param n Number of points.
+ * @param n Number of points in [0, INT_MAX / 3].
+ * @throws std::invalid_argument If n is outside that range.
  * @param sigma PRP seed from the key.
  * @param m_rt Runtime bucket count stored in the key.
  * @param b_rt Runtime bucket size stored in the key.
@@ -1181,75 +1306,280 @@ void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_r
  * @param vdmpf A Vdmpf instance (holds the PRG, hashes, and PRP).
  * @param stream CUDA stream to launch on.
  */
-template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash,
-    typename Hash, typename Prp, typename In, int kappa, int ch_lambda>
+template <int unroll = 4, int chunk_size = 256, int threads = 256,
+    int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename Prp, typename In, int ch_lambda>
+  requires(bucket_bits <= 32 && chunk_size >= 1 && chunk_size <= 512 &&
+      (chunk_size & (chunk_size - 1)) == 0 && threads >= 32 && threads <= 1024 && threads % 32 == 0)
 void VdmpfBatchEvalMerkleGpu(bool b, const In *xs, int4 *ys, cuda::std::array<int4, 4> *d_pi, int n, int4 sigma,
-    int m_rt, int b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra,
+    int m_rt, __uint128_t b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra,
     const cuda::std::array<int4, 4> *cs, const int4 *ocws,
-    const Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda> &vdmpf,
+    const Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda> &vdmpf,
     cudaStream_t stream = 0) {
-  using VdmpfT = Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda>;
+  using VdmpfT = Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>;
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
-  static_assert(VdmpfT::m < (1 << 16), "the radix sort covers the bucket keys");
-  static_assert(2 * VdmpfT::m * 32 <= 46 * 1024, "the bucket-fold kernel double-buffers every bucket node");
-  const size_t total = static_cast<size_t>(n) * kappa;
-  constexpr int kChunk = VdmpfT::kMerkleChunkSize;
+  static_assert(VdmpfT::kBucketCount < (1 << 16), "the radix sort covers the bucket keys");
+  static_assert(2 * VdmpfT::kBucketCount * 32 <= 46 * 1024, "the bucket-fold kernel double-buffers every bucket node");
+  if (n < 0 || n > std::numeric_limits<int>::max() / 3) {
+    throw std::invalid_argument("n must be in [0, INT_MAX / 3]");
+  }
+  const size_t total = static_cast<size_t>(n) * 3;
+  constexpr int kChunk = chunk_size;
 
-  constexpr int kFoldThreads = (VdmpfT::m + 31) / 32 * 32;
+  constexpr int kFoldThreads = (VdmpfT::kBucketCount + 31) / 32 * 32;
   if (n == 0) {
-    detail::VdmpfBucketFoldKernel<VdmpfT::m, Hash>
-        <<<1, kFoldThreads, 0, stream>>>(d_pi, nullptr, nullptr, cs, vdmpf.hash);
+    detail::VdmpfBucketFoldKernel<VdmpfT::kBucketCount, Hash>
+        <<<1, kFoldThreads, 0, stream>>>(d_pi, nullptr, nullptr, cs, fss::detail::SchemeAccess::GetHash(vdmpf));
+    detail::CheckCudaStatus(cudaGetLastError());
     return;
   }
-  static const int kWorkspaceTag = 0;
-  auto &workspace = detail::GetGpuWorkspaceCache().Get(&kWorkspaceTag);
-  auto *d_keys = workspace.Ensure<uint32_t>(0, total);
-  auto *d_keys_out = workspace.Ensure<uint32_t>(1, total);
-  auto *d_vals = workspace.Ensure<uint64_t>(2, total);
-  auto *d_vals_out = workspace.Ensure<uint64_t>(3, total);
-  auto *d_pi_tilde = workspace.Ensure<cuda::std::array<int4, 4>>(4, total);
-  auto *d_chunk_roots = workspace.Ensure<cuda::std::array<int4, 2>>(5, total / kChunk + VdmpfT::m);
-  auto *d_counts = workspace.Ensure<uint32_t>(6, VdmpfT::m);
-  auto *d_leaf_offsets = workspace.Ensure<uint32_t>(7, VdmpfT::m + 1);
-  auto *d_chunk_offsets = workspace.Ensure<uint32_t>(8, VdmpfT::m + 1);
+  detail::DeviceScratch d_keys_storage(stream);
+  detail::CheckCudaStatus(d_keys_storage.Allocate<uint32_t>(total));
+  auto *d_keys = d_keys_storage.Get<uint32_t>();
+  detail::DeviceScratch d_keys_out_storage(stream);
+  detail::CheckCudaStatus(d_keys_out_storage.Allocate<uint32_t>(total));
+  auto *d_keys_out = d_keys_out_storage.Get<uint32_t>();
+  detail::DeviceScratch d_vals_storage(stream);
+  detail::CheckCudaStatus(d_vals_storage.Allocate<uint64_t>(total));
+  auto *d_vals = d_vals_storage.Get<uint64_t>();
+  detail::DeviceScratch d_vals_out_storage(stream);
+  detail::CheckCudaStatus(d_vals_out_storage.Allocate<uint64_t>(total));
+  auto *d_vals_out = d_vals_out_storage.Get<uint64_t>();
+  detail::DeviceScratch d_pi_tilde_storage(stream);
+  detail::CheckCudaStatus(d_pi_tilde_storage.Allocate<cuda::std::array<int4, 4>>(total));
+  auto *d_pi_tilde = d_pi_tilde_storage.Get<cuda::std::array<int4, 4>>();
+  size_t root_capacity = total / kChunk + VdmpfT::kBucketCount;
+  if (root_capacity > total) root_capacity = total;
+  detail::DeviceScratch d_chunk_roots_storage(stream);
+  detail::CheckCudaStatus(d_chunk_roots_storage.Allocate<cuda::std::array<int4, 2>>(root_capacity));
+  auto *d_chunk_roots = d_chunk_roots_storage.Get<cuda::std::array<int4, 2>>();
+  detail::DeviceScratch d_root_scratch_storage(stream);
+  detail::CheckCudaStatus(d_root_scratch_storage.Allocate<cuda::std::array<int4, 2>>(root_capacity));
+  auto *d_root_scratch = d_root_scratch_storage.Get<cuda::std::array<int4, 2>>();
+  detail::DeviceScratch d_counts_storage(stream);
+  detail::CheckCudaStatus(d_counts_storage.Allocate<uint32_t>(VdmpfT::kBucketCount));
+  auto *d_counts = d_counts_storage.Get<uint32_t>();
+  detail::DeviceScratch d_leaf_offsets_storage(stream);
+  detail::CheckCudaStatus(d_leaf_offsets_storage.Allocate<uint32_t>(VdmpfT::kBucketCount + 1));
+  auto *d_leaf_offsets = d_leaf_offsets_storage.Get<uint32_t>();
+  detail::DeviceScratch d_chunk_offsets_storage(stream);
+  detail::CheckCudaStatus(d_chunk_offsets_storage.Allocate<uint32_t>(VdmpfT::kBucketCount + 1));
+  auto *d_chunk_offsets = d_chunk_offsets_storage.Get<uint32_t>();
   size_t cub_bytes = 0;
-  detail::CheckCudaWorkspace(cub::DeviceRadixSort::SortPairs(
+  detail::CheckCudaStatus(cub::DeviceRadixSort::SortPairs(
       nullptr, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out, static_cast<int>(total), 0, 16, stream));
-  auto *d_cub_temp = workspace.Ensure<unsigned char>(9, cub_bytes);
-  detail::CheckCudaWorkspace(cudaMemsetAsync(d_counts, 0, sizeof(uint32_t) * VdmpfT::m, stream));
+  detail::DeviceScratch d_cub_temp_storage(stream);
+  detail::CheckCudaStatus(d_cub_temp_storage.Allocate<unsigned char>(cub_bytes == 0 ? 1 : cub_bytes));
+  auto *d_cub_temp = d_cub_temp_storage.Get<unsigned char>();
+  detail::CheckCudaStatus(cudaMemsetAsync(d_counts, 0, sizeof(uint32_t) * VdmpfT::kBucketCount, stream));
 
-  constexpr int kBs = 256;
+  constexpr int kBs = threads;
   int blocks = (n + kBs - 1) / kBs;
-  detail::VdmpfLocateKernel<in_bits, Prp, In, kappa>
-      <<<blocks, kBs, 0, stream>>>(xs, n, sigma, m_rt, b_rt, d_keys, d_vals, d_counts, vdmpf.prp);
-  cub::DeviceRadixSort::SortPairs(
-      d_cub_temp, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out, static_cast<int>(total), 0, 16, stream);
+  detail::VdmpfLocateKernel<in_bits, Prp, In>
+      <<<blocks, kBs, 0, stream>>>(xs, n, sigma, m_rt, b_rt, d_keys, d_vals, d_counts,
+        fss::detail::SchemeAccess::GetPrp(vdmpf));
+  detail::CheckCudaStatus(cudaGetLastError());
+  detail::CheckCudaStatus(cub::DeviceRadixSort::SortPairs(
+      d_cub_temp, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out, static_cast<int>(total), 0, 16, stream));
   if (b) {
-    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, true, Group, Prg, XorHash, In, kappa><<<blocks, kBs, 0, stream>>>(
-        ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals, vdmpf.prg, vdmpf.xor_hash);
+    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, true, Group, Prg, XorHash><<<blocks, kBs, 0, stream>>>(
+        ys, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
+        fss::detail::SchemeAccess::GetPrg(vdmpf),
+        fss::detail::SchemeAccess::GetXorHash(vdmpf));
   } else {
-    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, false, Group, Prg, XorHash, In, kappa>
+    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, false, Group, Prg, XorHash>
         <<<blocks, kBs, 0, stream>>>(
-            ys, xs, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals, vdmpf.prg, vdmpf.xor_hash);
+            ys, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
+        fss::detail::SchemeAccess::GetPrg(vdmpf),
+        fss::detail::SchemeAccess::GetXorHash(vdmpf));
   }
-  detail::VdmpfFoldSetupKernel<<<1, 1, 0, stream>>>(d_leaf_offsets, d_chunk_offsets, d_counts, VdmpfT::m, kChunk);
-  detail::VdmpfChunkFoldKernel<kChunk, Hash><<<static_cast<int>(total / kChunk + VdmpfT::m), kChunk, 0, stream>>>(
-      d_chunk_roots, d_chunk_offsets, d_leaf_offsets, d_counts, d_vals_out, d_pi_tilde, VdmpfT::m, vdmpf.hash);
-  detail::VdmpfBucketFoldKernel<VdmpfT::m, Hash>
-      <<<1, kFoldThreads, 0, stream>>>(d_pi, d_chunk_roots, d_chunk_offsets, cs, vdmpf.hash);
+  detail::CheckCudaStatus(cudaGetLastError());
+  detail::VdmpfFoldSetupKernel<<<1, 1, 0, stream>>>(d_leaf_offsets, d_chunk_offsets, d_counts, VdmpfT::kBucketCount, kChunk);
+  detail::CheckCudaStatus(cudaGetLastError());
+  detail::VdmpfChunkFoldKernel<kChunk, Hash><<<static_cast<int>(root_capacity), kBs, 0, stream>>>(
+      d_chunk_roots, d_chunk_offsets, d_leaf_offsets, d_counts, d_vals_out, d_pi_tilde, VdmpfT::kBucketCount,
+        fss::detail::SchemeAccess::GetHash(vdmpf));
+  detail::CheckCudaStatus(cudaGetLastError());
+  auto *roots = d_chunk_roots;
+  auto *roots_scratch = d_root_scratch;
+  size_t max_roots = (total + kChunk - 1) / kChunk;
+  int root_blocks = static_cast<int>((root_capacity + kBs - 1) / kBs);
+  for (uint32_t stride = 1; max_roots > 1; stride *= 2) {
+    detail::VdmpfChunkRootsFoldKernel<Hash><<<root_blocks, kBs, 0, stream>>>(
+        roots_scratch, roots, d_chunk_offsets, VdmpfT::kBucketCount, stride,
+        fss::detail::SchemeAccess::GetHash(vdmpf));
+    detail::CheckCudaStatus(cudaGetLastError());
+    auto *swap = roots;
+    roots = roots_scratch;
+    roots_scratch = swap;
+    max_roots = (max_roots + 1) / 2;
+  }
+  detail::VdmpfBucketFoldKernel<VdmpfT::kBucketCount, Hash>
+      <<<1, kFoldThreads, 0, stream>>>(d_pi, roots, d_chunk_offsets, cs,
+        fss::detail::SchemeAccess::GetHash(vdmpf));
+  detail::CheckCudaStatus(detail::ReleaseScratch(cudaGetLastError(),
+      {&d_keys_storage, &d_keys_out_storage, &d_vals_storage, &d_vals_out_storage, &d_pi_tilde_storage, &d_chunk_roots_storage, &d_root_scratch_storage, &d_counts_storage, &d_leaf_offsets_storage, &d_chunk_offsets_storage, &d_cub_temp_storage}));
 }
 
-// Compatibility name for the existing Merkle batch evaluator.
-template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash,
-    typename Hash, typename Prp, typename In, int kappa, int ch_lambda>
-void VdmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, cuda::std::array<int4, 4> *d_pi, int n, int4 sigma, int m_rt,
-    int b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra, const cuda::std::array<int4, 4> *cs,
-    const int4 *ocws,
-    const Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda> &vdmpf,
-    cudaStream_t stream = 0) {
-  VdmpfBatchEvalMerkleGpu<unroll>(b, xs, ys, d_pi, n, sigma, m_rt, b_rt, s0s, cw_s, extra, cs, ocws, vdmpf, stream);
+template <int in_bits, typename Group, typename Hash, typename In>
+struct RepackTraits<HalfTreeDpf<in_bits, Group, Hash, In>> {
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
+  using Control = uint32_t;
+  static constexpr RepackKind kKind = RepackKind::kPoint;
+  static void Run(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+      cuda::std::span<int4> cw_s,
+      cuda::std::span<Control> control,
+      cuda::std::span<int4> terminal, cudaStream_t stream) {
+    detail::CheckGpuArguments(key_count >= 0);
+    detail::CheckGpuArguments(cw_s.size() >= static_cast<size_t>(in_bits) * key_count);
+    detail::CheckGpuArguments(control.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(terminal.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(words.size() >= static_cast<size_t>(in_bits + 1) * key_count);
+    detail::HalfTreeDpfRepackGpu<in_bits, Group, Hash, In>(words.data(), key_count, cw_s.data(), control.data(), terminal.data(), stream);
+  }
+};
+
+template <int in_bits, int out_bits, typename Hash, typename In>
+struct RepackTraits<PackedHalfTreeDpf<in_bits, out_bits, Hash, In>> {
+  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Hash, In>;
+  static constexpr RepackKind kKind = RepackKind::kPacked;
+  static void Run(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+      cuda::std::span<int4> cw_s, cuda::std::span<int4> terminal, cudaStream_t stream) {
+    detail::CheckGpuArguments(key_count >= 0);
+    detail::CheckGpuArguments(cw_s.size() >= static_cast<size_t>(PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::kDepth) * key_count);
+    detail::CheckGpuArguments(terminal.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(words.size() >= static_cast<size_t>(PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::kDepth + 1) * key_count);
+    detail::PackedHalfTreeDpfRepackGpu<in_bits, out_bits, Hash, In>(words.data(), key_count, cw_s.data(), terminal.data(), stream);
+  }
+};
+
+template <int in_bits, typename Hash, typename In>
+struct RepackTraits<HalfTreeGrottoDcf<in_bits, Hash, In>> {
+  using Scheme = HalfTreeGrottoDcf<in_bits, Hash, In>;
+  static constexpr RepackKind kKind = RepackKind::kPacked;
+  static void Run(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+      cuda::std::span<int4> cw_s, cuda::std::span<int4> terminal, cudaStream_t stream) {
+    detail::CheckGpuArguments(key_count >= 0);
+    detail::CheckGpuArguments(cw_s.size() >= static_cast<size_t>(HalfTreeGrottoDcf<in_bits, Hash, In>::kDepth) * key_count);
+    detail::CheckGpuArguments(terminal.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(words.size() >= static_cast<size_t>(HalfTreeGrottoDcf<in_bits, Hash, In>::kDepth + 1) * key_count);
+    detail::HalfTreeGrottoDcfRepackGpu<in_bits, Hash, In>(words.data(), key_count, cw_s.data(), terminal.data(), stream);
+  }
+};
+
+template <int in_bits, typename Group, typename Prg, typename In>
+struct RepackTraits<Dpf<in_bits, Group, Prg, In>> {
+  using Scheme = Dpf<in_bits, Group, Prg, In>;
+  using Control = ExtBits<in_bits>;
+  static constexpr RepackKind kKind = RepackKind::kPoint;
+  static void Run(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+      cuda::std::span<int4> cw_s,
+      cuda::std::span<Control> control,
+      cuda::std::span<int4> terminal, cudaStream_t stream) {
+    detail::CheckGpuArguments(key_count >= 0);
+    detail::CheckGpuArguments(cw_s.size() >= static_cast<size_t>(in_bits) * key_count);
+    detail::CheckGpuArguments(control.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(terminal.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(words.size() >= static_cast<size_t>(in_bits + 1) * key_count);
+    detail::DpfRepackGpu<in_bits, Group, Prg, In>(words.data(), key_count, cw_s.data(), control.data(), terminal.data(), stream);
+  }
+};
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+struct RepackTraits<Dcf<in_bits, Group, Prg, In, pred>> {
+  using Scheme = Dcf<in_bits, Group, Prg, In, pred>;
+  static constexpr RepackKind kKind = RepackKind::kDcf;
+  static void Run(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+      cuda::std::span<int4> cw_s, cuda::std::span<int4> cw_v,
+      cuda::std::span<int4> terminal, cudaStream_t stream) {
+    detail::CheckGpuArguments(key_count >= 0);
+    detail::CheckGpuArguments(cw_s.size() >= static_cast<size_t>(in_bits) * key_count);
+    detail::CheckGpuArguments(terminal.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(words.size() >= static_cast<size_t>(in_bits + 1) * key_count);
+    detail::CheckGpuArguments(cw_v.size() >= static_cast<size_t>(in_bits) * key_count);
+    detail::DcfRepackGpu<in_bits, Group, Prg, In, pred>(words.data(), key_count, cw_s.data(), cw_v.data(), terminal.data(), stream);
+  }
+};
+
+template <int in_bits, typename Prg, typename In>
+struct RepackTraits<GrottoDcf<in_bits, Prg, In>> {
+  using Scheme = GrottoDcf<in_bits, Prg, In>;
+  using Control = ExtBits<in_bits>;
+  static constexpr RepackKind kKind = RepackKind::kPoint;
+  static void Run(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+      cuda::std::span<int4> cw_s,
+      cuda::std::span<Control> control,
+      cuda::std::span<int4> terminal, cudaStream_t stream) {
+    detail::CheckGpuArguments(key_count >= 0);
+    detail::CheckGpuArguments(cw_s.size() >= static_cast<size_t>(in_bits) * key_count);
+    detail::CheckGpuArguments(control.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(words.size() >= static_cast<size_t>(in_bits + 1) * key_count);
+    detail::GrottoDcfRepackGpu<in_bits, Prg, In>(words.data(), key_count, cw_s.data(), control.data(), stream);
+  }
+};
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+struct RepackTraits<Vdpf<in_bits, Group, Prg, XorHash, Hash, In>> {
+  using Scheme = Vdpf<in_bits, Group, Prg, XorHash, Hash, In>;
+  using Control = ExtBits<in_bits>;
+  static constexpr RepackKind kKind = RepackKind::kVerifiable;
+  static void Run(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+      cuda::std::span<int4> cw_s,
+      cuda::std::span<Control> control,
+      cuda::std::span<int4> terminal, cuda::std::span<cuda::std::array<int4, 4>> output_cs,
+      cuda::std::span<const cuda::std::array<int4, 4>> input_cs, cudaStream_t stream) {
+    detail::CheckGpuArguments(key_count >= 0);
+    detail::CheckGpuArguments(cw_s.size() >= static_cast<size_t>(in_bits) * key_count);
+    detail::CheckGpuArguments(control.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(terminal.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(output_cs.size() >= static_cast<size_t>(key_count));
+    detail::CheckGpuArguments(words.size() >= static_cast<size_t>(in_bits + 1) * key_count);
+    detail::CheckGpuArguments(input_cs.size() >= static_cast<size_t>(key_count));
+    detail::VdpfRepackGpu<in_bits, Group, Prg, XorHash, Hash, In>(words.data(), key_count, cw_s.data(), control.data(), terminal.data(), stream);
+    if (key_count != 0) detail::CopyPointChecksKernel<<<(key_count + 255) / 256, 256, 0, stream>>>(input_cs.data(), output_cs.data(), key_count);
+  }
+};
+
+}  // namespace detail
+
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kPoint)
+inline void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s,
+    cuda::std::span<typename detail::RepackTraits<Scheme>::Control> control,
+    cuda::std::span<int4> terminal, cudaStream_t stream) {
+  detail::RepackTraits<Scheme>::Run(words, key_count, cw_s, control, terminal, stream);
 }
+
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kPacked)
+inline void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s, cuda::std::span<int4> terminal, cudaStream_t stream) {
+  detail::RepackTraits<Scheme>::Run(words, key_count, cw_s, terminal, stream);
+}
+
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kDcf)
+inline void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s, cuda::std::span<int4> cw_v,
+    cuda::std::span<int4> terminal, cudaStream_t stream) {
+  detail::RepackTraits<Scheme>::Run(words, key_count, cw_s, cw_v, terminal, stream);
+}
+
+template <typename Scheme>
+  requires(detail::RepackTraits<Scheme>::kKind == detail::RepackKind::kVerifiable)
+inline void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
+    cuda::std::span<int4> cw_s,
+    cuda::std::span<typename detail::RepackTraits<Scheme>::Control> control,
+    cuda::std::span<int4> terminal, cuda::std::span<cuda::std::array<int4, 4>> output_cs,
+    cuda::std::span<const cuda::std::array<int4, 4>> input_cs, cudaStream_t stream) {
+  detail::RepackTraits<Scheme>::Run(words, key_count, cw_s, control, terminal, output_cs, input_cs, stream);
+}
+
+
+
+
 
 }  // namespace fss::gpu
 
-#endif  // FSS_POINT_EVAL_GPU_CUH_
+#endif  // FSS_REPACK_GPU_CUH_

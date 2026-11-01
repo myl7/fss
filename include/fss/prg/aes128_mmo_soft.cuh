@@ -29,6 +29,42 @@ constexpr int kNk = 4;
 constexpr int kNr = 10;
 constexpr int kRoundKeySize = kNb * (kNr + 1) * 4;  // 176 bytes
 
+}  // namespace aes_detail
+
+/**
+ * Software AES-128 with Matyas-Meyer-Oseas as a PRG.
+ *
+ * Works on both host and device side.
+ *
+ * @tparam mul See Prgable mul.
+ */
+template <int mul>
+class Aes128Soft {
+public:
+  /**
+     * Constructor.
+     *
+     * @param keys mul 16-byte AES-128 keys.
+     * @param te0 Pointer to the 256-entry AES T-table (uint32_t[256]).
+     * @param sbox Pointer to the AES S-box (uint8_t[256]).
+     *
+     * On device, both should point to __shared__ memory initialized via
+     * InitTe0() and InitSbox(). On host, call InitTe0()/InitSbox() on
+     * stack arrays and pass them.
+     */
+  __host__ __device__ Aes128Soft(const uint8_t keys[][16], const uint32_t *te0, const uint8_t *sbox);
+
+  __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed);
+
+private:
+  uint8_t round_keys_[mul][aes_detail::kRoundKeySize];
+  const uint32_t *te0_;
+  const uint8_t *sbox_;
+};
+// -----------------------------------------------------------------------------
+
+namespace aes_detail {
+
 __host__ __device__ inline uint8_t Sbox(uint8_t idx) {
   constexpr uint8_t table[256] = {0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7,
       0xab, 0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0, 0xb7,
@@ -175,47 +211,23 @@ __host__ __device__ inline void Encrypt(
 
 }  // namespace aes_detail
 
-/**
- * Software AES-128 with Matyas-Meyer-Oseas as a PRG.
- *
- * Works on both host and device side.
- *
- * @tparam mul See Prgable mul.
- */
 template <int mul>
-class Aes128Soft {
-private:
-  uint8_t round_keys_[mul][aes_detail::kRoundKeySize];
-  const uint32_t *te0_;
-  const uint8_t *sbox_;
+__host__ __device__ inline Aes128Soft<mul>::Aes128Soft(const uint8_t keys[][16], const uint32_t *te0, const uint8_t *sbox)
+    : te0_(te0), sbox_(sbox) {
+  for (int i = 0; i < mul; ++i) aes_detail::KeyExpansion(round_keys_[i], keys[i], sbox);
+}
 
-public:
-  /**
-     * Constructor.
-     *
-     * @param keys mul 16-byte AES-128 keys.
-     * @param te0 Pointer to the 256-entry AES T-table (uint32_t[256]).
-     * @param sbox Pointer to the AES S-box (uint8_t[256]).
-     *
-     * On device, both should point to __shared__ memory initialized via
-     * InitTe0() and InitSbox(). On host, call InitTe0()/InitSbox() on
-     * stack arrays and pass them.
-     */
-  __host__ __device__ Aes128Soft(const uint8_t keys[][16], const uint32_t *te0, const uint8_t *sbox)
-      : te0_(te0), sbox_(sbox) {
-    for (int i = 0; i < mul; ++i) aes_detail::KeyExpansion(round_keys_[i], keys[i], sbox);
+template <int mul>
+__host__ __device__ inline cuda::std::array<int4, mul> Aes128Soft<mul>::Gen(int4 seed) {
+  cuda::std::array<int4, mul> out{};
+  for (int i = 0; i < mul; ++i) {
+    out[i] = seed;
+    aes_detail::Encrypt(reinterpret_cast<uint8_t *>(&out[i]), round_keys_[i], te0_, sbox_);
+    out[i] = fss::util::Xor(out[i], seed);
   }
+  return out;
+}
 
-  __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
-    cuda::std::array<int4, mul> out{};
-    for (int i = 0; i < mul; ++i) {
-      out[i] = seed;
-      aes_detail::Encrypt(reinterpret_cast<uint8_t *>(&out[i]), round_keys_[i], te0_, sbox_);
-      out[i] = fss::util::Xor(out[i], seed);
-    }
-    return out;
-  }
-};
 static_assert(Prgable<Aes128Soft<1>, 1> && Prgable<Aes128Soft<2>, 2>);
 
 }  // namespace fss::prg

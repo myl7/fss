@@ -65,192 +65,7 @@ def _find_include_dir() -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Type / include mappings
-# ---------------------------------------------------------------------------
-
-def _in_type(in_bits: int) -> str:
-    if in_bits <= 32:
-        return "uint32_t"
-    if in_bits <= 64:
-        return "uint64_t"
-    return "__uint128_t"
-
-
-_GROUP_MAP: dict[str, dict] = {
-    "bytes": {
-        "type": "fss::group::Bytes",
-        "include": "fss/group/bytes.cuh",
-    },
-    "uint": {
-        "include": "fss/group/uint.cuh",
-    },
-}
-
-
-def _group_type(group: str, in_bits: int) -> str:
-    if group == "bytes":
-        return "fss::group::Bytes"
-    # group == "uint"
-    if in_bits <= 32:
-        return "fss::group::Uint<uint32_t>"
-    if in_bits <= 64:
-        return "fss::group::Uint<uint64_t>"
-    return (
-        "fss::group::Uint<__uint128_t, "
-        "static_cast<__uint128_t>(1) << 127>"
-    )
-
-
-_PRG_MAP: dict[str, dict] = {
-    "chacha": {
-        "include": "fss/prg/chacha.cuh",
-    },
-    "aes128_mmo": {
-        "include": "fss/prg/aes128_mmo.cuh",
-    },
-}
-
-_HASH_MAP: dict[str, dict] = {
-    "blake3": {
-        "type": "fss::hash::Blake3",
-        "include": "fss/hash/blake3.cuh",
-    },
-    "sha256": {
-        "type": "fss::hash::Sha256",
-        "include": "fss/hash/sha256.cuh",
-    },
-}
-
-_PRP_MAP: dict[str, dict] = {
-    "aes128_feistel": {
-        "type": "fss::prp::Aes128Feistel",
-        "include": "fss/prp/aes128_feistel.cuh",
-    },
-    "chacha_feistel": {
-        "type": "fss::prp::ChaChaFeistel",
-        "include": "fss/prp/chacha_feistel.cuh",
-    },
-}
-
-_DCF_PRED_MAP: dict[str, str] = {
-    "lt": "fss::DcfPred::kLt",
-    "gt": "fss::DcfPred::kGt",
-}
-
-# ---------------------------------------------------------------------------
-# Scheme registry
-# ---------------------------------------------------------------------------
-# One entry per scheme: the PRG multiplier its Prgable requirement fixes,
-# whether it is templated on an output group, which extra knobs (beyond
-# in_bits/group/prg) it takes, and how the generated extension names and
-# constructs the scheme instance.
-
-_SCHEMES: dict[str, dict] = {
-    "dpf": {
-        "prg_mul": 2,
-        "has_group": True,
-        "knobs": (),
-        "header": "fss/dpf.cuh",
-        "inst": "DpfInst",
-        "inst_fmt": "fss::Dpf<kInBits, GroupType, PrgType, InType, kParDepth>",
-        "impl": "dpf_binding_impl.cuh",
-    },
-    "dcf": {
-        "prg_mul": 4,
-        "has_group": True,
-        "knobs": ("pred",),
-        "header": "fss/dcf.cuh",
-        "inst": "DcfInst",
-        "inst_fmt": "fss::Dcf<kInBits, GroupType, PrgType, InType, kPred, kParDepth>",
-        "impl": "dcf_binding_impl.cuh",
-    },
-    "half_tree_dpf": {
-        "prg_mul": 1,
-        "has_group": True,
-        "knobs": (),
-        "header": "fss/half_tree_dpf.cuh",
-        "inst": "HtDpfInst",
-        "inst_fmt": "fss::HalfTreeDpf<kInBits, GroupType, PrgType, InType, kParDepth>",
-        "impl": "half_tree_dpf_binding_impl.cuh",
-    },
-    "packed_half_tree_dpf": {
-        "prg_mul": 1,
-        "has_group": False,
-        "knobs": ("out_bits",),
-        "header": "fss/packed_half_tree_dpf.cuh",
-        "inst": "PackedInst",
-        "inst_fmt": "fss::PackedHalfTreeDpf<kInBits, kOutBits, PrgType, InType, kParDepth>",
-        "impl": "packed_half_tree_dpf_binding_impl.cuh",
-    },
-    "grotto_dcf": {
-        "prg_mul": 2,
-        "has_group": False,
-        "knobs": (),
-        "header": "fss/grotto_dcf.cuh",
-        "inst": "GrottoInst",
-        "inst_fmt": "fss::GrottoDcf<kInBits, PrgType, InType, kParDepth>",
-        "impl": "grotto_dcf_binding_impl.cuh",
-    },
-    "vdpf": {
-        "prg_mul": 2,
-        "has_group": True,
-        "knobs": ("xor_hash", "hash"),
-        "header": "fss/vdpf.cuh",
-        "inst": "VdpfInst",
-        "inst_fmt": "fss::Vdpf<kInBits, GroupType, PrgType, XorHashType, HashType, InType, kParDepth>",
-        "impl": "vdpf_binding_impl.cuh",
-    },
-    "dmpf": {
-        "prg_mul": 2,
-        "has_group": True,
-        "knobs": ("max_points", "bucket_bits", "prp"),
-        "header": "fss/dmpf.cuh",
-        "inst": "DmpfInst",
-        "inst_fmt": "fss::Dmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, PrpType, InType, 3, 80, kParDepth>",
-        "impl": "dmpf_binding_impl.cuh",
-    },
-    "vdmpf": {
-        "prg_mul": 2,
-        "has_group": True,
-        "knobs": ("max_points", "bucket_bits", "xor_hash", "hash", "prp"),
-        "header": "fss/vdmpf.cuh",
-        "inst": "VdmpfInst",
-        "inst_fmt": (
-            "fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, "
-            "XorHashType, HashType, PrpType, InType>"
-        ),
-        "impl": "vdmpf_binding_impl.cuh",
-    },
-}
-
-
-def _prg_type(prg: str, scheme: str) -> str:
-    mul = _SCHEMES[scheme]["prg_mul"]
-    if prg == "chacha":
-        return f"fss::prg::ChaCha<{mul}>"
-    return f"fss::python::ThreadLocalAes128Mmo<{mul}>"
-
-
-# ---------------------------------------------------------------------------
-# Cache key
-# ---------------------------------------------------------------------------
-
-# Knobs that participate in the cache key, in a fixed order. All values must
-# be str()able; None knobs of schemes that do not use them are skipped.
-_KNOB_ORDER = ("group", "prg", "pred", "out_bits", "max_points", "bucket_bits", "xor_hash", "hash", "prp", "par_depth")
-
-
-def _cache_key(scheme: str, in_bits: int, knobs: dict) -> str:
-    parts = [scheme, str(in_bits)]
-    for knob in _KNOB_ORDER:
-        value = knobs.get(knob)
-        if value is None:
-            continue
-        parts.append(f"{knob}{str(value).replace('-', 'minus')}")
-    parts.append(_in_type(in_bits).replace(" ", ""))
-    return "_".join(parts)
-
+# Backend instances are supplied to NativeScheme; only types enter generated source.
 
 def _source_tree_hash(include_dir: str, csrc_dir: str) -> str:
     """Hash included files on every request, including edits in this process."""
@@ -339,37 +154,38 @@ def _compiler_identity(command: str) -> dict:
 
 
 @lru_cache(maxsize=32)
-def _require_openmp(command: tuple[str, ...], version: str) -> None:
+def _supports_openmp(command: tuple[str, ...], version: str) -> bool:
     try:
         probe = subprocess.run(
             [*command, "-fopenmp", "-x", "c++", "-o", os.devnull, "-"],
             input="#include <omp.h>\nint main() { return omp_get_max_threads() == 0; }\n",
             text=True, capture_output=True, timeout=20, check=False,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeError("par_depth requires an available OpenMP host compiler") from exc
-    if probe.returncode:
-        raise RuntimeError(
-            "par_depth requires OpenMP compiler and linker support: " + probe.stderr.strip()[-500:]
-        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return probe.returncode == 0
 
 
 def _build_options(knobs: dict) -> tuple[list[str], list[str], list[str]]:
     cflags = ["-O3", "-std=c++20"]
     cuda_flags = ["-O3", "-std=c++20", "--extended-lambda", *_cuda_arch_flags()]
     ldflags = []
-    if knobs.get("par_depth", 0) != 0:
+    if "primitive" not in knobs:
         compiler = _compiler_identity(os.environ.get("CXX", "c++"))
-        _require_openmp(tuple(compiler["command"]), compiler["version"])
+        openmp = _supports_openmp(tuple(compiler["command"]), compiler["version"])
         if os.environ.get("CC"):
             host_compiler = _compiler_identity(os.environ["CC"])
-            _require_openmp(tuple(host_compiler["command"]), host_compiler["version"])
-        cflags.append("-fopenmp")
-        cuda_flags.append("-Xcompiler=-fopenmp")
-        ldflags.append("-fopenmp")
-    if (knobs["prg"] == "aes128_mmo" or knobs.get("prp") == "aes128_feistel"
-            or "sha256" in (knobs.get("xor_hash"), knobs.get("hash"))):
+            openmp = openmp and _supports_openmp(tuple(host_compiler["command"]), host_compiler["version"])
+        if openmp:
+            cflags.append("-fopenmp")
+            cuda_flags.append("-Xcompiler=-fopenmp")
+            ldflags.append("-fopenmp")
+    material = json.dumps(knobs, sort_keys=True)
+    if any(name in material for name in ('"aes128_mmo"', '"aes128_feistel"', '"sha256"')):
         ldflags.extend(["-lssl", "-lcrypto"])
+    if any(name in material for name in ('"aes128_mmo_raw"', '"aes128_feistel_raw"')):
+        cflags.extend(["-maes", "-msse4.2"])
+        cuda_flags.append("-Xcompiler=-maes,-msse4.2")
     return cflags, cuda_flags, ldflags
 
 
@@ -405,107 +221,209 @@ def _import_built(name: str, path: str) -> object:
     return module
 
 
-# ---------------------------------------------------------------------------
-# Source generation
-# ---------------------------------------------------------------------------
+_SCHEMES = {
+    "dpf": (1, "fss/dpf.cuh", "fss::Dpf<kInBits, GroupType, PrgType, InType>", 2),
+    "dcf": (2, "fss/dcf.cuh", "fss::Dcf<kInBits, GroupType, PrgType, InType, kPred>", 4),
+    "half_tree_dpf": (3, "fss/half_tree_dpf.cuh", "fss::HalfTreeDpf<kInBits, GroupType, HashType, InType>", 0),
+    "packed_half_tree_dpf": (4, "fss/packed_half_tree_dpf.cuh", "fss::PackedHalfTreeDpf<kInBits, kOutBits, HashType, InType>", 0),
+    "grotto_dcf": (5, "fss/grotto_dcf.cuh", "fss::GrottoDcf<kInBits, PrgType, InType>", 2),
+    "half_tree_grotto_dcf": (6, "fss/half_tree_grotto_dcf.cuh", "fss::HalfTreeGrottoDcf<kInBits, HashType, InType>", 0),
+    "vdpf": (7, "fss/vdpf.cuh", "fss::Vdpf<kInBits, GroupType, PrgType, XorHashType, HashType, InType>", 2),
+    "dmpf": (8, "fss/dmpf.cuh", "fss::Dmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, PrpType, InType, kChLambda>", 2),
+    "vdmpf": (9, "fss/vdmpf.cuh", "fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, GroupType, PrgType, XorHashType, HashType, PrpType, InType, kChLambda>", 2),
+}
+
+
+def _u128_literal(value: int) -> str:
+    return f"((static_cast<__uint128_t>({value >> 64}ULL) << 64) | {value & ((1 << 64) - 1)}ULL)"
+
+
+def _backend_cpp(spec: dict | None) -> tuple[str, list[str], bool]:
+    if spec is None:
+        return "fss::python::NoBackend", [], True
+    kind = spec["kind"]
+    if kind == "bytes":
+        return "fss::group::Bytes", ["fss/group/bytes.cuh"], True
+    if kind == "uint":
+        scalar = "__uint128_t" if spec["bits"] == 128 else f"uint{spec['bits']}_t"
+        return f"fss::group::Uint<{scalar}, {_u128_literal(spec['mod'])}>", ["fss/group/uint.cuh"], True
+    if kind == "chacha":
+        return f"fss::prg::ChaCha<{spec['mul']}, {spec['rounds']}>", ["fss/prg/chacha.cuh"], True
+    if kind in ("aes128_mmo", "aes128_mmo_raw", "aes128_soft"):
+        names = {"aes128_mmo": "Aes128Mmo", "aes128_mmo_raw": "Aes128MmoRaw", "aes128_soft": "Aes128Soft"}
+        file = "aes128_mmo_soft" if kind == "aes128_soft" else kind
+        return f"fss::prg::{names[kind]}<{spec['mul']}>", [f"fss/prg/{file}.cuh"], kind == "aes128_soft"
+    if kind in ("blake3", "sha256"):
+        return f"fss::hash::{ {'blake3': 'Blake3', 'sha256': 'Sha256'}[kind]}", [f"fss/hash/{kind}.cuh"], kind == "blake3"
+    if kind == "aes128_ccr":
+        aes, includes, gpu = _backend_cpp(spec["aes_mmo"])
+        return f"fss::hash::Aes128Ccr<{aes}>", [*includes, "fss/hash/aes128_ccr.cuh"], gpu
+    names = {"chacha_feistel": "ChaChaFeistel", "aes128_feistel": "Aes128Feistel", "aes128_feistel_raw": "Aes128FeistelRaw"}
+    if kind in names:
+        return f"fss::prp::{names[kind]}", [f"fss/prp/{kind}.cuh"], kind == "chacha_feistel"
+    raise ValueError(f"unsupported backend kind {kind!r}")
+
+
+def _input_type(in_bits: int, in_type: str | None) -> str:
+    widths = {"uint8": 8, "uint16": 16, "uint32": 32, "uint64": 64, "uint128": 128}
+    if in_type is None:
+        width = next(width for width in widths.values() if width >= in_bits)
+    else:
+        if in_type not in widths:
+            raise ValueError("in_type must be uint8, uint16, uint32, uint64, or uint128")
+        width = widths[in_type]
+    if width < in_bits:
+        raise ValueError("in_type cannot represent the input domain")
+    return "__uint128_t" if width == 128 else f"uint{width}_t"
+
+
+def _normalize_backend(value):
+    if value is None or isinstance(value, dict):
+        return value
+    from fss_crypto._config import _backend_spec
+    return _backend_spec(value)
 
 
 def _generate_source(scheme: str, in_bits: int, knobs: dict) -> str:
-    spec = _SCHEMES[scheme]
-    includes = [spec["header"]]
-    aliases = [
-        f"constexpr int kInBits = {in_bits};",
-        f"using InType = {_in_type(in_bits)};",
+    kind, header, core, _ = _SCHEMES[scheme]
+    includes = [header]
+    aliases = [f"constexpr int kInBits = {in_bits};", f"using InType = {_input_type(in_bits, knobs.get('in_type'))};"]
+    gpu = True
+    for role, name in (("group", "GroupType"), ("prg", "PrgType"), ("xor_hash", "XorHashType"), ("hash", "HashType"), ("prp", "PrpType")):
+        native, dependencies, supported = _backend_cpp(knobs.get(role))
+        includes.extend(dependencies)
+        aliases.append(f"using {name} = {native};")
+        gpu = gpu and supported
+    aliases += [
+        f"constexpr int kSchemeKind = {kind};",
+        f"constexpr int kOutBits = {knobs.get('out_bits') or 1};",
+        f"constexpr int kMaxPoints = {knobs.get('max_points') or 30};",
+        f"constexpr int kBucketBits = {knobs.get('bucket_bits') or 1};",
+        f"constexpr int kChLambda = {knobs['ch_lambda']};",
+        f"constexpr int kFrontierDepth = {knobs.get('frontier_depth', 16)};",
+        f"constexpr int kThreadsPerBlock = {knobs.get('threads_per_block', 256)};",
+        f"constexpr fss::DcfPred kPred = fss::DcfPred::{'kLt' if knobs.get('pred', 'lt') == 'lt' else 'kGt'};",
+        f"constexpr bool kGpuSupported = {str(gpu).lower()};",
+        f"using SchemeType = {core};",
     ]
-    inst = spec["inst_fmt"]
-
-    if spec["has_group"]:
-        includes.append(_GROUP_MAP[knobs["group"]]["include"])
-        aliases.append(f"using GroupType = {_group_type(knobs['group'], in_bits)};")
-    includes.append(_PRG_MAP[knobs["prg"]]["include"])
-    aliases.append(f"using PrgType = {_prg_type(knobs['prg'], scheme)};")
-
-    if "pred" in spec["knobs"]:
-        aliases.append(f"constexpr fss::DcfPred kPred = {_DCF_PRED_MAP[knobs['pred']]};")
-    if "out_bits" in spec["knobs"]:
-        aliases.append(f"constexpr int kOutBits = {knobs['out_bits']};")
-    if "xor_hash" in spec["knobs"]:
-        includes.append(_HASH_MAP[knobs["xor_hash"]]["include"])
-        aliases.append(f"using XorHashType = {_HASH_MAP[knobs['xor_hash']]['type']};")
-    if "hash" in spec["knobs"]:
-        if knobs["hash"] != knobs["xor_hash"]:
-            includes.append(_HASH_MAP[knobs["hash"]]["include"])
-        aliases.append(f"using HashType = {_HASH_MAP[knobs['hash']]['type']};")
-    if "prp" in spec["knobs"]:
-        includes.append(_PRP_MAP[knobs["prp"]]["include"])
-        aliases.append(f"using PrpType = {_PRP_MAP[knobs['prp']]['type']};")
-    if "max_points" in spec["knobs"]:
-        aliases.append(f"constexpr int kMaxPoints = {knobs['max_points']};")
-    if "bucket_bits" in spec["knobs"]:
-        aliases.append(f"constexpr int kBucketBits = {knobs['bucket_bits']};")
-
-    aliases.append(f"constexpr int kParDepth = {knobs.get('par_depth', 0)};")
-    aliases.append(f"constexpr bool kGpuPrg = {str(knobs['prg'] == 'chacha').lower()};")
-    aliases.append(f"constexpr bool kGpuXorHash = {str(knobs.get('xor_hash', 'blake3') == 'blake3').lower()};")
-    aliases.append(f"constexpr bool kGpuHash = {str(knobs.get('hash', 'blake3') == 'blake3').lower()};")
-    aliases.append(f"using {spec['inst']} = {inst};")
-
-    lines = [f"#include <{path}>" for path in includes]
-    if knobs["prg"] == "aes128_mmo":
-        lines.append('#include "binding_prg.cuh"')
-    lines.append("")
-    lines.extend(aliases)
-    lines.append("")
-    lines.append(f'#include "{spec["impl"]}"')
-    lines.append("")
+    # DcfPred and NoBackend are needed before generated aliases, including in non-DCF modules.
+    if "fss/dcf.cuh" not in includes:
+        includes.append("fss/dcf.cuh")
+    lines = [f"#include <{path}>" for path in dict.fromkeys(includes)]
+    lines += ['#include "binding_types.cuh"', "", *aliases, "", '#include "binding_common.cuh"', f'#include "{scheme}_binding_impl.cuh"', ""]
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Compilation
-# ---------------------------------------------------------------------------
+def _generate_primitive_source(spec: dict) -> str:
+    kind = spec["kind"]
+    native, includes, gpu = _backend_cpp(spec)
+    category = 1 if kind in ("bytes", "uint") else 2 if kind in ("chacha", "aes128_mmo", "aes128_mmo_raw", "aes128_soft") else 3 if kind in ("blake3", "sha256", "aes128_ccr") else 4
+    mul = spec.get("mul", 1)
+    lines = [f"#include <{path}>" for path in dict.fromkeys(includes)]
+    lines += ['#include "binding_types.cuh"', f"using PrimitiveType = {native};", f"constexpr int kPrimitiveKind = {category};", f"constexpr int kPrgMul = {mul};", f"constexpr bool kGpuSupported = {str(gpu).lower()};", '#include "primitive_binding.cuh"', ""]
+    return "\n".join(lines)
 
-def load(scheme: str, in_bits: int, group: str | None = None, prg: str = "chacha",
-         pred: str | None = None, *, out_bits: int | None = None,
-         max_points: int | None = None, bucket_bits: int | None = None,
-         xor_hash: str | None = None, hash: str | None = None,
-         prp: str | None = None, par_depth: int = 0) -> object:
-    """Load (or return cached) JIT-compiled extension module."""
+
+def load(scheme: str, in_bits: int, *, group=None, prg=None, pred: str = "lt", out_bits: int | None = None,
+         max_points: int | None = None, bucket_bits: int | None = None, xor_hash=None, hash=None,
+         prp=None, in_type: str | None = None,
+         ch_lambda: int = 80, frontier_depth: int = 16,
+         threads_per_block: int = 256) -> object:
+    """Compile a concrete Core type, without including runtime key material in its identity."""
     if scheme not in _SCHEMES:
         raise ValueError(f"unsupported scheme {scheme!r}")
+    if isinstance(in_bits, bool) or not isinstance(in_bits, int) or not 1 <= in_bits <= (126 if scheme in ("dmpf", "vdmpf") else 128):
+        raise ValueError("in_bits is outside the Core domain range")
+    _input_type(in_bits, in_type)
+    _check_gpu_launch(frontier_depth, threads_per_block)
+    knobs = dict(group=_normalize_backend(group), prg=_normalize_backend(prg), pred=pred,
+                 out_bits=out_bits, max_points=max_points, bucket_bits=bucket_bits,
+                 xor_hash=_normalize_backend(xor_hash), hash=_normalize_backend(hash),
+                 prp=_normalize_backend(prp), in_type=in_type,
+                 ch_lambda=ch_lambda, frontier_depth=frontier_depth,
+                 threads_per_block=threads_per_block)
+    _check_scheme_config(scheme, knobs)
+    if scheme == "packed_half_tree_dpf" and in_bits <= (128 // out_bits).bit_length() - 1:
+        raise ValueError("in_bits must exceed log2(128 / out_bits)")
+    if scheme == "half_tree_grotto_dcf" and in_bits <= 7:
+        raise ValueError("HalfTreeGrottoDcf requires in_bits > 7")
+    return _load_generated(scheme, _generate_source(scheme, in_bits, knobs), knobs)
 
-    if isinstance(par_depth, bool) or not isinstance(par_depth, int) or par_depth < -1:
-        raise ValueError("par_depth must be an integer >= -1")
-    # Larger depths resolve to the same clamped partition count in C++.
-    par_depth = min(par_depth, (1 << 31) - 1)
-    if scheme == "vdmpf" and par_depth != 0:
-        raise ValueError("vdmpf does not expose par_depth")
-    spec = _SCHEMES[scheme]
-    if spec["has_group"] and group is None:
-        raise ValueError(f"scheme {scheme!r} requires a group")
-    knobs = {"group": group, "prg": prg, "pred": pred, "out_bits": out_bits,
-             "max_points": max_points, "bucket_bits": bucket_bits,
-             "xor_hash": xor_hash, "hash": hash, "prp": prp,
-             "par_depth": par_depth}
-    if "hash" in spec["knobs"] and xor_hash is not None and hash is None:
-        knobs["hash"] = xor_hash
-    for knob in spec["knobs"]:
-        if knobs.get(knob) is None and knob != "prp":
-            raise ValueError(f"scheme {scheme!r} requires {knob}")
-    if "prp" in spec["knobs"] and prp is None:
-        knobs["prp"] = "aes128_feistel"
-    # Drop knobs the scheme does not use so they cannot leak into the key.
-    knobs = {knob: value for knob, value in knobs.items()
-             if value is not None and (knob in ("group", "prg", "par_depth") or knob in spec["knobs"])}
 
-    source = _generate_source(scheme, in_bits, knobs)
+def _check_scheme_config(scheme: str, knobs: dict) -> None:
+    roles = {"dpf": ("group", "prg"), "dcf": ("group", "prg"), "half_tree_dpf": ("group", "hash"),
+             "packed_half_tree_dpf": ("hash",), "grotto_dcf": ("prg",), "half_tree_grotto_dcf": ("hash",),
+             "vdpf": ("group", "prg", "xor_hash", "hash"), "dmpf": ("group", "prg", "prp"),
+             "vdmpf": ("group", "prg", "xor_hash", "hash", "prp")}
+    required = roles[scheme]
+    for role in required:
+        if knobs.get(role) is None:
+            raise ValueError(f"{scheme} requires explicit {role} configuration")
+    for role in ("group", "prg", "xor_hash", "hash", "prp"):
+        if role not in required and knobs.get(role) is not None:
+            raise ValueError(f"{scheme} does not take a {role} backend")
+    allowed_kinds = {"group": ("bytes", "uint"),
+                     "prg": ("chacha", "aes128_mmo", "aes128_mmo_raw", "aes128_soft"),
+                     "prp": ("chacha_feistel", "aes128_feistel", "aes128_feistel_raw")}
+    for role, kinds in allowed_kinds.items():
+        if role in required and knobs[role]["kind"] not in kinds:
+            raise ValueError(f"unsupported {role} backend for {scheme}")
+    mul = _SCHEMES[scheme][3]
+    if mul and knobs["prg"].get("mul") != mul:
+        raise ValueError(f"{scheme} requires a PRG with mul={mul}")
+    for role in ("xor_hash",):
+        if role in required and knobs[role]["kind"] not in ("blake3", "sha256"):
+            raise ValueError("xor_hash must implement XorHashable")
+    if "hash" in required:
+        allowed = ("aes128_ccr",) if scheme in ("half_tree_dpf", "packed_half_tree_dpf", "half_tree_grotto_dcf") else ("blake3", "sha256")
+        if knobs["hash"]["kind"] not in allowed:
+            raise ValueError(f"{scheme} requires an appropriate explicit hash backend")
+    if scheme == "dcf" and knobs["pred"] not in ("lt", "gt"):
+        raise ValueError("pred must be lt or gt")
+    if scheme == "packed_half_tree_dpf":
+        width = knobs["out_bits"]
+        if isinstance(width, bool) or not isinstance(width, int) or width not in (1, 2, 4, 8, 16, 32, 64):
+            raise ValueError("out_bits must be one of 1, 2, 4, 8, 16, 32, 64")
+    if scheme in ("dmpf", "vdmpf"):
+        for name, minimum, maximum in (("max_points", 30, (1 << 31)-1), ("bucket_bits", 1, 127), ("ch_lambda", 0, (1 << 31)-1)):
+            value = knobs[name]
+            if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+                raise ValueError(f"{name} is outside the C++ parameter range")
+
+
+def _check_gpu_launch(frontier_depth, threads_per_block):
+    if isinstance(frontier_depth, bool) or not isinstance(frontier_depth, int) or not 0 <= frontier_depth < (1 << 31):
+        raise ValueError("frontier_depth must be a nonnegative C++ int")
+    if isinstance(threads_per_block, bool) or not isinstance(threads_per_block, int) or not 1 <= threads_per_block <= 1024 or threads_per_block & (threads_per_block - 1):
+        raise ValueError("threads_per_block must be a power of two in [1, 1024]")
+
+
+def load_primitive(config) -> object:
+    """Compile the selected public Group, PRG, Hash or PRP implementation."""
+    spec = _normalize_backend(config)
+    if spec is None:
+        raise ValueError("primitive configuration is required")
+    knobs = {"primitive": spec}
+    return _load_generated("primitive", _generate_primitive_source(spec), knobs)
+
+
+def _load_generated(label: str, source: str, knobs: dict) -> object:
     include_dir = _find_include_dir()
     csrc_dir = str(_CSRC_DIR)
     options = _build_options(knobs)
     manifest = _build_manifest(source, include_dir, csrc_dir, options)
+    # Per-module OpenMP, AES instruction and link flags do not change the bridge layout.
+    # New user-supplied ABI-affecting options must be included in this identity.
+    native_identity = {name: manifest[name] for name in
+                       ("headers", "python", "torch", "compilers", "environment")}
+    native_identity["bridge_schema"] = 1
+    native_abi = hashlib.sha256(json.dumps(native_identity, sort_keys=True).encode()).hexdigest()[:20]
+    source = f"#define FSS_NATIVE_ABI abi_{native_abi}\n" + source
+    manifest["source"] = source
+    manifest["native_abi"] = native_abi
     manifest_text = json.dumps(manifest, sort_keys=True, indent=2)
     fingerprint = hashlib.sha256(manifest_text.encode()).hexdigest()[:20]
-    key = f"{_cache_key(scheme, in_bits, knobs)}_{fingerprint}"
+    key = f"fss_{label}_{fingerprint}"
     if key in _EXT_CACHE:
         return _EXT_CACHE[key]
 

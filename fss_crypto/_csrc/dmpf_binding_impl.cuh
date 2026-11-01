@@ -1,318 +1,114 @@
 // SPDX-License-Identifier: Apache-2.0
-// DMPF binding implementation. Included by JIT-generated .cu files after type
-// aliases (kInBits, InType, GroupType, PrgType, PrpType, DmpfInst) are defined.
-//
-// Gen runs on the host. With a device-callable PRP (prp='chacha_feistel')
-// batch_eval and eval_all also accept CUDA tensors and dispatch to the GPU
-// pipelines; the OpenSSL-backed Aes128Feistel keeps them CPU-only. Alphas and
-// xs arrive as int64 tensors and are widened to InType, so this binding
-// supports in_bits <= 63.
-
 #include "binding_common.cuh"
-#include <fss/eval_all_gpu.cuh>
-#include <fss/point_eval_gpu.cuh>
-#include <torch/extension.h>
-#include <tuple>
-#include <type_traits>
-#include <vector>
+#include "binding_gpu_eval.cuh"
+#include <cuda/std/span>
+#include <fss/util.cuh>
 
+namespace fss::python {
 namespace {
+constexpr int kRows = SchemeType::kBucketCount;
+constexpr int kWords = kBucketBits + 1;
 
-constexpr int kM = DmpfInst::m;
-
-// The GPU pipelines pass the PRP to kernels by value, which only the stateless
-// ChaChaFeistel backend survives.
-constexpr bool kGpuPrp = std::is_trivially_copyable_v<PrpType>;
-
-void CheckCpu(const torch::Tensor &t, const char *name) {
-  TORCH_CHECK(t.is_cpu(), name, " must be on CPU for Gen");
-  TORCH_CHECK(t.is_contiguous(), name, " must be contiguous");
+void CheckRuntime(int rows, __uint128_t size) {
+  TORCH_CHECK(rows > 0 && rows <= kRows, "m_rt is outside the allocated bucket count");
+  TORCH_CHECK(size > 0 && size <= (__uint128_t(1) << kBucketBits), "b_size_rt is outside the bucket domain");
 }
 
-void CheckContiguous(const torch::Tensor &t, const char *name) {
-  TORCH_CHECK(t.is_contiguous(), name, " must be contiguous");
-}
-
-void CheckInt32(const torch::Tensor &t, const char *name) {
-  TORCH_CHECK(t.dtype() == torch::kInt32, name, " must be int32");
-}
-
-// Rebuild one party's key from the flattened tensors written by dmpf_gen.
-typename DmpfInst::Key RebuildKey(
-    const torch::Tensor &cws, const torch::Tensor &s0, const torch::Tensor &sigma, const torch::Tensor &meta) {
-  typename DmpfInst::Key key;
-  key.sigma = reinterpret_cast<const int4 *>(sigma.data_ptr<int32_t>())[0];
-  const auto *meta_ptr = meta.data_ptr<int32_t>();
-  key.m_rt = meta_ptr[0];
-  key.b_size_rt = meta_ptr[1];
-  const auto *cws_ptr = reinterpret_cast<const typename DmpfInst::InnerDpf::Cw *>(cws.data_ptr<int32_t>());
-  const auto *s0_ptr = reinterpret_cast<const int4 *>(s0.data_ptr<int32_t>());
-  for (int i = 0; i < kM; ++i) {
-    for (int j = 0; j <= kBucketBits; ++j) key.bks[i].cws[j] = cws_ptr[i * (kBucketBits + 1) + j];
-    key.bks[i].s0 = s0_ptr[i];
+py::tuple Gen(NativeState &state, Tensor cws, Tensor sigma, Tensor seeds,
+    Tensor as, Tensor betas, int t, int evictions) {
+  CheckCpu({cws, sigma, seeds, as, betas});
+  TORCH_CHECK(t >= SchemeType::kMinPoints && t <= kMaxPoints,
+      "t must be between ", SchemeType::kMinPoints, " and ", kMaxPoints);
+  TORCH_CHECK(evictions >= 0, "max_evictions must be nonnegative");
+  CheckBlocks(sigma,1); CheckBlocks(seeds,int64_t{kRows}*2); CheckBlocks(betas);
+  TORCH_CHECK(seeds.dim() == 3 && seeds.size(0) == 2 && seeds.size(1) == kRows && seeds.size(2) == 4,
+      "s0s must have shape [2, ", kRows, ", 4]");
+  TORCH_CHECK(betas.numel()/4 >= t, "b_bufs must contain at least t blocks");
+  TORCH_CHECK(InputCount<InType>(as) >= t, "as must contain at least t inputs");
+  const InType *points=ConstInPtr(as);
+  for (int i=0;i<t;++i) {
+    if constexpr (kInBits < sizeof(InType)*8)
+      TORCH_CHECK((__uint128_t(points[i]) >> kInBits)==0, "point is outside the input domain");
   }
-  return key;
+  auto *words=CwPtr(cws,kRows*kWords);
+  auto seed_view=cuda::std::span<const int4>(ConstBlocks(seeds),size_t(kRows)*2);
+  auto corrections=cuda::std::span<Cw>(words,size_t(kRows)*kWords);
+  auto input=cuda::std::span<const InType>(points,t);
+  auto payloads=cuda::std::span<const int4>(ConstBlocks(betas),t);
+  int runtime_rows=fss::cuckoo_hash::ChBucket(t,kChLambda);
+  __uint128_t required_size=((__uint128_t{3} << kInBits)+runtime_rows-1)/runtime_rows;
+  TORCH_CHECK(required_size <= (__uint128_t{1} << kBucketBits), "runtime point count requires a larger bucket_bits");
+  for (int i=0;i<t;++i) for (int j=0;j<i;++j)
+    TORCH_CHECK(points[i] != points[j], "secret points must be distinct");
+  int m_rt=0; __uint128_t b_size_rt=0;
+  int status=state.Cpu().Gen(corrections, m_rt,b_size_rt,
+      *ConstBlocks(sigma),seed_view,input,payloads,t,evictions);
+  return py::make_tuple(status,m_rt,ToPyU128(b_size_rt));
 }
 
-// Runtime key parameters {m_rt, b_size_rt}, fetched to the host from either
-// memory space.
-std::pair<int, int> FetchMeta(const torch::Tensor &meta) {
-  const auto *meta_ptr = meta.data_ptr<int32_t>();
-  int v[2];
-  if (meta.is_cuda()) {
-    CopyDeviceToHost(v, meta_ptr, sizeof(v), "meta");
-  } else {
-    v[0] = meta_ptr[0];
-    v[1] = meta_ptr[1];
-  }
-  return {v[0], v[1]};
-}
+template <typename S=SchemeType>
+void Batch(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
+    Tensor seeds,Tensor cws, Tensor xs,Tensor ys) {
+  CheckSameDevice({sigma,seeds,cws, xs,ys});
+  CheckBlocks(sigma,1); CheckBlocks(seeds,kRows);
+  int64_t count=InputCount<InType>(xs); CheckBlocks(ys,count);
+  auto domain=ReadU128(size); CheckRuntime(m_rt,domain);
+  auto *words=ConstCwPtr(cws,kRows*kWords);
 
-// Widen int64 evaluation points to the scheme's InType on the device, so the
-// points never round-trip through the host.
-__global__ void WidenXsKernel(const int64_t *xs, InType *out, int64_t n) {
-  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
-  if (i < n) out[i] = BuildInput<InType>(xs[i], 0);
-}
+  if (ys.is_cpu()) {
+    CheckCpuInputsInDomain<InType>(xs, kInBits);
+    state.Cpu().BatchEval(b,*ConstBlocks(sigma),m_rt,domain,
+        cuda::std::span<const int4,kRows>(ConstBlocks(seeds),kRows),
+        cuda::std::span<const Cw>(words,size_t(kRows)*kWords),
+        {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)});
+  } else if constexpr (kGpuSupported) {
 
-torch::Tensor WidenXs(const torch::Tensor &xs, int64_t n) {
-  constexpr auto kWideDtype = sizeof(InType) == 4 ? torch::kInt32 : torch::kInt64;
-  auto wide = torch::empty({n}, torch::dtype(kWideDtype).device(xs.device()));
-  int64_t blocks = (n + 255) / 256;
-  WidenXsKernel<<<static_cast<int>(blocks), 256, 0, CurrentStream()>>>(
-      xs.data_ptr<int64_t>(), reinterpret_cast<InType *>(wide.data_ptr()), n);
-  return wide;
+    c10::cuda::CUDAGuard guard(ys.device()); auto stream=CurrentStream();
+    fss::gpu::MultiComponents<S> key{FetchBlock(sigma),m_rt,domain,
+        {ConstBlocks(seeds),kRows},{words,kRows*kWords}};
+    CheckCuda(fss::gpu::BatchEvalGpu<S>(state.template Device<kGpuSupported, S>(stream),b,key,
+        {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)},stream));
+    state.RecordUse(stream); RecordTensors({sigma,seeds,cws, xs,ys},stream);
+  } else TORCH_CHECK(false,"configured backends do not support CUDA evaluation");
 }
-
-// Shared checks of the eval entry points: shapes, dtypes, one device for every
-// tensor, and the PRP's device-callability when that device is CUDA.
-void CheckEvalTensors(const torch::Tensor &cws, const torch::Tensor &s0, const torch::Tensor &sigma,
-    const torch::Tensor &meta, const torch::Tensor *xs) {
-  TORCH_CHECK(cws.dtype() == torch::kInt32, "cws must be int32");
-  TORCH_CHECK(s0.dtype() == torch::kInt32, "s0 must be int32");
-  TORCH_CHECK(sigma.dtype() == torch::kInt32, "sigma must be int32");
-  TORCH_CHECK(meta.dtype() == torch::kInt32, "meta must be int32");
-  TORCH_CHECK(cws.sizes() == torch::IntArrayRef({kM, kBucketBits + 1, 8}), "cws must have shape (", kM, ", ",
-      kBucketBits + 1, ", 8)");
-  TORCH_CHECK(s0.sizes() == torch::IntArrayRef({kM, 4}), "s0 must have shape (", kM, ", 4)");
-  TORCH_CHECK(sigma.sizes() == torch::IntArrayRef({4}), "sigma must have shape (4,)");
-  TORCH_CHECK(meta.sizes() == torch::IntArrayRef({2}), "meta must have shape (2,)");
-  if (xs != nullptr) {
-    TORCH_CHECK(xs->dtype() == torch::kInt64, "xs must be int64");
-    TORCH_CHECK(xs->dim() == 1, "xs must be 1-dimensional");
-  }
-  for (const torch::Tensor *t : {&cws, &s0, &sigma, &meta, xs}) {
-    if (t == nullptr) continue;
-    CheckContiguous(*t, t == &cws ? "cws" : t == &s0 ? "s0" : t == &sigma ? "sigma" : t == &meta ? "meta" : "xs");
-    TORCH_CHECK(t->device() == cws.device(), "all tensors must be on the same device");
-  }
-  CheckCudaPrg(cws);
-  if (cws.is_cuda() && !kGpuPrp) {
-    TORCH_CHECK(false, "CUDA tensors require a device-callable prp (prp='chacha_feistel')");
-  }
-  if (xs != nullptr) CheckQueryDomain(*xs);
+template <typename S=SchemeType>
+void Full(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
+    Tensor seeds,Tensor cws,Tensor ys,int par_depth) {
+  TORCH_CHECK(ys.is_cuda() || par_depth >= 0,"par_depth must be nonnegative");
+  CheckSameDevice({sigma,seeds,cws,ys}); CheckBlocks(sigma,1); CheckBlocks(seeds,kRows);
+  CheckBlocks(ys,AddressableCount(kInBits));
+  auto domain=ReadU128(size); CheckRuntime(m_rt,domain);
+  auto *words=ConstCwPtr(cws,kRows*kWords);
+  if (ys.is_cpu()) {
+    if constexpr (fss::detail::FitsFullDomain<int4, kInBits>() &&
+        fss::detail::FitsFullDomain<int4, kBucketBits>()) {
+      state.CheckCpuParallel(par_depth, NativeState::kPrgRole);
+      static_cast<S &>(state.Cpu()).EvalAll(b,*ConstBlocks(sigma),m_rt,domain,
+          cuda::std::span<const int4,kRows>(ConstBlocks(seeds),kRows),
+          cuda::std::span<const Cw>(words,size_t(kRows)*kWords),
+          {Blocks(ys),size_t(ys.numel()/4)},par_depth);
+    } else TORCH_CHECK(false,"CPU full evaluation requires addressable input and bucket domains");
+  } else if constexpr (kGpuSupported && kInBits <= 38 &&
+      fss::detail::FitsFullDomain<int4, kInBits>() &&
+      fss::detail::FitsFullDomain<int4, kBucketBits>() && ValidCoreGpuLaunch<kBucketBits>()) {
+    c10::cuda::CUDAGuard guard(ys.device());
+    auto stream=CurrentStream();
+    auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
+    CheckCuda(core.template EvalAllGpu<kFrontierDepth, kThreadsPerBlock>(b,
+        FetchBlock(sigma), m_rt, domain, {ConstBlocks(seeds), kRows},
+        {words, kRows * kWords}, {Blocks(ys), size_t(ys.numel() / 4)}, stream));
+    state.RecordUse(stream);
+    RecordTensors({sigma,seeds,cws,ys},stream);
+  } else TORCH_CHECK(false,"configured full-domain CUDA evaluation is unavailable");
 }
 
 }  // namespace
+}  // namespace fss::python
 
-// ---------------------------------------------------------------------------
-// dmpf_gen
-// ---------------------------------------------------------------------------
-
-static std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> dmpf_gen(
-    torch::Tensor s0s, torch::Tensor sigma, torch::Tensor alphas, torch::Tensor betas, int64_t t, bool retry) {
-  TORCH_CHECK(kInBits <= 63, "this binding supports in_bits <= 63, got ", kInBits);
-  CheckCpu(s0s, "s0s");
-  CheckCpu(sigma, "sigma");
-  CheckCpu(alphas, "alphas");
-  CheckCpu(betas, "betas");
-  CheckInt32(s0s, "s0s");
-  CheckInt32(sigma, "sigma");
-  CheckInt32(betas, "betas");
-  TORCH_CHECK(alphas.dtype() == torch::kInt64, "alphas must be int64");
-  TORCH_CHECK(s0s.sizes() == torch::IntArrayRef({kM, 2, 4}), "s0s must have shape (", kM, ", 2, 4)");
-  TORCH_CHECK(sigma.sizes() == torch::IntArrayRef({4}), "sigma must have shape (4,)");
-  TORCH_CHECK(alphas.dim() == 1 && alphas.size(0) == t, "alphas must have shape (", t, ")");
-  TORCH_CHECK(betas.sizes() == torch::IntArrayRef({t, 4}), "betas must have shape (", t, ", 4)");
-  TORCH_CHECK(t >= 30 && t <= kMaxPoints, "t must be in [30, ", kMaxPoints, "], got ", t);
-
-  CheckQueryDomain(alphas);
-  EnsureNonce();
-
-  // Local copies: Gen perturbs sigma and the seeds on each Cuckoo-hashing
-  // retry, and the keys carry the effective values, written back below.
-  int4 sigma_local = reinterpret_cast<int4 *>(sigma.data_ptr<int32_t>())[0];
-  cuda::std::array<cuda::std::array<int4, 2>, kM> seeds;
-  auto *s0s_ptr = reinterpret_cast<int4 *>(s0s.data_ptr<int32_t>());
-  for (int i = 0; i < kM; ++i) seeds[i] = {s0s_ptr[2 * i], s0s_ptr[2 * i + 1]};
-
-  std::vector<InType> as(t);
-  const auto *alphas_ptr = alphas.data_ptr<int64_t>();
-  for (int64_t j = 0; j < t; ++j) as[j] = BuildInput<InType>(alphas_ptr[j], 0);
-
-  cuda::std::span<const int4> b_bufs(reinterpret_cast<int4 *>(betas.data_ptr<int32_t>()), t);
-
-  // Outputs: shared correction words (m buckets, one inner DPF key each),
-  // both parties' seeds, the effective sigma, and the runtime parameters.
-  auto cws_tensor = torch::zeros({kM, kBucketBits + 1, 8}, torch::kInt32);
-  auto s0s_tensor = torch::zeros({2, kM, 4}, torch::kInt32);
-  auto sigma_tensor = torch::zeros({4}, torch::kInt32);
-  auto meta = torch::zeros({2}, torch::kInt32);
-
-  DmpfInst dmpf{MakePrg(), PrpType{}};
-  typename DmpfInst::Key k0, k1;
-  TORCH_CHECK(dmpf.Gen(k0, k1, sigma_local, cuda::std::span<cuda::std::array<int4, 2>, kM>(seeds),
-                  cuda::std::span<const InType>(as), b_bufs, static_cast<int>(t), 1000, retry) == 0,
-      "cuckoo hashing failed");
-
-  auto *cws_ptr = reinterpret_cast<typename DmpfInst::InnerDpf::Cw *>(cws_tensor.data_ptr<int32_t>());
-  auto *s0s_out = reinterpret_cast<int4 *>(s0s_tensor.data_ptr<int32_t>());
-  for (int i = 0; i < kM; ++i) {
-    for (int j = 0; j <= kBucketBits; ++j) cws_ptr[i * (kBucketBits + 1) + j] = k0.bks[i].cws[j];
-    s0s_out[i] = k0.bks[i].s0;
-    s0s_out[kM + i] = k1.bks[i].s0;
-  }
-  reinterpret_cast<int4 *>(sigma_tensor.data_ptr<int32_t>())[0] = sigma_local;
-  auto *meta_ptr = meta.data_ptr<int32_t>();
-  meta_ptr[0] = k0.m_rt;
-  meta_ptr[1] = k0.b_size_rt;
-
-  return {cws_tensor, s0s_tensor, sigma_tensor, meta};
-}
-
-// ---------------------------------------------------------------------------
-// dmpf_batch_eval
-// ---------------------------------------------------------------------------
-
-static torch::Tensor dmpf_batch_eval(
-    int64_t party, torch::Tensor cws, torch::Tensor s0, torch::Tensor sigma, torch::Tensor meta, torch::Tensor xs) {
-  TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
-  TORCH_CHECK(kInBits <= 63, "this binding supports in_bits <= 63, got ", kInBits);
-  TORCH_CHECK(xs.dim() == 1, "xs must be 1-dimensional");
-  c10::cuda::OptionalCUDAGuard device_guard;
-  if (s0.is_cuda()) device_guard.set_device(s0.device());
-  xs = xs.contiguous();
-  CheckEvalTensors(cws, s0, sigma, meta, &xs);
-
-  EnsureNonce();
-  CheckCudaPrg(s0);
-  bool b = (party == 1);
-  const int64_t n = xs.size(0);
-
-  if (s0.is_cuda()) {
-    if constexpr (kGpuPrp) {
-      auto [m_rt, b_rt] = FetchMeta(meta);
-      int4 sigma_val = FetchInt4(reinterpret_cast<const int4 *>(sigma.data_ptr<int32_t>()), true);
-      auto xs_wide = n > 0 ? WidenXs(xs, n) : torch::Tensor();
-      auto ys = torch::zeros({n, 4}, torch::dtype(torch::kInt32).device(s0.device()));
-
-      // One-time repack of the m_rt active bucket keys into the level-major
-      // layout the batch kernel consumes.
-      auto dev_i32 = torch::dtype(torch::kInt32).device(s0.device());
-      auto cw_s = torch::empty({static_cast<int64_t>(kBucketBits) * m_rt, 4}, dev_i32);
-      auto extra = torch::empty(
-          {static_cast<int64_t>(m_rt) * static_cast<int64_t>(sizeof(fss::gpu::ExtBits<kBucketBits>) / sizeof(int32_t))},
-          dev_i32);
-      auto out_cw = torch::empty({m_rt, 4}, dev_i32);
-      fss::gpu::DpfRepackGpu<kBucketBits, GroupType, PrgType, uint, kParDepth>(
-          reinterpret_cast<const typename DmpfInst::InnerDpf::Cw *>(cws.data_ptr<int32_t>()), m_rt,
-          reinterpret_cast<int4 *>(cw_s.data_ptr<int32_t>()),
-          reinterpret_cast<fss::gpu::ExtBits<kBucketBits> *>(extra.data_ptr<int32_t>()),
-          reinterpret_cast<int4 *>(out_cw.data_ptr<int32_t>()), CurrentStream());
-
-      DmpfInst dmpf{MakePrg(), PrpType{}};
-      if (n > 0) {
-        fss::gpu::DmpfBatchEvalGpu(b, reinterpret_cast<const InType *>(xs_wide.data_ptr()),
-            reinterpret_cast<int4 *>(ys.data_ptr<int32_t>()), static_cast<int>(n), sigma_val, m_rt, b_rt,
-            reinterpret_cast<const int4 *>(s0.data_ptr<int32_t>()),
-            reinterpret_cast<const int4 *>(cw_s.data_ptr<int32_t>()),
-            reinterpret_cast<const fss::gpu::ExtBits<kBucketBits> *>(extra.data_ptr<int32_t>()),
-            reinterpret_cast<const int4 *>(out_cw.data_ptr<int32_t>()), dmpf, CurrentStream());
-      }
-      auto err = cudaGetLastError();
-      TORCH_CHECK(err == cudaSuccess, "dmpf batch_eval launch failed: ", cudaGetErrorString(err));
-      return ys;
-    }
-  }
-
-  typename DmpfInst::Key key = RebuildKey(cws, s0, sigma, meta);
-
-  std::vector<InType> xs_local(n);
-  const auto *xs_ptr = xs.data_ptr<int64_t>();
-  for (int64_t i = 0; i < n; ++i) xs_local[i] = BuildInput<InType>(xs_ptr[i], 0);
-
-  auto ys = torch::zeros({n, 4}, torch::kInt32);
-  auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
-
-  DmpfInst dmpf{MakePrg(), PrpType{}};
-  dmpf.BatchEval(b, key, cuda::std::span<const InType>(xs_local), cuda::std::span<int4>(ys_ptr, n));
-
-  return ys;
-}
-
-// ---------------------------------------------------------------------------
-// dmpf_eval_all
-// ---------------------------------------------------------------------------
-
-static torch::Tensor dmpf_eval_all(
-    int64_t party, torch::Tensor cws, torch::Tensor s0, torch::Tensor sigma, torch::Tensor meta) {
-  TORCH_CHECK(party == 0 || party == 1, "party must be 0 or 1");
-  TORCH_CHECK(kInBits <= 63, "this binding supports in_bits <= 63, got ", kInBits);
-  c10::cuda::OptionalCUDAGuard device_guard;
-  if (s0.is_cuda()) device_guard.set_device(s0.device());
-  CheckEvalTensors(cws, s0, sigma, meta, nullptr);
-
-  EnsureNonce();
-  CheckCudaPrg(s0);
-  bool b = (party == 1);
-
-  int64_t n = 0;
-  if constexpr (kInBits <= kMaxEvalAllBits) n = 1LL << kInBits;
-  else TORCH_CHECK(false, "dmpf.eval_all cannot represent the 2^", kInBits, "-entry output size");
-  if (s0.is_cuda()) {
-    TORCH_CHECK(kInBits <= 38,
-        "dmpf.eval_all on CUDA supports in_bits <= 38 "
-        "(grid index width), got ",
-        kInBits);
-  }
-
-  if (s0.is_cuda()) {
-    if constexpr (kGpuPrp) {
-      auto [m_rt, b_rt] = FetchMeta(meta);
-      int4 sigma_val = FetchInt4(reinterpret_cast<const int4 *>(sigma.data_ptr<int32_t>()), true);
-
-      auto ys = torch::zeros({n, 4}, torch::dtype(torch::kInt32).device(s0.device()));
-      auto bucket_ys = torch::empty(
-          {static_cast<int64_t>(m_rt) * (1LL << kBucketBits), 4}, torch::dtype(torch::kInt32).device(s0.device()));
-
-      DmpfInst dmpf{MakePrg(), PrpType{}};
-      fss::gpu::DmpfEvalAllGpu(b, sigma_val, m_rt, b_rt, reinterpret_cast<const int4 *>(s0.data_ptr<int32_t>()),
-          reinterpret_cast<const typename DmpfInst::InnerDpf::Cw *>(cws.data_ptr<int32_t>()),
-          reinterpret_cast<int4 *>(bucket_ys.data_ptr<int32_t>()), reinterpret_cast<int4 *>(ys.data_ptr<int32_t>()),
-          dmpf, CurrentStream());
-      auto err = cudaGetLastError();
-      TORCH_CHECK(err == cudaSuccess, "dmpf eval_all launch failed: ", cudaGetErrorString(err));
-      return ys;
-    }
-  }
-
-  typename DmpfInst::Key key = RebuildKey(cws, s0, sigma, meta);
-
-  auto ys = torch::zeros({n, 4}, torch::kInt32);
-  auto *ys_ptr = reinterpret_cast<int4 *>(ys.data_ptr<int32_t>());
-
-  DmpfInst dmpf{MakePrg(), PrpType{}};
-  dmpf.EvalAll(b, key, cuda::std::span<int4>(ys_ptr, n));
-
-  return ys;
-}
-
-// ---------------------------------------------------------------------------
-// pybind11 module
-// ---------------------------------------------------------------------------
-
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("gen", &dmpf_gen, "DMPF key generation");
-  m.def("batch_eval", &dmpf_batch_eval, "DMPF batch evaluation");
-  m.def("eval_all", &dmpf_eval_all, "DMPF full-domain evaluation");
+PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
+  using namespace fss::python;
+  auto cls=BindNative(m);
+  cls.def("gen",[](NativeState &s,Tensor c, Tensor sigma,Tensor seeds,Tensor as,Tensor bs,int t,int e) { return Gen(s,c, sigma,seeds,as,bs,t,e); });
+  cls.def("batch_eval",&Batch<>);
+  cls.def("eval_all",&Full<>);
 }

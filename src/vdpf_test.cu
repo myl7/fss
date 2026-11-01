@@ -9,6 +9,7 @@
 #include <fss/group/uint.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/hash/blake3.cuh>
+#include "core_api_test_helpers.cuh"
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -56,15 +57,15 @@ protected:
 
   void GenKey() {
     VdpfType vdpf{prg, xor_hash, hash_};
-    ASSERT_EQ(vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), kAlpha, MakeBBuf()), 0);
+    ASSERT_EQ(fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), kAlpha, MakeBBuf()), 0);
   }
 
   void TestEvalAtAlpha() {
     GenKey();
     VdpfType vdpf{prg, xor_hash, hash_};
 
-    [[maybe_unused]] auto [y0, pi0_tilde] = vdpf.Eval(false, k0, kAlpha);
-    [[maybe_unused]] auto [y1, pi1_tilde] = vdpf.Eval(true, k1, kAlpha);
+    [[maybe_unused]] auto [y0, pi0_tilde] = fss_test::EvalKey(vdpf, false, k0, kAlpha);
+    [[maybe_unused]] auto [y1, pi1_tilde] = fss_test::EvalKey(vdpf, true, k1, kAlpha);
 
     auto result = Group::From(y0) + Group::From(y1);
     auto expected = Group::From(MakeBBuf());
@@ -85,8 +86,8 @@ protected:
       uint16_t x = dis(gen);
       if (x == kAlpha) continue;
 
-      [[maybe_unused]] auto [y0, pi0_tilde] = vdpf.Eval(false, k0, x);
-      [[maybe_unused]] auto [y1, pi1_tilde] = vdpf.Eval(true, k1, x);
+      [[maybe_unused]] auto [y0, pi0_tilde] = fss_test::EvalKey(vdpf, false, k0, x);
+      [[maybe_unused]] auto [y1, pi1_tilde] = fss_test::EvalKey(vdpf, true, k1, x);
 
       auto result = Group::From(y0) + Group::From(y1);
       int4 r = result.Into();
@@ -108,9 +109,9 @@ protected:
 
     for (int i = 0; i < L; i++) {
       uint16_t x = dis(gen);
-      [[maybe_unused]] auto [y0, pi_tilde0] = vdpf.Eval(false, k0, x);
+      [[maybe_unused]] auto [y0, pi_tilde0] = fss_test::EvalKey(vdpf, false, k0, x);
       pi_tildes_0[i] = pi_tilde0;
-      [[maybe_unused]] auto [y1, pi_tilde1] = vdpf.Eval(true, k1, x);
+      [[maybe_unused]] auto [y1, pi_tilde1] = fss_test::EvalKey(vdpf, true, k1, x);
       pi_tildes_1[i] = pi_tilde1;
     }
 
@@ -129,8 +130,8 @@ protected:
     std::vector<int4> ys0(n), ys1(n);
     cuda::std::array<int4, 4> pi0, pi1;
 
-    vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), n), pi0);
-    vdpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), n), pi1);
+    fss_test::EvalAllKey(vdpf, false, k0, cuda::std::span<int4>(ys0.data(), n), pi0);
+    fss_test::EvalAllKey(vdpf, true, k1, cuda::std::span<int4>(ys1.data(), n), pi1);
 
     auto expected = Group::From(MakeBBuf());
     int4 expected_buf = expected.Into();
@@ -165,8 +166,8 @@ protected:
     std::vector<int4> full0(n), full1(n);
     cuda::std::array<int4, 4> full_pi0, full_pi1;
 
-    vdpf.EvalAll(false, k0, cuda::std::span<int4>(full0.data(), n), full_pi0);
-    vdpf.EvalAll(true, k1, cuda::std::span<int4>(full1.data(), n), full_pi1);
+    fss_test::EvalAllKey(vdpf, false, k0, cuda::std::span<int4>(full0.data(), n), full_pi0);
+    fss_test::EvalAllKey(vdpf, true, k1, cuda::std::span<int4>(full1.data(), n), full_pi1);
 
     ASSERT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(full_pi0), cuda::std::span<const int4, 4>(full_pi1)));
 
@@ -203,9 +204,9 @@ protected:
       cuda::std::array<int4, 4> pi0, pi1;
 
       // EvalRange writing to y[1 : count]
-      vdpf.EvalRange(false, L, R, k0, cuda::std::span<int4>(ys0.data() + 1, count), pi0);
+      fss_test::EvalRangeKey(vdpf, false, L, R, k0, cuda::std::span<int4>(ys0.data() + 1, count), pi0);
 
-      vdpf.EvalRange(true, L, R, k1.s0, k1.cws, k1.cs, k1.ocw, cuda::std::span<int4>(ys1.data() + 1, count), pi1);
+      vdpf.EvalRange(true, L, R, k1.s0, k1.cws, k1.cs, cuda::std::span<int4>(ys1.data() + 1, count), pi1);
 
       // 1. no writes outside the requested output span.
       EXPECT_EQ(std::memcmp(&ys0.front(), &flag, sizeof(int4)), 0);
@@ -242,8 +243,8 @@ protected:
       pi_tildes1.reserve(count);
 
       for (size_t x = L; x <= R; ++x) {
-        auto result0 = vdpf.Eval(false, k0, static_cast<decltype(kAlpha)>(x));
-        auto result1 = vdpf.Eval(true, k1, static_cast<decltype(kAlpha)>(x));
+        auto result0 = fss_test::EvalKey(vdpf, false, k0, static_cast<decltype(kAlpha)>(x));
+        auto result1 = fss_test::EvalKey(vdpf, true, k1, static_cast<decltype(kAlpha)>(x));
 
         pi_tildes0.push_back(result0.pi_tilde);
         pi_tildes1.push_back(result1.pi_tilde);
@@ -288,9 +289,9 @@ protected:
     std::vector<int4> ys0(n), ys1(n), ys0_chain(n);
     cuda::std::array<int4, 4> pi0, pi1, pi0_chain;
 
-    vdpf.EvalAll(false, k0, cuda::std::span<int4>(ys0_chain.data(), n), pi0_chain);
-    vdpf.EvalAllMerkle(false, k0, cuda::std::span<int4>(ys0.data(), n), pi0);
-    vdpf.EvalAllMerkle(true, k1, cuda::std::span<int4>(ys1.data(), n), pi1);
+    fss_test::EvalAllKey(vdpf, false, k0, cuda::std::span<int4>(ys0_chain.data(), n), pi0_chain);
+    fss_test::EvalAllMerkleKey(vdpf, false, k0, cuda::std::span<int4>(ys0.data(), n), pi0);
+    fss_test::EvalAllMerkleKey(vdpf, true, k1, cuda::std::span<int4>(ys1.data(), n), pi1);
 
     // The shares are the chain-based EvalAll's shares
     EXPECT_EQ(memcmp(ys0.data(), ys0_chain.data(), n * sizeof(int4)), 0);
@@ -326,9 +327,9 @@ protected:
 
     for (int i = 0; i < L; i++) {
       uint16_t x = dis(gen);
-      [[maybe_unused]] auto [y0, pi_tilde0] = vdpf.Eval(false, k0, x);
+      [[maybe_unused]] auto [y0, pi_tilde0] = fss_test::EvalKey(vdpf, false, k0, x);
       pi_tildes_0[i] = pi_tilde0;
-      [[maybe_unused]] auto [y1, pi_tilde1] = vdpf.Eval(true, k1, x);
+      [[maybe_unused]] auto [y1, pi_tilde1] = fss_test::EvalKey(vdpf, true, k1, x);
       pi_tildes_1[i] = pi_tilde1;
     }
 

@@ -24,6 +24,7 @@
 #include <fss/dmpf.cuh>
 #include <fss/prp/chacha_feistel.cuh>
 #include <climits>
+#include "core_api_test_helpers.cuh"
 
 // Tests of the par_depth execution contract: a par_depth of 0 must keep every
 // evaluation path sequential no matter how many OpenMP threads are available,
@@ -99,6 +100,8 @@ class CountingPrg {
 public:
   CallCounters *counters = nullptr;
 
+  __host__ __device__ int4 Hash(int4 seed) { return Gen(seed)[0]; }
+
   CountingPrg() = default;
   explicit CountingPrg(CallCounters &c) : counters(&c) {}
 
@@ -121,7 +124,7 @@ template <int mul>
 class BatchedCountingPrg : public CountingPrg<mul> {
 public:
   using CountingPrg<mul>::CountingPrg;
-  cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(const cuda::std::array<int4, 8> &seeds) {
+  cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(cuda::std::span<const int4, 8> seeds) {
     if (this->counters != nullptr) ++this->counters->batch_calls;
     cuda::std::array<cuda::std::array<int4, mul>, 8> result;
     for (int i = 0; i < 8; ++i) result[i] = this->Gen(seeds[i]);
@@ -190,71 +193,71 @@ void FillSeeds(int4 s0s[2]) {
 
 template <int in_bits, int par_depth, typename Prg = CountingPrg<2>>
 void RunDpfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DpfType = fss::Dpf<in_bits, BytesGroup, Prg, uint16_t, par_depth>;
+  using DpfType = fss::Dpf<in_bits, BytesGroup, Prg, uint16_t>;
   Prg prg{c};
   DpfType dpf{prg};
 
   int4 s0s[2];
   FillSeeds(s0s);
   typename DpfType::Key k0, k1;
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
 
   ys0.resize(size_t{1} << in_bits);
   ys1.resize(size_t{1} << in_bits);
-  dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-  dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+  fss_test::EvalAllKey<par_depth>(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+  fss_test::EvalAllKey<par_depth>(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 }
 
 template <int in_bits, int par_depth, typename Prg = CountingPrg<4>>
 void RunDcfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DcfType = fss::Dcf<in_bits, BytesGroup, Prg, uint16_t, fss::DcfPred::kLt, par_depth>;
+  using DcfType = fss::Dcf<in_bits, BytesGroup, Prg, uint16_t, fss::DcfPred::kLt>;
   Prg prg{c};
   DcfType dcf{prg};
 
   int4 s0s[2];
   FillSeeds(s0s);
   typename DcfType::Key k0, k1;
-  dcf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
+  fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
 
   ys0.resize(size_t{1} << in_bits);
   ys1.resize(size_t{1} << in_bits);
-  dcf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-  dcf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+  fss_test::EvalAllKey<par_depth>(dcf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+  fss_test::EvalAllKey<par_depth>(dcf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 }
 
 template <int in_bits, int par_depth, typename Prg = CountingPrg<1>>
 void RunHalfTreeEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DpfType = fss::HalfTreeDpf<in_bits, BytesGroup, Prg, uint16_t, par_depth>;
+  using DpfType = fss::HalfTreeDpf<in_bits, BytesGroup, fss_test::CcrBackend<Prg>, uint16_t>;
   Prg prg{c};
-  DpfType dpf{prg, kHashKey};
+  DpfType dpf{fss_test::Ccr(prg), kHashKey};
 
   int4 s0s[2];
   FillSeeds(s0s);
   typename DpfType::Key k0, k1;
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
 
   ys0.resize(size_t{1} << in_bits);
   ys1.resize(size_t{1} << in_bits);
-  dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-  dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+  fss_test::EvalAllKey<par_depth>(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+  fss_test::EvalAllKey<par_depth>(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 }
 
 template <int in_bits, int par_depth, typename Prg = CountingPrg<1>>
 void RunPackedEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &ys1, uint16_t alpha) {
-  using DpfType = fss::PackedHalfTreeDpf<in_bits, 1, Prg, uint16_t, par_depth>;
+  using DpfType = fss::PackedHalfTreeDpf<in_bits, 1, fss_test::CcrBackend<Prg>, uint16_t>;
   Prg prg{c};
-  DpfType dpf{prg, kHashKey};
+  DpfType dpf{fss_test::Ccr(prg), kHashKey};
 
   int4 s0s[2];
   FillSeeds(s0s);
   typename DpfType::Key k0, k1;
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, 1);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, 1);
 
   constexpr size_t blocks = size_t{1} << DpfType::kDepth;
   ys0.resize(blocks);
   ys1.resize(blocks);
-  dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-  dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+  fss_test::EvalAllKey<par_depth>(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+  fss_test::EvalAllKey<par_depth>(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 }
 
 template <int in_bits, int par_depth>
@@ -262,7 +265,7 @@ void RunVdpfEvalAllMerkle(CallCounters &prg_c, CallCounters &xhash_c, CallCounte
     std::vector<int4> &ys0, std::vector<int4> &ys1, cuda::std::array<int4, 4> &pi0,
     cuda::std::array<int4, 4> &pi1, uint16_t alpha) {
   using VdpfType =
-      fss::Vdpf<in_bits, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t, par_depth>;
+      fss::Vdpf<in_bits, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t>;
   CountingPrg<2> prg{prg_c};
   CountingXorHash xhash{xhash_c};
   CountingHash hash{hash_c};
@@ -271,12 +274,12 @@ void RunVdpfEvalAllMerkle(CallCounters &prg_c, CallCounters &xhash_c, CallCounte
   int4 s0s[2];
   FillSeeds(s0s);
   typename VdpfType::Key k0, k1;
-  ASSERT_EQ(vdpf.Gen(k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, kBeta), 0);
+  ASSERT_EQ(fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, kBeta), 0);
 
   ys0.resize(size_t{1} << in_bits);
   ys1.resize(size_t{1} << in_bits);
-  vdpf.EvalAllMerkle(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()), pi0);
-  vdpf.EvalAllMerkle(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()), pi1);
+  fss_test::EvalAllMerkleKey<par_depth>(vdpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()), pi0);
+  fss_test::EvalAllMerkleKey<par_depth>(vdpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()), pi1);
 }
 
 // Checks the FSS reconstruction: the parties' shares add up to beta on alpha and
@@ -329,7 +332,7 @@ TEST(ParDepthTest, DpfEvalAllHonorsZeroParDepth) {
   std::vector<int4> ys0_large_seq, ys1_large_seq, ys0_large_par, ys1_large_par;
 
   RunDpfEvalAll<5, 0>(c_small_seq, ys0_small_seq, ys1_small_seq, 13);
-  RunDpfEvalAll<5, -1>(c_small_par, ys0_small_par, ys1_small_par, 13);
+  RunDpfEvalAll<5, 2>(c_small_par, ys0_small_par, ys1_small_par, 13);
   RunDpfEvalAll<12, 0>(c_large_seq, ys0_large_seq, ys1_large_seq, 107);
   RunDpfEvalAll<12, 2>(c_large_par, ys0_large_par, ys1_large_par, 107);
 
@@ -351,7 +354,7 @@ TEST(ParDepthTest, DcfEvalAllHonorsZeroParDepth) {
   std::vector<int4> ys0_large_seq, ys1_large_seq, ys0_large_par, ys1_large_par;
 
   RunDcfEvalAll<5, 0>(c_small_seq, ys0_small_seq, ys1_small_seq, 13);
-  RunDcfEvalAll<5, -1>(c_small_par, ys0_small_par, ys1_small_par, 13);
+  RunDcfEvalAll<5, 2>(c_small_par, ys0_small_par, ys1_small_par, 13);
   RunDcfEvalAll<12, 0>(c_large_seq, ys0_large_seq, ys1_large_seq, 107);
   RunDcfEvalAll<12, 2>(c_large_par, ys0_large_par, ys1_large_par, 107);
 
@@ -398,7 +401,7 @@ TEST(ParDepthTest, PackedHalfTreeDpfEvalAllHonorsZeroParDepth) {
   EXPECT_TRUE(EqualBuffers(ys1_frontier_seq, ys1_frontier_par));
 
   constexpr int in_bits = 13;
-  using DpfType = fss::PackedHalfTreeDpf<in_bits, 1, CountingPrg<1>, uint16_t>;
+  using DpfType = fss::PackedHalfTreeDpf<in_bits, 1, fss_test::CcrBackend<CountingPrg<1>>, uint16_t>;
   for (size_t x = 0; x < (size_t{1} << in_bits); ++x) {
     int4 diff = fss::util::Xor(ys0_frontier_seq[x / DpfType::kLanes], ys1_frontier_seq[x / DpfType::kLanes]);
     EXPECT_EQ(DpfType::Extract(diff, static_cast<uint16_t>(x)), x == 107 ? 1ULL : 0ULL) << "Failed at x=" << x;
@@ -438,7 +441,7 @@ TEST(ParDepthTest, VdpfProveMerkleHonorsZeroParDepth) {
   omp_set_num_threads(4);
 
   CallCounters hash_seq;
-  using VdpfType = fss::Vdpf<10, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t, 0>;
+  using VdpfType = fss::Vdpf<10, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t>;
   CountingPrg<2> prg;
   CountingXorHash xhash;
   CountingHash hash{hash_seq};
@@ -460,17 +463,17 @@ TEST(ParDepthTest, VdpfProveMerkleHonorsZeroParDepth) {
 
 TEST(ParDepthTest, LoopPartitionsAreBoundedAndCoverTheInput) {
   omp_set_num_threads(8);
-  EXPECT_EQ(fss::util::ResolveParPartitions(0, 100), 1);
-  EXPECT_EQ(fss::util::ResolveParPartitions(1, 100), 2);
-  EXPECT_EQ(fss::util::ResolveParPartitions(2, 100), 4);
-  EXPECT_EQ(fss::util::ResolveParPartitions(INT_MAX, 7), 7);
-  EXPECT_EQ(fss::util::ResolveParPartitions(INT_MAX, 0), 0);
-  EXPECT_LE(fss::util::ResolveParDepth(INT_MAX), sizeof(size_t) * CHAR_BIT - 1);
+  EXPECT_EQ(fss::detail::ResolveParPartitions(0, 100), 1);
+  EXPECT_EQ(fss::detail::ResolveParPartitions(1, 100), 2);
+  EXPECT_EQ(fss::detail::ResolveParPartitions(2, 100), 4);
+  EXPECT_EQ(fss::detail::ResolveParPartitions(INT_MAX, 7), 7);
+  EXPECT_EQ(fss::detail::ResolveParPartitions(INT_MAX, 0), 0);
+  EXPECT_LE(fss::detail::ResolveParDepth(INT_MAX), sizeof(size_t) * CHAR_BIT - 1);
 
-  for (int depth : {0, 1, 2, -1, INT_MAX}) {
+  for (int depth : {0, 1, 2, INT_MAX}) {
     std::vector<int> visits(37);
     CallCounters counters;
-    fss::util::ParallelFor(depth, visits.size(), [&](size_t i) {
+    fss::detail::ParallelFor(depth, visits.size(), [&](size_t i) {
       counters.Enter();
       ++visits[i];
       counters.Leave();
@@ -497,20 +500,20 @@ TEST(ParDepthTest, PositiveDepthBoundsFallbackAndFrontierTeams) {
 
 TEST(ParDepthTest, GrottoPreprocessAndEvalAllStayOnCallingThread) {
   omp_set_num_threads(4);
-  using Scheme = fss::GrottoDcf<8, CountingPrg<2>, uint16_t, 0>;
+  using Scheme = fss::GrottoDcf<8, CountingPrg<2>, uint16_t>;
   CallCounters counters;
   Scheme scheme{CountingPrg<2>{counters}};
   Scheme::Key k0, k1;
   int4 seeds[2] = {kSeed0, kSeed1};
-  scheme.Gen(k0, k1, seeds, 107);
-  auto tree0 = scheme.Preprocess(false, k0);
-  auto tree1 = scheme.Preprocess(true, k1);
+  fss_test::GenPair(scheme, k0, k1, seeds, 107);
+  auto tree0 = fss_test::PreprocessKey(scheme, false, k0);
+  auto tree1 = fss_test::PreprocessKey(scheme, true, k1);
   bool ys0[256], ys1[256];
-  scheme.EvalAll(false, k0, ys0);
-  scheme.EvalAll(true, k1, ys1);
+  fss_test::EvalAllKey(scheme, false, k0, ys0);
+  fss_test::EvalAllKey(scheme, true, k1, ys1);
   for (int x = 0; x < 256; ++x) {
-    EXPECT_EQ(ys0[x], scheme.Eval(tree0, x));
-    EXPECT_EQ(ys1[x], scheme.Eval(tree1, x));
+    EXPECT_EQ(ys0[x], scheme.Eval(tree0.View(), x));
+    EXPECT_EQ(ys1[x], scheme.Eval(tree1.View(), x));
     EXPECT_EQ(ys0[x] ^ ys1[x], x >= 107);
   }
   ExpectCallerThreadOnly(counters);
@@ -518,16 +521,16 @@ TEST(ParDepthTest, GrottoPreprocessAndEvalAllStayOnCallingThread) {
 
 TEST(ParDepthTest, VdpfChainStaysOnCallingThread) {
   omp_set_num_threads(4);
-  using Scheme = fss::Vdpf<8, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t, 0>;
+  using Scheme = fss::Vdpf<8, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t>;
   CallCounters prg, xor_hash, hash;
   Scheme scheme{CountingPrg<2>{prg}, CountingXorHash{xor_hash}, CountingHash{hash}};
   Scheme::Key k0, k1;
   int4 seeds[2] = {kSeed0, kSeed1};
-  ASSERT_EQ(scheme.Gen(k0, k1, seeds, 107, kBeta), 0);
+  ASSERT_EQ(fss_test::GenPair(scheme, k0, k1, seeds, 107, kBeta), 0);
   std::vector<int4> ys0(256), ys1(256);
   cuda::std::array<int4, 4> pi0, pi1;
-  scheme.EvalAll(false, k0, ys0, pi0);
-  scheme.EvalAll(true, k1, ys1, pi1);
+  fss_test::EvalAllKey(scheme, false, k0, ys0, pi0);
+  fss_test::EvalAllKey(scheme, true, k1, ys1, pi1);
   EXPECT_TRUE(Scheme::Verify(pi0, pi1));
   ExpectReconstruction(ys0, ys1, 107);
   ExpectCallerThreadOnly(prg);
@@ -538,12 +541,15 @@ TEST(ParDepthTest, VdpfChainStaysOnCallingThread) {
 TEST(ParDepthTest, DmpfEvalAllPropagatesZeroToItsInnerDpf) {
   omp_set_num_threads(4);
   using Prp = fss::prp::ChaChaFeistel;
-  using Scheme = fss::Dmpf<8, 30, 6, BytesGroup, CountingPrg<2>, Prp, uint16_t, 3, 80, 0>;
+  using Scheme = fss::Dmpf<8, 30, 6, BytesGroup, CountingPrg<2>, Prp, uint16_t, 80>;
   CallCounters counters;
   Scheme scheme{CountingPrg<2>{counters}, Prp{}};
   Scheme::Key k0, k1;
-  cuda::std::array<cuda::std::array<int4, 2>, Scheme::m> seeds;
-  for (auto &pair : seeds) pair = {kSeed0, kSeed1};
+  cuda::std::array<int4, size_t{Scheme::kBucketCount} * 2> seeds;
+  for (int i = 0; i < Scheme::kBucketCount; ++i) {
+    seeds[i] = kSeed0;
+    seeds[size_t{Scheme::kBucketCount} + i] = kSeed1;
+  }
   uint16_t alphas[30];
   int4 betas[30];
   for (int i = 0; i < 30; ++i) {
@@ -551,10 +557,10 @@ TEST(ParDepthTest, DmpfEvalAllPropagatesZeroToItsInnerDpf) {
     betas[i] = kBeta;
   }
   int4 sigma = kHashKey;
-  ASSERT_EQ(scheme.Gen(k0, k1, sigma, seeds, alphas, betas, 30), 0);
+  ASSERT_EQ(fss_test::GenMulti(scheme, k0, k1, sigma, seeds, alphas, betas, 30), 0);
   std::vector<int4> ys0(256), ys1(256);
-  scheme.EvalAll(false, k0, ys0);
-  scheme.EvalAll(true, k1, ys1);
+  fss_test::EvalAllKey(scheme, false, k0, ys0);
+  fss_test::EvalAllKey(scheme, true, k1, ys1);
   ExpectCallerThreadOnly(counters);
   for (int x = 0; x < 256; ++x) {
     int4 sum = fss::util::Xor(ys0[x], ys1[x]);

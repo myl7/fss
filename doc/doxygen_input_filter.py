@@ -38,7 +38,7 @@ IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]*figures/([^/)]+)\)")
 
 
 def convert_images(text: str) -> str:
-    """Rewrite figures-directory Markdown images to \image html commands."""
+    r"""Rewrite figures-directory Markdown images to \image html commands."""
     def replace(match: re.Match) -> str:
         name, caption = match.group(2), match.group(1).strip().replace('"', "'")
         return f"\\image html {name} \"{caption}\"" if caption else f"\\image html {name}"
@@ -129,7 +129,7 @@ def process(source: str, filepath: str) -> str:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: doxygen-math-filter.py <filename>", file=sys.stderr)
+        print("usage: doxygen_input_filter.py <filename>", file=sys.stderr)
         sys.exit(1)
 
     with open(sys.argv[1], "r") as f:

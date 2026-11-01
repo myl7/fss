@@ -8,6 +8,7 @@
 #include <string.h>
 #include <vector>
 #include <cuda_runtime.h>
+#include <openssl/rand.h>
 
 #include <fss/vdmpf.cuh>
 #include <fss/group/bytes.cuh>
@@ -32,9 +33,9 @@ static bool Equal(int4 a, int4 b) {
   return memcmp(&a, &b, sizeof(int4)) == 0;
 }
 
-// Deterministic LSB-cleared seed for seed index i
-static int4 MakeSeed(int i) {
-  return {0x11111111 + i, 0x22222222 + 2 * i, 0x33333333 + 3 * i, static_cast<int>(0x44444440u + 4 * i) & ~1};
+// Draw a fresh uniform seed block from OpenSSL's cryptographic RNG.
+static bool RandomSeed(int4 &seed) {
+  return RAND_bytes(reinterpret_cast<unsigned char *>(&seed), sizeof(seed)) == 1;
 }
 
 int main() {
@@ -61,32 +62,56 @@ int main() {
     betas[i] = {(i + 1) * 11, 0, 0, 0};
   }
 
-  // Key generation. Gen() retries internally with perturbed sigma and seeds on
-  // the rare failure cases, and writes the effective values back into sigma
-  // and s0s. m is the cuckoo table size.
-  constexpr int m = Vdmpf::m;
-  Vdmpf::Key k0, k1;
-  int4 sigma = {static_cast<int>(0xdeadbeefu), 0x12345678, static_cast<int>(0xabcdef01u),
-      static_cast<int>(0x98765432u) & ~1};
-  cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
-  for (int i = 0; i < m; ++i) {
-    s0s[i] = {MakeSeed(2 * i), MakeSeed(2 * i + 1)};
+  // The sample owns retries. m is the cuckoo table size.
+  constexpr int m = Vdmpf::kBucketCount;
+  Vdmpf::Cw shared_cws[size_t{m} * (kBucketBits + 1)];
+  int m_rt = 0;
+  __uint128_t b_size_rt = 0;
+  int4 sigma;
+  cuda::std::array<int4, size_t{m} * 2> s0s;
+  auto cws = cuda::std::span<Vdmpf::Cw>(shared_cws);
+  int4 shared_cs[size_t{m} * 4];
+  auto cs = cuda::std::span<int4>(shared_cs);
+  constexpr int kMaxAttempts = 128;
+  int status = 1;
+  for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+    // Placement failure changes only sigma; inner VDPF failure changes seeds.
+    if ((attempt == 0 || status == 1) && !RandomSeed(sigma)) {
+      fprintf(stderr, "seed generation failed\n");
+      VdmpfPrg::FreeCtxs(ctxs);
+      return 1;
+    }
+    if (attempt == 0 || status == 2) {
+      for (int i = 0; i < m; ++i) {
+        if (!RandomSeed(s0s[i]) || !RandomSeed(s0s[size_t{m} + i])) {
+          fprintf(stderr, "seed generation failed\n");
+          VdmpfPrg::FreeCtxs(ctxs);
+          return 1;
+        }
+      }
+    }
+    status = vdmpf.Gen(cws, cs, m_rt, b_size_rt, sigma,
+        cuda::std::span<const int4>(s0s),
+        cuda::std::span<const In>(alphas), cuda::std::span<const int4>(betas), kT, 1000);
+    if (status == 0) break;
   }
-  if (vdmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s), cuda::std::span<const In>(alphas, kT),
-      cuda::std::span<const int4>(betas, kT), kT, 1000, true) != 0) {
-    fprintf(stderr, "vdmpf gen failed after retries\n");
+  if (status != 0) {
+    fprintf(stderr, "vdmpf gen failed after %d attempts (status %d)\n", kMaxAttempts, status);
     VdmpfPrg::FreeCtxs(ctxs);
     return 1;
   }
+  auto seeds0 = cuda::std::span<const int4, m>(s0s.data(), m);
+  auto seeds1 = cuda::std::span<const int4, m>(s0s.data() + m, m);
   printf("  Gen done, table size m=%d\n", m);
 
   // Batch evaluation at the points: y0+y1 == beta_i
   std::vector<In> xs(alphas, alphas + kT);
   std::vector<int4> ys0(kT), ys1(kT);
   cuda::std::array<int4, 4> pi0, pi1;
-  vdmpf.BatchEval(false, k0, std::span<const In>(xs), std::span<int4>(ys0), pi0);
-  vdmpf.BatchEval(true, k1, std::span<const In>(xs), std::span<int4>(ys1), pi1);
+  vdmpf.BatchEval(false, sigma, m_rt, b_size_rt, seeds0, cws, cs, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys0), pi0);
+  vdmpf.BatchEval(true, sigma, m_rt, b_size_rt, seeds1, cws, cs, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys1), pi1);
 
+  bool proofs_match = Vdmpf::Verify(pi0, pi1);
   int mismatches = 0;
   for (int i = 0; i < kT; ++i) {
     int4 sum = (Group::From(ys0[i]) + Group::From(ys1[i])).Into();
@@ -94,14 +119,14 @@ int main() {
       ++mismatches;
     }
   }
-  printf("  BatchEval at points: mismatches: %d\n", mismatches);
+  printf("  BatchEval at points: mismatches: %d, proof match: %s\n", mismatches, proofs_match ? "yes" : "NO");
 
   // Batch evaluation away from the points: y0+y1 == 0
   In non_alphas[kT] = {11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57,
       59, 61, 63, 65, 67, 69};
   xs.assign(non_alphas, non_alphas + kT);
-  vdmpf.BatchEval(false, k0, std::span<const In>(xs), std::span<int4>(ys0), pi0);
-  vdmpf.BatchEval(true, k1, std::span<const In>(xs), std::span<int4>(ys1), pi1);
+  vdmpf.BatchEval(false, sigma, m_rt, b_size_rt, seeds0, cws, cs, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys0), pi0);
+  vdmpf.BatchEval(true, sigma, m_rt, b_size_rt, seeds1, cws, cs, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys1), pi1);
 
   int4 zero = {0, 0, 0, 0};
   mismatches = 0;
@@ -111,7 +136,8 @@ int main() {
       ++mismatches;
     }
   }
-  printf("  BatchEval off points: mismatches: %d\n", mismatches);
+  proofs_match = Vdmpf::Verify(pi0, pi1);
+  printf("  BatchEval off points: mismatches: %d, proof match: %s\n", mismatches, proofs_match ? "yes" : "NO");
 
   VdmpfPrg::FreeCtxs(ctxs);
   return 0;

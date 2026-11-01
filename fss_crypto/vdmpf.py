@@ -1,286 +1,109 @@
-"""Python wrapper for the VDMPF (Verifiable Distributed Multi-Point Function) scheme."""
+"""Thin component-buffer bindings for C++ Vdmpf."""
 
-import dataclasses
+from fss_crypto._scheme import _Scheme
 
-import torch
+class Vdmpf(_Scheme):
+    """Configure a multi-point scheme without owning an alternative Key API.
 
-from fss_crypto._jit import load
-from fss_crypto._validate import (
-    _ch_bucket,
-    validate_bucket_bits,
-    validate_cpu_only,
-    validate_cuda_backends,
-    validate_device_match,
-    validate_group,
-    validate_hash,
-    validate_in_bits,
-    validate_max_points,
-    validate_party,
-    validate_prg,
-    validate_prp,
-    validate_query_domain,
-    validate_retry,
-    validate_t,
-    verify_proofs,
-)
-
-
-def _validate_s0s(s0s: torch.Tensor, m: int) -> None:
-    if s0s.shape != (m, 2, 4) or s0s.dtype != torch.int32:
-        raise TypeError(
-            f"s0s must be a ({m}, 2, 4) int32 tensor, "
-            f"got shape {tuple(s0s.shape)} dtype {s0s.dtype}"
-        )
-
-
-def _validate_sigma(sigma: torch.Tensor) -> None:
-    if sigma.shape != (4,) or sigma.dtype != torch.int32:
-        raise TypeError(
-            f"sigma must be a (4,) int32 tensor, "
-            f"got shape {tuple(sigma.shape)} dtype {sigma.dtype}"
-        )
-
-
-def _validate_alphas(alphas: torch.Tensor, t: int, in_bits: int) -> None:
-    if alphas.shape != (t,) or alphas.dtype != torch.int64:
-        raise TypeError(
-            f"alphas must be a ({t},) int64 tensor, "
-            f"got shape {tuple(alphas.shape)} dtype {alphas.dtype}"
-        )
-    lo = int(alphas.min())
-    hi = int(alphas.max())
-    if lo < 0 or hi >= (1 << in_bits):
-        raise ValueError(f"alphas must be in [0, 2^{in_bits}), got [{lo}, {hi}]")
-
-
-def _validate_betas(betas: torch.Tensor, t: int) -> None:
-    if betas.shape != (t, 4) or betas.dtype != torch.int32:
-        raise TypeError(
-            f"betas must be a ({t}, 4) int32 tensor, "
-            f"got shape {tuple(betas.shape)} dtype {betas.dtype}"
-        )
-
-
-def _validate_meta(meta: torch.Tensor) -> None:
-    if meta.shape != (2,) or meta.dtype != torch.int32:
-        raise TypeError(
-            f"meta must be a (2,) int32 tensor, "
-            f"got shape {tuple(meta.shape)} dtype {meta.dtype}"
-        )
-
-
-def _validate_xs(xs: torch.Tensor) -> None:
-    if xs.dim() != 1 or xs.dtype != torch.int64:
-        raise TypeError(
-            f"xs must be a 1-D int64 tensor, "
-            f"got shape {tuple(xs.shape)} dtype {xs.dtype}"
-        )
-
-
-@dataclasses.dataclass(frozen=True)
-class VdmpfKey:
-    """Key material returned by Vdmpf.gen().
-
-    Attributes:
-        cws: (m, bucket_bits, 8) int32 correction words, shared by both
-            parties.
-        cs: (m, 4, 4) int32 correction seeds, shared by both parties.
-        ocw: (m, 4) int32 output correction words, shared by both parties.
-        s0s: (2, m, 4) int32 initial seeds; row i is party i's key share.
-        sigma: (4,) int32 effective PRP seed for Cuckoo hashing, written back
-            after Gen's internal retries.
-        meta: (2,) int32 runtime parameters {m_rt, b_size_rt} used by eval.
+    Cws have native opaque shape [M, bucket_bits + 1, sizeof(Cw)]. Seed pairs
+    have party-first shape [2, M, 4], party seeds [M, 4], and sigma [4].
+    M is kBucketCount. All native block buffers are contiguous int32 tensors.
+    cs has shape [M, 4, 4], and each proof has shape [4, 4].
+    Runtime bucket sizes are Python integers, including 128-bit values.
+    Output group width and modulus come from group, independently of in_bits.
     """
 
-    cws: torch.Tensor
-    cs: torch.Tensor
-    ocw: torch.Tensor
-    s0s: torch.Tensor
-    sigma: torch.Tensor
-    meta: torch.Tensor
+    def __init__(self, in_bits, max_points, bucket_bits, group, prg, xor_hash, hash, prp, *,
+                 in_type=None, ch_lambda=80):
+        super().__init__("vdmpf", in_bits=in_bits, max_points=max_points,
+                         bucket_bits=bucket_bits, group=group, prg=prg,
+                         xor_hash=xor_hash, hash=hash, prp=prp, in_type=in_type,
+                         ch_lambda=ch_lambda)
 
-    def to(self, device) -> "VdmpfKey":
-        """Return a copy of the key with every tensor moved to device."""
-        return VdmpfKey(cws=self.cws.to(device), cs=self.cs.to(device),
-                        ocw=self.ocw.to(device), s0s=self.s0s.to(device),
-                        sigma=self.sigma.to(device), meta=self.meta.to(device))
+    @property
+    def kMinPoints(self) -> int:
+        """Smallest supported point count for the configured bucket width."""
+        return self._native.kMinPoints
 
+    @property
+    def kBucketCount(self) -> int:
+        """Allocated bucket count from Core, used to size seed and CS rows."""
+        return self._native.kBucketCount
 
-class Vdmpf:
-    """2-party verifiable distributed multi-point function (VDMPF).
+    @property
+    def kDomainSize(self) -> int:
+        """Input-domain cardinality from Core, returned as a Python integer."""
+        return self._native.kDomainSize
 
-    Gen runs on the host. With prp="chacha_feistel", batch_eval also accepts
-    CUDA tensors (move the key with VdmpfKey.to("cuda")) and runs the GPU
-    Merkle-fold pipeline; the default OpenSSL-backed PRP keeps every tensor
-    on CPU. The CPU path produces the paper-faithful sequential proof chains
-    and the CUDA path the Merkle-fold proofs: output shares are identical but
-    the proofs are not, so both parties must evaluate on the same device.
-    This binding release keeps alphas and xs in int64 tensors, so in_bits is
-    limited to 63.
+    @property
+    def kBucketSize(self) -> int:
+        """Core bucket size at max_points. Use Gen's b_size_rt for actual keys."""
+        return self._native.kBucketSize
 
-    Args:
-        in_bits: Input domain bit size (1..63).
-        max_points: Maximum number of point functions (>= 30).
-        bucket_bits: Bit size of the inner VDPF domain (per bucket).
-        group: Output group type, "bytes" or "uint".
-        prg: PRG type, "chacha" or "aes128_mmo".
-        xor_hash: XorHash type (the paper's H), "blake3" or "sha256".
-        hash: Hash type (the paper's H'); defaults to xor_hash.
-        prp: PRP type for Cuckoo hashing, "aes128_feistel" (CPU-only) or
-            "chacha_feistel" (CPU and CUDA).
-    """
+    def gen(self, cws, cs, sigma, s0s, as_, b_bufs, t, max_evictions=1000):
+        """Make one CPU Core attempt, preserving sigma and seeds.
 
-    def __init__(self, in_bits: int, max_points: int, bucket_bits: int,
-                 group: str = "bytes", prg: str = "chacha",
-                 xor_hash: str = "blake3", hash: str | None = None,
-                 prp: str = "aes128_feistel"):
-        validate_in_bits(in_bits)
-        if in_bits > 63:
-            raise ValueError(
-                f"in_bits must be at most 63 in this binding release "
-                f"(alphas and xs are int64 tensors), got {in_bits}"
-            )
-        validate_max_points(max_points)
-        validate_bucket_bits(in_bits, max_points, bucket_bits)
-        validate_group(group)
-        validate_prg(prg, "vdmpf")
-        validate_hash(xor_hash)
-        if hash is None:
-            hash = xor_hash
-        validate_hash(hash)
-        validate_prp(prp)
-        self.in_bits = in_bits
-        self.max_points = max_points
-        self.bucket_bits = bucket_bits
-        self.group = group
-        self.prg = prg
-        self.prp = prp
-        self.xor_hash = xor_hash
-        self.hash = hash
-        # Number of Cuckoo-hash buckets, mirroring fss::cuckoo_hash::ChBucket.
-        self.m = _ch_bucket(max_points)
-        self._ext = load("vdmpf", in_bits, group, prg, max_points=max_points,
-                         bucket_bits=bucket_bits, xor_hash=xor_hash,
-                         hash=hash, prp=prp)
-
-    def gen(self, s0s: torch.Tensor, sigma: torch.Tensor,
-            alphas: torch.Tensor, betas: torch.Tensor, t: int,
-            retry: bool = True) -> VdmpfKey:
-        """Generate VDMPF keys for t point functions.
-
-        Args:
-            s0s: (m, 2, 4) int32 tensor of initial seeds for the inner VDPFs.
-            sigma: (4,) int32 tensor, the PRP seed for Cuckoo hashing.
-            alphas: (t,) int64 tensor of distinct point inputs in
-                [0, 2^in_bits).
-            betas: (t, 4) int32 tensor of point outputs. The scheme clamps the
-                last word's LSB to 0 (lambda = 127), so that bit of beta never
-                reconstructs.
-            t: Number of points, 30 <= t <= max_points.
-            retry: Whether to retry with perturbed sigma and seeds when Cuckoo
-                hashing fails.
-
-        Returns:
-            VdmpfKey holding the correction words, correction seeds, output
-            correction words, the effective seeds and sigma of the successful
-            attempt, and the runtime parameters.
+        t must be between kMinPoints and the configured max_points.
+        s0s is contiguous int32 [2, kBucketCount, 4]. Each s0s[party] is
+        contiguous and can be passed directly to this party's evaluation.
+        Return (status, m_rt, b_size_rt). Only status 0 makes outputs usable.
+        Status 1 means Cuckoo placement failed: draw a fresh uniform sigma
+        from a cryptographically secure RNG and preserve s0s.
+        Status 2 means an inner VDPF failed: preserve sigma and draw fresh
+        independent uniform seed pairs for every allocated bucket from a
+        cryptographically secure RNG. For either failure, discard all
+        corrections/checks and rerun the whole gen with the same points and
+        payloads. The caller owns retry limits.
+        max_evictions bounds Cuckoo insertion work within this one call.
+        as_ holds at least t distinct inputs and b_bufs at least t output blocks.
+        Core clears bit 0 of b_bufs[j, 3] before Group::From conversion.
+        In128 inputs use int64
+        or uint64 [t, 2], with the low limb first.
         """
-        validate_t(t, self.max_points)
-        validate_retry(retry)
-        _validate_s0s(s0s, self.m)
-        _validate_sigma(sigma)
-        _validate_alphas(alphas, t, self.in_bits)
-        _validate_betas(betas, t)
-        if torch.unique(alphas).numel() != t:
-            raise ValueError(f"alphas must be distinct, got {t} points with duplicates")
-        validate_cpu_only(s0s, sigma, alphas, betas, fn_name="gen")
+        return self._native.gen(self._cws(cws), cs, sigma, s0s, as_, b_bufs,
+                                t, max_evictions)
 
-        cws, cs, ocw, s0s, sigma, meta = self._ext.gen(s0s, sigma, alphas, betas, t, retry)
-        return VdmpfKey(cws=cws, cs=cs, ocw=ocw, s0s=s0s, sigma=sigma, meta=meta)
+    def batch_eval(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, xs, ys, pi):
+        """Write caller-owned output shares and a CPU chain proof."""
+        self._native.batch_eval(b, sigma, m_rt, b_size_rt, s0s,
+                                self._cws(cws), cs, xs, ys, pi)
 
-    def _check_key(self, key: VdmpfKey) -> None:
-        if not isinstance(key, VdmpfKey):
-            raise TypeError(f"key must be a VdmpfKey, got {type(key).__name__}")
-        expected_s0s = (2, self.m, 4)
-        if key.s0s.shape != expected_s0s or key.s0s.dtype != torch.int32:
-            raise TypeError(
-                f"key.s0s must be a {expected_s0s} int32 tensor, "
-                f"got shape {tuple(key.s0s.shape)} dtype {key.s0s.dtype}"
-            )
-        _validate_sigma(key.sigma)
-        _validate_meta(key.meta)
-        cws_expected = (self.m, self.bucket_bits, 8)
-        if key.cws.shape != cws_expected or key.cws.dtype != torch.int32:
-            raise TypeError(
-                f"cws must be a {cws_expected} int32 tensor, "
-                f"got shape {tuple(key.cws.shape)} dtype {key.cws.dtype}"
-            )
-        if key.cs.shape != (self.m, 4, 4) or key.cs.dtype != torch.int32:
-            raise TypeError(
-                f"cs must be a ({self.m}, 4, 4) int32 tensor, "
-                f"got shape {tuple(key.cs.shape)} dtype {key.cs.dtype}"
-            )
-        if key.ocw.shape != (self.m, 4) or key.ocw.dtype != torch.int32:
-            raise TypeError(
-                f"ocw must be a ({self.m}, 4) int32 tensor, "
-                f"got shape {tuple(key.ocw.shape)} dtype {key.ocw.dtype}"
-            )
+    def batch_eval_merkle(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs,
+                          xs, ys, pi):
+        """Write shares and the canonical Core Merkle proof on CPU or CUDA.
 
-    def batch_eval(self, party: int, key: VdmpfKey,
-                   xs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Evaluate the VDMPF on a batch of inputs and produce a proof.
-
-        Args:
-            party: Party index, 0 or 1.
-            key: This party's key from gen().
-            xs: 1-D int64 tensor of inputs in [0, 2^in_bits). Duplicates are
-                allowed; each occurrence gets its own share.
-
-        Returns:
-            (ys, pi): a (t, 4) int32 tensor of output shares and a (4, 4)
-            int32 proof, both on the key's device. Verification compares the
-            proofs of both parties. CPU evaluation produces the sequential
-            chain proof and CUDA evaluation the Merkle-fold proof, so both
-            parties must evaluate on the same device.
+        Leaves retain (query position, PRP candidate) order within each bucket.
+        Adjacent pairs fold with odd-node carry, then bucket roots fold in
+        bucket order. Both parties must use the same ordered xs and protocol.
         """
-        validate_party(party)
-        self._check_key(key)
-        _validate_xs(xs)
-        validate_device_match(key.cws, key.s0s, key.sigma, key.meta, xs, key.cs, key.ocw)
-        validate_cuda_backends(xs, prg=self.prg, prp=self.prp, xor_hash=self.xor_hash, hash=self.hash)
-        validate_query_domain(xs, self.in_bits)
-        xs = xs.contiguous()
+        self._native.batch_eval_merkle(b, sigma, m_rt, b_size_rt, s0s,
+                                       self._cws(cws), cs, xs, ys, pi)
 
-        return self._ext.batch_eval(party, key.cws, key.cs, key.ocw,
-                                    key.s0s[party], key.sigma, key.meta, xs)
+    def eval_all(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, ys, pi):
+        """Write the full CPU output domain and its Core chain proof.
 
-    def batch_eval_merkle(self, party: int, key: VdmpfKey,
-                          xs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Evaluate a fixed ordered query sequence with Merkle proofs on CPU or CUDA.
-
-        Both parties must use this accumulator and the same query order.
-        Duplicate and empty queries are supported.
+        All buffers must use CPU storage. Outputs and proof match
+        ``batch_eval`` over all domain inputs in increasing order.
+        The caller allocates ``ys`` and ``pi``.
         """
-        validate_party(party)
-        self._check_key(key)
-        _validate_xs(xs)
-        validate_device_match(key.cws, key.s0s, key.sigma, key.meta, xs, key.cs, key.ocw)
-        validate_cuda_backends(xs, prg=self.prg, prp=self.prp, xor_hash=self.xor_hash, hash=self.hash)
-        validate_query_domain(xs, self.in_bits)
-        return self._ext.batch_eval_merkle(party, key.cws, key.cs, key.ocw,
-                                           key.s0s[party], key.sigma, key.meta,
-                                           xs.contiguous())
+        self._native.eval_all(b, sigma, m_rt, b_size_rt, s0s,
+                              self._cws(cws), cs, ys, pi)
 
-    @staticmethod
-    def verify(pi0: torch.Tensor, pi1: torch.Tensor) -> bool:
-        """Verify a pair of proofs from batch_eval().
+    def eval_all_merkle(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, ys, pi, *,
+                        threads_per_block: int = 256):
+        """Write the full output domain and its Core Merkle proof on CPU or CUDA.
 
-        Args:
-            pi0: (4, 4) int32 proof from party 0.
-            pi1: (4, 4) int32 proof from party 1. Both proofs must use the
-                same accumulator, query order, and device.
-
-        Returns:
-            True if the proofs match (Accept), False otherwise (Reject).
+        CUDA uses threads_per_block. CPU ignores this value.
+        All buffers must use the same device. Outputs and proof match
+        ``batch_eval_merkle`` over all domain inputs in increasing order.
+        The caller allocates ``ys`` and ``pi``.
         """
-        return verify_proofs(pi0, pi1)
+        self._execution_native(ys, threads_per_block=threads_per_block).eval_all_merkle(b, sigma, m_rt, b_size_rt, s0s,
+                                     self._cws(cws), cs, ys, pi)
+
+    def verify(self, pi0, pi1):
+        """Compare proofs. CUDA proofs require a stream-local scalar transfer."""
+        return self._native.verify(pi0, pi1)
+
+
+__all__ = ['Vdmpf']

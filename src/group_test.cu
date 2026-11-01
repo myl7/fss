@@ -24,18 +24,6 @@ static int4 RandomClampedInt4(std::mt19937 &gen) {
   return {dis(gen), dis(gen), dis(gen), dis(gen) & ~1};
 }
 
-// Helper to determine comparison size for each group type.
-// Uint groups only use the low sizeof(T) bytes; Bytes uses the full 16B.
-template <typename Group>
-constexpr size_t GroupCompareSize() {
-  return sizeof(int4);
-}
-template <typename T, T mod>
-constexpr size_t GroupCompareSize<fss::group::Uint<T, mod>>() {
-  if constexpr (sizeof(T) == 16) return sizeof(int4);
-  else return sizeof(T);
-}
-
 template <typename Group>
 class GroupAxiomTest : public ::testing::Test {
 protected:
@@ -54,7 +42,7 @@ protected:
   void ExpectEqual(const Group &lhs, const Group &rhs) {
     int4 l = lhs.Into();
     int4 r = rhs.Into();
-    EXPECT_EQ(memcmp(&l, &r, GroupCompareSize<Group>()), 0);
+    EXPECT_EQ(memcmp(&l, &r, sizeof(int4)), 0);
   }
 };
 

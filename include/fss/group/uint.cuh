@@ -10,11 +10,13 @@
 #include <cuda_runtime.h>
 #include <type_traits>
 #include <cassert>
+#include <cstdint>
 
 namespace fss::group {
 
 /**
  * Unsigned integers with arithmetic addition and optional modulo as a group.
+ * @ingroup fss_api
  *
  * @tparam T Type to store the value. From uint8_t to __uint128_t.
  * @tparam mod Modulus, making the group addition defined as $a + b \mod mod$.
@@ -27,64 +29,78 @@ namespace fss::group {
 template <typename T, T mod = 0>
   requires((std::is_unsigned_v<T> || std::is_same_v<T, __uint128_t>) && sizeof(T) <= 16 &&
       (sizeof(T) < 16 || (mod > 0 && mod <= static_cast<T>(1) << 127)))
-struct Uint {
-  T val;
+class Uint {
+public:
+  // Groupable interface.
 
+  /** Return the group sum. */
   __host__ __device__ Uint operator+(Uint rhs) const {
-    if constexpr (mod == 0) return {static_cast<T>(val + rhs.val)};
+    if constexpr (mod == 0) return {static_cast<T>(val_ + rhs.val_)};
 
-    if (val >= mod - rhs.val) return {static_cast<T>(val + rhs.val - mod)};
-    else return {static_cast<T>(val + rhs.val)};
+    if (val_ >= mod - rhs.val_) return {static_cast<T>(val_ + rhs.val_ - mod)};
+    else return {static_cast<T>(val_ + rhs.val_)};
   }
 
+  /** Return the additive inverse. */
   __host__ __device__ Uint operator-() const {
-    if constexpr (mod == 0) return {static_cast<T>(-val)};
+    if constexpr (mod == 0) return {static_cast<T>(-val_)};
 
-    if (val == 0) return {0};
-    else return {static_cast<T>(mod - val)};
+    if (val_ == 0) return {0};
+    else return {static_cast<T>(mod - val_)};
   }
 
-  __host__ __device__ Uint() : val(0) {}
+  /** Construct the additive identity. */
+  __host__ __device__ Uint() : val_(0) {}
 
+  /** Convert a clamped block to a group element, reducing modulo mod when set. */
   __host__ __device__ static Uint From(int4 buf) {
     assert((buf.w & 1) == 0);
 
-    T val = 0;
-    if constexpr (sizeof(T) < 4) val = buf.x & ((1 << 8 * sizeof(T)) - 1);
+    T value = 0;
+    if constexpr (sizeof(T) < 4) value = buf.x & ((1 << 8 * sizeof(T)) - 1);
     // Cast to unsigned int first to prevent sign extension when promoting to larger types
-    else if constexpr (sizeof(T) == 4) val = static_cast<unsigned int>(buf.x);
+    else if constexpr (sizeof(T) == 4) value = static_cast<unsigned int>(buf.x);
     else if constexpr (sizeof(T) == 8)
-      val = static_cast<T>(static_cast<unsigned int>(buf.x)) | static_cast<T>(static_cast<unsigned int>(buf.y)) << 32;
+      value = static_cast<T>(static_cast<unsigned int>(buf.x)) | static_cast<T>(static_cast<unsigned int>(buf.y)) << 32;
     else if constexpr (sizeof(T) == 16)
-      val = static_cast<T>(static_cast<unsigned int>(buf.x)) | static_cast<T>(static_cast<unsigned int>(buf.y)) << 32 |
+      value = static_cast<T>(static_cast<unsigned int>(buf.x)) | static_cast<T>(static_cast<unsigned int>(buf.y)) << 32 |
           static_cast<T>(static_cast<unsigned int>(buf.z)) << 64 |
           // For uint128, LSB of buf.w is the clamped bit
           static_cast<T>(static_cast<unsigned int>(buf.w) >> 1) << 96;
     else __builtin_unreachable();
 
-    if constexpr (mod > 0) val %= mod;
+    if constexpr (mod > 0) value %= mod;
 
-    return {val};
+    return {value};
   }
 
+  /** Encode this group element as a clamped block. */
   __host__ __device__ int4 Into() const {
     int4 buf = {0, 0, 0, 0};
-    if constexpr (sizeof(T) <= 4) buf.x = static_cast<int>(val);
+    if constexpr (sizeof(T) <= 4) buf.x = static_cast<int>(val_);
     else if constexpr (sizeof(T) == 8) {
-      buf.x = static_cast<int>(val & 0xffffffff);
-      buf.y = static_cast<int>(val >> 32);
+      buf.x = static_cast<int>(val_ & 0xffffffff);
+      buf.y = static_cast<int>(val_ >> 32);
     } else if constexpr (sizeof(T) == 16) {
-      buf.x = static_cast<int>(val & 0xffffffff);
-      buf.y = static_cast<int>((val >> 32) & 0xffffffff);
-      buf.z = static_cast<int>((val >> 64) & 0xffffffff);
+      buf.x = static_cast<int>(val_ & 0xffffffff);
+      buf.y = static_cast<int>((val_ >> 32) & 0xffffffff);
+      buf.z = static_cast<int>((val_ >> 64) & 0xffffffff);
       // For uint128, its LSB is the clamped bit
-      buf.w = static_cast<int>((val >> 96) << 1);
+      buf.w = static_cast<int>((val_ >> 96) << 1);
     } else __builtin_unreachable();
     return buf;
   }
 
+  // Additional public API.
+  // Temporary access for the host DCF full-domain fast path. Revisit after
+  // comparing it with the generic Groupable implementation.
+  /** Return a copy of the underlying unsigned integer value. */
+  __host__ __device__ T Value() const { return val_; }
+
 private:
-  __host__ __device__ Uint(T v) : val(v) {}
+  T val_;
+
+  __host__ __device__ Uint(T v) : val_(v) {}
 };
 static_assert(Groupable<Uint<uint8_t>>);
 static_assert(Groupable<Uint<uint16_t>>);

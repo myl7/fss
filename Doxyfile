@@ -1008,7 +1008,6 @@ WARN_LOGFILE           =
 
 INPUT                  = README.md \
                          include \
-                         doc/api-capabilities.md \
                          doc/bench_figures.md \
                          doc/benchmarks.md \
                          doc/bench_third_parties.md \
@@ -1144,7 +1143,7 @@ EXCLUDE_PATTERNS       = *_test.*
 # wildcard * is used, a substring. Examples: ANamespace, AClass,
 # ANamespace::AClass, ANamespace::*Test
 
-EXCLUDE_SYMBOLS        =
+EXCLUDE_SYMBOLS        = *::detail::*
 
 # The EXAMPLE_PATH tag can be used to specify one or more files or directories
 # that contain example code fragments that are included (see the \include

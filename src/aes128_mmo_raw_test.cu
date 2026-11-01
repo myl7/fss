@@ -6,6 +6,8 @@
 #include <cstring>
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/util.cuh>
+#include <fss/hash/aes128_ccr.cuh>
+#include <fss/prg/aes128_mmo_soft.cuh>
 
 namespace {
 
@@ -76,7 +78,7 @@ void TestGenBatchForwardsToGen8(uint64_t seed) {
   Aes128MmoRaw<mul> prg(keys);
 
   for (int trial = 0; trial < kTrials; ++trial) {
-    cuda::std::array<int4, 8> seeds;
+    int4 seeds[8];
     for (auto &seed : seeds) seed = RandomInt4(gen);
 
     auto batched = fss::detail::GenBatch<mul>(prg, seeds);
@@ -126,7 +128,7 @@ void TestGenBatchFallsBackToGen(uint64_t seed) {
   PlainPrg<mul> prg;
 
   for (int trial = 0; trial < kTrials; ++trial) {
-    cuda::std::array<int4, 8> seeds;
+    int4 seeds[8];
     for (auto &seed : seeds) seed = RandomInt4(gen);
 
     auto batched = fss::detail::GenBatch<mul>(prg, seeds);
@@ -179,3 +181,35 @@ TEST(Aes128MmoRawGen8Test, BothChildrenExpansion) {
     }
   }
 }
+
+namespace {
+namespace aes_ccr {
+using RawHash = fss::hash::Aes128Ccr<fss::prg::Aes128MmoRaw<1>>;
+using SoftHash = fss::hash::Aes128Ccr<fss::prg::Aes128Soft<1>>;
+static_assert(CcrHashable<RawHash> && CcrHashable<SoftHash>);
+void ExpectBlock(int4 actual, int4 expected) {
+  EXPECT_EQ(actual.x, expected.x);
+  EXPECT_EQ(actual.y, expected.y);
+  EXPECT_EQ(actual.z, expected.z);
+  EXPECT_EQ(actual.w, expected.w);
+}
+
+TEST(Aes128Ccr, KnownAnswer) {
+  const uint8_t keys[1][16] = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}};
+  uint32_t te0[256];
+  uint8_t sbox[256];
+  fss::prg::aes_detail::InitTe0(te0);
+  fss::prg::aes_detail::InitSbox(sbox);
+  RawHash raw{fss::prg::Aes128MmoRaw<1>{keys}};
+  SoftHash soft{fss::prg::Aes128Soft<1>{keys, te0, sbox}};
+  int4 block = {static_cast<int>(0xbbaa9988u), static_cast<int>(0xffeeddccu),
+      static_cast<int>(0x88888888u), static_cast<int>(0x88888888u)};
+  // sigma(block) is 00112233445566778899aabbccddeeff, the AES-128 known-answer plaintext.
+  // AES output is 69c4e0d86a7b0430d8cdb78070b4c55a. MMO xors the plaintext once.
+  int4 expected = {static_cast<int>(0xebc2d569u), static_cast<int>(0x47622e2eu),
+      static_cast<int>(0x3b1d5450u), static_cast<int>(0xa52b69bcu)};
+  ExpectBlock(raw.Hash(block), expected);
+  ExpectBlock(soft.Hash(block), expected);
+}
+}  // namespace aes_ccr
+}  // namespace

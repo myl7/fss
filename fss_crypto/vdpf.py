@@ -1,226 +1,90 @@
-"""Python wrapper for the VDPF (verifiable distributed point function) scheme."""
+"""Thin component-buffer bindings for the C++ verifiable point function."""
 
-import torch
+from fss_crypto._scheme import _Scheme, _parallel_depth
 
-from fss_crypto._int import split_uint128
-from fss_crypto._jit import load
-from fss_crypto._validate import (
-    validate_alpha,
-    validate_beta,
-    validate_cpu_only,
-    validate_cs,
-    validate_cuda_backends,
-    validate_device_match,
-    validate_domain_value,
-    validate_full_domain_size,
-    validate_group,
-    validate_hash,
-    validate_in_bits,
-    validate_ocw,
-    validate_par_depth,
-    validate_party,
-    validate_pi_tildes,
-    validate_prg,
-    validate_retry,
-    validate_s0,
-    validate_s0s,
-    validate_vdpf_cws,
-    verify_proofs,
-)
+class Vdpf(_Scheme):
+    """Configure Core VDPF with explicit PRG and verification hashes.
 
-
-class Vdpf:
-    """2-party verifiable distributed point function.
-
-    Evaluation produces output shares plus a corrected per-point hash; the
-    hashes accumulate into a proof and two parties compare proofs to detect
-    malicious key modification.
-
-    Args:
-        in_bits: Input domain bit size (1..128).
-        group: Output group type, "bytes" or "uint".
-        prg: PRG type, "chacha" or "aes128_mmo".
-        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
-            automatically, and positive values bound the split depth.
-        xor_hash: XOR-collision-resistant hash, "blake3" or "sha256".
-        hash: Proof hash, "blake3" or "sha256"; defaults to xor_hash.
+    Corrections include the final output correction. Native block buffers use
+    int32 [..., 4], and cs and proofs use int32 [4, 4].
+    Output group width and modulus come from group, independently of in_bits.
+    Chain and Merkle proofs are distinct protocols. Both parties must use the
+    same protocol and the same ordered query sequence.
     """
 
-    def __init__(self, in_bits: int, group: str = "bytes", prg: str = "chacha",
-                 xor_hash: str = "blake3", hash: str | None = None, *, par_depth: int = 0):
-        validate_par_depth(par_depth)
-        validate_in_bits(in_bits)
-        validate_group(group)
-        validate_prg(prg, "vdpf")
-        validate_hash(xor_hash)
-        if hash is None:
-            hash = xor_hash
-        validate_hash(hash)
+    def __init__(self, in_bits, group, prg, xor_hash, hash, *, in_type=None):
+        super().__init__("vdpf", in_bits=in_bits, group=group, prg=prg,
+                         xor_hash=xor_hash, hash=hash, in_type=in_type)
 
-        self.par_depth = int(par_depth)
-        self.in_bits = in_bits
-        self.group = group
-        self.prg = prg
-        self.xor_hash = xor_hash
-        self.hash = hash
-        self._ext = load("vdpf", in_bits, group, prg, xor_hash=xor_hash, hash=hash, par_depth=self.par_depth)
+    def gen(self, cws, cs, s0s, a, b_buf):
+        """Write corrections once, preserving s0s. Return 0 on success or 1.
 
-    def gen(self, s0s: torch.Tensor, alpha: int, beta: torch.Tensor,
-            retry: bool = True) -> tuple:
-        """Generate VDPF keys.
-
-        Args:
-            s0s: (2, 4) int32 tensor of initial seeds.
-            alpha: Point function input in [0, 2^in_bits).
-            beta: (4,) int32 tensor of point function output.
-            retry: Whether to retry with perturbed seeds on the rare
-                bad-seed cases.
-
-        Returns:
-            Tuple (s0s_eff, cws, cs, ocw): the (2, 4) int32 tensor of
-            effective seeds (the returned keys carry these; use them instead
-            of s0s afterwards), the (in_bits, 8) int32 correction words, the
-            (4, 4) int32 correction seeds, and the (4,) int32 output
-            correction word.
+        Outputs are unspecified on failure. s0s has shape [2, 4].
+        To repeat after status 1, draw two fresh independent uniform seed
+        blocks from a cryptographically secure RNG and call gen again with
+        the same a and b_buf. Retry limits belong to the caller.
+        b_buf is an int32 [4] native block. Core clears bit 0 of b_buf[3]
+        before Group::From conversion. This does not mutate b_buf.
         """
-        validate_retry(retry)
-        validate_s0s(s0s)
-        validate_alpha(alpha, self.in_bits)
-        validate_beta(beta)
-        validate_cpu_only(s0s, beta, fn_name="gen")
+        return self._native.gen(self._cws(cws), cs, s0s, a, b_buf)
 
-        alpha_lo, alpha_hi = split_uint128(alpha)
-        return self._ext.gen(s0s, alpha_lo, alpha_hi, beta, retry)
+    def eval(self, b, s0, cws, cs, x, y):
+        """Write one output share to y and return its corrected hash [4, 4]."""
+        return self._native.eval(b, s0, self._cws(cws), cs, x, y)
 
-    def eval(self, party: int, s0: torch.Tensor, cws: torch.Tensor,
-             cs: torch.Tensor, ocw: torch.Tensor,
-             x: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Evaluate VDPF on a single input.
+    def prove(self, pi_tildes, cs, pi):
+        """Write the Core chain proof on CPU from corrected hashes [N, 4, 4]."""
+        self._native.prove(pi_tildes, cs, pi)
 
-        Args:
-            party: Party index, 0 or 1.
-            s0: (4,) int32 tensor, the party's effective seed from gen().
-            cws: (in_bits, 8) int32 tensor from gen().
-            cs: (4, 4) int32 tensor from gen().
-            ocw: (4,) int32 tensor from gen().
-            x: Input to evaluate.
+    def prove_merkle(self, pi_tildes, cs, pi, *, par_depth: int = 0):
+        """Write the canonical Merkle proof on CPU or through its GPU helper.
 
-        Returns:
-            Tuple (y, pi_tilde): the (4,) int32 tensor output share and the
-            (4, 4) int32 tensor corrected per-point hash.
+        pi_tildes is a nonempty int32 [N, 4, 4] tensor in query order.
+        Adjacent nodes combine, carrying odd trailing nodes unchanged.
+        Execution geometry does not change the proof tree.
+
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
+        CUDA calls ignore par_depth.
         """
-        validate_party(party)
-        validate_s0(s0)
-        validate_vdpf_cws(cws, self.in_bits)
-        validate_cs(cs)
-        validate_ocw(ocw)
-        validate_device_match(s0, cws, cs, ocw)
-        validate_domain_value("x", x, self.in_bits)
-        self._check_cpu_only_hashes(s0)
+        self._native.prove_merkle(pi_tildes, cs, pi, _parallel_depth(par_depth, pi))
 
-        x_lo, x_hi = split_uint128(x)
-        return self._ext.eval(party, s0, cws, cs, ocw, x_lo, x_hi)
+    def eval_all(self, b, s0, cws, cs, ys, pi, *, par_depth: int = 0):
+        """Write all shares and the chain proof on CPU into caller storage.
 
-    def eval_all(self, party: int, s0: torch.Tensor, cws: torch.Tensor,
-                 cs: torch.Tensor, ocw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Evaluate VDPF on the full input domain (chain proof).
-
-        CPU only: the chain proof accumulation is inherently sequential.
-
-        Args:
-            party: Party index, 0 or 1.
-            s0: (4,) int32 tensor, the party's effective seed from gen().
-            cws: (in_bits, 8) int32 tensor from gen().
-            cs: (4, 4) int32 tensor from gen().
-            ocw: (4,) int32 tensor from gen().
-
-        Returns:
-            ((2^in_bits, 4) int32 output shares, (4, 4) int32 chain proof).
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
+        This chain-proof operation requires CPU buffers.
         """
-        validate_party(party)
-        validate_s0(s0)
-        validate_vdpf_cws(cws, self.in_bits)
-        validate_cs(cs)
-        validate_ocw(ocw)
-        validate_cpu_only(s0, cws, cs, ocw, fn_name="eval_all")
+        self._native.eval_all(b, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth, pi))
 
-        validate_full_domain_size(self.in_bits)
-        return self._ext.eval_all(party, s0, cws, cs, ocw)
+    def eval_range(self, b, L, R, s0, cws, cs, ys, pi, *, par_depth: int = 0):
+        """Write shares for Core's inclusive range [L, R] and a CPU chain proof.
 
-    def eval_all_merkle(self, party: int, s0: torch.Tensor,
-                        cws: torch.Tensor, cs: torch.Tensor,
-                        ocw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Evaluate VDPF on the full input domain (Merkle proof).
+        Endpoints may use the full configured input width.
+        The range's output count and byte size must fit addressable storage.
 
-        Same output shares as eval_all(); the proof comes from a Merkle
-        fold over the corrected per-point hashes.
-
-        Args:
-            party: Party index, 0 or 1.
-            s0: (4,) int32 tensor, the party's effective seed from gen().
-            cws: (in_bits, 8) int32 tensor from gen().
-            cs: (4, 4) int32 tensor from gen().
-            ocw: (4,) int32 tensor from gen().
-
-        Returns:
-            Tuple (ys, pi): the (2^in_bits, 4) int32 tensor of output
-            shares and the (4, 4) int32 tensor proof, on the same device as
-            the inputs. CUDA tensors need blake3 hashes and in_bits <= 22.
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
+        This chain-proof operation requires CPU buffers.
         """
-        validate_party(party)
-        validate_s0(s0)
-        validate_vdpf_cws(cws, self.in_bits)
-        validate_cs(cs)
-        validate_ocw(ocw)
-        validate_device_match(s0, cws, cs, ocw)
+        self._native.eval_range(b, L, R, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth))
 
-        validate_full_domain_size(self.in_bits, cuda=s0.device.type == "cuda", cuda_limit=22)
-        if s0.device.type == "cuda":
-            self._check_cpu_only_hashes(s0)
+    def eval_all_merkle(self, b, s0, cws, cs, ys, pi, *, par_depth: int = 0,
+                        frontier_depth: int = 16, threads_per_block: int = 256):
+        """Write full-domain shares and a Merkle proof on the buffers' device.
 
-        return self._ext.eval_all_merkle(party, s0, cws, cs, ocw)
+        CUDA uses frontier_depth/threads_per_block. CPU ignores these values.
 
-    def prove(self, pi_tildes: torch.Tensor, cs: torch.Tensor,
-              merkle: bool = False) -> torch.Tensor:
-        """Accumulate corrected per-point hashes into a single proof.
-
-        Args:
-            pi_tildes: (L, 4, 4) int32 tensor of corrected per-point hashes
-                from eval(), one per evaluated input, in input order for the
-                sequential chain. L must be at least 1.
-            cs: (4, 4) int32 tensor from gen().
-            merkle: Fold adjacent nodes of the fixed input sequence in parallel
-                instead of using the sequential chain. Both folds produce the same 64B proof
-                shape, so verify() is shared. Parties must accumulate with
-                the same flag.
-
-        Returns:
-            (4, 4) int32 tensor proof.
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
+        CUDA calls ignore par_depth.
         """
-        validate_pi_tildes(pi_tildes)
-        validate_cs(cs)
-        if not isinstance(merkle, bool):
-            raise TypeError(
-                f"merkle must be a bool, got {type(merkle).__name__}"
-            )
-        validate_cpu_only(pi_tildes, cs, fn_name="prove")
+        self._execution_native(ys, frontier_depth, threads_per_block).eval_all_merkle(b, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth, pi))
 
-        return self._ext.prove(pi_tildes, cs, merkle)
+    def verify(self, pi0, pi1):
+        """Compare proofs. CUDA proofs require a stream-local scalar transfer."""
+        return self._native.verify(pi0, pi1)
 
-    @staticmethod
-    def verify(pi0: torch.Tensor, pi1: torch.Tensor) -> bool:
-        """Verify a pair of accumulated proofs.
 
-        Stateless: does not use key material or the instance configuration.
-
-        Args:
-            pi0: (4, 4) int32 tensor proof of party 0.
-            pi1: (4, 4) int32 tensor proof of party 1.
-
-        Returns:
-            True if the proofs match (Accept), False otherwise (Reject).
-        """
-        return verify_proofs(pi0, pi1)
-
-    def _check_cpu_only_hashes(self, t: torch.Tensor) -> None:
-        validate_cuda_backends(t, prg=self.prg, xor_hash=self.xor_hash, hash=self.hash)
+__all__ = ['Vdpf']

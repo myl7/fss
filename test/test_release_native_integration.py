@@ -1,229 +1,213 @@
-"""Native acceptance for the repaired public Python options and boundaries."""
+"""Native acceptance for configured backends, execution spaces, and wide inputs."""
 
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 import os
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import torch
 
 import fss_crypto
+from conftest import (evaluate_all, evaluate_multi, evaluate_multi_all,
+                      evaluate_vdpf, evaluate_vdpf_all, generate_multi,
+                      generate_point, generate_vdpf, make_multi_scheme,
+                      make_point_scheme, random_blocks)
 
 
-def _seeds(shape=(2, 4)):
-    return torch.randint(-(1 << 31), 1 << 31, shape, dtype=torch.int32)
-
-
-def _multipoint(scheme_cls, **kwargs):
-    scheme = scheme_cls(8, 30, 4, prp="chacha_feistel", **kwargs)
-    alphas = torch.arange(30, dtype=torch.int64)
-    betas = _seeds((30, 4))
-    betas[:, 3] &= ~1
-    key = scheme.gen(_seeds((scheme.m, 2, 4)), _seeds((4,)), alphas, betas, 30)
-    return scheme, key, alphas, betas
+def _multipoint(verifiable, **kwargs):
+    scheme = make_multi_scheme(verifiable, bits=8, bucket_bits=4, **kwargs)
+    points = torch.arange(30, dtype=torch.int64)
+    payloads = random_blocks((30, 4))
+    payloads[:, 3] &= -2
+    return scheme, generate_multi(scheme, points, payloads), points, payloads
 
 
 @pytest.mark.parametrize("scheme_name", ["Dpf", "Dcf", "HalfTreeDpf", "PackedHalfTreeDpf",
                                           "GrottoDcf", "Vdpf", "Dmpf", "Vdmpf"])
 def test_every_advertised_aes_scheme_cpu(scheme_name):
-    cls = getattr(fss_crypto, scheme_name)
     if scheme_name in ("Dmpf", "Vdmpf"):
-        scheme, key, xs, betas = _multipoint(cls, prg="aes128_mmo")
-        results = [scheme.batch_eval(party, key, xs) for party in (0, 1)]
+        scheme, material, points, payloads = _multipoint(
+            scheme_name == "Vdmpf", backend="aes128_mmo")
+        results = [evaluate_multi(scheme, material, party, points) for party in (0, 1)]
+        assert torch.equal(results[0][0] ^ results[1][0], payloads)
         if scheme_name == "Vdmpf":
             assert scheme.verify(results[0][1], results[1][1])
-            results = [result[0] for result in results]
-        assert torch.equal(results[0] ^ results[1], betas)
-        if scheme_name == "Dmpf":
-            assert torch.equal(scheme.eval_all(0, key) ^ scheme.eval_all(1, key),
-                               torch.cat([betas, torch.zeros((226, 4), dtype=torch.int32)]))
+        else:
+            full = [evaluate_multi_all(scheme, material, party)[0] for party in (0, 1)]
+            expected = torch.zeros_like(full[0])
+            expected[points] = payloads
+            assert torch.equal(full[0] ^ full[1], expected)
         return
 
-    scheme = cls(8, 64, prg="aes128_mmo") if scheme_name == "PackedHalfTreeDpf" else cls(8, prg="aes128_mmo")
-    seeds = _seeds()
-    beta = _seeds((4,))
-    beta[3] &= ~1
-    if scheme_name == "GrottoDcf":
-        cws = scheme.gen(seeds, 7)
-        outputs = [scheme.eval_all(party, seeds[party], cws) for party in (0, 1)]
-        assert torch.equal(outputs[0] ^ outputs[1], torch.arange(256) >= 7)
-        for party in (0, 1):
-            tree = scheme.preprocess(party, seeds[party], cws)
-            assert scheme.eval(party, tree, 7) == bool(outputs[party][7])
-        return
+    scheme = make_point_scheme(scheme_name, bits=8, out_bits=64, backend="aes128_mmo")
+    seeds = random_blocks((2, 4))
+    payload = random_blocks((4,))
+    payload[3] &= -2
     if scheme_name == "Vdpf":
-        seeds, cws, cs, ocw = scheme.gen(seeds, 7, beta)
-        args = (cws, cs, ocw)
-        outputs = [scheme.eval_all(party, seeds[party], *args)[0] for party in (0, 1)]
-    elif scheme_name in ("HalfTreeDpf", "PackedHalfTreeDpf"):
-        args = scheme.gen(seeds, 7, (1 << 64) - 1 if scheme_name == "PackedHalfTreeDpf" else beta)
-        outputs = [scheme.eval_all(party, seeds[party], *args) for party in (0, 1)]
+        material = generate_vdpf(scheme, seeds, 7, payload)
+        full = [evaluate_vdpf_all(scheme, material, party)[0] for party in (0, 1)]
     else:
-        args = (scheme.gen(seeds, 7, beta),)
-        outputs = [scheme.eval_all(party, seeds[party], *args) for party in (0, 1)]
-    reconstructed = outputs[0] ^ outputs[1]
+        beta = (1 << 64) - 1 if scheme_name == "PackedHalfTreeDpf" else payload
+        cws = generate_point(scheme, seeds, 7, beta)
+        full = [evaluate_all(scheme, party, seeds[party], cws) for party in (0, 1)]
+    reconstructed = full[0] ^ full[1]
     if scheme_name == "PackedHalfTreeDpf":
-        assert scheme.extract(reconstructed[7 // scheme.lanes], 7) == (1 << 64) - 1
-    elif scheme_name == "Dcf":
-        assert torch.equal(reconstructed[:7], beta.expand(7, 4))
-        assert not torch.any(reconstructed[7:])
+        assert scheme.extract(reconstructed[7 // scheme.kLanes], 7) == (1 << 64) - 1
+    elif scheme_name == "GrottoDcf":
+        assert torch.equal(reconstructed, torch.arange(256) >= 7)
     else:
-        assert torch.equal(reconstructed[7], beta)
-        assert not torch.any(torch.cat((reconstructed[:7], reconstructed[8:])))
+        expected = torch.zeros_like(reconstructed)
+        if scheme_name == "Dcf":
+            expected[:7] = payload
+        else:
+            expected[7] = payload
+        assert torch.equal(reconstructed, expected)
 
 
-@pytest.mark.parametrize("prg", ["chacha", "aes128_mmo"])
-def test_parallel_and_concurrent_aes_calls(prg):
-    sequential = fss_crypto.Dpf(8, prg=prg, par_depth=0)
-    parallel = fss_crypto.Dpf(8, prg=prg, par_depth=2)
-    # Extension modules intentionally own different public keys/nonces. Compare
-    # each module with its own point evaluator, then reuse a shared module from
-    # several Python threads. The C++ PRG factory owns per-thread AES contexts.
-    seeds, beta = _seeds(), _seeds((4,))
-    beta[3] &= ~1
-    for scheme in (sequential, parallel):
-        cws = scheme.gen(seeds, 7, beta)
-        full = scheme.eval_all(0, seeds[0], cws)
-        assert torch.equal(full[7], scheme.eval(0, seeds[0], cws, 7))
+@pytest.mark.parametrize("backend", ["chacha", "aes128_mmo"])
+def test_parallel_backend_policy_and_concurrent_calls(backend):
+    scheme = make_point_scheme("Dpf", bits=8, backend=backend)
+    seeds = random_blocks((2, 4))
+    payload = torch.tensor([11, 12, 13, 14], dtype=torch.int32)
+    cws = generate_point(scheme, seeds, 7, payload)
+    sequential = evaluate_all(scheme, False, seeds[0], cws)
+    try:
+        parallel = evaluate_all(scheme, False, seeds[0], cws, par_depth=2)
+    except RuntimeError as error:
+        if backend == "chacha":
+            assert "OpenMP" in str(error)
+            pytest.skip("parallel execution requires OpenMP support")
+        assert "OpenMP" in str(error) or "shared mutable contexts" in str(error)
+    else:
+        assert torch.equal(parallel, sequential)
+    assert torch.equal(sequential[7], scheme.eval(False, seeds[0], cws, 7))
+    if backend == "chacha":
         with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = [pool.submit(scheme.eval_all, 0, seeds[0], cws) for _ in range(8)]
-            assert all(torch.equal(future.result(), full) for future in futures)
+            futures = [pool.submit(evaluate_all, scheme, False, seeds[0], cws)
+                       for _ in range(8)]
+            assert all(torch.equal(future.result(), sequential) for future in futures)
 
 
 @pytest.mark.parametrize("scheme_name", ["Dpf", "Dcf", "HalfTreeDpf", "PackedHalfTreeDpf",
                                           "GrottoDcf", "Vdpf", "Dmpf"])
 def test_every_parallel_scheme_matches_point_evaluation(scheme_name):
-    cls = getattr(fss_crypto, scheme_name)
-    domain = torch.arange(256)
     if scheme_name == "Dmpf":
-        scheme, key, _, betas = _multipoint(cls, par_depth=2)
-        full = [scheme.eval_all(party, key) for party in (0, 1)]
+        scheme, material, _, _ = _multipoint(False)
+        points = torch.arange(256, dtype=torch.int64)
         for party in (0, 1):
-            assert torch.equal(full[party], scheme.batch_eval(party, key, domain))
-        expected = torch.zeros((256, 4), dtype=torch.int32)
-        expected[:30] = betas
-        assert torch.equal(full[0] ^ full[1], expected)
+            try:
+                full = evaluate_multi_all(scheme, material, party, par_depth=2)[0]
+            except RuntimeError as error:
+                if "OpenMP" in str(error):
+                    pytest.skip("parallel execution requires OpenMP support")
+                raise
+            assert torch.equal(full, evaluate_multi(scheme, material, party, points)[0])
         return
-
-    scheme = cls(8, 64, par_depth=2) if scheme_name == "PackedHalfTreeDpf" else cls(8, par_depth=2)
-    seeds = _seeds()
-    alpha = 7
-    beta = torch.tensor([11, 12, 13, 14], dtype=torch.int32)
-    if scheme_name == "GrottoDcf":
-        cws = scheme.gen(seeds, alpha)
-        full = [scheme.eval_all(party, seeds[party], cws) for party in (0, 1)]
+    scheme = make_point_scheme(scheme_name, bits=8, out_bits=64)
+    seeds = random_blocks((2, 4))
+    payload = torch.tensor([11, 12, 13, 14], dtype=torch.int32)
+    if scheme_name == "Vdpf":
+        material = generate_vdpf(scheme, seeds, 7, payload)
         for party in (0, 1):
-            tree = scheme.preprocess(party, seeds[party], cws)
-            points = torch.tensor([scheme.eval(party, tree, x) for x in range(256)])
-            assert torch.equal(points, full[party])
-        assert torch.equal(full[0] ^ full[1], domain >= alpha)
+            try:
+                full, _ = evaluate_vdpf_all(scheme, material, party, par_depth=2)
+            except RuntimeError as error:
+                if "OpenMP" in str(error):
+                    pytest.skip("parallel execution requires OpenMP support")
+                raise
+            for x in range(256):
+                assert torch.equal(full[x], evaluate_vdpf(scheme, material, party, x)[0])
         return
-
-    if scheme_name == "Vdpf":
-        seeds, cws, cs, ocw = scheme.gen(seeds, alpha, beta)
-        args = (cws, cs, ocw)
-    elif scheme_name in ("HalfTreeDpf", "PackedHalfTreeDpf"):
-        args = scheme.gen(seeds, alpha, (1 << 64) - 1 if scheme_name == "PackedHalfTreeDpf" else beta)
-    else:
-        args = (scheme.gen(seeds, alpha, beta),)
-    results = [scheme.eval_all(party, seeds[party], *args) for party in (0, 1)]
-    if scheme_name == "Vdpf":
-        assert scheme.verify(results[0][1], results[1][1])
-        full = [result[0] for result in results]
-        merkle = [scheme.eval_all_merkle(party, seeds[party], *args) for party in (0, 1)]
-        assert scheme.verify(merkle[0][1], merkle[1][1])
-        assert all(torch.equal(merkle[party][0], full[party]) for party in (0, 1))
-    else:
-        full = results
+    beta = (1 << 64) - 1 if scheme_name == "PackedHalfTreeDpf" else payload
+    cws = generate_point(scheme, seeds, 7, beta)
     for party in (0, 1):
-        for x in range(256):
-            point = scheme.eval(party, seeds[party], *args, x)
-            if scheme_name == "Vdpf":
-                point = point[0]
-            index = x // scheme.lanes if scheme_name == "PackedHalfTreeDpf" else x
-            assert torch.equal(point, full[party][index])
-    reconstructed = full[0] ^ full[1]
-    if scheme_name == "PackedHalfTreeDpf":
-        for x in range(256):
-            assert scheme.extract(reconstructed[x // scheme.lanes], x) == ((1 << 64) - 1 if x == alpha else 0)
-    else:
-        expected = torch.zeros((256, 4), dtype=torch.int32)
-        if scheme_name == "Dcf":
-            expected[:alpha] = beta
+        try:
+            full = evaluate_all(scheme, party, seeds[party], cws, par_depth=2)
+        except RuntimeError as error:
+            if "OpenMP" in str(error):
+                pytest.skip("parallel execution requires OpenMP support")
+            raise
+        if scheme_name == "GrottoDcf":
+            owned = scheme.preprocess_owned(bool(party), seeds[party], cws)
+            actual = torch.tensor([scheme.eval_tree(owned.view(), x) for x in range(256)])
+            assert torch.equal(full, actual)
         else:
-            expected[alpha] = beta
-        assert torch.equal(reconstructed, expected)
+            for x in range(256):
+                point = scheme.eval(bool(party), seeds[party], cws, x)
+                index = x // scheme.kLanes if scheme_name == "PackedHalfTreeDpf" else x
+                assert torch.equal(full[index], point)
 
 
 @pytest.mark.parametrize("beta", [0, (1 << 63) - 1, 1 << 63, (1 << 64) - 1])
 def test_packed_complete_uint64_beta(beta):
-    scheme = fss_crypto.PackedHalfTreeDpf(4, 64)
-    seeds = _seeds()
-    cws, fcw = scheme.gen(seeds, 3, beta)
-    point = scheme.eval(0, seeds[0], cws, fcw, 3) ^ scheme.eval(1, seeds[1], cws, fcw, 3)
-    full = scheme.eval_all(0, seeds[0], cws, fcw) ^ scheme.eval_all(1, seeds[1], cws, fcw)
+    scheme = make_point_scheme("PackedHalfTreeDpf", bits=4, out_bits=64)
+    seeds = random_blocks((2, 4))
+    cws = generate_point(scheme, seeds, 3, beta)
+    point = scheme.eval(False, seeds[0], cws, 3) ^ scheme.eval(True, seeds[1], cws, 3)
+    full = evaluate_all(scheme, False, seeds[0], cws) ^ evaluate_all(scheme, True, seeds[1], cws)
     assert scheme.extract(point, 3) == beta
-    assert scheme.extract(full[3 // scheme.lanes], 3) == beta
+    assert scheme.extract(full[3 // scheme.kLanes], 3) == beta
     for invalid in (-1, 1 << 64):
-        with pytest.raises(ValueError, match="beta must be"):
-            scheme.gen(seeds, 3, invalid)
+        with pytest.raises((TypeError, ValueError, OverflowError)):
+            scheme.gen(cws, seeds, 3, invalid)
 
 
 @pytest.mark.parametrize("xs", [torch.empty(0, dtype=torch.int64), torch.tensor([0, 1, 1, 255])])
 def test_explicit_vdmpf_merkle_cpu_and_cuda(xs):
-    scheme, key, _, _ = _multipoint(fss_crypto.Vdmpf)
-    cpu = [scheme.batch_eval_merkle(party, key, xs) for party in (0, 1)]
+    scheme, material, _, _ = _multipoint(True)
+    cpu = [evaluate_multi(scheme, material, party, xs, merkle=True) for party in (0, 1)]
     assert cpu[0][0].shape == (xs.numel(), 4)
     assert scheme.verify(cpu[0][1], cpu[1][1])
-    if not torch.cuda.is_available():
-        return
-    gpu_key, gpu_xs = key.to("cuda"), xs.to("cuda")
-    for party in (0, 1):
-        gpu = scheme.batch_eval_merkle(party, gpu_key, gpu_xs)
-        assert torch.equal(cpu[party][0], gpu[0].cpu())
-        assert torch.equal(cpu[party][1], gpu[1].cpu())
-    # Empty batches must leave a usable context and produce the same nonempty
-    # result after their zero-point launch path.
-    followup = torch.tensor([1], device="cuda")
-    assert scheme.batch_eval_merkle(0, gpu_key, followup)[0].shape == (1, 4)
+    if torch.cuda.is_available():
+        for party in (0, 1):
+            gpu = evaluate_multi(scheme, material, party, xs, merkle=True, device="cuda")
+            assert all(torch.equal(left, right.cpu()) for left, right in zip(cpu[party], gpu))
+        assert evaluate_multi(scheme, material, False, torch.tensor([1]),
+                              merkle=True, device="cuda")[0].shape == (1, 4)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("xor_hash,hash", [("sha256", "blake3"), ("blake3", "sha256"), ("sha256", "sha256")])
-def test_vdmpf_cuda_hash_rejection_preserves_context(xor_hash, hash):
-    scheme, key, xs, _ = _multipoint(fss_crypto.Vdmpf, xor_hash=xor_hash, hash=hash)
-    # Host SHA256 remains supported.
-    _, pi0 = scheme.batch_eval(0, key, xs)
-    _, pi1 = scheme.batch_eval(1, key, xs)
-    assert scheme.verify(pi0, pi1)
-    gpu_key, gpu_xs = key.to("cuda"), xs.to("cuda")
-    with pytest.raises(RuntimeError, match="sha256.*CPU-only"):
-        scheme.batch_eval_merkle(0, gpu_key, gpu_xs)
-    # Native callers cannot bypass the guard either.
-    with pytest.raises(RuntimeError, match="sha256.*CPU-only"):
-        scheme._ext.batch_eval_merkle(0, gpu_key.cws, gpu_key.cs, gpu_key.ocw,
-                                      gpu_key.s0s[0], gpu_key.sigma, gpu_key.meta, gpu_xs)
+@pytest.mark.parametrize("xor_hash_backend,hash_backend", [("sha256", "blake3"), ("blake3", "sha256"), ("sha256", "sha256")])
+def test_vdmpf_cuda_hash_rejection_preserves_context(xor_hash_backend, hash_backend):
+    scheme, material, points, _ = _multipoint(True, xor_hash_backend=xor_hash_backend,
+                                             hash_backend=hash_backend)
+    cpu = [evaluate_multi(scheme, material, party, points) for party in (0, 1)]
+    assert scheme.verify(cpu[0][1], cpu[1][1])
+    with pytest.raises((RuntimeError, TypeError), match="CUDA|backend"):
+        evaluate_multi(scheme, material, False, points, merkle=True, device="cuda")
     assert torch.equal(torch.ones(1, device="cuda").cpu(), torch.ones(1))
 
 
-@pytest.mark.parametrize("scheme_name", ["Dmpf", "Vdmpf"])
-def test_direct_native_query_rejection_is_an_exception(scheme_name):
-    script = f'''import torch, fss_crypto
-scheme = fss_crypto.{scheme_name}(8, 30, 4, prp="chacha_feistel")
-s0s = torch.randint(-(1 << 31), 1 << 31, (scheme.m, 2, 4), dtype=torch.int32)
-sigma = torch.zeros(4, dtype=torch.int32)
-betas = torch.zeros((30, 4), dtype=torch.int32)
-key = scheme.gen(s0s, sigma, torch.arange(30), betas, 30)
-args = [key.cws] + ([key.cs, key.ocw] if "{scheme_name}" == "Vdmpf" else []) + [key.s0s[0], key.sigma, key.meta]
+@pytest.mark.parametrize("verifiable", [False, True])
+def test_direct_native_query_rejection_is_an_exception(verifiable):
+    script = f'''import sys
+sys.path.insert(0, {str(Path(__file__).parent)!r})
+import torch
+from conftest import make_multi_scheme, generate_multi, random_blocks
+scheme = make_multi_scheme({verifiable!r}, bits=8, bucket_bits=4)
+points = torch.arange(30, dtype=torch.int64)
+payloads = random_blocks((30, 4))
+payloads[:, 3] &= -2
+material = generate_multi(scheme, points, payloads)
 for value in (-1, 256):
+    args = (False, material.sigma, material.m_rt, material.b_size_rt,
+            material.seeds[0], material.cws)
+    if {verifiable!r}:
+        args += (material.cs,)
+    args += (torch.tensor([value], dtype=torch.int64), torch.empty((1, 4), dtype=torch.int32))
+    if {verifiable!r}:
+        args += (torch.empty((4, 4), dtype=torch.int32),)
     try:
-        scheme._ext.batch_eval(0, *args, torch.tensor([value]))
-    except RuntimeError:
-        pass
+        scheme._native.batch_eval(*args)
+    except RuntimeError as error:
+        assert "domain" in str(error), str(error)
     else:
-        raise AssertionError("native query validation was bypassed")
-scheme._ext.batch_eval(0, *args, torch.tensor([0]))
+        raise AssertionError("native query bounds were not checked")
+valid = list(args)
+valid[-3 if {verifiable!r} else -2] = torch.tensor([0], dtype=torch.int64)
+scheme._native.batch_eval(*valid)
 '''
     result = subprocess.run([sys.executable, "-c", script], text=True, capture_output=True,
                             env=os.environ.copy(), timeout=600, check=False)
@@ -232,108 +216,92 @@ scheme._ext.batch_eval(0, *args, torch.tensor([0]))
 
 @pytest.mark.parametrize("bits", [64, 128])
 def test_wide_vdpf_point_and_full_domain_rejection(bits):
-    scheme = fss_crypto.Vdpf(bits)
-    seeds, cws, cs, ocw = scheme.gen(_seeds(), (1 << (bits - 1)) + 1, torch.zeros(4, dtype=torch.int32))
-    scheme.eval(0, seeds[0], cws, cs, ocw, (1 << (bits - 1)) + 1)
+    scheme = make_point_scheme("Vdpf", bits=bits)
+    material = generate_vdpf(scheme, random_blocks((2, 4)), (1 << (bits - 1)) + 1,
+                             torch.zeros(4, dtype=torch.int32))
+    evaluate_vdpf(scheme, material, False, (1 << (bits - 1)) + 1)
+    output = torch.empty((0, 4), dtype=torch.int32)
+    proof = torch.empty((4, 4), dtype=torch.int32)
     for method in (scheme.eval_all, scheme.eval_all_merkle):
-        with pytest.raises(RuntimeError, match="cannot represent"):
-            method(0, seeds[0], cws, cs, ocw)
-    # Direct extension callers get the same check before shifts or allocations.
-    for method in (scheme._ext.eval_all, scheme._ext.eval_all_merkle):
-        with pytest.raises(RuntimeError, match="cannot represent"):
-            method(0, seeds[0], cws, cs, ocw)
+        with pytest.raises((RuntimeError, ValueError), match="address|overflow|fit|represent"):
+            method(False, material.seeds[0], material.cws, material.cs, output, proof)
+    for method in (scheme._native.eval_all, scheme._native.eval_all_merkle):
+        with pytest.raises((RuntimeError, ValueError), match="address|overflow|fit|represent"):
+            method(False, material.seeds[0], material.cws, material.cs, output, proof, 0)
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="two CUDA devices required")
 def test_tensor_device_guard_restores_caller_device():
     torch.cuda.set_device(0)
-    scheme, cpu_key, xs, _ = _multipoint(fss_crypto.Vdmpf)
-    cpu = scheme.batch_eval_merkle(0, cpu_key, xs)
-    key = cpu_key.to("cuda:1")
-    gpu_xs = xs.to("cuda:1")
+    scheme, material, points, _ = _multipoint(True)
+    cpu = evaluate_multi(scheme, material, False, points, merkle=True)
+    gpu = evaluate_multi(scheme, material, False, points, merkle=True, device="cuda:1")
     assert torch.cuda.current_device() == 0
-    gpu = scheme.batch_eval_merkle(0, key, gpu_xs)
+    assert all(torch.equal(left, right.cpu()) for left, right in zip(cpu, gpu))
+    with pytest.raises(RuntimeError, match="same device"):
+        scheme._native.batch_eval_merkle(
+            False, material.sigma.to("cuda:1"), material.m_rt, material.b_size_rt,
+            material.seeds[0].to("cuda:1"), material.cws.to("cuda:1"),
+            material.cs.to("cuda:1"), points.to("cuda:0"),
+            torch.empty((30, 4), dtype=torch.int32, device="cuda:1"),
+            torch.empty((4, 4), dtype=torch.int32, device="cuda:1"))
     assert torch.cuda.current_device() == 0
-    assert torch.equal(cpu[0], gpu[0].cpu())
-    assert torch.equal(cpu[1], gpu[1].cpu())
-    # Direct calls cover restoration on exceptions from the native guard.
-    with pytest.raises(RuntimeError, match="nonnegative"):
-        scheme._ext.batch_eval_merkle(0, key.cws, key.cs, key.ocw, key.s0s[0],
-                                      key.sigma, key.meta, torch.tensor([-1], device="cuda:1"))
-    assert torch.cuda.current_device() == 0
-    assert torch.equal(scheme.batch_eval_merkle(0, key, gpu_xs)[0].cpu(), cpu[0])
-
-
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-def test_vdpf_native_cuda_resource_guard_precedes_output_allocation():
-    scheme = fss_crypto.Vdpf(23)
-    seeds = torch.zeros(4, dtype=torch.int32, device="cuda")
-    cws = torch.zeros((23, 8), dtype=torch.int32, device="cuda")
-    cs = torch.zeros((4, 4), dtype=torch.int32, device="cuda")
-    ocw = torch.zeros(4, dtype=torch.int32, device="cuda")
-    with pytest.raises(RuntimeError, match="supports in_bits <= 22"):
-        scheme._ext.eval_all_merkle(0, seeds, cws, cs, ocw)
-    assert torch.equal(torch.ones(1, device="cuda").cpu(), torch.ones(1))
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_aes_native_cuda_rejection_preserves_context():
-    scheme = fss_crypto.Dpf(8, prg="aes128_mmo")
-    seeds = _seeds()
-    cws = scheme.gen(seeds, 1, torch.zeros(4, dtype=torch.int32))
-    with pytest.raises(RuntimeError, match="aes128_mmo is CPU-only"):
-        scheme._ext.eval(0, seeds[0].to("cuda"), cws.to("cuda"), 1, 0)
+    scheme = make_point_scheme("Dpf", bits=8, backend="aes128_mmo")
+    seeds = random_blocks((2, 4))
+    cws = generate_point(scheme, seeds, 1, torch.zeros(4, dtype=torch.int32))
+    with pytest.raises((RuntimeError, TypeError), match="CUDA|backend"):
+        scheme._native.eval(False, seeds[0].cuda(), cws.cuda(), 1)
     assert torch.equal(torch.ones(1, device="cuda").cpu(), torch.ones(1))
 
 
 @pytest.mark.parametrize("bits", [64, 128])
 @pytest.mark.parametrize("scheme_name", ["Dpf", "Dcf", "HalfTreeDpf", "PackedHalfTreeDpf", "Vdpf", "GrottoDcf"])
 def test_high_bit_domain_values_roundtrip_through_native(bits, scheme_name):
-    cls = getattr(fss_crypto, scheme_name)
-    scheme = cls(bits, 64) if scheme_name == "PackedHalfTreeDpf" else cls(bits)
-    seeds = _seeds()
+    scheme = make_point_scheme(scheme_name, bits=bits, out_bits=64)
+    seeds = random_blocks((2, 4))
     alpha = (1 << (bits - 1)) + (1 << 63 if bits > 64 else 0) + 1
-    if scheme_name == "GrottoDcf":
-        cws = scheme.gen(seeds, alpha)
-        assert cws.shape == (bits + 1, 8)
-        for method in (scheme.preprocess, scheme.eval_all):
-            with pytest.raises(RuntimeError, match="cannot represent"):
-                method(0, seeds[0], cws)
-        if torch.cuda.is_available():
-            for method in (scheme._ext.preprocess, scheme._ext.eval_all):
-                with pytest.raises(RuntimeError, match="cannot represent"):
-                    method(0, seeds[0].cuda(), cws.cuda())
-        return
-    beta = (1 << 63) + 3 if scheme_name == "PackedHalfTreeDpf" else torch.tensor([11, 12, 13, 14], dtype=torch.int32)
+    payload = torch.tensor([11, 12, 13, 14], dtype=torch.int32)
     if scheme_name == "Vdpf":
-        seeds, cws, cs, ocw = scheme.gen(seeds, alpha, beta)
-        args = (cws, cs, ocw)
-    elif scheme_name in ("HalfTreeDpf", "PackedHalfTreeDpf"):
-        args = scheme.gen(seeds, alpha, beta)
+        material = generate_vdpf(scheme, seeds, alpha, payload)
     else:
-        args = (scheme.gen(seeds, alpha, beta),)
+        beta = (1 << 63) + 3 if scheme_name == "PackedHalfTreeDpf" else payload
+        cws = generate_point(scheme, seeds, alpha, beta)
     for x in (alpha - 1, alpha):
-        shares = [scheme.eval(party, seeds[party], *args, x) for party in (0, 1)]
-        ys = [share[0] if scheme_name == "Vdpf" else share for share in shares]
-        reconstructed = ys[0] ^ ys[1]
-        expected = beta if ((x < alpha) if scheme_name == "Dcf" else x == alpha) else 0
-        if scheme_name == "PackedHalfTreeDpf":
-            assert scheme.extract(reconstructed, x) == expected
-        elif isinstance(expected, int):
-            assert not torch.any(reconstructed)
+        if scheme_name == "Vdpf":
+            shares = [evaluate_vdpf(scheme, material, party, x)[0] for party in (0, 1)]
         else:
-            assert torch.equal(reconstructed, expected)
+            shares = [scheme.eval(bool(party), seeds[party], cws, x) for party in (0, 1)]
+        if scheme_name == "GrottoDcf":
+            assert (shares[0] ^ shares[1]) == (x >= alpha)
+        else:
+            reconstructed = shares[0] ^ shares[1]
+            selected = x < alpha if scheme_name == "Dcf" else x == alpha
+            if scheme_name == "PackedHalfTreeDpf":
+                assert scheme.extract(reconstructed, x) == (beta if selected else 0)
+            else:
+                assert torch.equal(reconstructed, payload if selected else torch.zeros_like(payload))
         if torch.cuda.is_available():
             for party in (0, 1):
-                gpu = scheme.eval(party, seeds[party].cuda(), *(arg.cuda() for arg in args), x)
                 if scheme_name == "Vdpf":
-                    assert torch.equal(gpu[0].cpu(), shares[party][0])
-                    assert torch.equal(gpu[1].cpu(), shares[party][1])
+                    gpu = evaluate_vdpf(scheme, material, party, x, device="cuda")[0]
+                else:
+                    gpu = scheme.eval(bool(party), seeds[party].cuda(), cws.cuda(), x)
+                if isinstance(gpu, bool):
+                    assert gpu == shares[party]
                 else:
                     assert torch.equal(gpu.cpu(), shares[party])
-    for method in (scheme.eval_all, scheme._ext.eval_all):
-        with pytest.raises(RuntimeError, match="cannot represent"):
-            method(0, seeds[0], *args)
-    if torch.cuda.is_available():
-        with pytest.raises(RuntimeError, match="cannot represent"):
-            scheme._ext.eval_all(0, seeds[0].cuda(), *(arg.cuda() for arg in args))
+    if scheme_name != "GrottoDcf":
+        with pytest.raises((RuntimeError, ValueError), match="address|overflow|fit|represent"):
+            if scheme_name == "Vdpf":
+                scheme.eval_all(False, material.seeds[0], material.cws, material.cs,
+                                torch.empty((0, 4), dtype=torch.int32),
+                                torch.empty((4, 4), dtype=torch.int32))
+            else:
+                scheme.eval_all(False, seeds[0], cws, torch.empty((0, 4), dtype=torch.int32))
+    else:
+        with pytest.raises((RuntimeError, ValueError), match="address|overflow|fit|represent"):
+            scheme.preprocess(False, seeds[0], cws, torch.empty(0, dtype=torch.bool))

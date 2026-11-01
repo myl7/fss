@@ -11,6 +11,7 @@
 #include <fss/prg/aes128_mmo.cuh>
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
+#include "core_api_test_helpers.cuh"
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -62,11 +63,11 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     // Eval at alpha
-    int4 y0 = dpf.Eval(false, k0, kAlpha);
-    int4 y1 = dpf.Eval(true, k1, kAlpha);
+    int4 y0 = fss_test::EvalKey(dpf, false, k0, kAlpha);
+    int4 y1 = fss_test::EvalKey(dpf, true, k1, kAlpha);
 
     auto g0 = Group::From(y0);
     auto g1 = Group::From(y1);
@@ -84,13 +85,13 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     constexpr size_t n = 1ULL << kAlphaBits;
     std::vector<int4> ys0(n), ys1(n);
 
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -115,7 +116,7 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -125,8 +126,8 @@ protected:
       uint16_t x = dis(gen);
       if (x == kAlpha) continue;
 
-      int4 y0 = dpf.Eval(false, k0, x);
-      int4 y1 = dpf.Eval(true, k1, x);
+      int4 y0 = fss_test::EvalKey(dpf, false, k0, x);
+      int4 y1 = fss_test::EvalKey(dpf, true, k1, x);
 
       auto g0 = Group::From(y0);
       auto g1 = Group::From(y1);
@@ -223,10 +224,10 @@ TEST_F(DpfBytesAesTest, EvalAtAlpha) {
 
   int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
       static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
-  int4 y0 = dpf.Eval(false, k0, kAlpha);
-  int4 y1 = dpf.Eval(true, k1, kAlpha);
+  int4 y0 = fss_test::EvalKey(dpf, false, k0, kAlpha);
+  int4 y1 = fss_test::EvalKey(dpf, true, k1, kAlpha);
 
   auto g0 = Group::From(y0);
   auto g1 = Group::From(y1);
@@ -244,7 +245,7 @@ TEST_F(DpfBytesAesTest, EvalAtNonAlpha) {
 
   int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
       static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -254,8 +255,8 @@ TEST_F(DpfBytesAesTest, EvalAtNonAlpha) {
     uint16_t x = dis(gen);
     if (x == kAlpha) continue;
 
-    int4 y0 = dpf.Eval(false, k0, x);
-    int4 y1 = dpf.Eval(true, k1, x);
+    int4 y0 = fss_test::EvalKey(dpf, false, k0, x);
+    int4 y1 = fss_test::EvalKey(dpf, true, k1, x);
 
     auto g0 = Group::From(y0);
     auto g1 = Group::From(y1);
@@ -275,12 +276,12 @@ TEST_F(DpfBytesAesTest, EvalAll) {
 
   int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
       static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
   constexpr size_t n = 1ULL << kAlphaBits;
   std::vector<int4> ys0(n), ys1(n);
-  dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-  dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+  fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+  fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
   auto expected = Group::From(b_buf);
   int4 expected_buf = expected.Into();
@@ -304,12 +305,12 @@ TEST_F(DpfBytesAesTest, EvalAll) {
 // per-input point walk, in_bits = 6 is the smallest batched domain and clamps
 // the split depth to 0, and larger in_bits run both the sequential batched
 // walk (par_depth = 0) and the frontier-width split (par_depth > 0).
-template <int in_bits, int par_depth = -1>
+template <int in_bits, int par_depth = 0>
 class DpfAesRawTestBase : public ::testing::Test {
 protected:
   using Group = BytesGroup;
   using Prg = fss::prg::Aes128MmoRaw<2>;
-  using DpfType = fss::Dpf<in_bits, Group, Prg, uint16_t, par_depth>;
+  using DpfType = fss::Dpf<in_bits, Group, Prg, uint16_t>;
 
   static constexpr uint8_t kKeys[2][16] = {
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -341,12 +342,12 @@ protected:
     DpfType dpf{prg};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     constexpr size_t n = 1ULL << in_bits;
     std::vector<int4> ys0(n), ys1(n);
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -369,16 +370,16 @@ protected:
     DpfType dpf{prg};
 
     int4 b_buf = MakeBBuf();
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
 
     constexpr size_t n = 1ULL << in_bits;
     std::vector<int4> ys0(n), ys1(n);
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey<par_depth>(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     for (size_t x = 0; x < n; ++x) {
-      int4 e0 = dpf.Eval(false, k0, static_cast<uint16_t>(x));
-      int4 e1 = dpf.Eval(true, k1, static_cast<uint16_t>(x));
+      int4 e0 = fss_test::EvalKey(dpf, false, k0, static_cast<uint16_t>(x));
+      int4 e1 = fss_test::EvalKey(dpf, true, k1, static_cast<uint16_t>(x));
       EXPECT_EQ(memcmp(&ys0[x], &e0, sizeof(int4)), 0) << "Party 0 mismatch at x=" << x;
       EXPECT_EQ(memcmp(&ys1[x], &e1, sizeof(int4)), 0) << "Party 1 mismatch at x=" << x;
     }
@@ -460,12 +461,12 @@ protected:
 
     int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
         static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-    dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
+    fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha, b_buf);
 
     constexpr size_t n = 1ULL << kAlphaBits;
     std::vector<int4> ys0(n), ys1(n);
-    dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
-    dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
+    fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0.data(), ys0.size()));
+    fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1.data(), ys1.size()));
 
     auto expected = Group::From(b_buf);
     int4 expected_buf = expected.Into();
@@ -507,17 +508,17 @@ TEST(DpfSmallDomainTest, EvalAllChaChaBelowBatchDepth) {
   int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
       static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
   typename DpfType::Key k0, k1;
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha5, b_buf);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha5, b_buf);
 
   constexpr size_t n = 1ULL << 5;
   int4 ys0[n], ys1[n];
-  dpf.EvalAll(false, k0, cuda::std::span<int4>(ys0, n));
-  dpf.EvalAll(true, k1, cuda::std::span<int4>(ys1, n));
+  fss_test::EvalAllKey(dpf, false, k0, cuda::std::span<int4>(ys0, n));
+  fss_test::EvalAllKey(dpf, true, k1, cuda::std::span<int4>(ys1, n));
 
   int4 zero = {0, 0, 0, 0};
   for (size_t x = 0; x < n; ++x) {
-    int4 e0 = dpf.Eval(false, k0, static_cast<uint8_t>(x));
-    int4 e1 = dpf.Eval(true, k1, static_cast<uint8_t>(x));
+    int4 e0 = fss_test::EvalKey(dpf, false, k0, static_cast<uint8_t>(x));
+    int4 e1 = fss_test::EvalKey(dpf, true, k1, static_cast<uint8_t>(x));
     EXPECT_EQ(memcmp(&ys0[x], &e0, sizeof(int4)), 0) << "Party 0 mismatch at x=" << x;
     EXPECT_EQ(memcmp(&ys1[x], &e1, sizeof(int4)), 0) << "Party 1 mismatch at x=" << x;
 

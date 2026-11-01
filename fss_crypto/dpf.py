@@ -1,116 +1,64 @@
-"""Python wrapper for the DPF (Distributed Point Function) scheme."""
+"""Thin binding of ``fss::Dpf`` and its explicit GPU Helpers."""
 
 import torch
 
-from fss_crypto._int import split_uint128
-from fss_crypto._jit import load
-from fss_crypto._validate import (
-    validate_alpha,
-    validate_beta,
-    validate_cpu_only,
-    validate_cws,
-    validate_device_match,
-    validate_domain_value,
-    validate_group,
-    validate_in_bits,
-    validate_par_depth,
-    validate_party,
-    validate_prg,
-    validate_s0,
-    validate_s0s,
-)
+from fss_crypto._scheme import _Scheme, _parallel_depth
 
 
-class Dpf:
-    """2-party Distributed Point Function.
+class Dpf(_Scheme):
+    """Configure DPF with explicit output-group and PRG constructor values.
 
-    Args:
-        in_bits: Input domain bit size (1..128).
-        group: Output group type, "bytes" or "uint".
-        prg: PRG type, "chacha" or "aes128_mmo".
-        par_depth: Host work partition depth. 0 runs sequentially, -1 selects
-            automatically, and positive values bound the split depth.
+    ``in_type`` controls the C++ input type independently of ``group``.
+
+    int4 storage uses contiguous ``torch.int32`` tensors with a final dimension
+    of four words. ``s0s`` contains two blocks, ``s0`` and ``b_buf`` contain one,
+    and ``ys`` contains exactly ``2**in_bits`` blocks. Allocate ``cws`` as a
+    contiguous uint8 tensor with ``cws_shape``, including the terminal correction.
     """
 
-    def __init__(self, in_bits: int, group: str = "bytes",
-                 prg: str = "chacha", *, par_depth: int = 0):
-        validate_par_depth(par_depth)
-        validate_in_bits(in_bits)
-        validate_group(group)
-        validate_prg(prg, "dpf")
+    def __init__(self, in_bits: int, group, prg, *, in_type=None):
+        super().__init__("dpf", in_bits=in_bits, group=group, prg=prg,
+                         in_type=in_type)
 
-        self.par_depth = int(par_depth)
-        self.in_bits = in_bits
-        self.group = group
-        self.prg = prg
-        self._ext = load("dpf", in_bits, group, prg, par_depth=self.par_depth)
+    def gen(self, cws, s0s: torch.Tensor, a: int, b_buf: torch.Tensor) -> None:
+        """Fill caller-owned corrections with one Core ``Gen`` call.
 
-    def gen(self, s0s: torch.Tensor, alpha: int,
-            beta: torch.Tensor) -> torch.Tensor:
-        """Generate DPF keys.
-
-        Args:
-            s0s: (2, 4) int32 tensor of initial seeds.
-            alpha: Point function input in [0, 2^in_bits).
-            beta: (4,) int32 tensor of point function output.
-
-        Returns:
-            (in_bits+1, 8) int32 tensor of correction words.
+        ``s0s`` is preserved. ``cws`` includes the terminal correction.
+        GPU scalar payload conversion can synchronize the current stream.
         """
-        validate_s0s(s0s)
-        validate_alpha(alpha, self.in_bits)
-        validate_beta(beta)
-        validate_cpu_only(s0s, beta, fn_name="gen")
+        self._native.gen(self._cws(cws), s0s, a, b_buf)
 
-        alpha_lo, alpha_hi = split_uint128(alpha)
-        return self._ext.gen(s0s, alpha_lo, alpha_hi, beta)
+    def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> torch.Tensor:
+        """Return one int4 share using raw Core ``Eval`` components."""
+        return self._native.eval(b, s0, self._cws(cws), x)
 
-    def eval(self, party: int, s0: torch.Tensor, cws: torch.Tensor,
-             x: int) -> torch.Tensor:
-        """Evaluate DPF on a single input.
+    def eval_all(self, b: bool, s0: torch.Tensor, cws, ys: torch.Tensor, *, par_depth: int = 0,
+                 frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Fill caller-owned ``ys`` with one share for every domain input.
 
-        Args:
-            party: Party index, 0 or 1.
-            s0: (4,) int32 tensor, the party's initial seed.
-            cws: (in_bits+1, 8) int32 tensor from gen().
-            x: Input to evaluate.
-
-        Returns:
-            (4,) int32 tensor output share.
+        par_depth controls CPU partitioning; 0 is sequential.
+        Positive values require OpenMP and a parallel-safe backend.
+        CUDA calls ignore par_depth and use frontier_depth/threads_per_block.
+        CPU calls ignore frontier_depth/threads_per_block.
         """
-        validate_party(party)
-        validate_s0(s0)
-        validate_cws(cws, self.in_bits)
-        validate_device_match(s0, cws)
-        validate_domain_value("x", x, self.in_bits)
+        self._execution_native(ys, frontier_depth, threads_per_block).eval_all(b, s0, self._cws(cws), ys, _parallel_depth(par_depth, ys))
 
-        if self.prg == "aes128_mmo" and s0.device.type == "cuda":
-            raise RuntimeError(
-                "expected all tensors to be on cpu "
-                "(aes128_mmo is CPU-only), "
-                f"but found tensor on {s0.device}"
-            )
 
-        x_lo, x_hi = split_uint128(x)
-        return self._ext.eval(party, s0, cws, x_lo, x_hi)
+    def eval_all_gpu_batch(self, b: bool, s0s: torch.Tensor, cws: torch.Tensor,
+                           ys: torch.Tensor, *, frontier_depth: int = 16,
+                           threads_per_block: int = 256) -> None:
+        """Fill full-domain shares for a key-major batch on one CUDA device.
 
-    def eval_all(self, party: int, s0: torch.Tensor,
-                 cws: torch.Tensor) -> torch.Tensor:
-        """Evaluate DPF on the full input domain.
-
-        Args:
-            party: Party index, 0 or 1.
-            s0: (4,) int32 tensor, CPU or CUDA.
-            cws: (in_bits+1, 8) int32 tensor on the same device.
-
-        Returns:
-            (2^in_bits, 4) int32 tensor of output shares on the same device.
-            CUDA tensors need in_bits <= 41 (launch grid) and enough device
-            memory for the output.
+        s0s has shape (key_count, 4), cws has shape
+        (key_count, *self.cws_shape), and ys has shape
+        (key_count, outputs_per_key, 4). All tensors must be contiguous.
+        outputs_per_key is 2**self.in_bits blocks.
+        All keys share this instance's backends and the same party b.
+        The first call on a device synchronizes to prepare its host launch view.
+        Later launches are asynchronous on the current PyTorch stream.
+        frontier_depth and threads_per_block select the Core GPU launch specialization.
         """
-        validate_party(party)
-        validate_s0(s0)
-        validate_cws(cws, self.in_bits)
-        validate_device_match(s0, cws)
+        self._execution_native(ys, frontier_depth, threads_per_block).eval_all_gpu_batch(b, s0s, cws, ys)
 
-        return self._ext.eval_all(party, s0, cws)
+
+__all__ = ['Dpf']

@@ -1,33 +1,22 @@
+"""VDMPF component buffers and explicit chain/Merkle proof protocols."""
+
 import pytest
 import torch
-import fss_crypto
+
+from conftest import (evaluate_multi, evaluate_multi_all, generate_multi,
+                      make_multi_scheme)
 
 
 IN_BITS = 12
 MAX_POINTS = 30
-# Worst-case bucket size is ceil(2^12 * 3 / 53) = 232, so bucket_bits >= 8
-# passes validate_bucket_bits; use 10.
 BUCKET_BITS = 10
-# Cuckoo bucket count: ceil(30 * (80 + 130 + log2(30)) / 123.5).
-M = 53
 T = 30
 
 
 @pytest.fixture
 def vdmpf():
-    return fss_crypto.Vdmpf(in_bits=IN_BITS, max_points=MAX_POINTS,
-                            bucket_bits=BUCKET_BITS, group="bytes",
-                            prg="chacha", xor_hash="blake3", prp="aes128_feistel")
-
-
-@pytest.fixture
-def s0s():
-    return torch.randint(-2**31, 2**31, (M, 2, 4), dtype=torch.int32)
-
-
-@pytest.fixture
-def sigma():
-    return torch.randint(-2**31, 2**31, (4,), dtype=torch.int32)
+    return make_multi_scheme(True, bits=IN_BITS, max_points=MAX_POINTS,
+                             bucket_bits=BUCKET_BITS)
 
 
 @pytest.fixture
@@ -37,182 +26,172 @@ def alphas():
 
 @pytest.fixture
 def betas():
-    betas = torch.randint(-2**31, 2**31, (T, 4), dtype=torch.int32)
-    betas[:, 3] &= ~1  # the scheme clamps the last word's LSB (lambda = 127)
-    return betas
+    values = torch.randint(-2**31, 2**31, (T, 4), dtype=torch.int32)
+    values[:, 3] &= ~1
+    return values
 
 
 @pytest.fixture
-def key(vdmpf, s0s, sigma, alphas, betas):
-    return vdmpf.gen(s0s, sigma, alphas, betas, t=T)
+def material(vdmpf, alphas, betas):
+    return generate_multi(vdmpf, alphas, betas)
 
 
 class TestVdmpfParams:
-    def test_m_and_bucket_bits(self, vdmpf):
-        assert vdmpf.m == M
-        assert vdmpf.bucket_bits == BUCKET_BITS
+    def test_allocated_and_runtime_parameters(self, vdmpf):
+        assert vdmpf.kBucketCount == 53
+        assert vdmpf.kMinPoints == T
+        assert vdmpf.kDomainSize == 2**IN_BITS
+        assert vdmpf.kBucketSize == (3 * 2**IN_BITS + 52) // 53
 
-    def test_rejects_in_bits_above_63(self):
-        with pytest.raises(ValueError, match="in_bits must be at most 63"):
-            fss_crypto.Vdmpf(in_bits=64, max_points=MAX_POINTS, bucket_bits=13)
+    def test_wide_input_domain_is_supported(self):
+        scheme = make_multi_scheme(True, bits=64, max_points=MAX_POINTS,
+                                   bucket_bits=64)
+        assert scheme.in_bits == 64
+        assert scheme.kDomainSize == 2**64
 
-    def test_rejects_bad_hash(self):
-        with pytest.raises(ValueError, match="hash must be one of"):
-            fss_crypto.Vdmpf(in_bits=IN_BITS, max_points=MAX_POINTS,
-                             bucket_bits=BUCKET_BITS, xor_hash="md5")
+    def test_rejects_inappropriate_hash(self):
+        from fss_crypto import Vdmpf, group, hash, prg, prp
+        with pytest.raises(ValueError, match="appropriate explicit hash"):
+            Vdmpf(IN_BITS, MAX_POINTS, BUCKET_BITS, group.Bytes(),
+                  prg.ChaCha((1, 2), mul=2), hash.Blake3(bytes(32)),
+                  hash.Aes128Ccr(prg.Aes128Soft(1, (bytes(16),))),
+                  prp.ChaChaFeistel())
 
 
-class TestVdmpfGenShape:
-    def test_output_shapes(self, key):
-        assert key.cws.shape == (M, BUCKET_BITS, 8)
-        assert key.cws.dtype == torch.int32
-        assert key.cs.shape == (M, 4, 4)
-        assert key.cs.dtype == torch.int32
-        assert key.ocw.shape == (M, 4)
-        assert key.ocw.dtype == torch.int32
-        assert key.s0s.shape == (2, M, 4)
-        assert key.s0s.dtype == torch.int32
-        assert key.sigma.shape == (4,)
-        assert key.sigma.dtype == torch.int32
-        assert key.meta.shape == (2,)
-        assert key.meta.dtype == torch.int32
-
-    def test_output_device_is_cpu(self, key):
-        for tensor in (key.cws, key.cs, key.ocw, key.s0s, key.sigma, key.meta):
+class TestVdmpfGenBuffers:
+    def test_shapes_and_devices(self, vdmpf, material):
+        assert tuple(material.cws.shape) == vdmpf.cws_shape
+        assert material.cws.dtype == torch.uint8
+        assert material.cs.shape == (vdmpf.kBucketCount, 4, 4)
+        assert material.cs.dtype == torch.int32
+        assert material.seeds.shape == (2, vdmpf.kBucketCount, 4)
+        assert material.seeds[0].is_contiguous()
+        assert material.seeds[1].is_contiguous()
+        assert material.sigma.shape == (4,)
+        for tensor in (material.cws, material.cs, material.seeds, material.sigma):
             assert tensor.device.type == "cpu"
 
-    def test_meta_holds_runtime_params(self, key):
-        # t = 30 uses the full bucket count; b_size = ceil(2^12 * 3 / 53).
-        assert key.meta.tolist() == [M, (2**IN_BITS * 3 + M - 1) // M]
+    def test_runtime_parameters(self, vdmpf, material):
+        assert material.m_rt == vdmpf.kBucketCount
+        assert material.b_size_rt == vdmpf.kBucketSize
 
 
-class TestVdmpfBatchEval:
-    def test_output_shape(self, vdmpf, key, alphas):
-        ys0, pi0 = vdmpf.batch_eval(0, key, alphas)
-        ys1, pi1 = vdmpf.batch_eval(1, key, alphas)
-        for ys in (ys0, ys1):
-            assert ys.shape == (T, 4)
-            assert ys.dtype == torch.int32
-            assert ys.device.type == "cpu"
-        for pi in (pi0, pi1):
-            assert pi.shape == (4, 4)
-            assert pi.dtype == torch.int32
-            assert pi.device.type == "cpu"
+class TestVdmpfEvaluation:
+    @pytest.mark.parametrize("merkle", [False, True])
+    def test_batch_reconstruction_and_proofs(self, vdmpf, material, alphas, betas, merkle):
+        results = [evaluate_multi(vdmpf, material, party, alphas, merkle=merkle)
+                   for party in (False, True)]
+        for outputs, proof in results:
+            assert outputs.shape == (T, 4)
+            assert outputs.dtype == torch.int32
+            assert proof.shape == (4, 4)
+            assert proof.dtype == torch.int32
+        assert torch.equal(results[0][0] ^ results[1][0], betas)
+        assert vdmpf.verify(results[0][1], results[1][1])
 
-    def test_reconstructs_betas_at_alphas(self, vdmpf, key, alphas, betas):
-        ys0, _ = vdmpf.batch_eval(0, key, alphas)
-        ys1, _ = vdmpf.batch_eval(1, key, alphas)
-        # XOR reconstruction (bytes group): beta at each alpha.
-        assert torch.equal(torch.bitwise_xor(ys0, ys1), betas)
-
-    def test_zero_away_from_alphas(self, vdmpf, key, alphas):
+    def test_zero_away_from_secret_points(self, vdmpf, material, alphas):
         mask = torch.ones(2**IN_BITS, dtype=torch.bool)
         mask[alphas] = False
         xs = torch.arange(2**IN_BITS, dtype=torch.int64)[mask][:128]
-        ys0, _ = vdmpf.batch_eval(0, key, xs)
-        ys1, _ = vdmpf.batch_eval(1, key, xs)
-        assert not torch.any(torch.bitwise_xor(ys0, ys1))
+        first, proof0 = evaluate_multi(vdmpf, material, False, xs)
+        second, proof1 = evaluate_multi(vdmpf, material, True, xs)
+        assert not torch.any(first ^ second)
+        assert vdmpf.verify(proof0, proof1)
 
+    @pytest.mark.parametrize("merkle", [False, True])
+    def test_full_domain_reconstruction(self, vdmpf, material, alphas, betas, merkle):
+        results = [evaluate_multi_all(vdmpf, material, party, merkle=merkle)
+                   for party in (False, True)]
+        expected = torch.zeros((2**IN_BITS, 4), dtype=torch.int32)
+        expected[alphas] = betas
+        assert torch.equal(results[0][0] ^ results[1][0], expected)
+        assert vdmpf.verify(results[0][1], results[1][1])
 
-class TestVdmpfVerify:
-    def test_honest_proofs_verify(self, vdmpf, key, alphas):
-        _, pi0 = vdmpf.batch_eval(0, key, alphas)
-        _, pi1 = vdmpf.batch_eval(1, key, alphas)
-        assert vdmpf.verify(pi0, pi1) is True
-
-    def test_rejects_tampered_proof(self, vdmpf, key, alphas):
-        _, pi0 = vdmpf.batch_eval(0, key, alphas)
-        _, pi1 = vdmpf.batch_eval(1, key, alphas)
-        pi1 = pi1.clone()
-        pi1[0, 0] ^= 1
-        assert vdmpf.verify(pi0, pi1) is False
+    def test_rejects_tampered_proof(self, vdmpf, material, alphas):
+        _, first = evaluate_multi(vdmpf, material, False, alphas)
+        _, second = evaluate_multi(vdmpf, material, True, alphas)
+        second[0, 0] ^= 1
+        assert not vdmpf.verify(first, second)
 
 
 class TestVdmpfValidation:
-    def test_rejects_bad_s0s_shape(self, vdmpf, sigma, alphas, betas):
-        s0s = torch.zeros((M, 2, 8), dtype=torch.int32)
-        with pytest.raises(TypeError, match="s0s must be a"):
-            vdmpf.gen(s0s, sigma, alphas, betas, t=T)
+    def test_rejects_bad_seed_layout(self, vdmpf, material, alphas, betas):
+        wrong = torch.zeros((vdmpf.kBucketCount, 2, 4), dtype=torch.int32)
+        with pytest.raises(RuntimeError, match="s0s must have shape"):
+            vdmpf.gen(material.cws, material.cs, material.sigma,
+                      wrong, alphas, betas, T)
 
-    def test_rejects_bad_betas_shape(self, vdmpf, s0s, sigma, alphas):
-        with pytest.raises(TypeError, match="betas must be a"):
-            vdmpf.gen(s0s, sigma, alphas, torch.zeros((T, 5), dtype=torch.int32), t=T)
+    def test_rejects_bad_payload_shape(self, vdmpf, material, alphas):
+        with pytest.raises(RuntimeError, match="four|4"):
+            vdmpf.gen(material.cws, material.cs, material.sigma,
+                      material.seeds, alphas, torch.zeros((T, 5), dtype=torch.int32), T)
 
-    def test_rejects_t_below_30(self, vdmpf, s0s, sigma, alphas, betas):
-        with pytest.raises(ValueError, match="t must be between"):
-            vdmpf.gen(s0s, sigma, alphas[:29], betas[:29], t=29)
+    def test_rejects_unsupported_point_count(self, vdmpf, material, alphas, betas):
+        with pytest.raises(RuntimeError, match="t must be between"):
+            vdmpf.gen(material.cws, material.cs, material.sigma,
+                      material.seeds, alphas[:29], betas[:29], 29)
 
-    def test_rejects_alpha_out_of_domain(self, vdmpf, s0s, sigma, alphas, betas):
-        alphas = alphas.clone()
-        alphas[0] = -1
-        with pytest.raises(ValueError, match="alphas must be in"):
-            vdmpf.gen(s0s, sigma, alphas, betas, t=T)
+    def test_rejects_alpha_out_of_domain(self, vdmpf, material, alphas, betas):
+        invalid = alphas.clone()
+        invalid[0] = -1
+        with pytest.raises(RuntimeError, match="outside the input domain"):
+            vdmpf.gen(material.cws, material.cs, material.sigma,
+                      material.seeds, invalid, betas, T)
 
-    def test_rejects_bad_key_cs(self, vdmpf, key, alphas):
-        bad = fss_crypto.VdmpfKey(cws=key.cws,
-                                  cs=torch.zeros((M, 4), dtype=torch.int32),
-                                  ocw=key.ocw, s0s=key.s0s, sigma=key.sigma,
-                                  meta=key.meta)
-        with pytest.raises(TypeError, match="cs must be a"):
-            vdmpf.batch_eval(0, bad, alphas)
+    def test_rejects_bad_check_buffer(self, vdmpf, material, alphas):
+        with pytest.raises(RuntimeError):
+            vdmpf.batch_eval(False, material.sigma, material.m_rt,
+                             material.b_size_rt, material.seeds[0], material.cws,
+                             torch.zeros((vdmpf.kBucketCount, 4), dtype=torch.int32),
+                             alphas, torch.empty((T, 4), dtype=torch.int32),
+                             torch.empty((4, 4), dtype=torch.int32))
 
-    def test_rejects_bad_proof_shape(self, vdmpf, key, alphas):
-        _, pi0 = vdmpf.batch_eval(0, key, alphas)
-        _, pi1 = vdmpf.batch_eval(1, key, alphas)
-        with pytest.raises(TypeError, match="pi1 must be a"):
-            vdmpf.verify(pi0, pi1.flatten())
+    def test_rejects_bad_proof_shape(self, vdmpf, material, alphas):
+        _, first = evaluate_multi(vdmpf, material, False, alphas)
+        _, second = evaluate_multi(vdmpf, material, True, alphas)
+        with pytest.raises(RuntimeError, match="four|4"):
+            vdmpf.verify(first, second.flatten())
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-    def test_rejects_mixed_devices(self, vdmpf, key, alphas):
+    def test_rejects_mixed_devices(self, vdmpf, material, alphas):
         with pytest.raises(RuntimeError, match="same device"):
-            vdmpf.batch_eval(0, key, alphas.to("cuda"))
-
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-    def test_rejects_cuda_tensors_with_default_prp(self, vdmpf, key, alphas):
-        with pytest.raises(RuntimeError, match="chacha_feistel"):
-            vdmpf.batch_eval(0, key.to("cuda"), alphas.to("cuda"))
+            vdmpf.batch_eval(False, material.sigma, material.m_rt,
+                             material.b_size_rt, material.seeds[0], material.cws,
+                             material.cs, alphas.cuda(),
+                             torch.empty((T, 4), dtype=torch.int32),
+                             torch.empty((4, 4), dtype=torch.int32))
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 class TestVdmpfGpu:
-    @pytest.fixture
-    def gpu_vdmpf(self):
-        return fss_crypto.Vdmpf(in_bits=IN_BITS, max_points=MAX_POINTS,
-                                bucket_bits=BUCKET_BITS, group="bytes",
-                                prg="chacha", xor_hash="blake3",
-                                prp="chacha_feistel")
-
-    @pytest.fixture
-    def key_cpu(self, gpu_vdmpf, s0s, sigma, alphas, betas):
-        return gpu_vdmpf.gen(s0s, sigma, alphas, betas, t=T)
-
-    @pytest.fixture
-    def key_gpu(self, key_cpu):
-        return key_cpu.to("cuda")
-
-    def test_batch_eval_matches_cpu_outputs(self, gpu_vdmpf, key_cpu, key_gpu, alphas):
-        ys_cpu, _ = gpu_vdmpf.batch_eval(0, key_cpu, alphas)
-        ys_gpu, pi_gpu = gpu_vdmpf.batch_eval(0, key_gpu, alphas.to("cuda"))
-        assert ys_gpu.device.type == "cuda"
-        assert pi_gpu.device.type == "cuda"
-        assert torch.equal(ys_gpu.cpu(), ys_cpu)
-
-    def test_batch_eval_reconstructs_betas(self, gpu_vdmpf, key_gpu, alphas, betas):
-        ys0, _ = gpu_vdmpf.batch_eval(0, key_gpu, alphas.to("cuda"))
-        ys1, _ = gpu_vdmpf.batch_eval(1, key_gpu, alphas.to("cuda"))
-        assert torch.equal(torch.bitwise_xor(ys0.cpu(), ys1.cpu()), betas)
-
-    def test_merkle_fold_proofs_verify_on_device(self, gpu_vdmpf, key_gpu, alphas):
-        _, pi0 = gpu_vdmpf.batch_eval(0, key_gpu, alphas.to("cuda"))
-        _, pi1 = gpu_vdmpf.batch_eval(1, key_gpu, alphas.to("cuda"))
-        assert gpu_vdmpf.verify(pi0, pi1) is True
-        tampered = pi1.clone()
+    def test_merkle_batch_matches_cpu_and_reconstructs(self, vdmpf, material, alphas, betas):
+        cpu = [evaluate_multi(vdmpf, material, party, alphas, merkle=True)
+               for party in (False, True)]
+        gpu = [evaluate_multi(vdmpf, material, party, alphas, merkle=True, device="cuda:0")
+               for party in (False, True)]
+        for party in (0, 1):
+            assert gpu[party][0].device == torch.device("cuda:0")
+            assert torch.equal(cpu[party][0], gpu[party][0].cpu())
+            assert torch.equal(cpu[party][1], gpu[party][1].cpu())
+        assert torch.equal((gpu[0][0] ^ gpu[1][0]).cpu(), betas)
+        assert vdmpf.verify(gpu[0][1], gpu[1][1])
+        tampered = gpu[1][1].clone()
         tampered[0, 0] ^= 1
-        assert gpu_vdmpf.verify(pi0, tampered) is False
+        assert not vdmpf.verify(gpu[0][1], tampered)
 
-    def test_accumulators_are_device_local(self, gpu_vdmpf, key_cpu, key_gpu, alphas):
-        # CPU runs the sequential chains, CUDA the Merkle fold: identical
-        # outputs but proofs that must not be mixed across devices.
-        _, pi0_cpu = gpu_vdmpf.batch_eval(0, key_cpu, alphas)
-        _, pi1_gpu = gpu_vdmpf.batch_eval(1, key_gpu, alphas.to("cuda"))
-        assert gpu_vdmpf.verify(pi0_cpu, pi1_gpu.cpu()) is False
+    def test_merkle_full_domain_matches_cpu(self, vdmpf, material):
+        cpu = evaluate_multi_all(vdmpf, material, False, merkle=True)
+        gpu = evaluate_multi_all(vdmpf, material, False, merkle=True, device="cuda:0")
+        assert torch.equal(cpu[0], gpu[0].cpu())
+        assert torch.equal(cpu[1], gpu[1].cpu())
+
+    def test_chain_cuda_requires_explicit_merkle_method(self, vdmpf, material, alphas):
+        with pytest.raises(RuntimeError, match="chain.*CPU"):
+            evaluate_multi(vdmpf, material, False, alphas, device="cuda:0")
+
+    def test_host_only_prp_rejects_cuda(self, alphas, betas):
+        scheme = make_multi_scheme(True, bits=IN_BITS, max_points=MAX_POINTS,
+                                   bucket_bits=BUCKET_BITS, host_only=True)
+        material = generate_multi(scheme, alphas, betas)
+        with pytest.raises((TypeError, RuntimeError), match="CUDA"):
+            evaluate_multi(scheme, material, False, alphas, merkle=True, device="cuda:0")

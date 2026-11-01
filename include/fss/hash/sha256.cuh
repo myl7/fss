@@ -23,9 +23,6 @@ namespace fss::hash {
  * Only for host side.
  */
 class Sha256 {
-private:
-  int4 key_;
-
 public:
   /**
      * Constructor.
@@ -40,22 +37,7 @@ public:
      * @param msg 4 int4 blocks (64B).
      * @return 2 int4 blocks (32B) SHA-256 digest.
      */
-  __host__ __device__ cuda::std::array<int4, 2> Hash(cuda::std::span<const int4, 4> msg) {
-    cuda::std::array<int4, 2> out{};
-
-#ifdef __CUDA_ARCH__
-    assert(false && "Sha256 is not supported on device side");
-    __trap();
-#else
-    int4 buf[5] = {key_, msg[0], msg[1], msg[2], msg[3]};
-    auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
-    auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
-    int ret = EVP_Digest(buf_ptr, 80, out_ptr, NULL, EVP_sha256(), NULL);
-    assert(ret == 1);
-#endif
-
-    return out;
-  }
+  __host__ __device__ cuda::std::array<int4, 2> Hash(cuda::std::span<const int4, 4> msg);
 
   /**
      * XOR-collision-resistant hash.
@@ -66,28 +48,52 @@ public:
      * @param msg Tuple of (a, b) where a's LSB is used for domain separation.
      * @return 4 int4 blocks (64B).
      */
-  __host__ __device__ cuda::std::array<int4, 4> Hash(cuda::std::tuple<int4, const int4> msg) {
-    cuda::std::array<int4, 4> out{};
+  __host__ __device__ cuda::std::array<int4, 4> Hash(cuda::std::tuple<int4, const int4> msg);
+
+private:
+  int4 key_;
+};
+// -----------------------------------------------------------------------------
+
+__host__ __device__ inline cuda::std::array<int4, 2> Sha256::Hash(cuda::std::span<const int4, 4> msg) {
+  cuda::std::array<int4, 2> out{};
 
 #ifdef __CUDA_ARCH__
-    assert(false && "Sha256 is not supported on device side");
-    __trap();
+  assert(false && "Sha256 is not supported on device side");
+  __trap();
 #else
-    auto [a, b] = msg;
-    int4 buf[3] = {key_, fss::util::SetLsb(a, false), b};
-    auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
-    auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
-    int ret = EVP_Digest(buf_ptr, 48, out_ptr, NULL, EVP_sha256(), NULL);
-    assert(ret == 1);
-
-    buf[1] = fss::util::SetLsb(a, true);
-    ret = EVP_Digest(buf_ptr, 48, out_ptr + 32, NULL, EVP_sha256(), NULL);
-    assert(ret == 1);
+  int4 buf[5] = {key_, msg[0], msg[1], msg[2], msg[3]};
+  auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
+  auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
+  int ret = EVP_Digest(buf_ptr, 80, out_ptr, NULL, EVP_sha256(), NULL);
+  assert(ret == 1);
 #endif
 
-    return out;
-  }
-};
+  return out;
+}
+
+__host__ __device__ inline cuda::std::array<int4, 4> Sha256::Hash(cuda::std::tuple<int4, const int4> msg) {
+  cuda::std::array<int4, 4> out{};
+
+#ifdef __CUDA_ARCH__
+  assert(false && "Sha256 is not supported on device side");
+  __trap();
+#else
+  auto [a, b] = msg;
+  int4 buf[3] = {key_, fss::util::SetLsb(a, false), b};
+  auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
+  auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
+  int ret = EVP_Digest(buf_ptr, 48, out_ptr, NULL, EVP_sha256(), NULL);
+  assert(ret == 1);
+
+  buf[1] = fss::util::SetLsb(a, true);
+  ret = EVP_Digest(buf_ptr, 48, out_ptr + 32, NULL, EVP_sha256(), NULL);
+  assert(ret == 1);
+#endif
+
+  return out;
+}
+
 static_assert(Hashable<Sha256> && XorHashable<Sha256>);
 
 }  // namespace fss::hash

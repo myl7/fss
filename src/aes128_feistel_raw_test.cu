@@ -11,6 +11,7 @@
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/aes128_feistel.cuh>
 #include <fss/prp/aes128_feistel_raw.cuh>
+#include "core_api_test_helpers.cuh"
 
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
@@ -141,7 +142,7 @@ protected:
   using Prp = fss::prp::Aes128FeistelRaw;
   using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t>;
 
-  static constexpr int m = DmpfType::m;
+  static constexpr int m = DmpfType::kBucketCount;
 
   uint16_t alphas[kT] = {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
       1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 2800, 2900, 3000};
@@ -169,11 +170,12 @@ protected:
     std::mt19937 gen(rd());
 
     int4 sigma = RandomSeed(gen);
-    cuda::std::array<cuda::std::array<int4, 2>, m> s0s;
+    cuda::std::array<int4, size_t{m} * 2> s0s;
     for (int i = 0; i < m; ++i) {
-      s0s[i] = {RandomSeed(gen), RandomSeed(gen)};
+      s0s[i] = RandomSeed(gen);
+      s0s[size_t{m} + i] = RandomSeed(gen);
     }
-    ASSERT_EQ(dmpf.Gen(k0, k1, sigma, cuda::std::span<cuda::std::array<int4, 2>, m>(s0s),
+    ASSERT_EQ(fss_test::GenMulti(dmpf, k0, k1, sigma, cuda::std::span<const int4>(s0s),
         cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT), 0);
   }
 
@@ -185,8 +187,8 @@ protected:
     std::vector<uint16_t> xs(alphas, alphas + kT);
     std::vector<int4> ys0(kT), ys1(kT);
 
-    dmpf.BatchEval(false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0));
-    dmpf.BatchEval(true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1));
+    fss_test::BatchEvalKey(dmpf, false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0));
+    fss_test::BatchEvalKey(dmpf, true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1));
 
     for (int i = 0; i < kT; ++i) {
       auto result = Group::From(ys0[i]) + Group::From(ys1[i]);
@@ -227,8 +229,8 @@ protected:
 
     std::vector<int4> ys0(xs.size()), ys1(xs.size());
 
-    dmpf.BatchEval(false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0));
-    dmpf.BatchEval(true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1));
+    fss_test::BatchEvalKey(dmpf, false, k0, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0));
+    fss_test::BatchEvalKey(dmpf, true, k1, cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1));
 
     int4 zero = {0, 0, 0, 0};
     for (size_t i = 0; i < xs.size(); ++i) {
@@ -255,8 +257,8 @@ protected:
     std::vector<int4> ys0(domain_size);
     std::vector<int4> ys1(domain_size);
 
-    dmpf.EvalAll(false, k0, ys0);
-    dmpf.EvalAll(true, k1, ys1);
+    fss_test::EvalAllKey(dmpf, false, k0, ys0);
+    fss_test::EvalAllKey(dmpf, true, k1, ys1);
 
     for (size_t i = 0; i < domain_size; ++i) {
       auto result = (Group::From(ys0[i]) + Group::From(ys1[i]));
@@ -309,7 +311,7 @@ TEST(CuckooHashAes128FeistelRawTest, Compact) {
   do {
     sigma = {dis(gen), dis(gen), dis(gen), dis(gen)};
     std::fill(table.begin(), table.end(), std::pair<int, int>{-1, -1});
-    fss::cuckoo_hash::Compact<fss::prp::Aes128FeistelRaw, uint16_t> compact{prp};
+    fss::cuckoo_hash::detail::Compact<fss::prp::Aes128FeistelRaw, uint16_t> compact{prp};
     ret = compact.Run(std::span<const uint16_t>(as, t), m, sigma, n, B, 1000, std::span<std::pair<int, int>>(table));
   } while (ret != 0);
 
@@ -324,7 +326,7 @@ TEST(CuckooHashAes128FeistelRawTest, Compact) {
     placed[j] = 1;
 
     int k = table[i].second;
-    fss::cuckoo_hash::PrpHash<fss::prp::Aes128FeistelRaw, uint16_t> prp_hash{prp};
+    fss::cuckoo_hash::detail::PrpHash<fss::prp::Aes128FeistelRaw, uint16_t> prp_hash{prp};
     auto [bucket, index] = prp_hash.Locate(sigma, as[j], k, n, B);
     EXPECT_EQ(bucket, i);
   }

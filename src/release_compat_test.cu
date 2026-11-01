@@ -18,12 +18,13 @@
 #include <fss/vdpf.cuh>
 #include <fss/vdmpf.cuh>
 #include <fss/dmpf.cuh>
-#include <fss/point_eval_cpu.cuh>
+#include "point_eval_cpu.cuh"
 #include <fss/group/bytes.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include <fss/prp/chacha_feistel.cuh>
 #include <fss/hash/blake3.cuh>
+#include "core_api_test_helpers.cuh"
 
 namespace {
 
@@ -49,7 +50,7 @@ void ExpectCw(const Cw &actual, const Cw &expected) {
 }
 
 // Test-only backends deliberately force generation failure without invoking
-// unrelated arithmetic in a cryptographic backend during UBSan retry checks.
+// unrelated arithmetic in a cryptographic backend during failure checks.
 template <int mul>
 struct ZeroPrg {
   __host__ __device__ cuda::std::array<int4, mul> Gen(int4) { return {}; }
@@ -86,36 +87,37 @@ struct CheckedAes {
   }
 };
 
-template <int depth>
 void CheckConfiguredPackers() {
-  using Dpf = fss::Dpf<8, Bytes, fss::prg::ChaCha<2>, uint16_t, depth>;
-  using Half = fss::HalfTreeDpf<8, Bytes, fss::prg::ChaCha<1>, uint16_t, depth>;
-  Dpf dpf{fss::prg::ChaCha<2>{1, 2}};
-  Half half{fss::prg::ChaCha<1>{1, 2}, kHashKey};
+  using Dpf = fss::Dpf<8, Bytes, fss::prg::ChaCha<2>, uint16_t>;
+  using Half = fss::HalfTreeDpf<8, Bytes, fss_test::CcrBackend<fss_test::TestCcrHash>, uint16_t>;
+  auto dpf_prg = fss::prg::ChaCha<2>{1, 2};
+  Dpf dpf{dpf_prg};
+  auto half_hash = fss_test::TestCcrHash{1, 2};
+  Half half{half_hash, kHashKey};
   typename Dpf::Key dk0, dk1;
   typename Half::Key hk0, hk1;
-  dpf.Gen(dk0, dk1, kSeeds, 107, kBeta);
-  half.Gen(hk0, hk1, kSeeds, 107, kBeta);
-  // Existing four explicit template arguments deduce configured key depth.
-  auto dp = fss::cpu::DpfPackPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(dk0);
-  auto hp = fss::cpu::HalfTreeDpfPackPoint<8, Bytes, fss::prg::ChaCha<1>, uint16_t>(hk0);
-  auto dp_explicit = fss::cpu::DpfPackPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t, depth>(dk0);
+  fss_test::GenPair(dpf, dk0, dk1, kSeeds, 107, kBeta);
+  fss_test::GenPair(half, hk0, hk1, kSeeds, 107, kBeta);
+  // Packing selects the same explicit scheme configuration as key generation.
+  auto dp = fss::detail::cpu::DpfPackPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(dk0);
+  auto hp = fss::detail::cpu::HalfTreeDpfPackPoint<8, Bytes, fss_test::CcrBackend<fss_test::TestCcrHash>, uint16_t>(hk0);
+  auto dp_explicit = fss::detail::cpu::DpfPackPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(dk0);
   ExpectInt4(dp_explicit.s0, dp.s0);
   for (int x = 0; x < 256; ++x) {
-    auto dy = fss::cpu::DpfEvalPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(false, dp, x, dpf.prg);
-    auto hy = fss::cpu::HalfTreeDpfEvalPoint<8, Bytes, fss::prg::ChaCha<1>, uint16_t>(
-        false, hp, x, half.prg, kHashKey);
-    ExpectInt4(dy, dpf.Eval(false, dk0, x));
-    ExpectInt4(hy, half.Eval(false, hk0, x));
+    auto dy = fss::detail::cpu::DpfEvalPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(false, (dp).s0, (dp).cws, (dp).tr, x, dpf_prg);
+    auto hy = fss::detail::cpu::HalfTreeDpfEvalPoint<8, Bytes, fss_test::CcrBackend<fss_test::TestCcrHash>, uint16_t>(false, (hp).s0, (hp).cws, (hp).lcw1, x, half_hash, kHashKey);
+    ExpectInt4(dy, fss_test::EvalKey(dpf, false, dk0, x));
+    ExpectInt4(hy, fss_test::EvalKey(half, false, hk0, x));
   }
 }
 
 }  // namespace
 
 TEST(ReleaseCompatibility, RawDpfAndDcfKeepCorrectionWordsAndOutputOrder) {
-  using Dpf = fss::Dpf<8, Bytes, fss::prg::ChaCha<2>, uint16_t, 0>;
-  using Dcf = fss::Dcf<8, Bytes, fss::prg::ChaCha<4>, uint16_t, fss::DcfPred::kLt, 0>;
-  Dpf dpf{fss::prg::ChaCha<2>{1, 2}};
+  using Dpf = fss::Dpf<8, Bytes, fss::prg::ChaCha<2>, uint16_t>;
+  using Dcf = fss::Dcf<8, Bytes, fss::prg::ChaCha<4>, uint16_t, fss::DcfPred::kLt>;
+  auto dpf_prg = fss::prg::ChaCha<2>{1, 2};
+  Dpf dpf{dpf_prg};
   Dcf dcf{fss::prg::ChaCha<4>{1, 2}};
   Dpf::Cw dcws[9];
   Dcf::Cw ccws[9];
@@ -123,8 +125,8 @@ TEST(ReleaseCompatibility, RawDpfAndDcfKeepCorrectionWordsAndOutputOrder) {
   Dcf::Key ck0, ck1;
   dpf.Gen(dcws, kSeeds, 107, kBeta);
   dcf.Gen(ccws, kSeeds, 107, kBeta);
-  dpf.Gen(dk0, dk1, kSeeds, 107, kBeta);
-  dcf.Gen(ck0, ck1, kSeeds, 107, kBeta);
+  fss_test::GenPair(dpf, dk0, dk1, kSeeds, 107, kBeta);
+  fss_test::GenPair(dcf, ck0, ck1, kSeeds, 107, kBeta);
   for (int i = 0; i < 9; ++i) {
     ExpectCw(dcws[i], dk0.cws[i]);
     ExpectCw(ccws[i], ck0.cws[i]);
@@ -134,159 +136,82 @@ TEST(ReleaseCompatibility, RawDpfAndDcfKeepCorrectionWordsAndOutputOrder) {
     dpf.EvalAll(party, kSeeds[party], dcws, dy);
     dcf.EvalAll(party, kSeeds[party], ccws, cy);
     for (int x = 0; x < 256; ++x) {
-      ExpectInt4(dy[x], dpf.Eval(party, party ? dk1 : dk0, x));
-      ExpectInt4(cy[x], dcf.Eval(party, party ? ck1 : ck0, x));
+      ExpectInt4(dy[x], fss_test::EvalKey(dpf, party, party ? dk1 : dk0, x));
+      ExpectInt4(cy[x], fss_test::EvalKey(dcf, party, party ? ck1 : ck0, x));
     }
   }
 }
 
 TEST(ReleaseCompatibility, RawHalfTreeAndCallerOwnedGrotto) {
-  using Half = fss::HalfTreeDpf<8, Bytes, fss::prg::ChaCha<1>, uint16_t, 0>;
-  Half half{fss::prg::ChaCha<1>{1, 2}, kHashKey};
+  using Half = fss::HalfTreeDpf<8, Bytes, fss_test::CcrBackend<fss_test::TestCcrHash>, uint16_t>;
+  auto half_hash = fss_test::TestCcrHash{1, 2};
+  Half half{half_hash, kHashKey};
   Half::Key k0, k1;
-  Half::Cw cws[8];
-  int4 ocw;
-  half.Gen(cws, ocw, kSeeds, 107, kBeta);
-  half.Gen(k0, k1, kSeeds, 107, kBeta);
-  for (int i = 0; i < 8; ++i) ExpectCw(cws[i], k0.cws[i]);
-  ExpectInt4(ocw, k0.ocw);
+  Half::Cw cws[9];
+  half.Gen(cws, kSeeds, 107, kBeta);
+  fss_test::GenPair(half, k0, k1, kSeeds, 107, kBeta);
+  for (int i = 0; i < 9; ++i) ExpectCw(cws[i], k0.cws[i]);
+  EXPECT_FALSE(cws[8].extra);
   int4 ys[256];
-  half.EvalAll(false, kSeeds[0], cws, ocw, ys);
-  for (int x = 0; x < 256; ++x) ExpectInt4(ys[x], half.Eval(false, k0, x));
+  half.EvalAll(false, kSeeds[0], cws, ys);
+  for (int x = 0; x < 256; ++x) ExpectInt4(ys[x], fss_test::EvalKey(half, false, k0, x));
 
-  using Grotto = fss::GrottoDcf<8, fss::prg::ChaCha<2>, uint16_t, 0>;
+  using Grotto = fss::GrottoDcf<8, fss::prg::ChaCha<2>, uint16_t>;
   Grotto grotto{fss::prg::ChaCha<2>{1, 2}};
   Grotto::Cw gcws[9];
   Grotto::Key g0, g1;
   grotto.Gen(gcws, kSeeds, 107);
-  grotto.Gen(g0, g1, kSeeds, 107);
+  fss_test::GenPair(grotto, g0, g1, kSeeds, 107);
   bool storage[511], raw_ys[256];
-  Grotto::ParityTree view{storage, false};
-  bool *allocation = view.p;
-  grotto.Preprocess(view, kSeeds[0], gcws);
-  EXPECT_EQ(view.p, allocation);
-  auto owned = grotto.Preprocess(false, g0);
+  grotto.Preprocess(false, kSeeds[0], gcws, storage);
+  Grotto::ParityTreeView view{storage};
+  auto owned = fss_test::PreprocessKey(grotto, false, g0);
   grotto.EvalAll(false, kSeeds[0], gcws, raw_ys);
   for (int x = 0; x < 256; ++x) {
-    EXPECT_EQ(grotto.Eval(view, x), grotto.Eval(owned, x));
+    EXPECT_EQ(grotto.Eval(view, x), grotto.Eval(owned.View(), x));
     EXPECT_EQ(raw_ys[x], grotto.Eval(view, x));
   }
 }
 
 TEST(ReleaseCompatibility, RawVdpfPreservesChainProofAndConstSeeds) {
   using Hash = fss::hash::Blake3;
-  using Scheme = fss::Vdpf<8, Bytes, fss::prg::ChaCha<2>, Hash, Hash, uint16_t, 0>;
+  using Scheme = fss::Vdpf<8, Bytes, fss::prg::ChaCha<2>, Hash, Hash, uint16_t>;
   Scheme scheme{fss::prg::ChaCha<2>{1, 2}, Hash{kIv}, Hash{kIv}};
   Scheme::Key k0, k1;
-  Scheme::Cw cws[8];
+  Scheme::Cw cws[9];
   cuda::std::array<int4, 4> cs;
-  int4 ocw;
   int4 effective[2] = {kSeeds[0], kSeeds[1]};
-  ASSERT_EQ(scheme.Gen(k0, k1, effective, 107, kBeta), 0);
+  ASSERT_EQ(fss_test::GenPair(scheme, k0, k1, effective, 107, kBeta), 0);
   const int4 seeds[2] = {effective[0], effective[1]};
-  ASSERT_EQ(scheme.Gen(cws, cs, ocw, seeds, 107, kBeta), 0);
-  for (int i = 0; i < 8; ++i) ExpectCw(cws[i], k0.cws[i]);
+  ASSERT_EQ(scheme.Gen(cws, cs, seeds, 107, kBeta), 0);
+  for (int i = 0; i < 9; ++i) ExpectCw(cws[i], k0.cws[i]);
   int4 raw_ys[256], new_ys[256];
   cuda::std::array<int4, 4> raw_pi, new_pi;
-  scheme.EvalAll(false, seeds[0], cws, cs, ocw, raw_ys, raw_pi);
-  scheme.EvalAll(false, k0, new_ys, new_pi);
+  scheme.EvalAll(false, seeds[0], cws, cs, raw_ys, raw_pi);
+  fss_test::EvalAllKey(scheme, false, k0, new_ys, new_pi);
   for (int i = 0; i < 4; ++i) ExpectInt4(raw_pi[i], new_pi[i]);
   for (int x = 0; x < 256; ++x) {
     int4 y;
-    auto point_pi = scheme.Eval(false, seeds[0], cws, cs, ocw, x, y);
-    auto result = scheme.Eval(false, k0, x);
+    auto point_pi = scheme.Eval(false, seeds[0], cws, cs, x, y);
+    auto result = fss_test::EvalKey(scheme, false, k0, x);
     ExpectInt4(y, result.y);
     ExpectInt4(raw_ys[x], new_ys[x]);
     for (int i = 0; i < 4; ++i) ExpectInt4(point_pi[i], result.pi_tilde[i]);
   }
 }
 
-TEST(ReleaseCompatibility, ChaChaLegacyNonceReadsAreDeferred) {
-  int nonce[2] = {1, 2};
-  fss::prg::ChaCha<2> legacy{nonce};
-  static_assert(std::is_trivially_copyable_v<decltype(legacy)>);
-  for (int i = 0; i < 3; ++i) {
-    nonce[0] = i * 3;
-    nonce[1] = 100 - i;
-    auto actual = legacy.Gen(kSeeds[0]);
-    auto expected = fss::prg::ChaCha<2>{nonce[0], nonce[1]}.Gen(kSeeds[0]);
-    for (int j = 0; j < 2; ++j) ExpectInt4(actual[j], expected[j]);
-  }
-}
-
 TEST(ReleaseCompatibility, ConfiguredCpuPackers) {
-  CheckConfiguredPackers<-1>();
-  CheckConfiguredPackers<0>();
-  CheckConfiguredPackers<2>();
-}
-
-TEST(ReleaseCompatibility, RetryArithmeticWrapsSeedWords) {
-  EXPECT_EQ(fss::util::IncrementWord(INT_MAX), INT_MIN);
-  EXPECT_EQ(fss::util::IncrementWord(INT_MIN), INT_MIN + 1);
-  EXPECT_EQ(fss::util::IncrementWord(-1), 0);
-  using Vdpf = fss::Vdpf<1, Bytes, ZeroPrg<2>, ZeroXorHash, ZeroHash, uint16_t, 0>;
-  Vdpf vdpf{{}, {}, {}};
-  Vdpf::Key k0, k1;
-  for (int word : {INT_MAX, INT_MIN, -1}) {
-    int4 seeds[2] = {{word, 0, 0, 0}, {0, word, 0, 0}};
-    Vdpf::Cw cws[1];
-    cuda::std::array<int4, 4> cs;
-    int4 ocw;
-    ASSERT_EQ(vdpf.Gen(cws, cs, ocw, seeds, 0, kBeta), 1);
-    EXPECT_EQ(seeds[0].x, word);
-    EXPECT_EQ(seeds[1].y, word);
-    ASSERT_EQ(vdpf.Gen(k0, k1, seeds, 0, kBeta, false), 1);
-    EXPECT_EQ(seeds[0].x, word);
-    EXPECT_EQ(seeds[1].y, word);
-    ASSERT_EQ(vdpf.Gen(k0, k1, seeds, 0, kBeta), 1);
-    int expected = word;
-    for (int i = 0; i < 128; ++i) expected = fss::util::IncrementWord(expected);
-    EXPECT_EQ(seeds[0].x, expected);
-    EXPECT_EQ(seeds[1].y, expected);
-  }
-}
-
-TEST(ReleaseCompatibility, RetryArithmeticAndReleasedVdmpfFailFast) {
-  using Vdmpf = fss::Vdmpf<8, 30, 6, Bytes, ZeroPrg<2>, ZeroXorHash, ZeroHash, IdentityPrp, uint16_t>;
-  using Dmpf = fss::Dmpf<8, 30, 6, Bytes, ZeroPrg<2>, IdentityPrp, uint16_t, 3, 80, 0>;
-  Vdmpf vdmpf{{}, {}, {}, {}};
-  Dmpf dmpf{{}, {}};
-  Vdmpf::Key vk0, vk1;
-  Dmpf::Key dk0, dk1;
-  Vdmpf::BucketKey aggregate{{}, {}, {}, {1, 2, 3, 4}};
-  ExpectInt4(aggregate.s0, int4{1, 2, 3, 4});
-  uint16_t duplicate[30] = {};
-  int4 betas[30] = {};
-  int4 sigma = {INT_MAX, 1, 2, 3};
-  cuda::std::array<cuda::std::array<int4, 2>, Vdmpf::m> seeds;
-  for (auto &pair : seeds) pair = {int4{INT_MAX, 0, 0, 0}, int4{0, INT_MAX, 0, 0}};
-  // Omitting optional arguments on mutable storage still selects v1.2.0's
-  // fail-fast form and never writes the seeds or sigma.
-  ASSERT_EQ(vdmpf.Gen(vk0, vk1, sigma, seeds, std::span<const uint16_t>(duplicate),
-      std::span<const int4>(betas), 30), 1);
-  EXPECT_EQ(sigma.x, INT_MAX);
-  EXPECT_EQ(seeds[0][0].x, INT_MAX);
-  ASSERT_EQ(vdmpf.Gen(vk0, vk1, sigma, seeds, duplicate, betas, 30, 0, false), 1);
-  EXPECT_EQ(sigma.x, INT_MAX);
-  ASSERT_EQ(vdmpf.Gen(vk0, vk1, sigma, seeds, duplicate, betas, 30, 0, true), 1);
-  EXPECT_EQ(sigma.x, INT_MIN + 127);
-  EXPECT_EQ(seeds[0][0].x, INT_MIN + 127);
-  EXPECT_EQ(seeds[0][1].y, INT_MIN + 127);
-  sigma.x = INT_MAX;
-  for (auto &pair : seeds) pair = {int4{INT_MAX, 0, 0, 0}, int4{0, INT_MAX, 0, 0}};
-  ASSERT_EQ(dmpf.Gen(dk0, dk1, sigma, seeds, duplicate, betas, 30, 0, true), 1);
-  EXPECT_EQ(sigma.x, INT_MIN + 127);
-  EXPECT_EQ(seeds[0][0].x, INT_MIN + 127);
+  CheckConfiguredPackers();
 }
 
 TEST(ReleaseCompatibility, BucketBoundsCompileBeforeAllocation) {
   using Small = fss::Dmpf<5, 30, 1, Bytes, ZeroPrg<2>, IdentityPrp>;
   using Large = fss::Dmpf<34, 30, 30, Bytes, ZeroPrg<2>, IdentityPrp, uint64_t>;
   using Verifiable = fss::Vdmpf<34, 30, 30, Bytes, ZeroPrg<2>, ZeroXorHash, ZeroHash, IdentityPrp, uint64_t>;
-  static_assert(Small::b_size <= 2);
-  static_assert(Large::b_size > 0 && Large::b_size <= (uint64_t{1} << 30));
-  static_assert(Verifiable::b_size == Large::b_size);
-  EXPECT_EQ(Large::b_size, Verifiable::b_size);
+  static_assert(Small::kBucketSize <= 2);
+  static_assert(Large::kBucketSize > 0 && Large::kBucketSize <= (uint64_t{1} << 30));
+  static_assert(Verifiable::kBucketSize == Large::kBucketSize);
+  EXPECT_EQ(Large::kBucketSize, Verifiable::kBucketSize);
 }
 
 TEST(ReleaseCompatibility, SequentialDmpfUsesOneSetOfAesContexts) {
@@ -295,24 +220,27 @@ TEST(ReleaseCompatibility, SequentialDmpfUsesOneSetOfAesContexts) {
   const unsigned char *keys[2] = {key0, key1};
   auto contexts = fss::prg::Aes128Mmo<2>::CreateCtxs(keys);
   AesExecutionState state;
-  using Scheme = fss::Dmpf<8, 30, 6, Bytes, CheckedAes, fss::prp::ChaChaFeistel, uint16_t, 3, 80, 0>;
+  using Scheme = fss::Dmpf<8, 30, 6, Bytes, CheckedAes, fss::prp::ChaChaFeistel, uint16_t, 80>;
   Scheme scheme{CheckedAes{fss::prg::Aes128Mmo<2>{contexts}, &state}, {}};
   Scheme::Key k0, k1;
   int4 sigma = kHashKey;
-  cuda::std::array<cuda::std::array<int4, 2>, Scheme::m> seeds;
-  for (auto &pair : seeds) pair = {kSeeds[0], kSeeds[1]};
+  cuda::std::array<int4, size_t{Scheme::kBucketCount} * 2> seeds;
+  for (int i = 0; i < Scheme::kBucketCount; ++i) {
+    seeds[i] = kSeeds[0];
+    seeds[size_t{Scheme::kBucketCount} + i] = kSeeds[1];
+  }
   uint16_t alphas[30];
   int4 betas[30];
   for (int i = 0; i < 30; ++i) {
     alphas[i] = i * 3;
     betas[i] = kBeta;
   }
-  int ret = scheme.Gen(k0, k1, sigma, seeds, alphas, betas, 30);
+  int ret = fss_test::GenMulti(scheme, k0, k1, sigma, seeds, alphas, betas, 30);
   EXPECT_EQ(ret, 0);
   if (ret == 0) {
     std::vector<int4> ys0(256), ys1(256);
-    scheme.EvalAll(false, k0, ys0);
-    scheme.EvalAll(true, k1, ys1);
+    fss_test::EvalAllKey(scheme, false, k0, ys0);
+    fss_test::EvalAllKey(scheme, true, k1, ys1);
     for (int x = 0; x < 256; ++x) {
       int4 expected = x < 90 && x % 3 == 0 ? Bytes::From(kBeta).Into() : int4{0, 0, 0, 0};
       ExpectInt4(fss::util::Xor(ys0[x], ys1[x]), expected);

@@ -1,11 +1,14 @@
+"""Grotto comparison shares and caller-owned parity-tree integration."""
+
 import pytest
 import torch
 import fss_crypto
+from conftest import evaluate_all, generate_point, make_point_scheme
 
 
 @pytest.fixture
 def dcf():
-    return fss_crypto.GrottoDcf(in_bits=16, prg="chacha")
+    return make_point_scheme("GrottoDcf")
 
 
 @pytest.fixture
@@ -13,21 +16,28 @@ def s0s():
     return torch.randint(-2**31, 2**31, (2, 4), dtype=torch.int32)
 
 
+def parity_tree(scheme, party, seed, corrections, **kwargs):
+    p = torch.empty((2**(scheme.in_bits + 1) - 1,), dtype=torch.bool,
+                    device=seed.device)
+    scheme.preprocess(bool(party), seed, corrections, p, **kwargs)
+    return fss_crypto.ParityTreeView(p)
+
+
 class TestGrottoDcfGenShape:
     def test_cws_shape(self, dcf, s0s):
-        cws = dcf.gen(s0s, alpha=107)
-        assert cws.shape == (17, 8)
-        assert cws.dtype == torch.int32
+        cws = generate_point(dcf, s0s, alpha=107)
+        assert cws.shape == dcf.cws_shape
+        assert cws.dtype == torch.uint8
 
     def test_cws_device_is_cpu(self, dcf, s0s):
-        cws = dcf.gen(s0s, alpha=107)
+        cws = generate_point(dcf, s0s, alpha=107)
         assert cws.device.type == "cpu"
 
 
 class TestGrottoDcfEvalAllShape:
     def test_output_shape(self, dcf, s0s):
-        cws = dcf.gen(s0s, alpha=107)
-        out = dcf.eval_all(party=0, s0=s0s[0], cws=cws)
+        cws = generate_point(dcf, s0s, alpha=107)
+        out = evaluate_all(dcf, party=0, s0=s0s[0], cws=cws)
         assert out.shape == (2**16,)
         assert out.dtype == torch.bool
         assert out.device.type == "cpu"
@@ -36,78 +46,68 @@ class TestGrottoDcfEvalAllShape:
 class TestGrottoDcfReconstruction:
     def test_reconstruction_is_comparison(self, dcf, s0s):
         alpha = 107
-        cws = dcf.gen(s0s, alpha=alpha)
-        first = dcf.eval_all(party=0, s0=s0s[0], cws=cws)
-        second = dcf.eval_all(party=1, s0=s0s[1], cws=cws)
-        # XOR reconstruction: 1[alpha <= x] for every x in the domain.
-        recon = torch.bitwise_xor(first, second)
+        cws = generate_point(dcf, s0s, alpha=alpha)
+        outputs = [evaluate_all(dcf, party, s0s[party], cws) for party in (0, 1)]
         expected = torch.arange(2**16, dtype=torch.int64) >= alpha
-        assert torch.equal(recon, expected)
+        assert torch.equal(torch.bitwise_xor(*outputs), expected)
 
 
 class TestGrottoDcfPreprocessEval:
     def test_tree_shape(self, dcf, s0s):
-        cws = dcf.gen(s0s, alpha=107)
-        tree = dcf.preprocess(party=0, s0=s0s[0], cws=cws)
-        assert tree.shape == (2 * 2**16 - 1,)
-        assert tree.dtype == torch.bool
-        assert tree.device.type == "cpu"
+        cws = generate_point(dcf, s0s, alpha=107)
+        tree = parity_tree(dcf, 0, s0s[0], cws)
+        assert tree.p.shape == (2 * 2**16 - 1,)
+        assert tree.p.dtype == torch.bool
+        assert tree.p.device.type == "cpu"
 
     def test_eval_matches_eval_all(self, dcf, s0s):
         alpha = 40000
-        cws = dcf.gen(s0s, alpha=alpha)
+        cws = generate_point(dcf, s0s, alpha=alpha)
         for party in (0, 1):
-            full = dcf.eval_all(party=party, s0=s0s[party], cws=cws)
-            tree = dcf.preprocess(party=party, s0=s0s[party], cws=cws)
+            full = evaluate_all(dcf, party, s0s[party], cws)
+            tree = parity_tree(dcf, party, s0s[party], cws)
             for x in (0, 1, alpha - 1, alpha, alpha + 1, 2**16 - 1):
-                assert dcf.eval(party, tree, x) == bool(full[x])
+                assert dcf.eval_tree(tree, x) == bool(full[x])
 
     def test_rejects_out_of_domain_x(self, dcf, s0s):
-        cws = dcf.gen(s0s, alpha=107)
-        tree = dcf.preprocess(party=0, s0=s0s[0], cws=cws)
-        with pytest.raises(ValueError, match="x must be"):
-            dcf.eval(0, tree, 2**16)
+        cws = generate_point(dcf, s0s, alpha=107)
+        tree = parity_tree(dcf, 0, s0s[0], cws)
+        with pytest.raises(RuntimeError, match="outside"):
+            dcf.eval_tree(tree, 2**16)
 
 
 class TestGrottoDcfCuda:
-
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_preprocess_gpu_matches_cpu(self, dcf, s0s):
-        cws = dcf.gen(s0s, alpha=107)
+        cws = generate_point(dcf, s0s, alpha=107)
         for party in (0, 1):
-            cpu = dcf.preprocess(party=party, s0=s0s[party], cws=cws)
-            gpu = dcf.preprocess(
-                party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda")
-            )
-            assert gpu.device.type == "cuda"
-            assert torch.equal(cpu, gpu.cpu())
+            cpu = parity_tree(dcf, party, s0s[party], cws)
+            gpu = parity_tree(dcf, party, s0s[party].to("cuda"), cws.to("cuda"))
+            assert gpu.p.device.type == "cuda"
+            assert torch.equal(cpu.p, gpu.p.cpu())
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_eval_all_gpu_matches_cpu(self, dcf, s0s):
-        cws = dcf.gen(s0s, alpha=107)
+        cws = generate_point(dcf, s0s, alpha=107)
         for party in (0, 1):
-            cpu = dcf.eval_all(party=party, s0=s0s[party], cws=cws)
-            gpu = dcf.eval_all(
-                party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda")
-            )
+            cpu = evaluate_all(dcf, party, s0s[party], cws)
+            gpu = evaluate_all(dcf, party, s0s[party].to("cuda"), cws.to("cuda"))
             assert gpu.device.type == "cuda"
             assert torch.equal(cpu, gpu.cpu())
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_above_24_bits_matches_cpu(self):
-        dcf = fss_crypto.GrottoDcf(in_bits=25, prg="chacha")
+        dcf = make_point_scheme("GrottoDcf", bits=25)
         s0s = torch.randint(-2**31, 2**31, (2, 4), dtype=torch.int32)
-        cws = dcf.gen(s0s, alpha=107)
+        cws = generate_point(dcf, s0s, alpha=107)
         for party in (0, 1):
-            tree_cpu = dcf.preprocess(party=party, s0=s0s[party], cws=cws)
-            tree_gpu = dcf.preprocess(
-                party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda")
-            )
-            assert tree_gpu.device.type == "cuda"
-            assert torch.equal(tree_cpu, tree_gpu.cpu())
-            cpu = dcf.eval_all(party=party, s0=s0s[party], cws=cws)
-            gpu = dcf.eval_all(
-                party=party, s0=s0s[party].to("cuda"), cws=cws.to("cuda")
-            )
+            tree_cpu = parity_tree(dcf, party, s0s[party], cws)
+            tree_gpu = parity_tree(dcf, party, s0s[party].to("cuda"), cws.to("cuda"),
+                                   frontier_depth=17)
+            assert tree_gpu.p.device.type == "cuda"
+            assert torch.equal(tree_cpu.p, tree_gpu.p.cpu())
+            cpu = evaluate_all(dcf, party, s0s[party], cws)
+            gpu = evaluate_all(dcf, party, s0s[party].to("cuda"), cws.to("cuda"),
+                               frontier_depth=17)
             assert gpu.device.type == "cuda"
             assert torch.equal(cpu, gpu.cpu())

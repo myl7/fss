@@ -15,6 +15,7 @@
 #include <fss/dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <omp.h>
+#include "core_api_test_helpers.cuh"
 
 namespace {
 
@@ -273,17 +274,17 @@ TEST(WordArithmetic, Blake3HighWordsAndTupleMatchUnsignedReference) {
 
 TEST(WordArithmetic, ParallelChaChaDpfFullDomainMatchesPoint) {
   omp_set_num_threads(4);
-  using Scheme = fss::Dpf<8, fss::group::Bytes, fss::prg::ChaCha<2>, uint32_t, 2>;
+  using Scheme = fss::Dpf<8, fss::group::Bytes, fss::prg::ChaCha<2>, uint32_t>;
   Scheme scheme{fss::prg::ChaCha<2>{1, 2}};
   int4 seeds[2] = {{967459772, 685770617, 5688182, 142619765},
       {1958864317, -1157351853, 618433185, -451532952}};
   Scheme::Key k0, k1;
-  scheme.Gen(k0, k1, seeds, 7, {604, 0, 0, 0});
+  fss_test::GenPair(scheme, k0, k1, seeds, 7, {604, 0, 0, 0});
   std::vector<int4> full(256);
   for (bool party : {false, true}) {
     const auto &key = party ? k1 : k0;
-    scheme.EvalAll(party, key, full);
-    for (int x = 0; x < 256; ++x) ExpectBlock(full[x], scheme.Eval(party, key, x));
+    fss_test::EvalAllKey<2>(scheme, party, key, full);
+    for (int x = 0; x < 256; ++x) ExpectBlock(full[x], fss_test::EvalKey(scheme, party, key, x));
   }
 }
 

@@ -24,9 +24,10 @@
 #include <fss/half_tree_dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
-#include <fss/point_eval_cpu.cuh>
+#include "point_eval_cpu.cuh"
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/chacha.cuh>
+#include "core_api_test_helpers.cuh"
 
 namespace {
 
@@ -37,7 +38,7 @@ using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) 
 using Aes2 = fss::prg::Aes128MmoRaw<2>;
 using Aes1 = fss::prg::Aes128MmoRaw<1>;
 using ChaCha2 = fss::prg::ChaCha<2>;
-using ChaCha1 = fss::prg::ChaCha<1>;
+using OwnedAesCcr = fss_test::TestCcrHash;
 
 constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 constexpr uint8_t kAesKeys[2][16] = {
@@ -48,7 +49,7 @@ constexpr __uint128_t kBeta = 604;
 
 template <typename Prg>
 Prg MakePrg() {
-  if constexpr (std::is_same_v<Prg, fss::prg::ChaCha<1>> || std::is_same_v<Prg, fss::prg::ChaCha<2>>) {
+  if constexpr (std::is_same_v<Prg, fss_test::TestCcrHash> || std::is_same_v<Prg, fss::prg::ChaCha<2>>) {
     return Prg(kNonce0, kNonce1);
   } else {
     return Prg(kAesKeys);
@@ -132,18 +133,18 @@ bool RunDpfEquivalence(In alpha, uint64_t tag) {
   fss::Dpf<in_bits, Group, Prg, In> dpf{prg};
   typename fss::Dpf<in_bits, Group, Prg, In>::Key k0, k1;
   int4 b_buf = MakeBBuf();
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
-  const fss::cpu::DpfPointKey<in_bits> pk0 = fss::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k0);
-  const fss::cpu::DpfPointKey<in_bits> pk1 = fss::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k1);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+  const fss::detail::cpu::DpfPointKey<in_bits> pk0 = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k0);
+  const fss::detail::cpu::DpfPointKey<in_bits> pk1 = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k1);
 
   const int4 beta_g = Group::From(b_buf).Into();
   const int4 zero = {0, 0, 0, 0};
   bool ok = true;
   for (In x : MakePoints<in_bits, In>(alpha, gen64)) {
-    const int4 e0 = dpf.Eval(false, k0, x);
-    const int4 e1 = dpf.Eval(true, k1, x);
-    const int4 f0 = fss::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(false, pk0, x, prg);
-    const int4 f1 = fss::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(true, pk1, x, prg);
+    const int4 e0 = fss_test::EvalKey(dpf, false, k0, x);
+    const int4 e1 = fss_test::EvalKey(dpf, true, k1, x);
+    const int4 f0 = fss::detail::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(false, (pk0).s0, (pk0).cws, (pk0).tr, x, prg);
+    const int4 f1 = fss::detail::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(true, (pk1).s0, (pk1).cws, (pk1).tr, x, prg);
     if (memcmp(&e0, &f0, sizeof(int4)) != 0 || memcmp(&e1, &f1, sizeof(int4)) != 0) {
       ReportMismatch("dpf", in_bits, "equivalence", x);
       ok = false;
@@ -168,21 +169,22 @@ bool RunHalfTreeEquivalence(In alpha, uint64_t tag) {
   int4 s0s[2] = {MakeSeed(gen), MakeSeed(gen)};
   int4 hash_key = {dis(gen), dis(gen), dis(gen), dis(gen)};
   Prg prg = MakePrg<Prg>();
-  fss::HalfTreeDpf<in_bits, Group, Prg, In> dpf{prg, hash_key};
-  typename fss::HalfTreeDpf<in_bits, Group, Prg, In>::Key k0, k1;
+  auto hash = fss_test::Ccr(prg);
+  fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<Prg>, In> dpf{hash, hash_key};
+  typename fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<Prg>, In>::Key k0, k1;
   int4 b_buf = MakeBBuf();
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
-  const fss::cpu::HalfTreeDpfPointKey<in_bits> pk0 = fss::cpu::HalfTreeDpfPackPoint<in_bits, Group, Prg, In>(k0);
-  const fss::cpu::HalfTreeDpfPointKey<in_bits> pk1 = fss::cpu::HalfTreeDpfPackPoint<in_bits, Group, Prg, In>(k1);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
+  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk0 = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(k0);
+  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk1 = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(k1);
 
   const int4 beta_g = Group::From(b_buf).Into();
   const int4 zero = {0, 0, 0, 0};
   bool ok = true;
   for (In x : MakePoints<in_bits, In>(alpha, gen64)) {
-    const int4 e0 = dpf.Eval(false, k0, x);
-    const int4 e1 = dpf.Eval(true, k1, x);
-    const int4 f0 = fss::cpu::HalfTreeDpfEvalPoint<in_bits, Group, Prg, In>(false, pk0, x, dpf.prg, dpf.hash_key);
-    const int4 f1 = fss::cpu::HalfTreeDpfEvalPoint<in_bits, Group, Prg, In>(true, pk1, x, dpf.prg, dpf.hash_key);
+    const int4 e0 = fss_test::EvalKey(dpf, false, k0, x);
+    const int4 e1 = fss_test::EvalKey(dpf, true, k1, x);
+    const int4 f0 = fss::detail::cpu::HalfTreeDpfEvalPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(false, (pk0).s0, (pk0).cws, (pk0).lcw1, x, hash, hash_key);
+    const int4 f1 = fss::detail::cpu::HalfTreeDpfEvalPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(true, (pk1).s0, (pk1).cws, (pk1).lcw1, x, hash, hash_key);
     if (memcmp(&e0, &f0, sizeof(int4)) != 0 || memcmp(&e1, &f1, sizeof(int4)) != 0) {
       ReportMismatch("half-tree dpf", in_bits, "equivalence", x);
       ok = false;
@@ -262,18 +264,18 @@ void TimeDpfPoint(int iters) {
   int4 s0s[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444440},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
   typename DpfType::Key k0, k1;
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), 42, MakeBBuf());
-  const fss::cpu::DpfPointKey<in_bits> pk = fss::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k0);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), 42, MakeBBuf());
+  const fss::detail::cpu::DpfPointKey<in_bits> pk = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k0);
   In x = 100;
 
   int4 acc = {0, 0, 0, 0};
   for (int i = 0; i < 2000; ++i) {
-    int4 y = fss::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(false, pk, x, prg);
+    int4 y = fss::detail::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(false, (pk).s0, (pk).cws, (pk).tr, x, prg);
     acc.x ^= y.x;
   }
   const auto t0 = std::chrono::steady_clock::now();
   for (int i = 0; i < iters; ++i) {
-    int4 y = fss::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(false, pk, x, prg);
+    int4 y = fss::detail::cpu::DpfEvalPoint<in_bits, Group, Prg, In>(false, (pk).s0, (pk).cws, (pk).tr, x, prg);
     acc.x ^= y.x;
     acc.y ^= y.y;
     acc.z ^= y.z;
@@ -281,12 +283,12 @@ void TimeDpfPoint(int iters) {
   }
   const auto t1 = std::chrono::steady_clock::now();
   for (int i = 0; i < 2000; ++i) {
-    int4 y = dpf.Eval(false, k0, x);
+    int4 y = fss_test::EvalKey(dpf, false, k0, x);
     acc.x ^= y.x;
   }
   const auto t2 = std::chrono::steady_clock::now();
   for (int i = 0; i < iters; ++i) {
-    int4 y = dpf.Eval(false, k0, x);
+    int4 y = fss_test::EvalKey(dpf, false, k0, x);
     acc.x ^= y.x;
     acc.y ^= y.y;
     acc.z ^= y.z;
@@ -300,25 +302,26 @@ void TimeDpfPoint(int iters) {
 
 template <int in_bits, typename Group, typename Prg, typename In>
 void TimeHalfTreeDpfPoint(int iters) {
-  using DpfType = fss::HalfTreeDpf<in_bits, Group, Prg, In>;
+  using DpfType = fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<Prg>, In>;
   Prg prg = MakePrg<Prg>();
   int4 hash_key = {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0};
-  DpfType dpf{prg, hash_key};
+  auto hash = fss_test::Ccr(prg);
+  DpfType dpf{hash, hash_key};
   int4 s0s[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444440},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
   typename DpfType::Key k0, k1;
-  dpf.Gen(k0, k1, cuda::std::span<const int4, 2>(s0s, 2), 42, MakeBBuf());
-  const fss::cpu::HalfTreeDpfPointKey<in_bits> pk = fss::cpu::HalfTreeDpfPackPoint<in_bits, Group, Prg, In>(k0);
+  fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), 42, MakeBBuf());
+  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(k0);
   In x = 100;
 
   int4 acc = {0, 0, 0, 0};
   for (int i = 0; i < 2000; ++i) {
-    int4 y = fss::cpu::HalfTreeDpfEvalPoint<in_bits, Group, Prg, In>(false, pk, x, dpf.prg, dpf.hash_key);
+    int4 y = fss::detail::cpu::HalfTreeDpfEvalPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(false, (pk).s0, (pk).cws, (pk).lcw1, x, hash, hash_key);
     acc.x ^= y.x;
   }
   const auto t0 = std::chrono::steady_clock::now();
   for (int i = 0; i < iters; ++i) {
-    int4 y = fss::cpu::HalfTreeDpfEvalPoint<in_bits, Group, Prg, In>(false, pk, x, dpf.prg, dpf.hash_key);
+    int4 y = fss::detail::cpu::HalfTreeDpfEvalPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(false, (pk).s0, (pk).cws, (pk).lcw1, x, hash, hash_key);
     acc.x ^= y.x;
     acc.y ^= y.y;
     acc.z ^= y.z;
@@ -326,12 +329,12 @@ void TimeHalfTreeDpfPoint(int iters) {
   }
   const auto t1 = std::chrono::steady_clock::now();
   for (int i = 0; i < 2000; ++i) {
-    int4 y = dpf.Eval(false, k0, x);
+    int4 y = fss_test::EvalKey(dpf, false, k0, x);
     acc.x ^= y.x;
   }
   const auto t2 = std::chrono::steady_clock::now();
   for (int i = 0; i < iters; ++i) {
-    int4 y = dpf.Eval(false, k0, x);
+    int4 y = fss_test::EvalKey(dpf, false, k0, x);
     acc.x ^= y.x;
     acc.y ^= y.y;
     acc.z ^= y.z;
@@ -358,7 +361,7 @@ int main(int argc, char **argv) {
       {"DpfPointEvalCpuTest.Uint128InAesRawEquivalence", [] { return RunDpfU128In<BytesGroup, Aes2>(); }},
       {"DpfPointEvalCpuTest.Uint128InChaChaEquivalence", [] { return RunDpfU128In<Uint127Group, ChaCha2>(); }},
       {"HalfTreePointEvalCpuTest.BytesAesRawEquivalence", [] { return RunHalfTreeGrid<BytesGroup, Aes1>(); }},
-      {"HalfTreePointEvalCpuTest.Uint128ChaChaEquivalence", [] { return RunHalfTreeGrid<Uint127Group, ChaCha1>(); }},
+      {"HalfTreePointEvalCpuTest.Uint128ChaChaEquivalence", [] { return RunHalfTreeGrid<Uint127Group, OwnedAesCcr>(); }},
       {"HalfTreePointEvalCpuTest.Uint8AesRawEquivalence", [] { return RunHalfTreeGrid<Uint8Group, Aes1>(); }},
       {"HalfTreePointEvalCpuTest.Uint128InAesRawEquivalence", [] { return RunHalfTreeU128In<BytesGroup, Aes1>(); }},
   };
@@ -407,7 +410,7 @@ TEST(HalfTreePointEvalCpuTest, BytesAesRawEquivalence) {
 }
 
 TEST(HalfTreePointEvalCpuTest, Uint128ChaChaEquivalence) {
-  EXPECT_TRUE((RunHalfTreeGrid<Uint127Group, ChaCha1>()));
+  EXPECT_TRUE((RunHalfTreeGrid<Uint127Group, OwnedAesCcr>()));
 }
 
 TEST(HalfTreePointEvalCpuTest, Uint8AesRawEquivalence) {
