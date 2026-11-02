@@ -31,13 +31,13 @@ void CheckGpuRange(Scheme &scheme, In first, In last) {
       first + (last - first) / 2, int4{7, 19, 23, 42});
   const size_t count = static_cast<size_t>(last - first) + 1;
   using Cw = typename Scheme::Cw;
-  Cw *corrections = nullptr;
+  Cw *cws = nullptr;
   int4 *outputs = nullptr;
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
-  ASSERT_EQ(cudaMalloc(&corrections, (bits + 1) * sizeof(Cw)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&cws, (bits + 1) * sizeof(Cw)), cudaSuccess);
   ASSERT_EQ(cudaMalloc(&outputs, (count + 1) * sizeof(int4)), cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(corrections, keys[0].cws, (bits + 1) * sizeof(Cw),
+  ASSERT_EQ(cudaMemcpyAsync(cws, keys[0].cws, (bits + 1) * sizeof(Cw),
       cudaMemcpyHostToDevice, stream), cudaSuccess);
   const int4 sentinel = {91, 92, 93, 94};
   std::vector<int4> actual(count + 1, sentinel);
@@ -47,7 +47,7 @@ void CheckGpuRange(Scheme &scheme, In first, In last) {
     ASSERT_EQ(cudaMemcpyAsync(outputs, actual.data(), actual.size() * sizeof(int4),
         cudaMemcpyHostToDevice, stream), cudaSuccess);
     ASSERT_EQ((scheme.template EvalRangeGpu<frontier, threads>(party, first, last,
-        seeds[party], {corrections, bits + 1}, {outputs, count + 1}, stream)), cudaSuccess);
+        seeds[party], {cws, bits + 1}, {outputs, count + 1}, stream)), cudaSuccess);
     ASSERT_EQ(cudaMemcpyAsync(actual.data(), outputs, actual.size() * sizeof(int4),
         cudaMemcpyDeviceToHost, stream), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
@@ -64,25 +64,25 @@ void CheckGpuRange(Scheme &scheme, In first, In last) {
     EXPECT_EQ(actual[count].w, sentinel.w);
   }
   EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{1}, In{0},
-      seeds[0], {corrections, bits + 1}, {outputs, count}, stream)), cudaErrorInvalidValue);
+      seeds[0], {cws, bits + 1}, {outputs, count}, stream)), cudaErrorInvalidValue);
   EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, first, last,
-      seeds[0], {corrections, bits}, {outputs, count}, stream)), cudaErrorInvalidValue);
+      seeds[0], {cws, bits}, {outputs, count}, stream)), cudaErrorInvalidValue);
   EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, first, last,
-      seeds[0], {corrections, bits + 1}, {outputs, count - 1}, stream)), cudaErrorInvalidValue);
+      seeds[0], {cws, bits + 1}, {outputs, count - 1}, stream)), cudaErrorInvalidValue);
   EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, first, last,
-      seeds[0], {corrections, bits + 1}, {static_cast<int4 *>(nullptr), count}, stream)), cudaErrorInvalidValue);
+      seeds[0], {cws, bits + 1}, {static_cast<int4 *>(nullptr), count}, stream)), cudaErrorInvalidValue);
   if constexpr (bits == 128) {
     EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{0}, ~In{0},
-        seeds[0], {corrections, bits + 1}, {outputs, size_t(-1)}, stream)), cudaErrorInvalidValue);
+        seeds[0], {cws, bits + 1}, {outputs, size_t(-1)}, stream)), cudaErrorInvalidValue);
     EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{0},
         static_cast<In>(size_t(-1) / sizeof(int4)), seeds[0],
-        {corrections, bits + 1}, {outputs, size_t(-1)}, stream)), cudaErrorInvalidValue);
+        {cws, bits + 1}, {outputs, size_t(-1)}, stream)), cudaErrorInvalidValue);
   } else if constexpr (bits < sizeof(In) * 8) {
     EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{0}, In{1} << bits,
-        seeds[0], {corrections, bits + 1}, {outputs, count}, stream)), cudaErrorInvalidValue);
+        seeds[0], {cws, bits + 1}, {outputs, count}, stream)), cudaErrorInvalidValue);
   }
   EXPECT_EQ(cudaFree(outputs), cudaSuccess);
-  EXPECT_EQ(cudaFree(corrections), cudaSuccess);
+  EXPECT_EQ(cudaFree(cws), cudaSuccess);
   EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }
 

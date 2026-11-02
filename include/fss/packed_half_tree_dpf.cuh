@@ -84,13 +84,13 @@ namespace fss {
 namespace detail {
 class SchemeAccess;
 
-// Split correction view shared by the host and device split paths. The packed
+// Split Cws view shared by the host and device split paths. The packed
 // construction carries no control bits, so layer l is just cws[l*stride] and the
-// terminal entry is the packed-output correction at cws[kDepth*stride].
+// terminal entry holds the packed-output correction word at cws[kDepth*stride].
 // operator[] recovers the Cw the shared algorithms consume, so their bodies stay
 // identical on the Cw and split paths.
 template <typename Cw>
-struct PackedHalfTreeSplitCorrections {
+struct PackedHalfTreeCwsView {
   const int4 *cws;
   size_t stride;
 
@@ -146,26 +146,26 @@ public:
   static_assert(kDepth >= 1, "in_bits must exceed log2(kLanes) so that the tree has at least one level");
 
   /**
-   * Correction word for a tree level or the final packed-output correction.
+   * Correction word for a tree level or the final packed-output correction word.
    *
    * ## Layout
    *
-   * For tree levels, s is the seed correction applied when the control bit t is set.
-   * The final entry cws[kDepth].s holds the packed-output correction.
+   * For tree levels, s is the seed correction word applied when the control bit t is set.
+   * The final entry cws[kDepth].s holds the packed-output correction word.
    * @ingroup fss_api
    */
   struct __align__(16) Cw {
-    int4 s;  ///< Tree seed correction, or packed-output correction in the final entry.
+    int4 s;  ///< Tree seed correction word, or packed-output correction word in the final entry.
   };
   static_assert(sizeof(Cw) == 16);
 
   /**
-   * A party's key: shared corrections, including the final output correction, and
+   * A party's key: shared correction words, including the final output correction word, and
    * the party's initial seed.
    * @ingroup fss_api
    */
   struct Key {
-    Cw cws[kDepth + 1];  ///< Tree corrections followed by the packed-output correction.
+    Cw cws[kDepth + 1];  ///< Tree correction words followed by the packed-output correction word.
     int4 s0;  ///< This party's initial seed.
   };
 
@@ -178,23 +178,23 @@ public:
   __host__ __device__ explicit PackedHalfTreeDpf(Hash hash, int4 instance_seed);
 
   /**
-   * Generate shared corrections for the packed point function.
+   * Generate shared correction words for the packed point function.
    *
-   * @param cws Output array of kDepth + 1 shared corrections, including the output correction.
+   * @param cws Output array of kDepth + 1 shared correction words, including the output correction word.
    * @param s0s Two initial seeds, retained by the caller.
    * @param a The secret point. Its low log2(kLanes) bits select the packed lane.
    * @param beta Output value, which must fit in out_bits bits.
    * @pre a is in [0, 2^in_bits).
-   * @post cws[kDepth].s holds the final packed-output correction.
+   * @post cws[kDepth].s holds the final packed-output correction word.
    */
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, uint64_t beta);
 
   /**
-   * Generate split corrections for the packed point function.
+   * Generate split Cws for the packed point function.
    *
-   * Layer l is stored at cws[l*stride] and the packed-output correction at
-   * cws[kDepth*stride]. Tree levels hold the seed corrections and the terminal
-   * holds the packed-output correction exactly as the final Cw entry does. The
+   * Layer l is stored at cws[l*stride] and the packed-output correction word at
+   * cws[kDepth*stride]. Tree levels hold the seed correction words and the terminal
+   * holds the packed-output correction word exactly as the final Cw entry does. The
    * construction carries no control bits, so there is no packed-control
    * parameter.
    *
@@ -226,26 +226,26 @@ public:
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws The kDepth + 1 shared corrections returned by Gen().
+   * @param cws The kDepth + 1 shared correction words returned by Gen().
    * @param x Input in [0, 2^in_bits).
    * @return This party's block of kLanes output shares. Extract() reads x's lane.
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
 
   /**
-   * Evaluate the packed output block containing x from split corrections.
+   * Evaluate the packed output block containing x from split Cws.
    *
-   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * Layer l is read from cws[l*stride] and the packed-output correction word from
    * cws[kDepth*stride]. The construction carries no control bits, so there is no
    * packed-control parameter. The result contains kLanes consecutive shares;
    * Extract(result, x) reads x's share using the original input x.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws Correction components, with layer l at index l*stride and the
-   * packed-output correction at index kDepth*stride.
+   * @param cws Correction words, layer l at index l*stride and the
+   * packed-output correction word at index kDepth*stride.
    * @param x Input in [0, 2^in_bits).
-   * @param stride Positive stride between correction entries.
+   * @param stride Positive stride between Cw entries.
    * @return This party's block of kLanes output shares. Extract() reads x's lane.
    * @pre x is in [0, 2^in_bits).
    * @pre stride > 0.
@@ -278,13 +278,13 @@ public:
    * The output has exactly B = 2^kDepth = 2^in_bits / kLanes blocks.
    * Its array payload uses B * sizeof(int4) bytes per party.
    * Two parties' output arrays use twice that amount.
-   * Corrections, seeds, and any temporary storage are separate.
+   * Cws, seeds, and any temporary storage are separate.
    * For in_bits = 8 and out_bits = 8, B = 16, so ys has 16 int4 entries
    * rather than 256 entries. Extract(ys[x / kLanes], x) reads input x.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws The kDepth + 1 shared corrections returned by Gen().
+   * @param cws The kDepth + 1 shared correction words returned by Gen().
    * @param ys Pre-allocated output array of at least 2^kDepth blocks, in input order.
    * Block j covers inputs j * kLanes through (j + 1) * kLanes - 1.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
@@ -294,21 +294,21 @@ public:
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
 
   /**
-   * Evaluate all packed output blocks from split corrections on the host.
+   * Evaluate all packed output blocks from split Cws on the host.
    *
-   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * Layer l is read from cws[l*stride] and the packed-output correction word from
    * cws[kDepth*stride]. The construction carries no control bits, so there is no
    * packed-control parameter. The output has exactly B = 2^kDepth blocks and
    * matches the Cw form block for block.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws Correction components, with layer l at index l*stride and the
-   * packed-output correction at index kDepth*stride.
+   * @param cws Correction words, layer l at index l*stride and the
+   * packed-output correction word at index kDepth*stride.
    * @param ys Pre-allocated output array of at least 2^kDepth blocks, in input order.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
-   * @param stride Positive stride between correction entries.
+   * @param stride Positive stride between Cw entries.
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
    * and cws has at least kDepth*stride+1 elements.
@@ -325,7 +325,7 @@ public:
    * @param first First input in the interval, inclusive.
    * @param last Last input in the interval, inclusive.
    * @param s0 This party's initial seed.
-   * @param cws The kDepth + 1 shared corrections returned by Gen().
+   * @param cws The kDepth + 1 shared correction words returned by Gen().
    * @param ys Output storage for ceil((last - first + 1) / kLanes) blocks.
    * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
@@ -338,9 +338,9 @@ public:
       cuda::std::span<int4> ys, int par_depth = 0);
 
   /**
-   * Evaluate the closed input interval [first, last] from split corrections.
+   * Evaluate the closed input interval [first, last] from split Cws.
    *
-   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * Layer l is read from cws[l*stride] and the packed-output correction word from
    * cws[kDepth*stride]. The construction carries no control bits, so there is no
    * packed-control parameter. The block layout matches the Cw form exactly.
    *
@@ -348,12 +348,12 @@ public:
    * @param first First input in the interval, inclusive.
    * @param last Last input in the interval, inclusive.
    * @param s0 This party's initial seed.
-   * @param cws Correction components, with layer l at index l*stride and the
-   * packed-output correction at index kDepth*stride.
+   * @param cws Correction words, layer l at index l*stride and the
+   * packed-output correction word at index kDepth*stride.
    * @param ys Output storage for ceil((last - first + 1) / kLanes) blocks.
    * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
-   * @param stride Positive stride between correction entries.
+   * @param stride Positive stride between Cw entries.
    * @pre first <= last and both endpoints belong to the input domain.
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
@@ -381,7 +381,7 @@ public:
    * the block-root depth must be at most 30. These are fixed correctness caps.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed, passed by value as a kernel argument.
-   * @param cws Device storage containing at least kDepth + 1 corrections.
+   * @param cws Device storage containing at least kDepth + 1 correction words.
    * @param ys Device storage containing at least 2^kDepth packed output blocks.
    * @param stream Stream on the device owning the referenced resources.
    * @return Immediate CUDA launch status. Invalid buffer dimensions, null used
@@ -394,19 +394,19 @@ public:
     requires(kDepth < sizeof(size_t) * 8);
 
   /**
-   * Launch full-domain CUDA evaluation from split device corrections.
+   * Launch full-domain CUDA evaluation from split device Cws.
    *
-   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * Layer l is read from cws[l*stride] and the packed-output correction word from
    * cws[kDepth*stride]. The construction carries no control bits, so there is no
    * packed-control parameter. Hash values, resource rules and tuning rules match
    * EvalAllGpu().
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed, passed by value as a kernel argument.
-   * @param cws Device correction components, with layer l at index l*stride.
+   * @param cws Device correction words, layer l at index l*stride.
    * @param ys Device storage containing at least 2^kDepth packed output blocks.
    * @param stream Stream on the device owning the referenced resources.
-   * @param stride Positive stride between correction entries.
+   * @param stride Positive stride between Cw entries.
    * @return Immediate CUDA launch status. Invalid buffer dimensions, strides,
    * null used buffers, or unaddressable byte sizes return cudaErrorInvalidValue.
    * Execution remains asynchronous; the caller observes completion errors
@@ -423,12 +423,12 @@ public:
    * Launch full-domain evaluation for s0s.size() keys with this configuration.
    *
    * Uses the same execution, resource and tuning rules as EvalAllGpu().
-   * Seeds, corrections and outputs are device-accessible buffers. Corrections
-   * and outputs are key-major rows, with kDepth + 1 corrections and
+   * Seeds, correction words and outputs are device-accessible buffers. Cws
+   * and outputs are key-major rows, with kDepth + 1 correction words and
    * 2^kDepth packed output blocks per key. The key count comes from s0s.size().
    * @param b Party index shared by the batch.
    * @param s0s Device storage containing one seed per key.
-   * @param cws Flat device correction rows.
+   * @param cws Flat device rows of Cws.
    * @param ys Flat device output rows.
    * @param stream Stream on the device owning the referenced resources.
    * @return Immediate CUDA status. Empty batches succeed without reading buffers.
@@ -442,10 +442,10 @@ public:
     requires(kDepth < sizeof(size_t) * 8);
 
   /**
-   * Launch full-domain CUDA evaluation for s0s.size() keys from split device corrections.
+   * Launch full-domain CUDA evaluation for s0s.size() keys from split device Cws.
    *
    * The batch uses the level-major layout: key k layer l is read from
-   * cws[l*stride + k] and key k's packed-output correction from
+   * cws[l*stride + k] and key k's packed-output correction word from
    * cws[kDepth*stride + k]. The construction carries no control bits, so there is
    * no packed-control parameter. stride is kDenseStride (dense level-major,
    * resolved to the key count) or a positive stride of at least s0s.size().
@@ -454,7 +454,7 @@ public:
    *
    * @param b Party index shared by the batch.
    * @param s0s Device storage containing one seed per key.
-   * @param cws Device level-major correction components.
+   * @param cws Device level-major correction words.
    * @param ys Device key-major rows of 2^kDepth packed output blocks per key.
    * @param stream Stream on the device owning the referenced resources.
    * @param stride kDenseStride or a positive element stride >= s0s.size().
@@ -479,18 +479,18 @@ private:
   struct GpuLaunchShape;
 
   static __host__ __device__ void ExpandNode(Hash &hash, int4 instance_seed,
-      int4 node, int4 correction, int4 &left, int4 &right);
+      int4 node, int4 cw, int4 &left, int4 &right);
   static __host__ __device__ int4 PathStep(Hash &hash, int4 instance_seed,
-      int4 node, int4 correction, bool take_right);
+      int4 node, int4 cw, bool take_right);
   static __host__ __device__ int4 ConvertLeaf(Hash &hash, int4 instance_seed,
-      int4 node, int4 output_correction);
+      int4 node, int4 output_cw);
 
   Hash hash_;
   int4 instance_seed_;
 
-  // Split corrections view over the caller's array. The host methods and the
-  // split GPU kernels share this one view; see detail::PackedHalfTreeSplitCorrections.
-  using SplitCorrections = detail::PackedHalfTreeSplitCorrections<Cw>;
+  // Split Cws view over the caller's array. The host methods and the
+  // split GPU kernels share this one view; see detail::PackedHalfTreeCwsView.
+  using CwsView = detail::PackedHalfTreeCwsView<Cw>;
 
   // Writes Cw slots in the key array layout.
   struct AosWriter {
@@ -505,8 +505,8 @@ private:
     }
   };
 
-  // Writes the strided components.
-  struct ComponentWriter {
+  // Writes the strided Cw slots.
+  struct CwsWriter {
     int4 *cws;
     size_t stride;
 
@@ -519,27 +519,27 @@ private:
     }
   };
 
-  // Shared correction generation loop. The writer is passed by value and owns
+  // Shared Cw generation loop. The writer is passed by value and owns
   // only output access, so the existing algorithm and backend use stay unchanged.
   template <typename Writer>
   __host__ __device__ void Generate(Writer writer, const int4 *s0s, In a, uint64_t beta);
 
-  // Shared point evaluation over Cw-shaped or split corrections.
-  template <typename Corrections>
-  __host__ __device__ int4 EvalCorrections(bool b, int4 s0, Corrections cws, In x);
+  // Shared point evaluation over Cw arrays and split Cws views.
+  template <typename Cws>
+  __host__ __device__ int4 EvalCws(bool b, int4 s0, Cws cws, In x);
 
-  // Shared full-domain evaluation over Cw-shaped or split corrections.
-  template <typename Corrections>
-  void EvalAllCorrections(bool b, int4 s0, Corrections cws, int4 ys[], int par_depth);
+  // Shared full-domain evaluation over Cw arrays and split Cws views.
+  template <typename Cws>
+  void EvalAllCws(bool b, int4 s0, Cws cws, int4 ys[], int par_depth);
 
-  // Shared interval evaluation. Corrections is a Cw pointer for the array form
-  // and a SplitCorrections value for the split form.
-  template <typename Corrections>
-  void EvalRangeCorrections(bool b, In first, In last, int4 s0, Corrections cws,
+  // Shared interval evaluation. Cws is a Cw pointer on the array form
+  // and a CwsView on the split form.
+  template <typename Cws>
+  void EvalRangeCws(bool b, In first, In last, int4 s0, Cws cws,
       cuda::std::span<int4> ys, int par_depth);
 
-  template <typename Corrections>
-  void EvalRangeTree(int4 node, Corrections cws, int4 ys[], In first,
+  template <typename Cws>
+  void EvalRangeTree(int4 node, Cws cws, int4 ys[], In first,
       In last, In output_first, In low, In high, int level);
 
   template <int other_bits, typename OtherHash, typename OtherIn>
@@ -554,10 +554,10 @@ private:
 
   // Walks x's path to its level-kDepth node. visit(t, x_bit) sees the control bit of every
   // expanded node and the branch x takes from it.
-  template <typename Corrections, typename Visit>
-  __host__ __device__ int4 Walk(bool b, int4 s0, Corrections cws, In x, Visit &&visit);
+  template <typename Cws, typename Visit>
+  __host__ __device__ int4 Walk(bool b, int4 s0, Cws cws, In x, Visit &&visit);
 
-  // lhs ^ (rhs & mask) with mask being 0 or -1 in every lane, so the per-node corrections
+  // lhs ^ (rhs & mask) with mask being 0 or -1 in every lane, so the per-node correction words
   // controlled by the seed LSB apply branchlessly.
   static __host__ __device__ int4 MaskXor(int4 lhs, int4 rhs, int mask);
 
@@ -568,8 +568,8 @@ private:
   // level i lives in bufs[i & 1]; the final expansion fuses the leaf conversion and writes
   // each ys block exactly once, in the same order the DFS walk produces. The level-order
   // node index equals the in-order leaf index, so the ys layout is unchanged.
-  template <typename Corrections>
-  void EvalAllFrontier(bool b, int4 s0, Corrections cws, int4 fcw, int4 ys[], int par_depth);
+  template <typename Cws>
+  void EvalAllFrontier(bool b, int4 s0, Cws cws, int4 fcw, int4 ys[], int par_depth);
 
   // Expands the 8 frontier parents src[8k..8k+8) into their 16 children with one batch.
   // Parent p has children 2p and 2p + 1, so the children of a batch interleave in pairs.
@@ -656,7 +656,7 @@ __host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
   [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
   assert(cws.size() >= required);
-  Generate(ComponentWriter{cws.data(), stride}, s0s.data(), a, beta);
+  Generate(CwsWriter{cws.data(), stride}, s0s.data(), a, beta);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
@@ -718,7 +718,7 @@ template <int in_bits, int out_bits, typename Hash, typename In>
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 __host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval(
     bool b, int4 s0, const Cw cws[], In x) {
-  return EvalCorrections(b, s0, cws, x);
+  return EvalCws(b, s0, cws, x);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
@@ -731,24 +731,24 @@ __host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
   [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
   assert(cws.size() >= required);
-  return EvalCorrections(b, s0, SplitCorrections{cws.data(), stride}, x);
+  return EvalCws(b, s0, CwsView{cws.data(), stride}, x);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <typename Corrections>
-__host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalCorrections(
-    bool b, int4 s0, Corrections cws, In x) {
+template <typename Cws>
+__host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalCws(
+    bool b, int4 s0, Cws cws, In x) {
   return ConvertLeaf(Walk(b, s0, cws, x, [](bool, bool) {}), cws[kDepth].s);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <typename Corrections, typename Visit>
+template <typename Cws, typename Visit>
 __host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Walk(
-    bool b, int4 s0, Corrections cws, In x, Visit &&visit) {
+    bool b, int4 s0, Cws cws, In x, Visit &&visit) {
   int4 node = util::SetLsb(s0, b);
 
   for (int i = 0; i < kDepth; ++i) {
@@ -767,7 +767,7 @@ template <int in_bits, int out_bits, typename Hash, typename In>
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAll(
     bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth) {
-  EvalAllCorrections(b, s0, cws, ys, par_depth);
+  EvalAllCws(b, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
@@ -781,15 +781,15 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAll(
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
   [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
   assert(cws.size() >= required);
-  EvalAllCorrections(b, s0, SplitCorrections{cws.data(), stride}, ys, par_depth);
+  EvalAllCws(b, s0, CwsView{cws.data(), stride}, ys, par_depth);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <typename Corrections>
-inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllCorrections(
-    bool b, int4 s0, Corrections cws, int4 ys[], int par_depth) {
+template <typename Cws>
+inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllCws(
+    bool b, int4 s0, Cws cws, int4 ys[], int par_depth) {
   assert(par_depth >= 0);
   static_assert(detail::FitsFullDomain<int4, kDepth>(),
       "packed output count and byte size must fit in size_t");
@@ -801,7 +801,7 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllCorrections(
     // block through the tested point walk.
     constexpr size_t blocks = size_t{1} << kDepth;
     fss::detail::ParallelFor(par_depth, blocks, [&](size_t j) {
-      ys[j] = EvalCorrections(b, s0, cws, static_cast<In>(j * kLanes));
+      ys[j] = EvalCws(b, s0, cws, static_cast<In>(j * kLanes));
     });
   }
 }
@@ -813,7 +813,7 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRange(
     bool b, In first, In last, int4 s0, const Cw cws[],
     cuda::std::span<int4> ys, int par_depth) {
   assert(cws != nullptr);
-  EvalRangeCorrections(b, first, last, s0, cws, ys, par_depth);
+  EvalRangeCws(b, first, last, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
@@ -829,15 +829,15 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRange(bool b, In
   assert(cws.size() >= required);
   assert(cws.data() != nullptr);
   assert(ys.data() != nullptr);
-  EvalRangeCorrections(b, first, last, s0, SplitCorrections{cws.data(), stride}, ys, par_depth);
+  EvalRangeCws(b, first, last, s0, CwsView{cws.data(), stride}, ys, par_depth);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <typename Corrections>
-inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRangeCorrections(
-    bool b, In first, In last, int4 s0, Corrections cws,
+template <typename Cws>
+inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRangeCws(
+    bool b, In first, In last, int4 s0, Cws cws,
     cuda::std::span<int4> ys, int par_depth) {
   assert(par_depth >= 0);
   In domain_last = static_cast<In>(~In{0});
@@ -869,9 +869,9 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRangeCorrections
 template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <typename Corrections>
+template <typename Cws>
 inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRangeTree(
-    int4 node, Corrections cws, int4 ys[], In first, In last,
+    int4 node, Cws cws, int4 ys[], In first, In last,
     In output_first, In low, In high, int level) {
   if (level == kDepth) {
     const int4 block = ConvertLeaf(node, cws[kDepth].s);
@@ -917,9 +917,9 @@ __host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::
 template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <typename Corrections>
+template <typename Cws>
 inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllFrontier(
-    bool b, int4 s0, Corrections cws, int4 fcw, int4 ys[], int par_depth) {
+    bool b, int4 s0, Cws cws, int4 fcw, int4 ys[], int par_depth) {
   constexpr size_t num_blocks = detail::FullDomainSize<int4, kDepth>();
 
   // Frontier ping-pong scratch, grown on demand and reused across calls of this thread.
@@ -1038,9 +1038,9 @@ template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 __host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::ExpandNode(
-    Hash &hash, int4 instance_seed, int4 node, int4 correction, int4 &left, int4 &right) {
+    Hash &hash, int4 instance_seed, int4 node, int4 cw, int4 &left, int4 &right) {
   int4 hashed = hash.Hash(util::Xor(instance_seed, node));
-  left = MaskXor(hashed, correction, -static_cast<int>(util::GetLsb(node)));
+  left = MaskXor(hashed, cw, -static_cast<int>(util::GetLsb(node)));
   right = util::Xor(left, node);
 }
 
@@ -1048,20 +1048,20 @@ template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 __host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::PathStep(
-    Hash &hash, int4 instance_seed, int4 node, int4 correction, bool take_right) {
+    Hash &hash, int4 instance_seed, int4 node, int4 cw, bool take_right) {
   const int4 zero = {0, 0, 0, 0};
   int4 hashed = hash.Hash(util::Xor(instance_seed, node));
   return util::Xor(util::Xor(hashed, take_right ? node : zero),
-      util::GetLsb(node) ? correction : zero);
+      util::GetLsb(node) ? cw : zero);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 __host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::ConvertLeaf(
-    Hash &hash, int4 instance_seed, int4 node, int4 output_correction) {
+    Hash &hash, int4 instance_seed, int4 node, int4 output_cw) {
   int4 leaf = hash.Hash(util::Xor(instance_seed, node));
-  if (util::GetLsb(node)) leaf = util::Xor(leaf, output_correction);
+  if (util::GetLsb(node)) leaf = util::Xor(leaf, output_cw);
   return leaf;
 }
 
@@ -1087,30 +1087,30 @@ struct PackedHalfTreeGpuKernelDescriptor {
 
 #if defined(__CUDACC__)
 
-// Split-layout counterparts of the shared HalfTree kernels. The correction
+// Split-layout counterparts of the shared HalfTree kernels. The Cw
 // buffer arrives type-erased and the boundary view reconstructs the per-layer
 // Cw entries, so the shared traversal stays identical on both paths.
 template <typename Descriptor, int frontier_depth, int block_root_depth>
-__global__ void PackedHalfTreeSplitEvalAllKernel(bool b, int4 s0, const void *corrections,
+__global__ void PackedHalfTreeSplitEvalAllKernel(bool b, int4 s0, const void *cws_buffer,
     size_t stride, int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
   using Scheme = typename Descriptor::Scheme;
-  using Corrections = fss::detail::PackedHalfTreeSplitCorrections<typename Scheme::Cw>;
-  const auto *cws = static_cast<const int4 *>(corrections);
+  using Cws = fss::detail::PackedHalfTreeCwsView<typename Scheme::Cw>;
+  const auto *cws = static_cast<const int4 *>(cws_buffer);
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (thread_index >= (1LL << frontier_depth)) return;
   __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
   HalfTreeEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0,
-      Corrections{cws, stride}, ys, instance_seed, hash, blockIdx.x, thread_index,
+      Cws{cws, stride}, ys, instance_seed, hash, blockIdx.x, thread_index,
       shared_frontier);
 }
 
 template <typename Descriptor, int frontier_depth, int block_root_depth>
 __global__ void PackedHalfTreeSplitEvalAllBatchKernel(bool b, const int4 *s0s,
-    const void *corrections, size_t stride, int4 *ys, int4 instance_seed,
+    const void *cws_buffer, size_t stride, int4 *ys, int4 instance_seed,
     typename Descriptor::Backend hash) {
   using Scheme = typename Descriptor::Scheme;
-  using Corrections = fss::detail::PackedHalfTreeSplitCorrections<typename Scheme::Cw>;
-  const auto *cws = static_cast<const int4 *>(corrections);
+  using Cws = fss::detail::PackedHalfTreeCwsView<typename Scheme::Cw>;
+  const auto *cws = static_cast<const int4 *>(cws_buffer);
   constexpr int kBlocksPerKey = 1 << block_root_depth;
   constexpr size_t kOutputsPerKey = size_t{1} << HalfTreeGpuTraits<Scheme>::kOutputBits;
   const int key_index = blockIdx.x / kBlocksPerKey;
@@ -1120,7 +1120,7 @@ __global__ void PackedHalfTreeSplitEvalAllBatchKernel(bool b, const int4 *s0s,
   int4 *key_outputs = ys + static_cast<size_t>(key_index) * kOutputsPerKey;
   __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
   HalfTreeEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
-      Corrections{cws + key_index, stride}, key_outputs, instance_seed, hash,
+      Cws{cws + key_index, stride}, key_outputs, instance_seed, hash,
       subtree_block_index, thread_index, shared_frontier);
 }
 
@@ -1164,9 +1164,9 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
   using Descriptor = gpu::detail::PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << kDepth;
-  constexpr size_t kCorrectionsPerKey = kDepth + 1;
+  constexpr size_t kCwPerKey = kDepth + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
-  if (cws.size() < kCorrectionsPerKey || ys.size() < kOutputsPerKey ||
+  if (cws.size() < kCwPerKey || ys.size() < kOutputsPerKey ||
       cws.data() == nullptr || ys.data() == nullptr ||
       kOutputsPerKey > kMaxAddressableSize / sizeof(int4)) return cudaErrorInvalidValue;
   gpu::detail::HalfTreeEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
@@ -1222,13 +1222,13 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
   using Descriptor = gpu::detail::PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << kDepth;
-  constexpr size_t kCorrectionsPerKey = kDepth + 1;
+  constexpr size_t kCwPerKey = kDepth + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
   const size_t key_count = s0s.size();
   if (key_count == 0) return cudaSuccess;
-  if (key_count > kMaxAddressableSize / kCorrectionsPerKey / sizeof(Cw) ||
+  if (key_count > kMaxAddressableSize / kCwPerKey / sizeof(Cw) ||
       key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
-      cws.size() < key_count * kCorrectionsPerKey || ys.size() < key_count * kOutputsPerKey ||
+      cws.size() < key_count * kCwPerKey || ys.size() < key_count * kOutputsPerKey ||
       s0s.data() == nullptr || cws.data() == nullptr || ys.data() == nullptr)
     return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)

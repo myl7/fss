@@ -29,7 +29,7 @@ std::shared_ptr<BackendMaterial<T>> NativeRole(const py::dict &backends, const c
 }
 
 template <typename Core>
-constexpr size_t CorrectionCount() {
+constexpr size_t CwCount() {
   if constexpr (kSchemeKind == 4 || kSchemeKind == 6) return Core::kDepth + 1;
   else if constexpr (kSchemeKind == 8 || kSchemeKind == 9)
     return sizeof(std::declval<typename Core::BucketKey>().cws) / sizeof(typename Core::Cw);
@@ -37,23 +37,23 @@ constexpr size_t CorrectionCount() {
 }
 
 template <typename Core>
-constexpr size_t CorrectionRows() {
+constexpr size_t CwRows() {
   if constexpr (kSchemeKind == 8 || kSchemeKind == 9) return Core::kBucketCount;
   else return 1;
 }
 
 using Cw = typename SchemeType::Cw;
-inline constexpr size_t kNativeCorrectionCount = CorrectionCount<SchemeType>();
-inline constexpr size_t kNativeCorrectionRows = CorrectionRows<SchemeType>();
+inline constexpr size_t kNativeCwCount = CwCount<SchemeType>();
+inline constexpr size_t kNativeCwRows = CwRows<SchemeType>();
 
 inline Cw *CwPtr(const Tensor &tensor, int64_t expected_words = -1) {
   CheckTensor(tensor);
-  TORCH_CHECK(tensor.scalar_type() == at::kByte, "correction storage must use uint8 native bytes");
+  TORCH_CHECK(tensor.scalar_type() == at::kByte, "the correction words must use uint8 native bytes");
   TORCH_CHECK(tensor.dim() >= 2 && tensor.size(-1) == sizeof(Cw),
-      "correction storage has the wrong native record size");
-  TORCH_CHECK(tensor.numel() % sizeof(Cw) == 0, "correction storage contains an incomplete record");
+      "the correction words have the wrong native record size");
+  TORCH_CHECK(tensor.numel() % sizeof(Cw) == 0, "the correction words contain an incomplete record");
   if (expected_words >= 0) TORCH_CHECK(tensor.numel() / sizeof(Cw) == expected_words,
-      "correction storage has the wrong number of records");
+      "the correction words have the wrong number of records");
   CheckAlignment(tensor, alignof(Cw));
   return reinterpret_cast<Cw *>(tensor.data_ptr<uint8_t>());
 }
@@ -320,8 +320,8 @@ void AddDimensions(py::module_ &module, py::class_<NativeState> &cls) {
 inline py::class_<NativeState> BindNative(py::module_ &module) {
   py::class_<NativeState> cls(module, "NativeScheme", py::module_local());
   cls.def(py::init<const py::dict &, const py::object &>(), py::arg("backends"), py::arg("instance_seed") = py::none());
-  cls.def_property_readonly("cw_count", [](const NativeState &) { return kNativeCorrectionCount; });
-  cls.def_property_readonly("cw_rows", [](const NativeState &) { return kNativeCorrectionRows; });
+  cls.def_property_readonly("cw_count", [](const NativeState &) { return kNativeCwCount; });
+  cls.def_property_readonly("cw_rows", [](const NativeState &) { return kNativeCwRows; });
   cls.def_property_readonly("cw_size", [](const NativeState &) { return sizeof(Cw); });
   cls.def_property_readonly("cw_alignment", [](const NativeState &) { return alignof(Cw); });
   AddDimensions<SchemeType>(module, cls);

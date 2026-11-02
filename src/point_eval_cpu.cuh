@@ -20,7 +20,7 @@
  *
  * The *EvalPoint() walks keep the seed in __m128i end to end (the Prg int4
  * interface is wrapped at the Gen boundary), pre-extract the query bits, and
- * apply the control-bit corrections branchlessly via all-ones masks, so the
+ * apply the control bits of the correction words branchlessly via all-ones masks, so the
  * per-level work is one PRG expansion plus a handful of XOR/AND ops.
  *
  * The outputs are bit-exact with Dpf::Eval() / HalfTreeDpf::Eval(), for any
@@ -100,7 +100,7 @@ inline __m128i SetLsb(__m128i val, bool bit) {
 }
 
 // All-ones 128-bit mask when bit is 1, all-zero when bit is 0, for the
-// branchless correction-word and child selects.
+// branchless selects of the correction word and the child.
 inline __m128i BitMask(int bit) {
   return _mm_set1_epi64x(-static_cast<int64_t>(bit));
 }
@@ -150,7 +150,7 @@ inline ExtBits<in_bits> ReverseDomainBits(In x) {
  *
  * cws[i] keeps level i's correction word with tl in its LSB, as in
  * Dpf::Cw::s. The per-level tr bits are packed into the single tr word,
- * bit i = level i. cws[in_bits] holds the output correction, whose LSB is 0.
+ * bit i = level i. cws[in_bits] holds the output correction word, whose LSB is 0.
  *
  * Both parties share the same correction words and differ in the seed.
  */
@@ -166,7 +166,7 @@ struct DpfPointKey {
  *
  * cws[i] holds level i's correction word for i = 0 .. in_bits - 2. The
  * last level keeps HCW with LCW_0 in cws[in_bits - 1]'s LSB and LCW_1 in
- * lcw1. cws[in_bits] holds the output correction from HalfTreeDpf::Gen(). The
+ * lcw1. cws[in_bits] holds the output correction word from HalfTreeDpf::Gen(). The
  * hash key stays on the scheme instance and is passed to
  * HalfTreeDpfEvalPoint().
  *
@@ -217,7 +217,7 @@ DpfPointKey<in_bits> DpfPackPoint(const Key &key) {
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
  * @param b Party index. False for 0 and true for 1.
  * @param s0 Party seed from DpfPackPoint().
- * @param cws in_bits tree corrections followed by the output correction.
+ * @param cws in_bits tree correction words followed by the output correction word.
  * @param tr Packed right-branch control bits.
  * @param x Evaluated input.
  * @param prg The DPF instance's PRG.
@@ -227,7 +227,7 @@ template <int in_bits, typename Group, typename Prg, typename In>
 int4 DpfEvalPoint(bool b, int4 s0, const int4 cws[], ExtBits<in_bits> tr, In x, Prg &prg) {
 #ifndef __CUDA_ARCH__
   // The control bit rides in the seed's LSB between levels: the level
-  // correction XORs the same cw into both children, so it cancels in the
+  // correction word XORs the same cw into both children, so it cancels in the
   // child select and the selected child's LSB is the next control bit up to
   // the cw's tl/tr difference, fixed branchlessly as xb & d & t below.
   __m128i s = detail::SetLsb(detail::ToVec(s0), b);
@@ -297,8 +297,8 @@ HalfTreeDpfPointKey<in_bits> HalfTreeDpfPackPoint(const Key &key) {
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
  * @param b Party index. False for 0 and true for 1.
  * @param s0 Party seed from HalfTreeDpfPackPoint().
- * @param cws in_bits tree corrections followed by the output correction.
- * The last tree correction stores LCW_0 in its least significant bit.
+ * @param cws in_bits tree correction words followed by the output correction word.
+ * The last tree correction word stores LCW_0 in its least significant bit.
  * @param lcw1 Last tree-level LCW_1.
  * @param x Evaluated input.
  * @param hash The scheme instance's CCR hash.

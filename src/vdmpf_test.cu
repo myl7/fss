@@ -820,9 +820,9 @@ struct ZeroVerificationHash {
 TEST(VdmpfGeneration, InnerVdpfFailurePreservesInputs) {
   using Scheme = fss::Vdmpf<8, 30, 4, Group, FailingPrg, ZeroVerificationHash, ProofHash, Prp, uint16_t>;
   Scheme scheme{FailingPrg{}, ZeroVerificationHash{}, MakeProofHash(), Prp{}};
-  Scheme::Cw corrections[size_t{Scheme::kBucketCount} * 5];
+  Scheme::Cw cw_storage[size_t{Scheme::kBucketCount} * 5];
   int4 checks[size_t{Scheme::kBucketCount} * 4];
-  auto cws = cuda::std::span<Scheme::Cw>(corrections);
+  auto cws = cuda::std::span<Scheme::Cw>(cw_storage);
   auto cs = cuda::std::span<int4>(checks);
   int4 seeds[size_t{Scheme::kBucketCount} * 2];
   for (int i = 0; i < Scheme::kBucketCount; ++i) {

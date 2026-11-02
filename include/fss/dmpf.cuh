@@ -72,7 +72,7 @@ class SchemeAccess;
  * These runtime values, the PRP seed, and all per-bucket components must come
  * from the same successful Gen() call.
  * The supported point-count interval is [kMinPoints, max_points]. Increasing
- * bucket_bits can lower kMinPoints at the cost of more correction storage.
+ * bucket_bits can lower kMinPoints at the cost of more correction word storage.
  *
  * @tparam in_bits Input domain bit size, in [1, 126].
  * @tparam max_points Maximum number of point functions. Must be >= 30.
@@ -107,7 +107,7 @@ public:
    * at least 30, where the Cuckoo bucket-count estimate applies. Fewer
    * points use fewer buckets and can require a larger per-bucket domain.
    * The capacity condition is ceil(3*kDomainSize/ChBucket(t, ch_lambda))
-   * <= 2^bucket_bits. The shared correction buffer contains
+   * <= 2^bucket_bits. The shared buffer of correction words contains
    * kBucketCount*(bucket_bits+1)*sizeof(Cw) bytes, so each extra bucket bit
    * adds kBucketCount*sizeof(Cw) bytes without changing the bucket count.
    */
@@ -158,7 +158,7 @@ public:
   __host__ __device__ explicit Dmpf(Prg prg, Prp prp);
 
   /**
-   * Generate shared corrections with read-only seeds and one attempt.
+   * Generate shared correction words with read-only seeds and one attempt.
    *
    * Makes one Cuckoo-hashing attempt, then generates each inner DPF.
    * Caller-owned sigma and s0s are preserved.
@@ -172,7 +172,7 @@ public:
    * Reuse of the output buffers is allowed. Only a successful call's outputs
    * and its sigma/s0s form a usable key.
    *
-   * @param cws At least kBucketCount*(bucket_bits+1) writable corrections in bucket-major order.
+   * @param cws At least kBucketCount*(bucket_bits+1) writable correction words in bucket-major order.
    * @param m_rt Returned runtime bucket count.
    * @param b_size_rt Returned runtime bucket domain size.
    * @param sigma Uniformly random PRP seed from a cryptographically secure random generator.
@@ -189,7 +189,7 @@ public:
    * @pre max_evictions is nonnegative.
    * @pre ceil(3*kDomainSize/cuckoo_hash::ChBucket(t, ch_lambda)) <= 2^bucket_bits.
    * @post On success, cws, sigma, and s0s define both parties' keys.
-   * Correction outputs are unspecified on failure. m_rt and b_size_rt may
+   * Correction-word outputs are unspecified on failure. m_rt and b_size_rt may
    * already have been written when the attempt fails; metadata alone is not a key.
    * @return 0 on success, or 1 if the Cuckoo-hashing attempt fails.
    */
@@ -200,14 +200,14 @@ public:
   /**
    * Batch evaluation method.
    *
-   * Evaluates a batch of input points using caller-owned shared corrections and party seeds.
+   * Evaluates a batch of input points using caller-owned shared correction words and party seeds.
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
    * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
-   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    */
@@ -225,7 +225,7 @@ public:
    * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
-   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
    * @param ys Output shares (pre-allocated, size == kDomainSize). Will be zero-initialized.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
@@ -256,7 +256,7 @@ public:
    * @param active_buckets Runtime bucket count from that Gen(), in [1,kBucketCount].
    * @param bucket_size Runtime bucket size from that Gen(), equal to ceil(3*kDomainSize/active_buckets).
    * @param s0s Device storage with this party's seed for each active bucket.
-   * @param cws Device storage of at least active_buckets*(bucket_bits+1) corrections, in bucket-major order.
+   * @param cws Device storage of at least active_buckets*(bucket_bits+1) correction words, in bucket-major order.
    * @param ys Device output storage of at least 2^in_bits int4 blocks, in input order.
    * @param stream Stream on the device owning the referenced resources.
    * @pre this is accessible on the host. Buffers and backend resources remain valid until work completes.
@@ -563,7 +563,7 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   using Descriptor = gpu::detail::DmpfMergeGpuKernelDescriptor<GroupTag, Prp, In>;
   constexpr size_t kOutputs = size_t{1} << in_bits;
   constexpr size_t kBucketOutputs = size_t{1} << bucket_bits;
-  constexpr size_t kCorrectionsPerBucket = bucket_bits + 1;
+  constexpr size_t kCwPerBucket = bucket_bits + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
   constexpr int kMergeThreads = 256;
   constexpr size_t kMergeBlocks = (kOutputs + kMergeThreads - 1) / kMergeThreads;
@@ -575,9 +575,9 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
     return cudaErrorInvalidValue;
   const size_t bucket_count = static_cast<size_t>(active_buckets);
   if (kOutputs > kMaxAddressableSize / sizeof(int4) ||
-      bucket_count > kMaxAddressableSize / sizeof(Cw) / kCorrectionsPerBucket ||
+      bucket_count > kMaxAddressableSize / sizeof(Cw) / kCwPerBucket ||
       bucket_count > kMaxAddressableSize / sizeof(int4) / kBucketOutputs ||
-      s0s.size() < bucket_count || cws.size() < bucket_count * kCorrectionsPerBucket ||
+      s0s.size() < bucket_count || cws.size() < bucket_count * kCwPerBucket ||
       ys.size() < kOutputs || s0s.data() == nullptr || cws.data() == nullptr || ys.data() == nullptr)
     return cudaErrorInvalidValue;
   if (kMergeBlocks > static_cast<size_t>(std::numeric_limits<int>::max()))
@@ -589,7 +589,7 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   auto *bucket_ys = bucket_storage.Get<int4>();
   InnerDpf inner{prg_};
   status = inner.template EvalAllGpuBatch<frontier_depth, threads_per_block>(b,
-      s0s.first(bucket_count), cws.first(bucket_count * kCorrectionsPerBucket),
+      s0s.first(bucket_count), cws.first(bucket_count * kCwPerBucket),
       cuda::std::span<int4>(bucket_ys, bucket_count * kBucketOutputs), stream);
   if (status != cudaSuccess) return status;
   gpu::detail::DmpfMergeKernel<in_bits, bucket_bits, Descriptor>

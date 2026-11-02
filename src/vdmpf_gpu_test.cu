@@ -206,7 +206,7 @@ protected:
         {d_cs.data(), static_cast<size_t>(m)},
         {d_cs.data(), static_cast<size_t>(m)});
 
-    const cuda::std::span<const int4> corrections(d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt);
+    const cuda::std::span<const int4> cws(d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt);
     const cuda::std::span<const fss::gpu::detail::ExtBits<kBucketBits>> controls(d_extra.data(), m_rt);
     const cuda::std::span<const int4> terminals(d_ocws.data(), m_rt);
     const cuda::std::span<const cuda::std::array<int4, 4>> checks(d_cs.data(), m);
@@ -225,7 +225,7 @@ protected:
 
     for (int p = 0; p < 2; ++p) {
       fss::gpu::detail::VdmpfBatchEvalMerkleGpu(p != 0, d_xs.data(), d_ys[p].data(), d_pi[p].data(), n,
-          sigma, m_rt, b_rt, d_s0s[p].data(), corrections.data(), controls.data(), checks.data(),
+          sigma, m_rt, b_rt, d_s0s[p].data(), cws.data(), controls.data(), checks.data(),
           terminals.data(), vdmpf);
     }
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -298,7 +298,7 @@ protected:
                 count == 0 ? int4{} : sigma, count == 0 ? 0 : m_rt,
                 count == 0 ? __uint128_t{} : b_rt,
                 count == 0 ? nullptr : d_s0s[party].data(),
-                count == 0 ? nullptr : corrections.data(),
+                count == 0 ? nullptr : cws.data(),
                 count == 0 ? nullptr : controls.data(), checks.data(),
                 count == 0 ? nullptr : terminals.data(), vdmpf);
             ASSERT_EQ(cudaGetLastError(), cudaSuccess);

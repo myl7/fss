@@ -11,7 +11,7 @@ class PackedHalfTreeDpf(_Scheme):
     ``instance_seed`` supplies the four 32-bit words of S. int4 storage uses
     contiguous ``torch.int32`` tensors with a final dimension of four words.
     ``s0s`` contains two blocks and ``s0`` contains one. Allocate ``cws`` as a
-    contiguous uint8 tensor with ``cws_shape``, including the terminal correction.
+    contiguous uint8 tensor with ``cws_shape``, including the terminal correction word.
     Full-domain output retains exactly ``2**kDepth`` packed int4 blocks.
     """
 
@@ -40,7 +40,7 @@ class PackedHalfTreeDpf(_Scheme):
         return self._native.kLanes
 
     def gen(self, cws, s0s: torch.Tensor, a: int, beta: int) -> None:
-        """Fill corrections once for ``0 <= beta < 2**out_bits``."""
+        """Fill correction words once for ``0 <= beta < 2**out_bits``."""
         self._native.gen(self._cws(cws), s0s, a, beta)
 
     def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> torch.Tensor:

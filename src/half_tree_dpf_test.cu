@@ -669,7 +669,7 @@ void ExpectBlock(int4 actual, int4 expected) {
   EXPECT_EQ(actual.w, expected.w);
 }
 
-TEST(HalfTreeOutput, FinalCorrectionFlagDoesNotChangeEitherParty) {
+TEST(HalfTreeOutput, FinalCwExtraFlagDoesNotChangeEitherParty) {
   using Scheme = fss::HalfTreeDpf<1, BytesGroup, fss_test::TestCcrHash, uint8_t>;
   Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
   const int4 seeds[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
@@ -824,8 +824,8 @@ namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split-corrections API against the Cw forms for one configuration:
-// every correction entry, the packed control bit, every output of Eval, EvalAll
+// Checks the split Cws API against the Cw array forms for one configuration:
+// every Cw entry, the packed control bit, every output of Eval, EvalAll
 // and EvalRange, and the two-party reconstruction. stride == 0 selects the
 // default-argument call.
 template <int in_bits, typename Group, typename In>
@@ -924,8 +924,6 @@ void CheckHalfTreeSplitStrides(In alpha) {
   }
 }
 
-// A Cw[] array is already an int4 array at stride 2, so it feeds the split API
-// once the packed control bit is materialized (R9).
 template <int in_bits, typename Group, typename In>
 void CheckHalfTreeSplitFromCwStorage(In alpha, int4 beta) {
   using Scheme = fss::HalfTreeDpf<in_bits, Group, fss_test::TestCcrHash, In>;
@@ -961,26 +959,26 @@ void CheckHalfTreeSplitFromCwStorage(In alpha, int4 beta) {
 // in_bits 1 is the single-level tree, 4 is the smallest batched EvalAll()
 // domain, 6 keeps the batched frontier with two parallel tasks, and 8 runs the
 // full frontier. The Uint127 group covers the arithmetic path.
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth1) { CheckHalfTreeSplitStrides<1, BytesGroup, uint8_t>(1); }
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth2) { CheckHalfTreeSplitStrides<2, BytesGroup, uint8_t>(3); }
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth3) { CheckHalfTreeSplitStrides<3, BytesGroup, uint8_t>(5); }
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth4) { CheckHalfTreeSplitStrides<4, BytesGroup, uint8_t>(11); }
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth6) { CheckHalfTreeSplitStrides<6, BytesGroup, uint8_t>(11); }
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth8) { CheckHalfTreeSplitStrides<8, BytesGroup, uint8_t>(kAlpha); }
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth6Uint127) {
+TEST(HalfTreeDpfCwsTest, Depth1) { CheckHalfTreeSplitStrides<1, BytesGroup, uint8_t>(1); }
+TEST(HalfTreeDpfCwsTest, Depth2) { CheckHalfTreeSplitStrides<2, BytesGroup, uint8_t>(3); }
+TEST(HalfTreeDpfCwsTest, Depth3) { CheckHalfTreeSplitStrides<3, BytesGroup, uint8_t>(5); }
+TEST(HalfTreeDpfCwsTest, Depth4) { CheckHalfTreeSplitStrides<4, BytesGroup, uint8_t>(11); }
+TEST(HalfTreeDpfCwsTest, Depth6) { CheckHalfTreeSplitStrides<6, BytesGroup, uint8_t>(11); }
+TEST(HalfTreeDpfCwsTest, Depth8) { CheckHalfTreeSplitStrides<8, BytesGroup, uint8_t>(kAlpha); }
+TEST(HalfTreeDpfCwsTest, Depth6Uint127) {
   CheckHalfTreeSplitStrides<6, Uint127Group, uint8_t>(11);
 }
-TEST(HalfTreeDpfSplitCorrectionsTest, Depth8GenericGroup) {
+TEST(HalfTreeDpfCwsTest, Depth8GenericGroup) {
   CheckHalfTreeSplitStrides<8, Uint64Group, uint8_t>(kAlpha);
 }
-TEST(HalfTreeDpfSplitCorrectionsTest, CwStorageView) {
+TEST(HalfTreeDpfCwsTest, CwStorageView) {
   CheckHalfTreeSplitFromCwStorage<8, BytesGroup, uint8_t>(kAlpha, {604, 981, 273, 84});
 }
 
 // Pins the packed control bit position: HalfTreeDpf uses only bit in_bits - 1 of
 // tr. Gen writes no other bit, the other bits are ignored on input, and moving
 // the bit to a wrong position changes the evaluation, so the position is caught.
-TEST(HalfTreeDpfSplitCorrectionsTest, TrBitPosition) {
+TEST(HalfTreeDpfCwsTest, TrBitPosition) {
   constexpr int in_bits = 4;
   using Scheme = fss::HalfTreeDpf<in_bits, BytesGroup, fss_test::TestCcrHash, uint8_t>;
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
@@ -1035,7 +1033,7 @@ TEST(HalfTreeDpfSplitCorrectionsTest, TrBitPosition) {
 }
 
 #ifndef NDEBUG
-TEST(HalfTreeDpfSplitCorrectionsTest, RejectsInvalidInputs) {
+TEST(HalfTreeDpfCwsTest, RejectsInvalidInputs) {
   using Scheme = fss::HalfTreeDpf<3, BytesGroup, fss_test::TestCcrHash, uint8_t>;
   Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
@@ -1072,7 +1070,7 @@ TEST(HalfTreeDpfSplitCorrectionsTest, RejectsInvalidInputs) {
                         cuda::std::span<const int4>(cws, 3), uint8_t{0},
                         cuda::std::span<int4>(ys, 8)),
       "Assertion.*failed");
-  // The terminal output correction must have a zero LSB.
+  // The terminal output correction word must have a zero LSB.
   int4 odd_cws[4] = {};
   odd_cws[3].w = 1;
   EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(odd_cws, 4),
@@ -1101,16 +1099,16 @@ TEST(HalfTreeDpfSplitGpuTest, RejectsInvalidBatchGeometry) {
   uint64_t tr_storage[1] = {};
 
   // 2^32 keys of 2^32 outputs make the output product wrap in size_t, so the
-  // guard must reject the call before the product is formed. The correction
+  // guard must reject the call before the product is formed. The Cw
   // spans are sized nominally here and the key count is above the launch grid
   // limit for every launch shape, so a variant without the output guard would
   // stop at cudaErrorInvalidConfiguration instead of launching into the
   // one-element output buffer.
   constexpr size_t kKeys = size_t{1} << 32;
-  constexpr size_t kMinCorrections = 32 * kKeys + kKeys;
+  constexpr size_t kMinCws = 32 * kKeys + kKeys;
   EXPECT_EQ((wide.template EvalAllGpuBatch<24, 256>(false,
       cuda::std::span<const int4>(seed_storage, kKeys),
-      cuda::std::span<const int4>(cws_storage, kMinCorrections),
+      cuda::std::span<const int4>(cws_storage, kMinCws),
       cuda::std::span<const uint64_t>(tr_storage, kKeys),
       cuda::std::span<int4>(ys_storage, 1), 0)), cudaErrorInvalidValue);
 
@@ -1135,7 +1133,7 @@ TEST(HalfTreeDpfSplitGpuTest, RejectsInvalidBatchGeometry) {
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s, cws, tr, ys, 0,
                         kMaxElements + 1)),
       cudaErrorInvalidValue);
-  // A correction span that omits the terminal column is rejected.
+  // A Cw span that omits the terminal column is rejected.
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s,
                         cuda::std::span<const int4>(small_cws, kSmallRequired - 1), tr, ys)),
       cudaErrorInvalidValue);

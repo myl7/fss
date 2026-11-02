@@ -36,7 +36,7 @@ py::tuple Gen(NativeState &state, Tensor cws, Tensor cs, Tensor sigma, Tensor se
   CheckBlocks(cs,kRows*4);
   auto checks=cuda::std::span<int4>(Blocks(cs),size_t(kRows)*4);
   auto seed_view=cuda::std::span<const int4>(ConstBlocks(seeds),size_t(kRows)*2);
-  auto corrections=cuda::std::span<Cw>(words,size_t(kRows)*kWords);
+  auto cws_buf=cuda::std::span<Cw>(words,size_t(kRows)*kWords);
   auto input=cuda::std::span<const InType>(points,t);
   auto payloads=cuda::std::span<const int4>(ConstBlocks(betas),t);
   int runtime_rows=fss::cuckoo_hash::ChBucket(t,kChLambda);
@@ -45,7 +45,7 @@ py::tuple Gen(NativeState &state, Tensor cws, Tensor cs, Tensor sigma, Tensor se
   for (int i=0;i<t;++i) for (int j=0;j<i;++j)
     TORCH_CHECK(points[i] != points[j], "secret points must be distinct");
   int m_rt=0; __uint128_t b_size_rt=0;
-  int status=state.Cpu().Gen(corrections, checks, m_rt,b_size_rt,
+  int status=state.Cpu().Gen(cws_buf, checks, m_rt,b_size_rt,
       *ConstBlocks(sigma),seed_view,input,payloads,t,evictions);
   return py::make_tuple(status,m_rt,ToPyU128(b_size_rt));
 }
@@ -63,13 +63,13 @@ void Batch(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
   if (ys.is_cpu()) {
     CheckCpuInputsInDomain<InType>(xs, kInBits);
     const auto seed_view=cuda::std::span<const int4,kRows>(ConstBlocks(seeds),kRows);
-    const auto corrections=cuda::std::span<const Cw>(words,size_t(kRows)*kWords);
+    const auto cws=cuda::std::span<const Cw>(words,size_t(kRows)*kWords);
     const auto checks=cuda::std::span<const int4>(ConstBlocks(cs),size_t(kRows)*4);
     if (merkle) state.Cpu().BatchEvalMerkle(b,*ConstBlocks(sigma),m_rt,domain,
-        seed_view,corrections,checks,
+        seed_view,cws,checks,
         {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)},cuda::std::span<int4,4>(Blocks(pi),4));
     else state.Cpu().BatchEval(b,*ConstBlocks(sigma),m_rt,domain,
-        seed_view,corrections,checks,
+        seed_view,cws,checks,
         {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)},cuda::std::span<int4,4>(Blocks(pi),4));
   } else if constexpr (kGpuSupported) {
     TORCH_CHECK(merkle,"chain batch evaluation is a CPU operation; use batch_eval_merkle for CUDA");
@@ -138,17 +138,17 @@ void Full(NativeState &state, bool b, Tensor sigma, int m_rt, py::int_ size,
 
     const auto *words = ConstCwPtr(cws, kRows * kWords);
     const auto seed_view = cuda::std::span<const int4, kRows>(ConstBlocks(seeds), kRows);
-    const auto correction_view = cuda::std::span<const Cw>(words, size_t(kRows) * kWords);
+    const auto cw_view = cuda::std::span<const Cw>(words, size_t(kRows) * kWords);
     const auto check_view = cuda::std::span<const int4>(ConstBlocks(cs), size_t(kRows) * 4);
     const auto output = cuda::std::span<int4>(Blocks(ys), static_cast<size_t>(count));
     const auto proof = cuda::std::span<int4, 4>(Blocks(pi), 4);
     const int4 permutation_seed = *ConstBlocks(sigma);
     if (merkle) {
       static_cast<S &>(state.Cpu()).EvalAllMerkle(b, permutation_seed, m_rt, domain,
-          seed_view, correction_view, check_view, output, proof);
+          seed_view, cw_view, check_view, output, proof);
     } else {
       static_cast<S &>(state.Cpu()).EvalAll(b, permutation_seed, m_rt, domain,
-          seed_view, correction_view, check_view, output, proof);
+          seed_view, cw_view, check_view, output, proof);
     }
   } else {
     TORCH_CHECK(false, "full-domain output count and byte size are not addressable");

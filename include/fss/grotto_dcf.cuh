@@ -63,14 +63,14 @@ class OwnedParityTree;
 namespace detail {
 class SchemeAccess;
 
-// Split correction view shared by the host and device split paths. The key is an
+// Split correction-word view shared by the host and device split paths. The key is an
 // underlying DPF key with beta equal to zero, so layer l is read from
 // cws[l*stride] with the right-control correction in bit l of packed_tr. Bits at
 // or above in_bits are ignored because no control correction is read from the
 // terminal entry. operator[] recovers the Cw the shared algorithms consume, so
 // their bodies stay identical on the Cw and split paths.
 template <typename Cw, typename In>
-struct GrottoDcfSplitCorrections {
+struct GrottoDcfCwsView {
   using Control = In;
 
   const int4 *cws;
@@ -110,7 +110,7 @@ public:
      * @ingroup fss_api
      */
   struct Key {
-    Cw cws[in_bits + 1];  ///< Corrections of the underlying DPF with beta equal to zero.
+    Cw cws[in_bits + 1];  ///< Correction words of the underlying DPF with beta equal to zero.
     int4 s0;  ///< This party's initial seed.
   };
 
@@ -122,7 +122,7 @@ public:
   __host__ __device__ explicit GrottoDcf(Prg prg);
 
   /**
-   * Generate shared DPF corrections with beta equal to zero.
+   * Generate shared DPF correction words with beta equal to zero.
    *
    * @param cws Output array of in_bits + 1 correction words.
    * @param s0s Two initial seeds, retained by the caller.
@@ -132,19 +132,19 @@ public:
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a);
 
   /**
-   * Generate split DPF corrections with beta equal to zero.
+   * Generate split DPF correction words with beta equal to zero.
    *
    * Layer l is stored at cws[l*stride] and the terminal at cws[in_bits*stride].
    * The key is the underlying DPF key, so cws keeps the left-control correction
-   * in each layer's LSB and tr takes the right-control corrections, bit l for
+   * in each layer's LSB and tr takes the right-control bits, bit l for
    * layer l, exactly as the Dpf split layout does.
    *
    * @param cws Output seed components; its capacity includes in_bits*stride+1 elements.
-   * @param tr Output packed right-control corrections, bit l for layer l.
+   * @param tr Output packed right-control bits, bit l for layer l.
    * @param s0s Two initial seeds, retained by the caller.
    * @param a The secret comparison threshold.
    * @param stride Positive element stride between layer entries. The default
-   * stride of 1 stores the components contiguously.
+   * stride of 1 stores the correction words contiguously.
    * @pre a is in [0, 2^in_bits).
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
@@ -162,7 +162,7 @@ public:
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Shared corrections returned by Gen().
+   * @param cws Correction words returned by Gen().
    * @param x Query point.
    * @return This party's XOR share of the predicate alpha <= x.
    * @pre x is in [0, 2^in_bits).
@@ -170,18 +170,18 @@ public:
   __host__ __device__ bool Eval(bool b, int4 s0, const Cw cws[], In x);
 
   /**
-   * Evaluate a comparison share along x's path from split corrections.
+   * Evaluate a comparison share along x's path from split correction words.
    *
    * Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride].
    * cws keeps the left-control correction in each layer's LSB and tr takes the
-   * right-control corrections, bit l for layer l; bits of tr at or above in_bits
+   * right-control bits, bit l for layer l; bits of tr at or above in_bits
    * are ignored.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Correction components, with layer l at index l*stride and the
+   * @param cws Correction words, layer l at index l*stride and the
    * terminal at index in_bits*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param x Query point.
    * @param stride Positive stride between correction entries.
    * @return This party's XOR share of the predicate alpha <= x.
@@ -223,7 +223,7 @@ public:
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Shared corrections returned by Gen().
+   * @param cws Correction words returned by Gen().
    * @param p Output buffer of at least 2^(in_bits+1)-1 writable bool entries.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
@@ -237,13 +237,13 @@ public:
    *
    * Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride].
    * cws keeps the left-control correction in each layer's LSB and tr takes the
-   * right-control corrections, bit l for layer l; bits of tr at or above in_bits
+   * right-control bits, bit l for layer l; bits of tr at or above in_bits
    * are ignored. The produced tree matches the Cw form entry for entry.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Correction components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param cws Correction words, layer l at index l*stride.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param p Output buffer of at least 2^(in_bits+1)-1 writable bool entries.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
@@ -267,7 +267,7 @@ public:
    * the owner object and allocator overhead.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Shared corrections returned by Gen().
+   * @param cws Correction words returned by Gen().
    * @param par_depth Nonnegative CPU split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    * @return Move-only owner of the populated host storage.
@@ -277,17 +277,17 @@ public:
       bool b, int4 s0, const Cw cws[], int par_depth = 0);
 
   /**
-   * Allocate and populate a parity tree from split corrections in host storage.
+   * Allocate and populate a parity tree from split correction words in host storage.
    *
    * The returned owner holds independent storage; this instance keeps no key
    * or preprocessed tree. Its View() is accepted by Eval() and EvalAll().
    * Layer l is read from cws[l*stride] and tr carries the right-control
-   * corrections, bit l for layer l, as in the Cw form.
+   * bits, bit l for layer l, as in the Cw form.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Correction components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param cws Correction words, layer l at index l*stride.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param par_depth Nonnegative CPU split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    * @param stride Positive stride between correction entries.
@@ -328,7 +328,7 @@ public:
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Shared corrections returned by Gen().
+   * @param cws Correction words returned by Gen().
    * @param ys Output array of at least 2^in_bits bool entries.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
@@ -338,17 +338,17 @@ public:
   void EvalAll(bool b, int4 s0, const Cw cws[], bool ys[], int par_depth = 0);
 
   /**
-   * Evaluate comparison shares for the full domain from split corrections.
+   * Evaluate comparison shares for the full domain from split correction words.
    *
    * Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride].
    * cws keeps the left-control correction in each layer's LSB and tr takes the
-   * right-control corrections, bit l for layer l; bits of tr at or above in_bits
+   * right-control bits, bit l for layer l; bits of tr at or above in_bits
    * are ignored. Outputs match the Cw form share for share.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed from generation.
-   * @param cws Correction components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param cws Correction words, layer l at index l*stride.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param ys Output array of at least 2^in_bits bool entries.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
@@ -375,7 +375,7 @@ public:
    * The block-root depth is derived from these dimensions and must be at most 30.
    * @param b Party index.
    * @param s0 This party's initial seed, passed by value to the kernel.
-   * @param cws Device storage of at least in_bits+1 corrections.
+   * @param cws Device storage of at least in_bits+1 correction words.
    * @param tree Device output of at least 2^(in_bits+1)-1 bool entries.
    * Its array payload is (2*N-1) * sizeof(bool) bytes per party, where N = 2^in_bits.
    * @param stream Stream on the device owning the referenced resources.
@@ -392,17 +392,17 @@ public:
     requires(in_bits < sizeof(size_t) * 8);
 
   /**
-   * Build a parity tree on the GPU from split device corrections.
+   * Build a parity tree on the GPU from split device correction words.
    *
    * Layer l is read from cws[l*stride] and tr carries the right-control
-   * corrections, bit l for layer l, as in the Cw form. The PRG value is passed to
+   * bits, bit l for layer l, as in the Cw form. The PRG value is passed to
    * the kernel; any resources it references must already be device-accessible.
    * No allocation, upload, deep copy, or synchronization is performed.
    *
    * @param b Party index.
    * @param s0 This party's initial seed, passed by value to the kernel.
-   * @param cws Device correction components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param cws Device correction words, layer l at index l*stride.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param tree Device output of at least 2^(in_bits+1)-1 bool entries.
    * @param stream Stream on the device owning the referenced resources.
    * @param stride Positive stride between correction entries.
@@ -430,7 +430,7 @@ public:
    * the frontier width. Defaults to 256. At most eight tail levels may remain.
    * @param b Party index.
    * @param s0 This party's seed, passed by value.
-   * @param cws Device storage of at least in_bits+1 corrections.
+   * @param cws Device storage of at least in_bits+1 correction words.
    * @param ys Device output of at least 2^in_bits bool entries, in input order.
    * @param stream Stream used for expansion, scanning, and temporary storage.
    * @pre Buffers and referenced backend resources remain valid until work completes.
@@ -444,18 +444,18 @@ public:
     requires(in_bits < sizeof(size_t) * 8);
 
   /**
-   * Evaluate all comparison shares on the GPU from split device corrections.
+   * Evaluate all comparison shares on the GPU from split device correction words.
    *
    * Layer l is read from cws[l*stride] and tr carries the right-control
-   * corrections, bit l for layer l, as in the Cw form. The host instance passes
+   * bits, bit l for layer l, as in the Cw form. The host instance passes
    * its PRG value to the expansion kernel. Temporary scan storage is queried,
    * allocated, and released on stream. No backend upload, deep copy,
    * synchronization, or event management occurs.
    *
    * @param b Party index.
    * @param s0 This party's seed, passed by value.
-   * @param cws Device correction components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param cws Device correction words, layer l at index l*stride.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param ys Device output of at least 2^in_bits bool entries, in input order.
    * @param stream Stream used for expansion, scanning, and temporary storage.
    * @param stride Positive stride between correction entries.
@@ -490,33 +490,33 @@ private:
 
   Prg prg_;
 
-  // Split corrections view over the caller's array. The host methods and the
-  // split GPU kernels share this one view; see detail::GrottoDcfSplitCorrections.
-  using ComponentCorrections = detail::GrottoDcfSplitCorrections<Cw, In>;
+  // Split correction-word view over the caller's array. The host methods and the
+  // split GPU kernels share this one view; see detail::GrottoDcfCwsView.
+  using CwsView = detail::GrottoDcfCwsView<Cw, In>;
 
-  // Shared path evaluation over Cw-shaped or split corrections.
-  template <typename Corrections>
-  __host__ __device__ bool EvalCorrections(bool b, int4 s0, Corrections cws, In x);
+  // Shared path evaluation over the Cw array or the split view.
+  template <typename Cws>
+  __host__ __device__ bool EvalCws(bool b, int4 s0, Cws cws, In x);
 
-  // Shared preprocessing over Cw-shaped or split corrections.
-  template <typename Corrections>
-  void PreprocessCorrections(bool b, int4 s0, Corrections cws, bool p[], int par_depth);
+  // Shared preprocessing over the Cw array or the split view.
+  template <typename Cws>
+  void PreprocessCws(bool b, int4 s0, Cws cws, bool p[], int par_depth);
 
-  // Shared full-domain evaluation over Cw-shaped or split corrections.
-  template <typename Corrections>
-  void EvalAllCorrections(bool b, int4 s0, Corrections cws, bool ys[], int par_depth);
+  // Shared full-domain evaluation over the Cw array or the split view.
+  template <typename Cws>
+  void EvalAllCws(bool b, int4 s0, Cws cws, bool ys[], int par_depth);
 
-  // Shared owner-producing preprocessing over Cw-shaped or split corrections.
-  template <typename Corrections>
-  OwnedParityTree<GrottoDcf> PreprocessOwnedCorrections(
-      bool b, int4 s0, Corrections cws, int par_depth);
+  // Shared owner-producing preprocessing over the Cw array or the split view.
+  template <typename Cws>
+  OwnedParityTree<GrottoDcf> PreprocessOwnedCws(
+      bool b, int4 s0, Cws cws, int par_depth);
 
   // Expand the DPF tree and write leaf control bits.
-  template <typename Corrections>
-  void ExpandTree(bool b, int4 s0, Corrections cws, bool t[], int par_depth);
+  template <typename Cws>
+  void ExpandTree(bool b, int4 s0, Cws cws, bool t[], int par_depth);
 
-  template <typename Corrections>
-  void ExpandTreeRec(int4 st, Corrections cws, bool t[], size_t l, size_t r, int i, int par_depth_);
+  template <typename Cws>
+  void ExpandTreeRec(int4 st, Cws cws, bool t[], size_t l, size_t r, int i, int par_depth_);
 };
 
 /**
@@ -661,11 +661,11 @@ __global__ void GrottoLeafBitsKernel(bool party, int4 s0, const typename Dpf::Cw
 // arrives type-erased and the boundary view reconstructs the per-layer Cw
 // entries, so the traversal stays identical on both paths.
 template <int input_bits, int frontier_depth, int block_root_depth, typename Dpf, typename Prg,
-    typename Corrections>
+    typename Cws>
 __global__ void GrottoSplitLeafBitsKernel(bool party, int4 s0, const void *cws_buf,
-    typename Corrections::Control packed_tr, size_t stride, bool *leaves, Prg prg) {
+    typename Cws::Control packed_tr, size_t stride, bool *leaves, Prg prg) {
   const auto *cws = static_cast<const int4 *>(cws_buf);
-  const Corrections view{cws, packed_tr, stride};
+  const Cws view{cws, packed_tr, stride};
   constexpr int kTailDepth = input_bits - frontier_depth;
   constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -826,7 +826,7 @@ __host__ __device__ inline void GrottoDcf<in_bits, Prg, In>::Gen(cuda::std::span
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 __host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::Eval(bool b, int4 s0, const Cw cws[], In x) {
-  return EvalCorrections(b, s0, cws, x);
+  return EvalCws(b, s0, cws, x);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -838,14 +838,14 @@ __host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::Eval(bool b, int4 s
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required);
-  return EvalCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, x);
+  return EvalCws(b, s0, CwsView{cws.data(), tr, stride}, x);
 }
 
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <typename Corrections>
-__host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::EvalCorrections(
-    bool b, int4 s0, Corrections cws, In x) {
+template <typename Cws>
+__host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::EvalCws(
+    bool b, int4 s0, Cws cws, In x) {
   detail::GrottoTurns turns;
   int4 leaf = DpfType{prg_}.Walk(b, s0, cws, x, turns);
   return turns.PointLeaf(util::GetLsb(leaf));
@@ -854,7 +854,7 @@ __host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::EvalCorrections(
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 inline void GrottoDcf<in_bits, Prg, In>::Preprocess(bool b, int4 s0, const Cw cws[], bool p[], int par_depth) {
-  PreprocessCorrections(b, s0, cws, p, par_depth);
+  PreprocessCws(b, s0, cws, p, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -866,14 +866,14 @@ inline void GrottoDcf<in_bits, Prg, In>::Preprocess(bool b, int4 s0,
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required);
-  PreprocessCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, p, par_depth);
+  PreprocessCws(b, s0, CwsView{cws.data(), tr, stride}, p, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <typename Corrections>
-inline void GrottoDcf<in_bits, Prg, In>::PreprocessCorrections(
-    bool b, int4 s0, Corrections cws, bool p[], int par_depth) {
+template <typename Cws>
+inline void GrottoDcf<in_bits, Prg, In>::PreprocessCws(
+    bool b, int4 s0, Cws cws, bool p[], int par_depth) {
   assert(par_depth >= 0);
   static_assert(detail::FitsBinaryTree<bool, in_bits>(),
       "parity-tree count and byte size must fit in size_t");
@@ -925,7 +925,7 @@ inline void GrottoDcf<in_bits, Prg, In>::EvalAll(ParityTreeView pt, bool ys[]) {
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 inline void GrottoDcf<in_bits, Prg, In>::EvalAll(bool b, int4 s0, const Cw cws[], bool ys[], int par_depth) {
-  EvalAllCorrections(b, s0, cws, ys, par_depth);
+  EvalAllCws(b, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -937,14 +937,14 @@ inline void GrottoDcf<in_bits, Prg, In>::EvalAll(bool b, int4 s0,
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required);
-  EvalAllCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, ys, par_depth);
+  EvalAllCws(b, s0, CwsView{cws.data(), tr, stride}, ys, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <typename Corrections>
-inline void GrottoDcf<in_bits, Prg, In>::EvalAllCorrections(
-    bool b, int4 s0, Corrections cws, bool ys[], int par_depth) {
+template <typename Cws>
+inline void GrottoDcf<in_bits, Prg, In>::EvalAllCws(
+    bool b, int4 s0, Cws cws, bool ys[], int par_depth) {
   assert(par_depth >= 0);
   constexpr size_t N = detail::FullDomainSize<bool, in_bits>();
 
@@ -961,9 +961,9 @@ inline void GrottoDcf<in_bits, Prg, In>::EvalAllCorrections(
 
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <typename Corrections>
+template <typename Cws>
 inline void GrottoDcf<in_bits, Prg, In>::ExpandTree(
-    bool b, int4 s0, Corrections cws, bool t[], int par_depth) {
+    bool b, int4 s0, Cws cws, bool t[], int par_depth) {
   int4 st = s0;
   st = util::SetLsb(st, b);
 
@@ -985,9 +985,9 @@ inline void GrottoDcf<in_bits, Prg, In>::ExpandTree(
 
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <typename Corrections>
+template <typename Cws>
 inline void GrottoDcf<in_bits, Prg, In>::ExpandTreeRec(
-    int4 st, Corrections cws, bool t[], size_t l, size_t r, int i, int par_depth_) {
+    int4 st, Cws cws, bool t[], size_t l, size_t r, int i, int par_depth_) {
   bool tc = util::GetLsb(st);
   int4 s = st;
   s = util::SetLsb(s, false);
@@ -1092,7 +1092,7 @@ __host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::PreprocessGpu(
   if (kParityBlocks > static_cast<size_t>(std::numeric_limits<int>::max()))
     return cudaErrorInvalidConfiguration;
   gpu::detail::GrottoSplitLeafBitsKernel<in_bits, LaunchShape::kFrontierDepth,
-      LaunchShape::kBlockRootDepth, DpfType, Prg, ComponentCorrections>
+      LaunchShape::kBlockRootDepth, DpfType, Prg, CwsView>
       <<<LaunchShape::kBlocks, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), tr, stride, tree.data() + kLeaves - 1, prg_);
   cudaError_t status = cudaGetLastError();
@@ -1165,7 +1165,7 @@ __host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::EvalAllGpu(
   status = scan_storage.Allocate<unsigned char>(bytes == 0 ? 1 : bytes);
   if (status != cudaSuccess) return status;
   gpu::detail::GrottoSplitLeafBitsKernel<in_bits, LaunchShape::kFrontierDepth,
-      LaunchShape::kBlockRootDepth, DpfType, Prg, ComponentCorrections>
+      LaunchShape::kBlockRootDepth, DpfType, Prg, CwsView>
       <<<LaunchShape::kBlocks, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), tr, stride, ys.data(), prg_);
   status = cudaGetLastError();
@@ -1219,7 +1219,7 @@ template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 inline OwnedParityTree<GrottoDcf<in_bits, Prg, In>> GrottoDcf<in_bits, Prg, In>::PreprocessOwned(
     bool b, int4 s0, const Cw cws[], int par_depth) {
-  return PreprocessOwnedCorrections(b, s0, cws, par_depth);
+  return PreprocessOwnedCws(b, s0, cws, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -1231,19 +1231,19 @@ inline OwnedParityTree<GrottoDcf<in_bits, Prg, In>> GrottoDcf<in_bits, Prg, In>:
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required);
-  return PreprocessOwnedCorrections(b, s0,
-      ComponentCorrections{cws.data(), tr, stride}, par_depth);
+  return PreprocessOwnedCws(b, s0,
+      CwsView{cws.data(), tr, stride}, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <typename Corrections>
+template <typename Cws>
 inline OwnedParityTree<GrottoDcf<in_bits, Prg, In>>
-GrottoDcf<in_bits, Prg, In>::PreprocessOwnedCorrections(
-    bool b, int4 s0, Corrections cws, int par_depth) {
+GrottoDcf<in_bits, Prg, In>::PreprocessOwnedCws(
+    bool b, int4 s0, Cws cws, int par_depth) {
   constexpr size_t tree_size = detail::FullBinaryTreeSize<bool, in_bits>();
   auto p = std::make_unique<bool[]>(tree_size);
-  PreprocessCorrections(b, s0, cws, p.get(), par_depth);
+  PreprocessCws(b, s0, cws, p.get(), par_depth);
   return OwnedParityTree<GrottoDcf<in_bits, Prg, In>>(std::move(p));
 }
 

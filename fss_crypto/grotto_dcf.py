@@ -69,7 +69,7 @@ class GrottoDcf(_Scheme):
                                threads_per_block=threads_per_block)
 
     def gen(self, cws, s0s: torch.Tensor, a: int) -> None:
-        """Fill corrections with one Core ``Gen`` call, preserving ``s0s``."""
+        """Fill correction words with one Core ``Gen`` call, preserving ``s0s``."""
         self._native.gen(self._cws(cws), s0s, a)
 
     def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> bool:

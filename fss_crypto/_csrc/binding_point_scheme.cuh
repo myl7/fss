@@ -68,7 +68,7 @@ __global__ void PackedExtractOneKernel(const int4 *block, InType x, uint64_t *ou
 template <typename Core>
 void PointGenBlock(NativeState &state, const Tensor &cws, const Tensor &s0s,
     const py::int_ &a, const Tensor &b_buf) {
-  constexpr size_t count = CorrectionCount<Core>();
+  constexpr size_t count = CwCount<Core>();
   CheckSameDevice({cws, s0s, b_buf});
   CheckBlocks(s0s, 2);
   CheckBlocks(b_buf, 1);
@@ -97,7 +97,7 @@ void PointGenBlock(NativeState &state, const Tensor &cws, const Tensor &s0s,
 template <typename Core>
 void PointGenPacked(NativeState &state, const Tensor &cws, const Tensor &s0s,
     const py::int_ &a, uint64_t beta) {
-  constexpr size_t count = CorrectionCount<Core>();
+  constexpr size_t count = CwCount<Core>();
   CheckSameDevice({cws, s0s});
   CheckBlocks(s0s, 2);
   auto *words = CwPtr(cws, count);
@@ -128,7 +128,7 @@ void PointGenPacked(NativeState &state, const Tensor &cws, const Tensor &s0s,
 template <typename Core>
 Tensor PointEval(NativeState &state, bool b, const Tensor &s0, const Tensor &cws,
     const py::int_ &x) {
-  constexpr size_t count = CorrectionCount<Core>();
+  constexpr size_t count = CwCount<Core>();
   CheckSameDevice({s0, cws});
   CheckBlocks(s0, 1);
   const auto *words = ConstCwPtr(cws, count);
@@ -173,7 +173,7 @@ void PointEvalAll(NativeState &state, bool b, const Tensor &s0, const Tensor &cw
     CheckSameDevice({s0, cws, ys});
     CheckBlocks(s0, 1);
     CheckBlocks(ys, outputs);
-    constexpr size_t count = CorrectionCount<Core>();
+    constexpr size_t count = CwCount<Core>();
     const auto *words = ConstCwPtr(cws, count);
     if (ys.is_cuda()) {
       constexpr int frontier_limit = kSchemeKind == 3 ? bits - 1 : bits;
@@ -203,8 +203,8 @@ void PointEvalRange(NativeState &state, bool b, const py::int_ &first,
     const Tensor &ys, int par_depth) {
   CheckSameDevice({s0, cws, ys});
   CheckBlocks(s0, 1);
-  constexpr size_t corrections = CorrectionCount<Core>();
-  const auto *words = ConstCwPtr(cws, corrections);
+  constexpr size_t cw_count = CwCount<Core>();
+  const auto *words = ConstCwPtr(cws, cw_count);
   const InType left = ReadInput<InType>(first, kInBits);
   const InType right = ReadInput<InType>(last, kInBits);
   constexpr size_t lanes = [] {
@@ -222,7 +222,7 @@ void PointEvalRange(NativeState &state, bool b, const py::int_ &first,
       auto &scheme = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
       CheckCuda(scheme.template EvalRangeGpu<kFrontierDepth, kThreadsPerBlock>(b,
           left, right, FetchBlock(s0),
-          cuda::std::span<const typename Core::Cw>(words, corrections),
+          cuda::std::span<const typename Core::Cw>(words, cw_count),
           cuda::std::span<int4>(Blocks(ys), count), stream));
       RecordTensors({s0, cws, ys}, stream);
       state.RecordUse(stream);
@@ -247,7 +247,7 @@ void PointEvalAllGpuBatch(NativeState &state, bool b, const Tensor &s0s,
   TORCH_CHECK(s0s.dim() == 2 && s0s.size(1) == 4,
       "s0s must have shape [key_count, 4]");
   constexpr int bits = FullOutputBits<Core>();
-  constexpr int64_t corrections = CorrectionCount<Core>();
+  constexpr int64_t cw_count = CwCount<Core>();
   if constexpr (bits >= 63 || !fss::detail::FitsFullDomain<int4, bits>()) {
     throw py::value_error("full-domain output is not addressable by a tensor");
   } else if constexpr (!kGpuSupported ||
@@ -258,12 +258,12 @@ void PointEvalAllGpuBatch(NativeState &state, bool b, const Tensor &s0s,
     int64_t outputs = AddressableCount(bits);
     constexpr int64_t max_elements = std::numeric_limits<int64_t>::max();
     TORCH_CHECK(keys <= max_elements / outputs / 4 &&
-        keys <= max_elements / corrections / sizeof(typename Core::Cw),
+        keys <= max_elements / cw_count / sizeof(typename Core::Cw),
         "full-domain batch storage size overflows");
     TORCH_CHECK(cws.dim() == 3 && cws.size(0) == keys &&
-        cws.size(1) == corrections && cws.size(2) == sizeof(typename Core::Cw),
-        "cws has the wrong key-major correction-word shape");
-    const auto *words = ConstCwPtr(cws, keys * corrections);
+        cws.size(1) == cw_count && cws.size(2) == sizeof(typename Core::Cw),
+        "cws has the wrong key-major shape for correction words");
+    const auto *words = ConstCwPtr(cws, keys * cw_count);
     CheckBlocks(ys, keys * outputs);
     TORCH_CHECK(ys.dim() == 3 && ys.size(0) == keys &&
         ys.size(1) == outputs && ys.size(2) == 4,
@@ -274,7 +274,7 @@ void PointEvalAllGpuBatch(NativeState &state, bool b, const Tensor &s0s,
     auto &scheme = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
     CheckCuda(scheme.template EvalAllGpuBatch<kFrontierDepth, kThreadsPerBlock>(b,
         cuda::std::span<const int4>(ConstBlocks(s0s), keys),
-        cuda::std::span<const typename Core::Cw>(words, keys * corrections),
+        cuda::std::span<const typename Core::Cw>(words, keys * cw_count),
         cuda::std::span<int4>(Blocks(ys), keys * outputs), stream));
     RecordTensors({s0s, cws, ys}, stream);
     state.RecordUse(stream);

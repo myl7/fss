@@ -110,8 +110,8 @@ namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split-corrections API against the Cw forms for one configuration:
-// every correction entry, every Eval share, the packed leaves, the parity tree,
+// Checks the split Cws API against the Cw array forms for one configuration:
+// every Cw entry, every Eval share, the packed leaves, the parity tree,
 // the owned tree, every EvalAll share, and the two-party reconstruction.
 // stride == 0 selects the default-argument call. The construction carries no
 // control bits, so there is no packed-control parameter.
@@ -219,22 +219,22 @@ void CheckHalfTreeGrottoSplitStrides(In alpha) {
 
 // in_bits 8 is the shallowest packed tree (kDepth 1), 11 is the smallest
 // frontier path (kDepth 4), and 12 and 16 widen the domain.
-TEST(HalfTreeGrottoDcfSplitCorrectionsTest, Depth1) {
+TEST(HalfTreeGrottoDcfCwsTest, Depth1) {
   CheckHalfTreeGrottoSplitStrides<8, uint8_t>(107);
 }
-TEST(HalfTreeGrottoDcfSplitCorrectionsTest, Depth4) {
+TEST(HalfTreeGrottoDcfCwsTest, Depth4) {
   CheckHalfTreeGrottoSplitStrides<11, uint16_t>(1000);
 }
-TEST(HalfTreeGrottoDcfSplitCorrectionsTest, Depth5) {
+TEST(HalfTreeGrottoDcfCwsTest, Depth5) {
   CheckHalfTreeGrottoSplitStrides<12, uint16_t>(1234);
 }
-TEST(HalfTreeGrottoDcfSplitCorrectionsTest, Depth9WideInput) {
+TEST(HalfTreeGrottoDcfCwsTest, Depth9WideInput) {
   CheckHalfTreeGrottoSplit<16, uint64_t>(12345, 0);
   CheckHalfTreeGrottoSplit<16, uint64_t>(12345, 3);
 }
 
 #ifndef NDEBUG
-TEST(HalfTreeGrottoDcfSplitCorrectionsTest, RejectsInvalidInputs) {
+TEST(HalfTreeGrottoDcfCwsTest, RejectsInvalidInputs) {
   using Prg = fss_test::TestCcrHash;
   using Scheme = fss::HalfTreeGrottoDcf<8, fss_test::CcrBackend<Prg>, uint8_t>;
   constexpr int kDepth = Scheme::kDepth;
@@ -255,7 +255,7 @@ TEST(HalfTreeGrottoDcfSplitCorrectionsTest, RejectsInvalidInputs) {
       "Assertion.*failed");
   EXPECT_DEBUG_DEATH((void)scheme.PreprocessOwned(false, s0, cws_in, 0, 0), "Assertion.*failed");
   EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cws_in, p, 0, 0), "Assertion.*failed");
-  // A span that omits the packed-output correction at cws[kDepth*stride] is rejected.
+  // A span that omits the packed-output correction word at cws[kDepth*stride] is rejected.
   EXPECT_DEBUG_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, kDepth), seed_span, uint8_t{5}),
       "Assertion.*failed");
   EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, kDepth),

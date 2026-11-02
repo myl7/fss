@@ -489,29 +489,29 @@ void CheckDcfRange(In first, In last, In alpha, int par_depth) {
   Scheme scheme(fss::prg::ChaCha<4>(kNonce0, kNonce1));
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
   const int4 beta = {604, 981, 273, 84};
-  struct Corrections {
+  struct CwStorage {
     int4 before;
     typename Scheme::Cw words[in_bits + 1];
     int4 after;
-  } corrections{};
+  } cw_storage{};
   const int4 sentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
-  corrections.before = corrections.after = sentinel;
-  scheme.Gen(corrections.words, seeds, alpha, beta);
-  const auto saved_corrections = corrections;
+  cw_storage.before = cw_storage.after = sentinel;
+  scheme.Gen(cw_storage.words, seeds, alpha, beta);
+  const auto saved_cws = cw_storage;
   const size_t count = static_cast<size_t>(last - first) + 1;
   std::vector<int4> shares[2] = {
       std::vector<int4>(count + 4, sentinel), std::vector<int4>(count + 4, sentinel)};
   for (int party = 0; party < 2; ++party) {
-    scheme.EvalRange(party, first, last, seeds[party], corrections.words,
+    scheme.EvalRange(party, first, last, seeds[party], cw_storage.words,
         cuda::std::span<int4>(shares[party].data() + 1, count + 2), par_depth);
     if (par_depth > 0) {
       std::vector<int4> sequential(count);
-      scheme.EvalRange(party, first, last, seeds[party], corrections.words,
+      scheme.EvalRange(party, first, last, seeds[party], cw_storage.words,
           cuda::std::span<int4>(sequential.data(), sequential.size()), 0);
       EXPECT_EQ(memcmp(shares[party].data() + 1, sequential.data(), count * sizeof(int4)), 0);
     }
     for (size_t offset = 0; offset < count; ++offset) {
-      const int4 point = scheme.Eval(party, seeds[party], corrections.words,
+      const int4 point = scheme.Eval(party, seeds[party], cw_storage.words,
           first + static_cast<In>(offset));
       EXPECT_EQ(memcmp(&shares[party][offset + 1], &point, sizeof(int4)), 0)
           << "party=" << party << " offset=" << offset << " depth=" << par_depth;
@@ -520,7 +520,7 @@ void CheckDcfRange(In first, In last, In alpha, int par_depth) {
       EXPECT_EQ(memcmp(&shares[party][untouched], &sentinel, sizeof(int4)), 0);
     }
   }
-  EXPECT_EQ(memcmp(&corrections, &saved_corrections, sizeof(corrections)), 0);
+  EXPECT_EQ(memcmp(&cw_storage, &saved_cws, sizeof(cw_storage)), 0);
   for (size_t offset = 0; offset < count; ++offset) {
     const In x = first + static_cast<In>(offset);
     const bool hit = pred == fss::DcfPred::kLt ? x < alpha : x > alpha;
@@ -621,13 +621,13 @@ TEST(DcfRangeTest, ZeroDepthUsesCallerThread) {
   using Scheme = fss::Dcf<8, BytesGroup, DcfRangeObservedPrg>;
   Scheme generator(DcfRangeObservedPrg(nullptr));
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
-  typename Scheme::Cw corrections[9];
-  generator.Gen(corrections, seeds, 107, {604, 981, 273, 84});
+  typename Scheme::Cw cws[9];
+  generator.Gen(cws, seeds, 107, {604, 981, 273, 84});
   for (int party = 0; party < 2; ++party) {
     DcfRangeCalls calls;
     Scheme scheme{DcfRangeObservedPrg(&calls)};
     std::vector<int4> outputs(256);
-    scheme.EvalRange(party, 0, 255, seeds[party], corrections,
+    scheme.EvalRange(party, 0, 255, seeds[party], cws,
         cuda::std::span<int4>(outputs.data(), outputs.size()));
     EXPECT_EQ(calls.active.load(), 0);
     EXPECT_EQ(calls.max_active.load(), 1);
@@ -643,19 +643,19 @@ TEST(DcfRangeTest, RejectsInvalidPreconditions) {
   using Scheme = fss::Dcf<3, BytesGroup, fss::prg::ChaCha<4>>;
   Scheme scheme(fss::prg::ChaCha<4>(kNonce0, kNonce1));
   const int4 seed = {13, 27, 45, 66};
-  typename Scheme::Cw corrections[4]{};
+  typename Scheme::Cw cws[4]{};
   int4 output[8];
   auto outputs = cuda::std::span<int4>(output, 8);
-  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 3, 2, seed, corrections, outputs), "first <= last");
-  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 8, seed, corrections, outputs), "last <= domain_last");
-  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, corrections,
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 3, 2, seed, cws, outputs), "first <= last");
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 8, seed, cws, outputs), "last <= domain_last");
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, cws,
       cuda::std::span<int4>(output, 7)), "ys.size.*>= count");
-  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, corrections, outputs, -1), "par_depth >= 0");
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, cws, outputs, -1), "par_depth >= 0");
   using WideScheme = fss::Dcf<128, BytesGroup, fss::prg::ChaCha<4>, __uint128_t>;
   WideScheme wide(fss::prg::ChaCha<4>(kNonce0, kNonce1));
-  typename WideScheme::Cw wide_corrections[129]{};
+  typename WideScheme::Cw wide_cws[129]{};
   EXPECT_DEBUG_DEATH(wide.EvalRange(false, 0, ~__uint128_t{0}, seed,
-      wide_corrections, outputs), "distance <");
+      wide_cws, outputs), "distance <");
 #endif
 }
 
@@ -812,14 +812,14 @@ TEST(DcfGenHalf, GpuAesSoftSelectedRange) {
 }
 
 // -----------------------------------------------------------------------------
-// Split-corrections API: bit-exactness against the Cw forms.
+// Split correction-word API: bit-exactness against the Cw forms.
 
 namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split-corrections API against the Cw forms for one configuration:
-// every correction field, every output of Eval, EvalAll and EvalRange, and the
+// Checks the split correction-word API against the Cw forms for one configuration:
+// every correction word field, every output of Eval, EvalAll and EvalRange, and the
 // two-party reconstruction. stride == 0 selects the default-argument call.
 template <int in_bits, typename Group, typename Prg, typename In, fss::DcfPred pred>
 void CheckDcfSplit(In alpha, int4 beta, size_t stride) {
@@ -924,9 +924,6 @@ void CheckDcfSplitStrides(In alpha) {
   }
 }
 
-// A Cw[] array is already an int4 array at stride 2, so it feeds the split API
-// once the packed right-control bits are materialized (R9). The v view still
-// carries the right-control bits in its layer LSBs, which the consumer ignores.
 template <int in_bits, typename Group, typename In, fss::DcfPred pred>
 void CheckDcfSplitFromCwStorage(In alpha, int4 beta) {
   using Scheme = fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, In, pred>;
@@ -975,23 +972,23 @@ void CheckDcfSplitFromCwStorage(In alpha, int4 beta) {
 
 // in_bits 1 exercises the single-level tree, 3 keeps the recursive EvalTree()
 // walk, and 6 and 8 run the batched EvalAll() frontier.
-TEST(DcfSplitCorrectionsTest, Depth1Lt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kLt>(1); }
-TEST(DcfSplitCorrectionsTest, Depth1Gt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kGt>(0); }
-TEST(DcfSplitCorrectionsTest, Depth3Uint127Lt) { CheckDcfSplitStrides<3, Uint127Group, uint8_t, fss::DcfPred::kLt>(5); }
-TEST(DcfSplitCorrectionsTest, Depth3Uint127Gt) { CheckDcfSplitStrides<3, Uint127Group, uint8_t, fss::DcfPred::kGt>(5); }
-TEST(DcfSplitCorrectionsTest, Depth6Lt) { CheckDcfSplitStrides<6, BytesGroup, uint8_t, fss::DcfPred::kLt>(11); }
-TEST(DcfSplitCorrectionsTest, Depth8Lt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kLt>(kAlpha); }
-TEST(DcfSplitCorrectionsTest, Depth8Gt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kGt>(kAlpha); }
-TEST(DcfSplitCorrectionsTest, Depth8GenericGroup) { CheckDcfSplitStrides<8, Uint64Group, uint8_t, fss::DcfPred::kLt>(kAlpha); }
-TEST(DcfSplitCorrectionsTest, CwStorageViewLt) {
+TEST(DcfCwsTest, Depth1Lt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kLt>(1); }
+TEST(DcfCwsTest, Depth1Gt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kGt>(0); }
+TEST(DcfCwsTest, Depth3Uint127Lt) { CheckDcfSplitStrides<3, Uint127Group, uint8_t, fss::DcfPred::kLt>(5); }
+TEST(DcfCwsTest, Depth3Uint127Gt) { CheckDcfSplitStrides<3, Uint127Group, uint8_t, fss::DcfPred::kGt>(5); }
+TEST(DcfCwsTest, Depth6Lt) { CheckDcfSplitStrides<6, BytesGroup, uint8_t, fss::DcfPred::kLt>(11); }
+TEST(DcfCwsTest, Depth8Lt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kLt>(kAlpha); }
+TEST(DcfCwsTest, Depth8Gt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kGt>(kAlpha); }
+TEST(DcfCwsTest, Depth8GenericGroup) { CheckDcfSplitStrides<8, Uint64Group, uint8_t, fss::DcfPred::kLt>(kAlpha); }
+TEST(DcfCwsTest, CwStorageViewLt) {
   CheckDcfSplitFromCwStorage<8, BytesGroup, uint8_t, fss::DcfPred::kLt>(kAlpha, {604, 981, 273, 84});
 }
-TEST(DcfSplitCorrectionsTest, CwStorageViewGt) {
+TEST(DcfCwsTest, CwStorageViewGt) {
   CheckDcfSplitFromCwStorage<3, Uint127Group, uint8_t, fss::DcfPred::kGt>(5, {604, 981, 273, 84});
 }
 
 #ifndef NDEBUG
-TEST(DcfSplitCorrectionsTest, RejectsInvalidInputs) {
+TEST(DcfCwsTest, RejectsInvalidInputs) {
   using Scheme = fss::Dcf<3, BytesGroup, fss::prg::ChaCha<4>, uint8_t>;
   Scheme scheme{fss::prg::ChaCha<4>(kNonce0, kNonce1)};
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
@@ -1049,17 +1046,17 @@ TEST(DcfSplitGpuTest, RejectsInvalidBatchGeometry) {
   uint64_t tr_storage[1] = {};
 
   // 2^32 keys of 2^32 outputs make the output product wrap in size_t, so the
-  // guard must reject the call before the product is formed. The correction
+  // guard must reject the call before the product is formed. The correction word
   // spans are sized nominally here and the key count is above the launch grid
   // limit for every launch shape, so a variant without the output guard would
   // stop at cudaErrorInvalidConfiguration instead of launching into the
   // one-element output buffer.
   constexpr size_t kKeys = size_t{1} << 32;
-  constexpr size_t kMinCorrections = 32 * kKeys + kKeys;
+  constexpr size_t kMinCws = 32 * kKeys + kKeys;
   EXPECT_EQ((wide.template EvalAllGpuBatch<24, 256>(false,
       cuda::std::span<const int4>(seed_storage, kKeys),
-      cuda::std::span<const int4>(cws_storage, kMinCorrections),
-      cuda::std::span<const int4>(vws_storage, kMinCorrections),
+      cuda::std::span<const int4>(cws_storage, kMinCws),
+      cuda::std::span<const int4>(vws_storage, kMinCws),
       cuda::std::span<const uint64_t>(tr_storage, kKeys),
       cuda::std::span<int4>(ys_storage, 1), 0)), cudaErrorInvalidValue);
 
@@ -1086,7 +1083,7 @@ TEST(DcfSplitGpuTest, RejectsInvalidBatchGeometry) {
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s, cws, vws, tr, ys, 0,
                         kMaxElements + 1)),
       cudaErrorInvalidValue);
-  // A correction span that omits the terminal column is rejected.
+  // A span of correction words that omits the terminal column is rejected.
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s,
                         cuda::std::span<const int4>(small_cws, kSmallRequired - 1), vws, tr, ys)),
       cudaErrorInvalidValue);

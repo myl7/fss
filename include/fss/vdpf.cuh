@@ -91,27 +91,27 @@ public:
    *
    * According to the paper, there are s, tl, tr to be stored.
    * tl is stored at the clamped bit of s.
-   * cws[in_bits] stores the output correction in s. Its tr is false after Gen()
+   * cws[in_bits] stores the output correction word in s. Its tr is false after Gen()
    * and is ignored by evaluation.
    *
    * @ingroup fss_api
    */
   struct __align__(32) Cw {
-    int4 s;  ///< Tree seed correction, or the final output correction at cws[in_bits].
-    bool tr;  ///< Right control-bit correction. False and ignored in the final output word.
+    int4 s;  ///< Tree seed correction word, or the final output correction word at cws[in_bits].
+    bool tr;  ///< Right control bit of the correction word. False and ignored in the final output word.
   };
   // For only 1 and aligned memory access on GPU
   static_assert(sizeof(Cw) == 32);
 
   /**
-   * A party's key: combined tree/output corrections, verification seeds, and its initial seed.
+   * A party's key: combined tree and output correction words, verification seeds, and its initial seed.
    * Both parties share the same cws and cs and differ in the seed.
    *
    * @ingroup fss_api
    */
   struct Key {
-    Cw cws[in_bits + 1];  ///< Tree corrections followed by the output correction in the final s field.
-    int4 cs[4];  ///< Shared correction seed for verifiable evaluation.
+    Cw cws[in_bits + 1];  ///< Tree correction words followed by the output correction word in the final s field.
+    int4 cs[4];  ///< Shared verification seed for verifiable evaluation.
     int4 s0;  ///< This party's initial seed.
   };
 
@@ -125,10 +125,10 @@ public:
   __host__ __device__ explicit Vdpf(Prg prg, XorHash xor_hash, Hash hash);
 
   /**
-   * Generate shared corrections in one attempt without modifying the seeds.
+   * Generate shared correction words in one attempt without modifying the seeds.
    *
-   * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits + 1, including the output correction.
-   * @param cs Correction seed output ($4\lambda$ bits).
+   * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits + 1, including the output correction word.
+   * @param cs Verification seed output ($4\lambda$ bits).
    * @param s0s Two independent uniformly random initial seed blocks from a
    * cryptographically secure random generator. Gen clears their control bits
    * internally without modifying this input storage.
@@ -144,10 +144,10 @@ public:
    * from a failed attempt. Only outputs from a successful call form a key.
    *
    * @return 0 on success, 1 if cs is all zeros or $t_0 = t_1$ at the end (caller should resample seeds and retry).
-   * @post The input seeds are unchanged. Correction outputs are unspecified on failure.
+   * @post The input seeds are unchanged. Correction-word outputs are unspecified on failure.
    *
    * The key for party i consists of cws + cs + s0s[i].
-   * cws[in_bits].s holds the output correction and cws[in_bits].tr is false.
+   * cws[in_bits].s holds the output correction word and cws[in_bits].tr is false.
    * Evaluation ignores that final tr bit.
    */
   __host__ __device__ int Gen(
@@ -158,8 +158,8 @@ public:
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 corrections returned by Gen(), including the final output correction.
-   * @param cs Shared correction seed returned by Gen().
+   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cs Shared verification seed returned by Gen().
    * @param x Input in the scheme's domain.
    * @param y Output share for this input.
    * @return Corrected per-point hash for Prove() or ProveMerkle().
@@ -198,8 +198,8 @@ public:
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 corrections returned by Gen(), including the final output correction.
-   * @param cs Shared correction seed returned by Gen().
+   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cs Shared verification seed returned by Gen().
    * @param ys Output shares in input order, with at least 2^in_bits entries.
    * @param pi Borrowed output storage for four chain-proof blocks.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
@@ -220,8 +220,8 @@ public:
    * @param first First input, included in evaluation.
    * @param last Last input, included in evaluation.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 corrections returned by Gen(), including the final output correction.
-   * @param cs Shared correction seed returned by Gen().
+   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cs Shared verification seed returned by Gen().
    * @param ys Output shares in input order, with at least last - first + 1 entries.
    * @param pi Borrowed output storage for four chain-proof blocks for this range.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
@@ -262,8 +262,8 @@ public:
    *
    * @param b Party index. False for 0 and true for 1. $i$.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 corrections returned by Gen(), including the final output correction.
-   * @param cs Shared correction seed returned by Gen().
+   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cs Shared verification seed returned by Gen().
    * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
    * @param pi Borrowed output storage for four proof blocks.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
@@ -291,7 +291,7 @@ public:
    * number of block roots must not exceed the resolved threads per block.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed, passed by value to the kernel.
-   * @param cws Device storage with at least in_bits + 1 shared corrections.
+   * @param cws Device storage with at least in_bits + 1 shared correction words.
    * @param cs Device storage containing the four shared check-seed blocks.
    * @param ys Device output storage with at least 2^in_bits int4 blocks.
    * @param pi Device output storage for the four-block Merkle proof.
@@ -409,13 +409,13 @@ struct VdpfGpuKernelDescriptor {
 
 template <int in_bits, int threads_per_block, typename Descriptor>
 __global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputType first, int subtree_depth,
-    int frontier_depth, int block_root_depth, int4 s0, const void *corrections, const int4 *cs,
+    int frontier_depth, int block_root_depth, int4 s0, const void *cws_bytes, const int4 *cs,
     int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
     typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
   using MathScheme = typename Descriptor::MathScheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(corrections);
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
   const int root_depth = in_bits - subtree_depth;
   const int block_subtree_depth = frontier_depth - block_root_depth;
   const int tail_depth = subtree_depth - frontier_depth;
@@ -456,7 +456,7 @@ __global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputTy
   const int count = 1 << tail_depth;
   const size_t thread_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const size_t offset = thread_index << tail_depth;
-  const auto correction = Group::From(cws[in_bits].s);
+  const auto cw = Group::From(cws[in_bits].s);
   for (int i = 0; i < count; ++i) {
     while (level < in_bits) {
       int4 left, right;
@@ -469,7 +469,7 @@ __global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputTy
     const bool t = util::GetLsb(node);
     const int4 seed = util::SetLsb(node, false);
     auto value = Group::From(seed);
-    if (t) value = value + correction;
+    if (t) value = value + cw;
     if (b) value = -value;
     ys[offset + i] = value.Into();
     const In x = static_cast<In>(first + offset + i);
@@ -508,13 +508,13 @@ __global__ void VdpfRangeMerkleProofKernel(const Node *root,
 }
 
 template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
-__global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *corrections, const int4 *cs,
+__global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *cws_bytes, const int4 *cs,
     int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
     typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
   using MathScheme = typename Descriptor::MathScheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(corrections);
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
   constexpr int kTailDepth = in_bits - frontier_depth;
   constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
   const int thread_index = blockIdx.x * blockDim.x + threadIdx.x;

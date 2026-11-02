@@ -79,14 +79,14 @@ enum class DcfPred {
 
 namespace detail {
 
-// Split correction view shared by the host and device split paths. Layer l is
+// Split correction-word view shared by the host and device split paths. Layer l is
 // read from cws[l*stride] and vws[l*stride], and the right-control correction is
 // bit l of packed_tr, so the layer LSBs of vws are ignored. The terminal is
 // rebuilt as a plain Cw with no control bit, so bits of packed_tr at or above
 // in_bits are ignored. operator[] recovers the Cw the shared algorithms consume,
 // so their bodies stay identical on the Cw and split paths.
 template <typename Cw, typename In, int in_bits>
-struct DcfSplitCorrections {
+struct DcfCwsView {
   const int4 *cws;
   const int4 *vws;
   In packed_tr;
@@ -147,7 +147,7 @@ public:
    * @ingroup fss_api
    */
   struct Key {
-    Cw cws[in_bits + 1];  ///< Shared tree corrections followed by the final output correction.
+    Cw cws[in_bits + 1];  ///< Shared tree correction words followed by the final output correction.
     int4 s0;  ///< This party's initial seed.
   };
 
@@ -176,19 +176,19 @@ public:
    * cws receives the seed components and vws the group-value components. Layer l
    * is stored at cws[l*stride] and vws[l*stride]. cws keeps the left-control
    * correction in its LSB exactly as Cw::s does, and vws carries the pure group
-   * value with a zero LSB. The right-control corrections move out of the v LSBs
+   * value with a zero LSB. The right-control bits move out of the v LSBs
    * into tr, bit l for layer l, and unused high bits of tr are zero.
    * The terminal is cws[in_bits*stride] = {0,0,0,0} and
    * vws[in_bits*stride] = v_cw_np1.
    *
    * @param cws Output seed components; its capacity includes in_bits*stride+1 elements.
    * @param vws Output group-value components, with the same layout as cws.
-   * @param tr Output packed right-control corrections, bit l for layer l.
+   * @param tr Output packed right-control bits, bit l for layer l.
    * @param s0s Two initial seeds, preserved by this call.
    * @param a Comparison threshold in the input domain.
    * @param b_buf Output value, clamped before conversion to Group.
    * @param stride Positive element stride between layer entries. The default
-   * stride of 1 stores the components contiguously.
+   * stride of 1 stores the correction words contiguously.
    * @pre a is in the input domain.
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
@@ -227,7 +227,7 @@ public:
    * @param s0 This party's initial seed.
    * @param cws Seed components, with layer l at index l*stride.
    * @param vws Group-value components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param x Input in the scheme's domain.
    * @param stride Positive element stride between layer entries.
    * @return This party's output share for the selected predicate.
@@ -277,7 +277,7 @@ public:
    * @param s0 This party's initial seed.
    * @param cws Seed components, with layer l at index l*stride.
    * @param vws Group-value components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param ys Output storage. Entry x - first receives this party's share at x.
    * Extra capacity beyond last - first + 1 entries is unchanged.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs
@@ -324,7 +324,7 @@ public:
    * @param s0 This party's initial seed.
    * @param cws Seed components, with layer l at index l*stride.
    * @param vws Group-value components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param ys Output array with at least 2^in_bits entries, in input order.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
@@ -377,7 +377,7 @@ public:
    * @param s0 This party's seed, passed by value to the kernel.
    * @param cws Device seed components, with layer l at index l*stride.
    * @param vws Device group-value components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param ys Device output storage. Entry x - first receives this party's share at x.
    * @param stream Stream on the device owning the referenced resources.
    * @param stride Positive element stride between layer entries.
@@ -404,7 +404,7 @@ public:
    * resolved values. At most eight tree levels may remain below the frontier.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's seed, passed by value to the kernel.
-   * @param cws Device storage containing at least in_bits+1 corrections.
+   * @param cws Device storage containing at least in_bits+1 correction words.
    * @param ys Device output storage containing at least 2^in_bits int4 blocks.
    * @param stream Stream on the device owning the referenced resources.
    * @pre Group and Prg support device execution and concurrent device calls.
@@ -434,7 +434,7 @@ public:
    * @param s0 This party's seed, passed by value to the kernel.
    * @param cws Device seed components, with layer l at index l*stride.
    * @param vws Device group-value components, with layer l at index l*stride.
-   * @param tr Packed right-control corrections, bit l for layer l.
+   * @param tr Packed right-control bits, bit l for layer l.
    * @param ys Device output storage containing at least 2^in_bits int4 blocks.
    * @param stream Stream on the device owning the referenced resources.
    * @param stride Positive element stride between layer entries.
@@ -488,7 +488,7 @@ public:
    * @param s0s Device storage containing this party's seed for each key.
    * @param cws Device level-major seed components.
    * @param vws Device level-major group-value components.
-   * @param tr Device packed right-control corrections, one value per key.
+   * @param tr Device packed right-control bits, one value per key.
    * @param ys Device key-major rows of 2^in_bits output blocks per key.
    * @param stream Stream on the device owning the referenced resources.
    * @param stride kDenseStride or a positive element stride >= s0s.size().
@@ -520,9 +520,9 @@ private:
   static __host__ __device__ void PathStep(Prg &prg, int4 st, Group v,
       bool b, const Cw &cw, bool take_right, int4 &next_st, Group &next_v);
 
-  // Split corrections view over the caller's arrays. The host methods and the
-  // split GPU kernels share this one view; see detail::DcfSplitCorrections.
-  using ComponentCorrections = detail::DcfSplitCorrections<Cw, In, in_bits>;
+  // Split correction-word view over the caller's arrays. The host methods and the
+  // split GPU kernels share this one view; see detail::DcfCwsView.
+  using CwsView = detail::DcfCwsView<Cw, In, in_bits>;
 
   // Writes Cw slots in the key array layout, covering each full 32B slot.
   struct AosWriter {
@@ -537,8 +537,8 @@ private:
     }
   };
 
-  // Writes both component arrays and accumulates packed right-control bits locally.
-  struct ComponentWriter {
+  // Writes both split arrays and accumulates packed right-control bits locally.
+  struct CwsWriter {
     int4 *cws;
     int4 *vws;
     size_t stride;
@@ -563,19 +563,19 @@ private:
   template <typename Writer>
   __host__ __device__ void Generate(Writer writer, const int4 *s0s, In a, int4 b_buf);
 
-  // Shared point evaluation over Cw-shaped or split corrections.
-  template <typename Corrections>
-  __host__ __device__ int4 EvalWalk(bool b, int4 s0, Corrections cws, In x);
+  // Shared point evaluation over the Cw array or the split view.
+  template <typename Cws>
+  __host__ __device__ int4 EvalWalk(bool b, int4 s0, Cws cws, In x);
 
-  // Shared interval evaluation. Corrections is a Cw pointer for the array form
-  // and a ComponentCorrections value for the split form.
-  template <typename Corrections>
-  void EvalRangeCorrections(bool b, In first, In last, int4 s0, Corrections cws,
+  // Shared interval evaluation. Cws is a Cw pointer for the array form
+  // and a CwsView value for the split form.
+  template <typename Cws>
+  void EvalRangeCws(bool b, In first, In last, int4 s0, Cws cws,
       cuda::std::span<int4> ys, int par_depth);
 
-  // Shared full-domain evaluation over Cw-shaped or split corrections.
-  template <typename Corrections>
-  void EvalAllCorrections(bool b, int4 s0, Corrections cws, int4 ys[], int par_depth);
+  // Shared full-domain evaluation over the Cw array or the split view.
+  template <typename Cws>
+  void EvalAllCws(bool b, int4 s0, Cws cws, int4 ys[], int par_depth);
 
   // EvalAll() shape (mirroring Dpf): a scalar prefix of kBatchPrefix levels grows the
   // frontier to 8 nodes, each carrying the seed (t in LSB) beside the running group
@@ -592,18 +592,18 @@ private:
   static constexpr bool kGroupIsUint127 =
       std::is_same_v<Group, group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>>;
 
-  template <typename Corrections>
-  void EvalRangeSerial(bool b, int4 st, Group value, Corrections cws, int4 ys[],
+  template <typename Cws>
+  void EvalRangeSerial(bool b, int4 st, Group value, Cws cws, int4 ys[],
       In first, In last, In node_first, In node_last, int level);
 
-  template <typename Corrections>
-  void EvalTree(bool b, int4 st, Corrections cws, int4 ys[], size_t l, size_t r, int i, int par_depth_, Group v);
+  template <typename Cws>
+  void EvalTree(bool b, int4 st, Cws cws, int4 ys[], size_t l, size_t r, int i, int par_depth_, Group v);
 
   // Expands w scalar frontier nodes (t in LSB, v the running group value) by one level
   // with cws[lv]. The children overwrite the frontier in place: iteration is in reverse
   // so the writes at 2j, 2j+1 never clobber nodes still to be read.
-  template <typename Corrections>
-  void ExpandFrontier(bool b, int4 st_front[], Group v_front[], size_t w, Corrections cws, int lv);
+  template <typename Cws>
+  void ExpandFrontier(bool b, int4 st_front[], Group v_front[], size_t w, Cws cws, int lv);
 
   // Applies the level correction to one expanded child branchlessly.
   // m is 0 or -1 from the parent control bit t, and t_cw is the cw control bit
@@ -621,15 +621,15 @@ private:
   // an 8wide batched frontier: a kBatchPrefix-level scalar prefix, batched expansions, and
   // a kBatchTail-level tail carrying (st, v) pairs. Requires
   // in_bits - i >= kBatchPrefix + kBatchTail.
-  template <typename Corrections>
-  void EvalBatched8(bool b, int4 st, Group v, Corrections cws, int4 ys[], size_t l, int i);
+  template <typename Cws>
+  void EvalBatched8(bool b, int4 st, Group v, Cws cws, int4 ys[], size_t l, int i);
 
   // Evaluates a group of 8 consecutive frontier nodes (t in LSB, v the running group
   // value) at level i, covering the leaves [l, l + 8 << (in_bits - i)) in order.
   // Requires in_bits - i >= kBatchTail.
-  template <typename Corrections>
+  template <typename Cws>
   void EvalBatched8Group(
-      bool b, const int4 (&st_front)[8], const Group (&v_front)[8], Corrections cws, int4 ys[], size_t l, int i);
+      bool b, const int4 (&st_front)[8], const Group (&v_front)[8], Cws cws, int4 ys[], size_t l, int i);
 };
 
 // -----------------------------------------------------------------------------
@@ -650,11 +650,11 @@ struct DcfGpuSchemeTraits;
 #if defined(__CUDACC__)
 
 // One block-local traversal serves the single-key and key-major batch kernels.
-// Corrections is a Cw pointer on the array path and a kernel-boundary split view
+// Cws is a Cw pointer on the array path and a kernel-boundary split view
 // on the split path, so the traversal body does not depend on the layout.
-template <typename Scheme, int frontier_depth, int block_root_depth, bool range = false, typename Corrections>
+template <typename Scheme, int frontier_depth, int block_root_depth, bool range = false, typename Cws>
 __device__ __forceinline__ void DcfMemberEvalAllBlock(bool b, int4 s0,
-    Corrections cws, int4 *ys,
+    Cws cws, int4 *ys,
     typename DcfGpuSchemeTraits<Scheme>::Backend &prg, int subtree_block_index,
     int64_t thread_index, int4 *shared_states,
     typename DcfGpuSchemeTraits<Scheme>::GroupType *shared_values,
@@ -794,10 +794,10 @@ __device__ __forceinline__ void DcfMemberEvalAllBlock(bool b, int4 s0,
 
 template <typename Descriptor, int threads_per_block>
 __global__ void DcfEvalRangeKernel(bool b, int4 s0,
-    const void *corrections, int4 *ys, __uint128_t first,
+    const void *cws_buf, int4 *ys, __uint128_t first,
     int depth, int frontier, int root, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
+  const auto *cws = static_cast<const typename Scheme::Cw *>(cws_buf);
   __shared__ int4 states[threads_per_block];
   __shared__ typename DcfGpuSchemeTraits<Scheme>::GroupType values[threads_per_block];
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -807,10 +807,10 @@ __global__ void DcfEvalRangeKernel(bool b, int4 s0,
 
 template <typename Descriptor, int frontier_depth, int block_root_depth>
 __global__ void DcfMemberEvalAllKernel(bool b, int4 s0,
-    const void *corrections, int4 *ys,
+    const void *cws_buf, int4 *ys,
     typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
+  const auto *cws = static_cast<const typename Scheme::Cw *>(cws_buf);
   using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   constexpr int kBlockWidth = 1 << (frontier_depth - block_root_depth);
   __shared__ int4 shared_states[kBlockWidth];
@@ -823,10 +823,10 @@ __global__ void DcfMemberEvalAllKernel(bool b, int4 s0,
 
 template <typename Descriptor, int frontier_depth, int block_root_depth>
 __global__ void DcfMemberEvalAllBatchKernel(bool b, const int4 *s0s,
-    const void *corrections, int4 *ys,
+    const void *cws_buf, int4 *ys,
     typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
+  const auto *cws = static_cast<const typename Scheme::Cw *>(cws_buf);
   using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   constexpr int kInputBits = DcfGpuSchemeTraits<Scheme>::kInputBits;
   constexpr int kBlocksPerKey = 1 << block_root_depth;
@@ -834,12 +834,12 @@ __global__ void DcfMemberEvalAllBatchKernel(bool b, const int4 *s0s,
   const int key_index = blockIdx.x / kBlocksPerKey;
   const int subtree_block_index = blockIdx.x - key_index * kBlocksPerKey;
   const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
-  const auto *key_corrections = cws + static_cast<size_t>(key_index) * (kInputBits + 1);
+  const auto *key_cws = cws + static_cast<size_t>(key_index) * (kInputBits + 1);
   int4 *key_outputs = ys + static_cast<size_t>(key_index) * (size_t{1} << kInputBits);
   __shared__ int4 shared_states[kBlockWidth];
   __shared__ Group shared_values[kBlockWidth];
   DcfMemberEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
-      key_corrections, key_outputs, prg, subtree_block_index, thread_index, shared_states, shared_values);
+      key_cws, key_outputs, prg, subtree_block_index, thread_index, shared_states, shared_values);
 }
 
 // Split-layout counterparts of the three kernels above. The correction buffers
@@ -852,14 +852,14 @@ __global__ void DcfSplitEvalRangeKernel(bool b, int4 s0,
     size_t stride, int4 *ys, __uint128_t first,
     int depth, int frontier, int root, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
-  using Corrections = fss::detail::DcfSplitCorrections<typename Scheme::Cw,
+  using Cws = fss::detail::DcfCwsView<typename Scheme::Cw,
       typename DcfGpuSchemeTraits<Scheme>::InputType, DcfGpuSchemeTraits<Scheme>::kInputBits>;
   const auto *cws = static_cast<const int4 *>(cws_buf);
   const auto *vws = static_cast<const int4 *>(vws_buf);
   __shared__ int4 states[threads_per_block];
   __shared__ typename DcfGpuSchemeTraits<Scheme>::GroupType values[threads_per_block];
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  DcfMemberEvalAllBlock<Scheme, 0, 0, true>(b, s0, Corrections{cws, vws, tr, stride},
+  DcfMemberEvalAllBlock<Scheme, 0, 0, true>(b, s0, Cws{cws, vws, tr, stride},
       ys, prg, blockIdx.x, thread_index, states, values, first, depth, frontier, root);
 }
 
@@ -869,7 +869,7 @@ __global__ void DcfSplitMemberEvalAllKernel(bool b, int4 s0,
     typename DcfGpuSchemeTraits<typename Descriptor::Scheme>::InputType tr,
     size_t stride, int4 *ys, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
-  using Corrections = fss::detail::DcfSplitCorrections<typename Scheme::Cw,
+  using Cws = fss::detail::DcfCwsView<typename Scheme::Cw,
       typename DcfGpuSchemeTraits<Scheme>::InputType, DcfGpuSchemeTraits<Scheme>::kInputBits>;
   const auto *cws = static_cast<const int4 *>(cws_buf);
   const auto *vws = static_cast<const int4 *>(vws_buf);
@@ -880,7 +880,7 @@ __global__ void DcfSplitMemberEvalAllKernel(bool b, int4 s0,
   const int subtree_block_index = blockIdx.x;
   const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
   DcfMemberEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0,
-      Corrections{cws, vws, tr, stride},
+      Cws{cws, vws, tr, stride},
       ys, prg, subtree_block_index, thread_index, shared_states, shared_values);
 }
 
@@ -890,7 +890,7 @@ __global__ void DcfSplitMemberEvalAllBatchKernel(bool b, const int4 *s0s,
     const typename DcfGpuSchemeTraits<typename Descriptor::Scheme>::InputType *trs,
     size_t stride, int4 *ys, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
-  using Corrections = fss::detail::DcfSplitCorrections<typename Scheme::Cw,
+  using Cws = fss::detail::DcfCwsView<typename Scheme::Cw,
       typename DcfGpuSchemeTraits<Scheme>::InputType, DcfGpuSchemeTraits<Scheme>::kInputBits>;
   const auto *cws = static_cast<const int4 *>(cws_buf);
   const auto *vws = static_cast<const int4 *>(vws_buf);
@@ -905,7 +905,7 @@ __global__ void DcfSplitMemberEvalAllBatchKernel(bool b, const int4 *s0s,
   __shared__ int4 shared_states[kBlockWidth];
   __shared__ Group shared_values[kBlockWidth];
   DcfMemberEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
-      Corrections{cws + key_index, vws + key_index, trs[key_index], stride},
+      Cws{cws + key_index, vws + key_index, trs[key_index], stride},
       key_outputs, prg, subtree_block_index, thread_index, shared_states, shared_values);
 }
 
@@ -938,7 +938,7 @@ inline __host__ __device__ void Dcf<in_bits, Group, Prg, In, pred>::Gen(
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required && vws.size() >= required);
-  Generate(ComponentWriter{cws.data(), vws.data(), stride, tr}, s0s.data(), a, b_buf);
+  Generate(CwsWriter{cws.data(), vws.data(), stride, tr}, s0s.data(), a, b_buf);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
@@ -1051,15 +1051,15 @@ inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::Eval(
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required && vws.size() >= required);
-  return EvalWalk(b, s0, ComponentCorrections{cws.data(), vws.data(), tr, stride}, x);
+  return EvalWalk(b, s0, CwsView{cws.data(), vws.data(), tr, stride}, x);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
+template <typename Cws>
 inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::EvalWalk(
-    bool b, int4 s0, Corrections cws, In x) {
+    bool b, int4 s0, Cws cws, In x) {
   int4 s = s0;
   s = util::SetLsb(s, false);
   Group v;
@@ -1120,7 +1120,7 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRange(
     bool b, In first, In last, int4 s0, const Cw cws[],
     cuda::std::span<int4> ys, int par_depth) {
-  EvalRangeCorrections(b, first, last, s0, cws, ys, par_depth);
+  EvalRangeCws(b, first, last, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
@@ -1134,16 +1134,16 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRange(bool b, In first, In l
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required && vws.size() >= required);
-  EvalRangeCorrections(b, first, last, s0,
-      ComponentCorrections{cws.data(), vws.data(), tr, stride}, ys, par_depth);
+  EvalRangeCws(b, first, last, s0,
+      CwsView{cws.data(), vws.data(), tr, stride}, ys, par_depth);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
-inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRangeCorrections(bool b, In first,
-    In last, int4 s0, Corrections cws, cuda::std::span<int4> ys, int par_depth) {
+template <typename Cws>
+inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRangeCws(bool b, In first,
+    In last, int4 s0, Cws cws, cuda::std::span<int4> ys, int par_depth) {
   assert(par_depth >= 0);
   assert(first <= last);
   constexpr In domain_last = [] {
@@ -1171,9 +1171,9 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRangeCorrections(bool b, In 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
+template <typename Cws>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRangeSerial(
-    bool b, int4 st, Group value, Corrections cws, int4 ys[],
+    bool b, int4 st, Group value, Cws cws, int4 ys[],
     In first, In last, In node_first, In node_last, int level) {
   if (level == in_bits) {
     const int4 final_correction = cws[in_bits].v;
@@ -1202,7 +1202,7 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth) {
-  EvalAllCorrections(b, s0, cws, ys, par_depth);
+  EvalAllCws(b, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
@@ -1216,15 +1216,15 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAll(bool b, int4 s0,
   assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
   [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   assert(cws.size() >= required && vws.size() >= required);
-  EvalAllCorrections(b, s0, ComponentCorrections{cws.data(), vws.data(), tr, stride}, ys, par_depth);
+  EvalAllCws(b, s0, CwsView{cws.data(), vws.data(), tr, stride}, ys, par_depth);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
-inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAllCorrections(
-    bool b, int4 s0, Corrections cws, int4 ys[], int par_depth) {
+template <typename Cws>
+inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAllCws(
+    bool b, int4 s0, Cws cws, int4 ys[], int par_depth) {
   assert(par_depth >= 0);
   static_assert(detail::FitsFullDomain<int4, in_bits>(),
       "full-domain output count and byte size must fit in size_t");
@@ -1271,9 +1271,9 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAllCorrections(
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
+template <typename Cws>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalTree(
-    bool b, int4 st, Corrections cws, int4 ys[], size_t l, size_t r, int i, int par_depth_, Group v) {
+    bool b, int4 st, Cws cws, int4 ys[], size_t l, size_t r, int i, int par_depth_, Group v) {
   bool t = util::GetLsb(st);
   int4 s = st;
   s = util::SetLsb(s, false);
@@ -1311,9 +1311,9 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalTree(
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
+template <typename Cws>
 inline void Dcf<in_bits, Group, Prg, In, pred>::ExpandFrontier(
-    bool b, int4 st_front[], Group v_front[], size_t w, Corrections cws, int lv) {
+    bool b, int4 st_front[], Group v_front[], size_t w, Cws cws, int lv) {
   int4 s_cw = util::SetLsb(cws[lv].s, false);
   bool tl_cw = util::GetLsb(cws[lv].s);
   bool tr_cw = util::GetLsb(cws[lv].v);
@@ -1388,9 +1388,9 @@ inline Group Dcf<in_bits, Group, Prg, In, pred>::CorrectVal(
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
+template <typename Cws>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalBatched8(
-    bool b, int4 st, Group v, Corrections cws, int4 ys[], size_t l, int i) {
+    bool b, int4 st, Group v, Cws cws, int4 ys[], size_t l, int i) {
   int4 st_front[8];
   Group v_front[8];
   st_front[0] = st;
@@ -1402,9 +1402,9 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalBatched8(
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
-template <typename Corrections>
+template <typename Cws>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalBatched8Group(
-    bool b, const int4 (&st_front)[8], const Group (&v_front)[8], Corrections cws, int4 ys[], size_t l, int i) {
+    bool b, const int4 (&st_front)[8], const Group (&v_front)[8], Cws cws, int4 ys[], size_t l, int i) {
   if (i == in_bits - kBatchTail) {
     // Expand the group to its 8 << kBatchTail leaves in local memory, then convert.
     int4 st_bufs[2][8 << kBatchTail];
@@ -1690,12 +1690,12 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalAllGpuBatch(
   using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
   using Descriptor = gpu::detail::DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
-  constexpr size_t kCorrectionsPerKey = in_bits + 1;
+  constexpr size_t kCwPerKey = in_bits + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
   size_t key_count = s0s.size();
   if (key_count == 0) return cudaSuccess;
-  if (key_count > kMaxAddressableSize / kCorrectionsPerKey / sizeof(Cw) || key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
-      cws.size() < key_count * kCorrectionsPerKey || ys.size() < key_count * kOutputsPerKey ||
+  if (key_count > kMaxAddressableSize / kCwPerKey / sizeof(Cw) || key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
+      cws.size() < key_count * kCwPerKey || ys.size() < key_count * kOutputsPerKey ||
       s0s.data() == nullptr || cws.data() == nullptr || ys.data() == nullptr) return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
     return cudaErrorInvalidConfiguration;

@@ -504,7 +504,7 @@ TEST_F(PackedHalfTreeDpfAesRawTest, AlphaSweep) {
 
 // Boundary domains around the 8-wide frontier: kDepth 4 and 5 take the batched path with
 // the shallowest frontiers, kDepth 1..3 keep the per-block point walk.
-// Every alpha is swept so each block position is the correction target once.
+// Every alpha is swept so each block position is the target Cw once.
 template <int InBits>
 class PackedHalfTreeDpfAesRawBoundaryTest : public ::testing::Test {
 protected:
@@ -841,8 +841,8 @@ namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split-corrections API against the Cw forms for one configuration:
-// every correction entry, every block of Eval, EvalAll and EvalRange, the
+// Checks the split Cws API against the Cw array forms for one configuration:
+// every Cw entry, every block of Eval, EvalAll and EvalRange, the
 // untouched gap entries, and the two-party reconstruction. stride == 0 selects
 // the default-argument call.
 template <int in_bits, int out_bits, typename In>
@@ -949,28 +949,28 @@ void CheckPackedHalfTreeSplitStrides(uint64_t beta) {
 // kDepth 1 is the shallowest packed tree, 4 is the smallest frontier path, and
 // the wider output widths cover the lane counts. The 64-bit width also exercises
 // one-lane blocks.
-TEST(PackedHalfTreeDpfSplitCorrectionsTest, Depth1Width1) {
+TEST(PackedHalfTreeDpfCwsTest, Depth1Width1) {
   CheckPackedHalfTreeSplitStrides<8, 1>(1);
 }
-TEST(PackedHalfTreeDpfSplitCorrectionsTest, Depth4Width1) {
+TEST(PackedHalfTreeDpfCwsTest, Depth4Width1) {
   CheckPackedHalfTreeSplitStrides<11, 1>(1);
 }
-TEST(PackedHalfTreeDpfSplitCorrectionsTest, Depth6Width2) {
+TEST(PackedHalfTreeDpfCwsTest, Depth6Width2) {
   CheckPackedHalfTreeSplitStrides<12, 2>(3);
 }
-TEST(PackedHalfTreeDpfSplitCorrectionsTest, Depth8Width8) {
+TEST(PackedHalfTreeDpfCwsTest, Depth8Width8) {
   CheckPackedHalfTreeSplitStrides<12, 8>(0x5a);
 }
-TEST(PackedHalfTreeDpfSplitCorrectionsTest, Depth10Width64) {
+TEST(PackedHalfTreeDpfCwsTest, Depth10Width64) {
   CheckPackedHalfTreeSplitStrides<11, 64>(0x0123456789abcdefULL);
 }
-TEST(PackedHalfTreeDpfSplitCorrectionsTest, WideDomainWidth16) {
+TEST(PackedHalfTreeDpfCwsTest, WideDomainWidth16) {
   CheckPackedHalfTreeSplit<16, 16, uint16_t>(12345, 0xbeef, 0);
   CheckPackedHalfTreeSplit<16, 16, uint16_t>(12345, 0xbeef, 2);
 }
 
 #ifndef NDEBUG
-TEST(PackedHalfTreeDpfSplitCorrectionsTest, RejectsInvalidInputs) {
+TEST(PackedHalfTreeDpfCwsTest, RejectsInvalidInputs) {
   using Scheme = fss::PackedHalfTreeDpf<10, 1, fss_test::TestCcrHash, uint16_t>;
   constexpr int kDepth = Scheme::kDepth;
   Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
@@ -990,7 +990,7 @@ TEST(PackedHalfTreeDpfSplitCorrectionsTest, RejectsInvalidInputs) {
   EXPECT_DEBUG_DEATH((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{7}, s0, cws_in,
                         cuda::std::span<int4>(ys, 8), 0, 0),
       "Assertion.*failed");
-  // A span that omits the packed-output correction at cws[kDepth*stride] is rejected.
+  // A span that omits the packed-output correction word at cws[kDepth*stride] is rejected.
   EXPECT_DEBUG_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, kDepth), seed_span,
                         uint16_t{5}, 1),
       "Assertion.*failed");
@@ -1023,16 +1023,16 @@ TEST(PackedHalfTreeDpfSplitGpuTest, RejectsInvalidBatchGeometry) {
   int4 ys_storage[1] = {};
 
   // 2^32 keys of 2^32 blocks make the output product wrap in size_t, so the guard
-  // must reject the call before the product is formed. The correction span is
+  // must reject the call before the product is formed. The Cw span is
   // sized nominally here and the key count is above the launch grid limit for
   // every launch shape, so a variant without the output guard would stop at
   // cudaErrorInvalidConfiguration instead of launching into the one-element
   // output buffer.
   constexpr size_t kKeys = size_t{1} << 32;
-  constexpr size_t kMinCorrections = 32 * kKeys + kKeys;
+  constexpr size_t kMinCws = 32 * kKeys + kKeys;
   EXPECT_EQ((wide.template EvalAllGpuBatch<24, 256>(false,
       cuda::std::span<const int4>(seed_storage, kKeys),
-      cuda::std::span<const int4>(cws_storage, kMinCorrections),
+      cuda::std::span<const int4>(cws_storage, kMinCws),
       cuda::std::span<int4>(ys_storage, 1), 0)), cudaErrorInvalidValue);
 
   using Small = fss::PackedHalfTreeDpf<8, 1, fss_test::TestCcrHash, uint16_t>;
@@ -1055,7 +1055,7 @@ TEST(PackedHalfTreeDpfSplitGpuTest, RejectsInvalidBatchGeometry) {
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s, cws, ys, 0,
                         kMaxElements + 1)),
       cudaErrorInvalidValue);
-  // A correction span that omits the terminal column is rejected.
+  // A Cw span that omits the terminal column is rejected.
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s,
                         cuda::std::span<const int4>(small_cws, kSmallRequired - 1), ys)),
       cudaErrorInvalidValue);

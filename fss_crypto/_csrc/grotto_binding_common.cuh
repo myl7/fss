@@ -35,7 +35,7 @@ struct GrottoBinding {
     if constexpr (Packed) return Scheme::kDepth;
     else return kInBits;
   }();
-  static constexpr size_t kCorrections = CorrectionCount<Scheme>();
+  static constexpr size_t kCws = CwCount<Scheme>();
   static constexpr bool kTreeAddressable = kTreeBits < 63 &&
       fss::detail::FitsBinaryTree<bool, kTreeBits>() &&
       (!Packed || fss::detail::FitsFullDomain<int4, kTreeBits>());
@@ -48,7 +48,7 @@ struct GrottoBinding {
 
   static void CheckKey(const Tensor &s0, const Tensor &cws) {
     CheckBlocks(s0, 1);
-    ConstCwPtr(cws, kCorrections);
+    ConstCwPtr(cws, kCws);
     CheckSameDevice({s0, cws});
   }
 
@@ -89,7 +89,7 @@ struct GrottoBinding {
   };
 
   static void Gen(NativeState &state, Tensor cws, Tensor s0s, py::int_ a) {
-    auto *words = CwPtr(cws, kCorrections);
+    auto *words = CwPtr(cws, kCws);
     CheckBlocks(s0s, 2);
     CheckSameDevice({cws, s0s});
     auto input = ReadIn(a);
@@ -98,7 +98,7 @@ struct GrottoBinding {
         c10::cuda::CUDAGuard guard(s0s.device());
         auto stream = CurrentStream();
         CheckCuda(gpu::GenGpu(state.Device(stream),
-            cuda::std::span<typename Scheme::Cw, kCorrections>(words, kCorrections),
+            cuda::std::span<typename Scheme::Cw, kCws>(words, kCws),
             cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), input, stream));
         state.RecordUse(stream);
         RecordTensors({cws, s0s}, stream);
@@ -142,7 +142,7 @@ struct GrottoBinding {
           if constexpr (ValidCoreGpuLaunch<kTreeBits>()) {
             auto &core = static_cast<Scheme &>(state.template DeviceForLaunch<kGpuSupported>(stream));
             CheckCuda(core.template EvalAllGpu<kFrontierDepth, kThreadsPerBlock>(b,
-                FetchBlock(s0), cuda::std::span<const typename Scheme::Cw>(ConstCwPtr(cws), kCorrections),
+                FetchBlock(s0), cuda::std::span<const typename Scheme::Cw>(ConstCwPtr(cws), kCws),
                 cuda::std::span<bool>(Bools(ys), ys.numel()), stream));
           } else throw py::value_error("GPU launch shape is unavailable; check frontier_depth and threads_per_block");
           state.RecordUse(stream);
@@ -169,7 +169,7 @@ struct GrottoBinding {
           auto stream = CurrentStream();
           if constexpr (ValidCoreGpuLaunch<kTreeBits>()) {
             auto &core = static_cast<Scheme &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-            auto words = cuda::std::span<const typename Scheme::Cw>(ConstCwPtr(cws), kCorrections);
+            auto words = cuda::std::span<const typename Scheme::Cw>(ConstCwPtr(cws), kCws);
             if constexpr (Packed) {
               CheckCuda(core.template PreprocessGpu<kFrontierDepth, kThreadsPerBlock>(b,
                   FetchBlock(s0), words, cuda::std::span<int4>(Blocks(blocks), TreeLeaves()),

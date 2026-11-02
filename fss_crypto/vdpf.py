@@ -5,7 +5,7 @@ from fss_crypto._scheme import _Scheme, _parallel_depth
 class Vdpf(_Scheme):
     """Configure Core VDPF with explicit PRG and verification hashes.
 
-    Corrections include the final output correction. Native block buffers use
+    The correction words include the final output correction word. Native block buffers use
     int32 [..., 4], and cs and proofs use int32 [4, 4].
     Output group width and modulus come from group, independently of in_bits.
     Chain and Merkle proofs are distinct protocols. Both parties must use the
@@ -26,7 +26,7 @@ class Vdpf(_Scheme):
                                threads_per_block=threads_per_block)
 
     def gen(self, cws, cs, s0s, a, b_buf):
-        """Write corrections once, preserving s0s. Return 0 on success or 1.
+        """Write correction words once, preserving s0s. Return 0 on success or 1.
 
         Outputs are unspecified on failure. s0s has shape [2, 4].
         To repeat after status 1, draw two fresh independent uniform seed

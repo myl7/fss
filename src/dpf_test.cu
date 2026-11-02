@@ -549,24 +549,24 @@ template <int bits, typename Group, typename Prg, typename In>
 void CheckDpfRange(Prg prg, In first, In last, In alpha, int par_depth) {
   using Scheme = fss::Dpf<bits, Group, Prg, In>;
   Scheme scheme(prg);
-  typename Scheme::Cw corrections[bits + 1];
+  typename Scheme::Cw cws[bits + 1];
   const int4 seeds[2] = {{0x12345678, 0x1234abcd, 0x13579bdf, 0x2468ace0},
       {0x7abc1234, 0x01bc3456, 0x4567abcd, 0x76892344}};
   const int4 beta = Group::From(make_int4(0x5abc0123, 0x44556677, 0x12345678, 0x6abc1234)).Into();
-  scheme.Gen(corrections, seeds, alpha, beta);
+  scheme.Gen(cws, seeds, alpha, beta);
   const size_t count = static_cast<size_t>(static_cast<__uint128_t>(last) - first) + 1;
   const int4 sentinel = make_int4(0x9876, 0x1234, 0x5678, 0xabcd);
   std::vector<int4> outputs[2] = {
       std::vector<int4>(count + 3, sentinel), std::vector<int4>(count + 3, sentinel)};
   for (int party = 0; party < 2; ++party) {
-    scheme.EvalRange(party, first, last, seeds[party], corrections,
+    scheme.EvalRange(party, first, last, seeds[party], cws,
         cuda::std::span<int4>(outputs[party].data() + 1, count + 2), par_depth);
     EXPECT_EQ(memcmp(&outputs[party][0], &sentinel, sizeof(int4)), 0);
     EXPECT_EQ(memcmp(&outputs[party][count + 1], &sentinel, sizeof(int4)), 0);
     EXPECT_EQ(memcmp(&outputs[party][count + 2], &sentinel, sizeof(int4)), 0);
     for (size_t offset = 0; offset < count; ++offset) {
       const In point = first + static_cast<In>(offset);
-      const int4 scalar = scheme.Eval(party, seeds[party], corrections, point);
+      const int4 scalar = scheme.Eval(party, seeds[party], cws, point);
       EXPECT_EQ(memcmp(&outputs[party][offset + 1], &scalar, sizeof(int4)), 0)
           << "party=" << party << " offset=" << offset << " par_depth=" << par_depth;
     }
@@ -826,7 +826,7 @@ void CheckComponentEval(const std::vector<In> &queries, In alpha, int4 beta,
   for (int i = 0; i < bits; ++i) {
     if (cws_tr[i]) packed_tr |= static_cast<In>(In{1} << i);
   }
-  // Bits at and above the domain depth are outside the packed correction.
+  // Bits at and above the domain depth are outside the packed correction word.
   constexpr int kInBits = static_cast<int>(sizeof(In) * 8);
   if constexpr (bits < kInBits) {
     for (int i = bits; i < kInBits; ++i) {
@@ -1395,7 +1395,7 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
   }
   for (int level = 0; level < bits; ++level) {
     EXPECT_FALSE(Int4Equal(keys[0][0].cws[level].s, keys[1][0].cws[level].s))
-        << "corrections must differ between keys, level " << level;
+        << "correction words must differ between keys, level " << level;
   }
 
   int4 terminals[kInterleavedKeyCount];
@@ -1410,7 +1410,7 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
       }
     }
     // Bits at and above the depth are ignored. Tag them per key so the packed
-    // corrections differ deterministically and the ignore rule is exercised.
+    // correction words differ deterministically and the ignore rule is exercised.
     for (int level = bits; level < kInWidth; ++level) {
       if (key != 0) {
         packed_tr[key] = static_cast<In>(packed_tr[key] | static_cast<In>(In{1} << level));
@@ -1631,7 +1631,7 @@ __global__ void GenGpuKernel(GenRun<bits, Group, In> *runs, int4 *shared, size_t
 }
 
 template <int bits, typename Group, typename In>
-void CheckGenCorrections(const GenRun<bits, Group, In> &g, const int4 *s,
+void CheckGenCws(const GenRun<bits, Group, In> &g, const int4 *s,
     const GenRun<bits, Group, In> &o) {
   for (int i = 0; i <= bits; ++i) {
     ExpectComponentInt4(g.legacy[i].s, o.legacy[i].s);
@@ -1715,7 +1715,7 @@ void CheckGenSharedHost(const int4 (&seeds)[key_count][2], const In (&alphas)[ke
   }
   for (int key = 0; key < key_count; ++key) {
     for (int p = 0; p < 2; ++p) EXPECT_TRUE(Int4Equal(runs[key].seeds[p], seeds[key][p]));
-    CheckGenCorrections(runs[key], shared.data() + 1 + key, runs[key]);
+    CheckGenCws(runs[key], shared.data() + 1 + key, runs[key]);
     CheckGenEval(runs[key], runs[key]);
   }
   CheckSharedLayout<key_count>(shared.data(), total, stride, runs);
@@ -1756,7 +1756,7 @@ void CheckGenSharedGpu(const int4 (&seeds)[key_count][2], const In (&alphas)[key
   EXPECT_EQ(launch, cudaSuccess) << cudaGetErrorString(launch);
   EXPECT_EQ(sync, cudaSuccess) << cudaGetErrorString(sync);
   for (int key = 0; key < key_count; ++key) {
-    CheckGenCorrections(d_runs[key], d_shared + 1 + key, oracle[key]);
+    CheckGenCws(d_runs[key], d_shared + 1 + key, oracle[key]);
     CheckGenEval(d_runs[key], oracle[key]);
     for (int p = 0; p < 2; ++p) EXPECT_TRUE(Int4Equal(d_runs[key].seeds[p], seeds[key][p]));
   }
@@ -1953,12 +1953,12 @@ TEST(DpfComponentGenGpu, InterleavedKeys) {
 }
 
 // -----------------------------------------------------------------------------
-// Split-corrections full-domain and range API: bit-exactness against the Cw forms.
+// Split correction-word full-domain and range API: bit-exactness against the Cw forms.
 
 namespace {
 
-// Checks the split-corrections full-domain API against the Cw forms for one
-// configuration: Gen() corrections, every EvalAll and EvalRange output, and the
+// Checks the split correction-word full-domain API against the Cw forms for one
+// configuration: Gen() correction words, every EvalAll and EvalRange output, and the
 // two-party reconstruction. stride == 0 selects the default-argument call.
 template <int in_bits, typename Group, typename In>
 void CheckDpfSplitFullDomain(In alpha, int4 beta, size_t stride) {
@@ -1981,7 +1981,7 @@ void CheckDpfSplitFullDomain(In alpha, int4 beta, size_t stride) {
   if (default_stride) scheme.Gen(cws_out, tr, seed_span, alpha, beta);
   else scheme.Gen(cws_out, tr, seed_span, alpha, beta, stride);
 
-  // The split corrections are bit-exact against the Cw layout, including the
+  // The split correction words are bit-exact against the Cw layout, including the
   // left-control LSB, and only the described prefix is written.
   In expected_tr = 0;
   for (int i = 0; i < in_bits; ++i) {
@@ -2061,16 +2061,16 @@ void CheckDpfSplitStrides(In alpha) {
 
 // in_bits 1 exercises the single-level tree, 3 keeps the per-input EvalAll()
 // path, and 6 and 8 run the batched EvalAll() frontier.
-TEST(DpfSplitCorrectionsTest, Depth1) { CheckDpfSplitStrides<1, BytesGroup, uint8_t>(1); }
-TEST(DpfSplitCorrectionsTest, Depth3) { CheckDpfSplitStrides<3, BytesGroup, uint8_t>(5); }
-TEST(DpfSplitCorrectionsTest, Depth6) { CheckDpfSplitStrides<6, BytesGroup, uint8_t>(43); }
-TEST(DpfSplitCorrectionsTest, Depth8) { CheckDpfSplitStrides<8, BytesGroup, uint16_t>(165); }
-TEST(DpfSplitCorrectionsTest, Depth8Uint127) { CheckDpfSplitStrides<8, Uint127Group, uint16_t>(165); }
-TEST(DpfSplitCorrectionsTest, Depth8GenericGroup) { CheckDpfSplitStrides<8, Uint64Group, uint16_t>(165); }
+TEST(DpfCwsTest, Depth1) { CheckDpfSplitStrides<1, BytesGroup, uint8_t>(1); }
+TEST(DpfCwsTest, Depth3) { CheckDpfSplitStrides<3, BytesGroup, uint8_t>(5); }
+TEST(DpfCwsTest, Depth6) { CheckDpfSplitStrides<6, BytesGroup, uint8_t>(43); }
+TEST(DpfCwsTest, Depth8) { CheckDpfSplitStrides<8, BytesGroup, uint16_t>(165); }
+TEST(DpfCwsTest, Depth8Uint127) { CheckDpfSplitStrides<8, Uint127Group, uint16_t>(165); }
+TEST(DpfCwsTest, Depth8GenericGroup) { CheckDpfSplitStrides<8, Uint64Group, uint16_t>(165); }
 
 // A 128-bit input domain keeps EvalRange() in the wide-input instantiation,
 // where the input width equals in_bits.
-TEST(DpfSplitCorrectionsTest, WideInputRange) {
+TEST(DpfCwsTest, WideInputRange) {
   using Prg = fss::prg::ChaCha<2>;
   using Scheme = fss::Dpf<128, Uint127Group, Prg, __uint128_t>;
   Scheme scheme{Prg(kNonce0, kNonce1)};
@@ -2103,7 +2103,7 @@ TEST(DpfSplitCorrectionsTest, WideInputRange) {
 }
 
 #ifndef NDEBUG
-TEST(DpfSplitCorrectionsTest, DebugRejectsInvalidInputs) {
+TEST(DpfCwsTest, DebugRejectsInvalidInputs) {
   using Prg = fss::prg::ChaCha<2>;
   using Three = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
   using Eight = fss::Dpf<8, BytesGroup, Prg, uint16_t>;
@@ -2164,16 +2164,16 @@ TEST(DpfSplitGpuTest, RejectsInvalidBatchGeometry) {
   uint64_t tr_storage[1] = {};
 
   // 2^32 keys of 2^32 outputs make the output product wrap in size_t, so the
-  // guard must reject the call before the product is formed. The correction
+  // guard must reject the call before the product is formed. The correction word
   // spans are sized nominally here and the key count is above the launch grid
   // limit for every launch shape, so a variant without the output guard would
   // stop at cudaErrorInvalidConfiguration instead of launching into the
   // one-element output buffer.
   constexpr size_t kKeys = size_t{1} << 32;
-  constexpr size_t kMinCorrections = 32 * kKeys + kKeys;
+  constexpr size_t kMinCws = 32 * kKeys + kKeys;
   EXPECT_EQ((wide.template EvalAllGpuBatch<24, 256>(false,
       cuda::std::span<const int4>(seed_storage, kKeys),
-      cuda::std::span<const int4>(cws_storage, kMinCorrections),
+      cuda::std::span<const int4>(cws_storage, kMinCws),
       cuda::std::span<const uint64_t>(tr_storage, kKeys),
       cuda::std::span<int4>(ys_storage, 1), 0)), cudaErrorInvalidValue);
 
@@ -2198,7 +2198,7 @@ TEST(DpfSplitGpuTest, RejectsInvalidBatchGeometry) {
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s, cws, tr, ys, 0,
                         kMaxElements + 1)),
       cudaErrorInvalidValue);
-  // A correction span that omits the terminal column is rejected.
+  // A span of correction words that omits the terminal column is rejected.
   EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s,
                         cuda::std::span<const int4>(small_cws, kSmallRequired - 1), tr, ys)),
       cudaErrorInvalidValue);

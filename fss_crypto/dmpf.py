@@ -37,7 +37,7 @@ class Dmpf(_Scheme):
 
     @property
     def kBucketCount(self) -> int:
-        """Allocated bucket count from Core, used to size seed and correction rows."""
+        """Allocated bucket count from Core, used to size the seed and correction word rows."""
         return self._native.kBucketCount
 
     @property
@@ -57,7 +57,7 @@ class Dmpf(_Scheme):
         s0s is contiguous int32 [2, kBucketCount, 4]. Each s0s[party] is
         contiguous and can be passed directly to this party's evaluation.
         Return (status, m_rt, b_size_rt). Only status 0 makes outputs usable.
-        After status 1, discard corrections, draw fresh uniform sigma from a
+        After status 1, discard the correction words, draw fresh uniform sigma from a
         cryptographically secure RNG, and call gen again with the same inputs.
         Existing independently sampled bucket seeds may be retained.
         max_evictions bounds Cuckoo insertion work within this one call.

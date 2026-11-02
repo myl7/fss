@@ -66,8 +66,8 @@ namespace fss::gpu {
 /**
  * Borrowed device components of a multi-point key.
  *
- * Seeds and correction rows are contiguous in bucket order. Each correction
- * row contains bucket_bits+1 entries, including the final output correction.
+ * Seeds and rows of correction words are contiguous in bucket order. Each row of
+ * correction words contains bucket_bits+1 entries, including the final output correction word.
  * All allocated buckets, including inactive ones, remain represented.
  * Metadata and storage must describe the same successful generation.
  */
@@ -134,7 +134,7 @@ cudaError_t BatchEvalGpu(Scheme *scheme, bool b, MultiComponents<Scheme> key,
  * sorting preserves that order. Empty buckets contribute Hash(cs); nonempty
  * buckets contribute Hash(Hash(cs)||root). All allocated buckets are folded.
  * Launch geometry does not affect proof values. xs may be empty. In that case,
- * only scheme, cs rows, and pi are accessed. Seeds, corrections, sigma, and
+ * only scheme, cs rows, and pi are accessed. Seeds, correction words, sigma, and
  * runtime Cuckoo metadata are unnecessary for the empty-bucket proof.
  */
 template <typename Scheme>

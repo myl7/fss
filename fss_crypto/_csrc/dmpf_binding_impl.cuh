@@ -32,7 +32,7 @@ py::tuple Gen(NativeState &state, Tensor cws, Tensor sigma, Tensor seeds,
   }
   auto *words=CwPtr(cws,kRows*kWords);
   auto seed_view=cuda::std::span<const int4>(ConstBlocks(seeds),size_t(kRows)*2);
-  auto corrections=cuda::std::span<Cw>(words,size_t(kRows)*kWords);
+  auto cw_buf=cuda::std::span<Cw>(words,size_t(kRows)*kWords);
   auto input=cuda::std::span<const InType>(points,t);
   auto payloads=cuda::std::span<const int4>(ConstBlocks(betas),t);
   int runtime_rows=fss::cuckoo_hash::ChBucket(t,kChLambda);
@@ -41,7 +41,7 @@ py::tuple Gen(NativeState &state, Tensor cws, Tensor sigma, Tensor seeds,
   for (int i=0;i<t;++i) for (int j=0;j<i;++j)
     TORCH_CHECK(points[i] != points[j], "secret points must be distinct");
   int m_rt=0; __uint128_t b_size_rt=0;
-  int status=state.Cpu().Gen(corrections, m_rt,b_size_rt,
+  int status=state.Cpu().Gen(cw_buf, m_rt,b_size_rt,
       *ConstBlocks(sigma),seed_view,input,payloads,t,evictions);
   return py::make_tuple(status,m_rt,ToPyU128(b_size_rt));
 }

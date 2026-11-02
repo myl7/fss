@@ -12,7 +12,7 @@ class HalfTreeDpf(_Scheme):
     contiguous ``torch.int32`` tensors with a final dimension of four words.
     ``s0s`` contains two blocks, ``s0`` and ``b_buf`` contain one, and ``eval_all`` output
     ``ys`` contains exactly ``2**in_bits`` blocks. Allocate ``cws`` as a contiguous
-    uint8 tensor with ``cws_shape``, including the terminal correction.
+    uint8 tensor with ``cws_shape``, including the terminal correction word.
     """
 
     def __init__(self, in_bits: int, group, hash, instance_seed, *,
@@ -30,14 +30,14 @@ class HalfTreeDpf(_Scheme):
                                threads_per_block=threads_per_block)
 
     def gen(self, cws, s0s: torch.Tensor, a: int, b_buf: torch.Tensor) -> None:
-        """Fill caller-owned corrections once, including the terminal entry.
+        """Fill caller-owned correction words once, including the terminal entry.
 
         GPU scalar payload conversion can synchronize the current stream.
         """
         self._native.gen(self._cws(cws), s0s, a, b_buf)
 
     def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> torch.Tensor:
-        """Return one raw Core int4 share without a separate output correction."""
+        """Return one raw Core int4 share without a separate output correction word."""
         return self._native.eval(b, s0, self._cws(cws), x)
 
     def eval_range(self, b: bool, first: int, last: int, s0: torch.Tensor,

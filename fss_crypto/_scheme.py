@@ -87,7 +87,7 @@ class _Scheme:
 
     @property
     def cws_shape(self) -> tuple[int, ...]:
-        """Shape for caller-allocated contiguous uint8 C++ correction records.
+        """Shape for caller-allocated contiguous uint8 C++ correction word records.
 
         Allocate with ``torch.empty(scheme.cws_shape, dtype=torch.uint8,
         device=device)``. Each final-axis row contains one complete Cw,
@@ -103,7 +103,7 @@ class _Scheme:
         if not isinstance(value, torch.Tensor):
             raise TypeError("cws must be a tensor")
         if tuple(value.shape) != self.cws_shape or value.dtype != torch.uint8:
-            raise ValueError("cws has the wrong native correction-word shape or dtype")
+            raise ValueError("cws has the wrong native shape or dtype for correction words")
         if not value.is_contiguous():
             raise ValueError("cws must be contiguous")
         if value.data_ptr() % self._native.cw_alignment:

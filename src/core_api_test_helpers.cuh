@@ -183,8 +183,8 @@ int GenMulti(Scheme &scheme, typename Scheme::Key &k0, typename Scheme::Key &k1,
     int4 &sigma, Seeds &&seeds, Alphas &&alphas, Betas &&betas, int count,
     int max_evictions = 1000) {
   constexpr size_t kWords = std::extent_v<decltype(k0.bks[0].cws)>;
-  std::vector<typename Scheme::Cw> corrections(size_t{Scheme::kBucketCount} * kWords);
-  auto cws = cuda::std::span<typename Scheme::Cw>(corrections.data(), corrections.size());
+  std::vector<typename Scheme::Cw> cw_storage(size_t{Scheme::kBucketCount} * kWords);
+  auto cws = cuda::std::span<typename Scheme::Cw>(cw_storage.data(), cw_storage.size());
   std::vector<int4> checks;
   auto seed_view = cuda::std::span<const int4>(Data(seeds), size_t{Scheme::kBucketCount} * 2);
   auto alpha_view = cuda::std::span<const std::remove_cvref_t<decltype(Data(alphas)[0])>>(Data(alphas), count);
@@ -207,7 +207,7 @@ int GenMulti(Scheme &scheme, typename Scheme::Key &k0, typename Scheme::Key &k1,
       k0.bks[i].s0 = seed_view[i];
       k1.bks[i].s0 = seed_view[size_t{Scheme::kBucketCount} + i];
       for (size_t j = 0; j < std::extent_v<decltype(k0.bks[i].cws)>; ++j) {
-        k0.bks[i].cws[j] = k1.bks[i].cws[j] = corrections[static_cast<size_t>(i) * kWords + j];
+        k0.bks[i].cws[j] = k1.bks[i].cws[j] = cw_storage[static_cast<size_t>(i) * kWords + j];
       }
       if constexpr (requires { k0.bks[i].cs; }) {
         for (int j = 0; j < 4; ++j) k0.bks[i].cs[j] = k1.bks[i].cs[j] = checks[static_cast<size_t>(i) * 4 + j];
@@ -231,23 +231,23 @@ __host__ __device__ auto EvalKey(Scheme &scheme, bool party, const Key &key, In 
 template <typename Scheme>
 struct MultiRows {
   cuda::std::array<int4, Scheme::kBucketCount> s0s;
-  std::vector<typename Scheme::Cw> corrections;
+  std::vector<typename Scheme::Cw> cw_storage;
   std::vector<int4> checks;
   cuda::std::span<const typename Scheme::Cw> cws;
   cuda::std::span<const int4> cs;
 
   explicit MultiRows(const typename Scheme::Key &key) {
     constexpr size_t kWords = std::extent_v<decltype(key.bks[0].cws)>;
-    corrections.resize(size_t{Scheme::kBucketCount} * kWords);
+    cw_storage.resize(size_t{Scheme::kBucketCount} * kWords);
     if constexpr (requires { key.bks[0].cs; }) checks.resize(size_t{Scheme::kBucketCount} * 4);
     for (int i = 0; i < Scheme::kBucketCount; ++i) {
       s0s[i] = key.bks[i].s0;
-      for (size_t j = 0; j < kWords; ++j) corrections[static_cast<size_t>(i) * kWords + j] = key.bks[i].cws[j];
+      for (size_t j = 0; j < kWords; ++j) cw_storage[static_cast<size_t>(i) * kWords + j] = key.bks[i].cws[j];
       if constexpr (requires { key.bks[i].cs; }) {
         for (int j = 0; j < 4; ++j) checks[static_cast<size_t>(i) * 4 + j] = key.bks[i].cs[j];
       }
     }
-    cws = {corrections.data(), corrections.size()};
+    cws = {cw_storage.data(), cw_storage.size()};
     cs = {checks.data(), checks.size()};
   }
 };

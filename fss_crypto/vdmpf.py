@@ -63,7 +63,7 @@ class Vdmpf(_Scheme):
         Status 2 means an inner VDPF failed: preserve sigma and draw fresh
         independent uniform seed pairs for every allocated bucket from a
         cryptographically secure RNG. For either failure, discard all
-        corrections/checks and rerun the whole gen with the same points and
+        correction words and checks and rerun the whole gen with the same points and
         payloads. The caller owns retry limits.
         max_evictions bounds Cuckoo insertion work within this one call.
         as_ holds at least t distinct inputs and b_bufs at least t output blocks.

@@ -274,61 +274,61 @@ namespace fss::detail {
 struct SchemeAccess {
   template <typename Scheme, typename Hash>
   static __host__ __device__ void HalfTreeExpandNode(Hash &hash, int4 instance_seed,
-      int4 node, int4 correction, int4 &left, int4 &right) {
-    Scheme::ExpandNode(hash, instance_seed, node, correction, left, right);
+      int4 node, int4 cw, int4 &left, int4 &right) {
+    Scheme::ExpandNode(hash, instance_seed, node, cw, left, right);
   }
 
   template <typename Scheme, typename Hash>
   static __host__ __device__ int4 HalfTreePathStep(Hash &hash, int4 instance_seed,
-      int4 node, int4 correction, bool take_right) {
-    return Scheme::PathStep(hash, instance_seed, node, correction, take_right);
+      int4 node, int4 cw, bool take_right) {
+    return Scheme::PathStep(hash, instance_seed, node, cw, take_right);
   }
 
   template <typename Scheme, typename Hash>
   static __host__ __device__ int4 PackedConvertLeaf(Hash &hash, int4 instance_seed,
-      int4 node, int4 output_correction) {
-    return Scheme::ConvertLeaf(hash, instance_seed, node, output_correction);
+      int4 node, int4 cw) {
+    return Scheme::ConvertLeaf(hash, instance_seed, node, cw);
   }
 
-  template <typename Scheme, typename Hash, typename Correction>
+  template <typename Scheme, typename Hash, typename Cw>
   static __host__ __device__ void HalfTreeConvertLeafPair(bool party, Hash &hash,
-      int4 instance_seed, int4 node, const typename Scheme::Cw &last_correction,
-      Correction &output_correction, int4 &left, int4 &right) {
-    Scheme::ConvertLeafPair(party, hash, instance_seed, node, last_correction,
-        output_correction, left, right);
+      int4 instance_seed, int4 node, const typename Scheme::Cw &last_cw,
+      Cw &output_cw, int4 &left, int4 &right) {
+    Scheme::ConvertLeafPair(party, hash, instance_seed, node, last_cw,
+        output_cw, left, right);
   }
 
   template <typename Scheme, typename Prg, typename Group, typename Cw>
   static __host__ __device__ void DcfExpandNode(Prg &prg, int4 state, const Group &value,
-      bool party, const Cw &correction, int4 &left, Group &left_value,
+      bool party, const Cw &cw, int4 &left, Group &left_value,
       int4 &right, Group &right_value) {
-    Scheme::ExpandNode(prg, state, value, party, correction,
+    Scheme::ExpandNode(prg, state, value, party, cw,
         left, left_value, right, right_value);
   }
 
   template <typename Scheme, typename Prg, typename Group, typename Cw>
   static __host__ __device__ void DcfPathStep(Prg &prg, int4 state, const Group &value,
-      bool party, const Cw &correction, bool take_right,
+      bool party, const Cw &cw, bool take_right,
       int4 &next_state, Group &next_value) {
-    Scheme::PathStep(prg, state, value, party, correction,
+    Scheme::PathStep(prg, state, value, party, cw,
         take_right, next_state, next_value);
   }
 
   template <typename Scheme, typename Prg>
-  static __host__ __device__ void DpfExpandNode(Prg &prg, int4 state, int4 correction,
+  static __host__ __device__ void DpfExpandNode(Prg &prg, int4 state, int4 cw,
       bool right_control, int4 &left, int4 &right) {
-    Scheme::ExpandNode(prg, state, correction, right_control, left, right);
+    Scheme::ExpandNode(prg, state, cw, right_control, left, right);
   }
 
   template <typename Scheme, typename Prg>
-  static __host__ __device__ int4 DpfPathStep(Prg &prg, int4 state, int4 correction,
+  static __host__ __device__ int4 DpfPathStep(Prg &prg, int4 state, int4 cw,
       bool right_control, bool take_right) {
-    return Scheme::PathStep(prg, state, correction, right_control, take_right);
+    return Scheme::PathStep(prg, state, cw, right_control, take_right);
   }
 
   template <typename Scheme>
-  static __host__ __device__ int4 DpfConvertLeaf(bool party, int4 state, int4 correction) {
-    return Scheme::ConvertLeaf(party, state, correction);
+  static __host__ __device__ int4 DpfConvertLeaf(bool party, int4 state, int4 cw) {
+    return Scheme::ConvertLeaf(party, state, cw);
   }
 
   template <typename Scheme>

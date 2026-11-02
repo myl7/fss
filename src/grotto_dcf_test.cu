@@ -244,8 +244,8 @@ namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split-corrections API against the Cw forms for one configuration:
-// every correction entry, every Eval share, the preprocessed parity tree, the
+// Checks the split correction-word API against the Cw forms for one configuration:
+// every correction word entry, every Eval share, the preprocessed parity tree, the
 // owned tree, every EvalAll share, and the two-party reconstruction. stride == 0
 // selects the default-argument call.
 template <int in_bits, typename In>
@@ -337,8 +337,6 @@ void CheckGrottoSplitStrides(In alpha) {
   }
 }
 
-// A Cw[] array is already an int4 array at stride 2, so it feeds the split API
-// once the packed right-control bits are materialized (R9).
 template <int in_bits, typename In>
 void CheckGrottoSplitFromCwStorage(In alpha) {
   using Scheme = fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, In>;
@@ -377,20 +375,20 @@ void CheckGrottoSplitFromCwStorage(In alpha) {
 // in_bits 1 is the single-level tree, 2 and 5 cover the recursive expansion, and
 // 8 fills the domain. The split key is the Dpf key, so the control bits follow
 // the Dpf layout.
-TEST(GrottoDcfSplitCorrectionsTest, Depth1) { CheckGrottoSplitStrides<1, uint8_t>(1); }
-TEST(GrottoDcfSplitCorrectionsTest, Depth2) { CheckGrottoSplitStrides<2, uint8_t>(3); }
-TEST(GrottoDcfSplitCorrectionsTest, Depth5) { CheckGrottoSplitStrides<5, uint8_t>(17); }
-TEST(GrottoDcfSplitCorrectionsTest, Depth8) { CheckGrottoSplitStrides<8, uint16_t>(107); }
-TEST(GrottoDcfSplitCorrectionsTest, Depth8WideInput) {
+TEST(GrottoDcfCwsTest, Depth1) { CheckGrottoSplitStrides<1, uint8_t>(1); }
+TEST(GrottoDcfCwsTest, Depth2) { CheckGrottoSplitStrides<2, uint8_t>(3); }
+TEST(GrottoDcfCwsTest, Depth5) { CheckGrottoSplitStrides<5, uint8_t>(17); }
+TEST(GrottoDcfCwsTest, Depth8) { CheckGrottoSplitStrides<8, uint16_t>(107); }
+TEST(GrottoDcfCwsTest, Depth8WideInput) {
   CheckGrottoSplitStrides<8, uint64_t>(107);
 }
-TEST(GrottoDcfSplitCorrectionsTest, CwStorageView) {
+TEST(GrottoDcfCwsTest, CwStorageView) {
   CheckGrottoSplitFromCwStorage<5, uint8_t>(17);
   CheckGrottoSplitFromCwStorage<8, uint16_t>(107);
 }
 
 #ifndef NDEBUG
-TEST(GrottoDcfSplitCorrectionsTest, RejectsInvalidInputs) {
+TEST(GrottoDcfCwsTest, RejectsInvalidInputs) {
   using Scheme = fss::GrottoDcf<3, fss::prg::ChaCha<2>, uint8_t>;
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};

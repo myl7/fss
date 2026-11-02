@@ -81,7 +81,7 @@ class SchemeAccess;
  * These runtime values, the PRP seed, and all per-bucket components must come
  * from the same successful Gen() call.
  * The supported point-count interval is [kMinPoints, max_points]. Increasing
- * bucket_bits can lower kMinPoints at the cost of more correction storage.
+ * bucket_bits can lower kMinPoints at the cost of more correction word storage.
  * BatchEval() uses chain accumulation and BatchEvalMerkle() uses a Merkle fold.
  * Both parties must use the same accumulator, key configuration, and query sequence.
  * EvalAll() and EvalAllMerkle() use the same accumulators for the full domain
@@ -127,7 +127,7 @@ public:
    * at least 30, where the Cuckoo bucket-count estimate applies. Fewer
    * points use fewer buckets and can require a larger per-bucket domain.
    * The capacity condition is ceil(3*kDomainSize/ChBucket(t, ch_lambda))
-   * <= 2^bucket_bits. The shared correction buffer contains
+   * <= 2^bucket_bits. The shared buffer of correction words contains
    * kBucketCount*(bucket_bits+1)*sizeof(Cw) bytes, so each extra bucket bit
    * adds kBucketCount*sizeof(Cw) bytes without changing the bucket count.
    */
@@ -153,13 +153,13 @@ public:
   using Cw = typename InnerVdpf::Cw;  ///< Correction word of the inner VDPF.
 
   /**
-   * Per-bucket VDPF key with shared corrections and one party's initial seed.
+   * Per-bucket VDPF key with shared correction words and one party's initial seed.
    * Fields support direct access. Field order, padding, and binary serialization are not specified.
    * @ingroup fss_api
    */
   struct BucketKey {
-    Cw cws[bucket_bits + 1];  ///< Tree corrections and the bucket's final output correction.
-    int4 cs[4];  ///< Shared correction seed for verifiable evaluation.
+    Cw cws[bucket_bits + 1];  ///< Tree correction words and the bucket's final output correction word.
+    int4 cs[4];  ///< Shared check seed for verifiable evaluation.
     int4 s0;  ///< This party's initial seed.
   };
 
@@ -186,7 +186,7 @@ public:
   __host__ __device__ explicit Vdmpf(Prg prg, XorHash xor_hash, Hash hash, Prp prp);
 
   /**
-   * Generate shared corrections with read-only seeds and one attempt.
+   * Generate shared correction words with read-only seeds and one attempt.
    *
    * Makes one Cuckoo-hashing attempt and one attempt for each inner VDPF.
    * Caller-owned sigma and s0s are preserved.
@@ -205,7 +205,7 @@ public:
    * discard all cws and cs from the failed attempt, including completed buckets.
    * Only outputs and input seeds from a successful call form a usable key.
    *
-   * @param cws At least kBucketCount*(bucket_bits+1) writable corrections in bucket-major order, including each bucket's final output correction.
+   * @param cws At least kBucketCount*(bucket_bits+1) writable correction words in bucket-major order, including each bucket's final output correction word.
    * @param cs At least 4*kBucketCount writable check-seed blocks in bucket-major order.
    * @param m_rt Returned runtime bucket count.
    * @param b_size_rt Returned runtime bucket domain size.
@@ -223,7 +223,7 @@ public:
    * @pre ceil(3 * kDomainSize / cuckoo_hash::ChBucket(t, ch_lambda)) <= 2^bucket_bits.
    * @param max_evictions Eviction limit per inserted point. Exceeding it fails the attempt.
    * @post On success, cws, cs, sigma, and s0s define both parties' keys.
-   * Correction outputs are unspecified on failure. m_rt and b_size_rt may
+   * Correction-word outputs are unspecified on failure. m_rt and b_size_rt may
    * already have been written when the attempt fails; metadata alone is not a key.
    * @return 0 on success, 1 if Cuckoo placement fails, or 2 if an inner VDPF Gen fails.
    */
@@ -235,14 +235,14 @@ public:
   /**
    * Batch verifiable evaluation method.
    *
-   * Evaluates caller-owned corrections and party seeds on a batch of inputs, producing shares and a chain proof.
+   * Evaluates caller-owned correction words and party seeds on a batch of inputs, producing shares and a chain proof.
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
    * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
-   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order, including each bucket's final output correction.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
@@ -289,7 +289,7 @@ public:
    * and b_size_rt; the bucket bound is the compile-time kBucketCount.
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
-   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order, including each bucket's final output correction.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param x Input point to evaluate.
    * @param y Output share for this input.
@@ -342,7 +342,7 @@ public:
    * @param m_rt Runtime bucket count returned by that Gen().
    * @param b_size_rt Runtime bucket domain size returned by that Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
-   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four chain-proof blocks.
@@ -390,7 +390,7 @@ public:
    * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
-   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order, including each bucket's final output correction.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
@@ -444,7 +444,7 @@ public:
    * @param m_rt Runtime bucket count returned by that Gen().
    * @param b_size_rt Runtime bucket domain size returned by that Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
-   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four Merkle-proof blocks.
@@ -474,7 +474,7 @@ public:
    * @param active_buckets Runtime bucket count from that Gen(), in [1,kBucketCount].
    * @param bucket_size Runtime bucket size from that Gen(), equal to ceil(3*kDomainSize/active_buckets).
    * @param s0s Device storage of kBucketCount party seeds, one per bucket.
-   * @param cws Device storage of kBucketCount*(bucket_bits+1) bucket-major corrections.
+   * @param cws Device storage of kBucketCount*(bucket_bits+1) bucket-major correction words.
    * @param cs Device storage of 4*kBucketCount bucket-major check-seed blocks.
    * @param ys Device output storage of at least 2^in_bits int4 blocks.
    * @param pi Device output storage for four Merkle-proof blocks.
@@ -645,17 +645,17 @@ inline cudaError_t VdmpfFullLaunchBlocks(size_t count, int threads, int &blocks)
 }
 
 // The VDPF descriptor keeps wide Group non-type template parameters out of
-// CUDA host stubs. Corrections stay opaque on the host and recover their type
+// CUDA host stubs. The correction words stay opaque on the host and recover their type
 // in the device body.
 template <int in_bits, int bucket_bits, typename Descriptor, typename In, typename Prp>
 __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_size,
-    const int4 *s0s, const void *corrections, const int4 *cs, int4 *ys,
+    const int4 *s0s, const void *cws_bytes, const int4 *cs, int4 *ys,
     uint32_t *buckets, VdmpfFullNode *nodes, uint32_t *counts, size_t count,
     typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
     typename Descriptor::HashBackend hash, Prp prp) {
   using Group = typename Descriptor::Group;
   using Inner = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(corrections);
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
   size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (omega >= count) return;
   Inner inner{prg, xor_hash, hash};
@@ -1368,7 +1368,7 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
       gpu::detail::VdpfGpuKernelDescriptor<bucket_bits, GroupTag, Prg, XorHash, Hash, __uint128_t>;
   constexpr size_t kOutputs = size_t{1} << in_bits;
   constexpr size_t kBuckets = kBucketCount;
-  constexpr size_t kCorrectionStride = bucket_bits + 1;
+  constexpr size_t kCwStride = bucket_bits + 1;
   constexpr size_t kMax = std::numeric_limits<size_t>::max();
   if constexpr (kOutputs > static_cast<size_t>(std::numeric_limits<int>::max() / 3) ||
       kOutputs > kMax / sizeof(int4)) {
@@ -1387,9 +1387,9 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
     if (active_buckets < 1 || active_buckets > kBucketCount ||
         bucket_size != (kCuckooChoices * kDomainSize + active_buckets - 1) / active_buckets ||
         bucket_size > (__uint128_t{1} << bucket_bits)) return cudaErrorInvalidValue;
-    if (kBuckets > kMax / sizeof(Cw) / kCorrectionStride ||
+    if (kBuckets > kMax / sizeof(Cw) / kCwStride ||
         kBuckets > kMax / sizeof(int4) / 4 || s0s.size() < kBuckets ||
-        cws.size() < kBuckets * kCorrectionStride || cs.size() < kBuckets * 4 ||
+        cws.size() < kBuckets * kCwStride || cs.size() < kBuckets * 4 ||
         ys.size() < kOutputs || s0s.data() == nullptr || cws.data() == nullptr ||
         cs.data() == nullptr || ys.data() == nullptr || pi.data() == nullptr)
       return cudaErrorInvalidValue;

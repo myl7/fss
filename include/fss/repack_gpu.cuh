@@ -1,8 +1,8 @@
 /**
- * GPU point evaluation of FSS keys in level-major correction-word layout.
+ * GPU point evaluation of FSS keys in level-major correction word layout.
  *
- * Repacking places one level's corrections for adjacent keys next to each
- * other, so neighboring threads can read neighboring corrections. Separate
+ * Repacking places one level's correction words for adjacent keys next to each
+ * other, so neighboring threads can read neighboring correction words. Separate
  * terminal and verification buffers carry values read once per evaluation.
  * Performance depends on the scheme, batch, backend, and GPU.
  *
@@ -61,10 +61,10 @@ concept QueryFor = !std::is_same_v<Query, bool> &&
 }
 
 /**
- * Repack Dpf, HalfTreeDpf or GrottoDcf corrections into caller-owned buffers.
- * Specify Scheme explicitly. words contains key_count complete correction rows,
- * each including the terminal correction, in key-major order. words has at
- * least (in_bits + 1) * key_count entries.
+ * Repack Dpf, HalfTreeDpf or GrottoDcf correction words into caller-owned
+ * buffers. Specify Scheme explicitly. words contains key_count complete rows
+ * of correction words, each including the terminal correction word, in
+ * key-major order. words has at least (in_bits + 1) * key_count entries.
  * cw_s has at least in_bits * key_count entries in [level * key_count + key] order.
  * control has at least key_count entries. Dpf and GrottoDcf store
  * right-control bit i at bit i and the left-control bit in cw_s's low bit.
@@ -82,10 +82,10 @@ void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
     cuda::std::span<int4> terminal, cudaStream_t stream = 0);
 
 /**
- * Repack packed HalfTree corrections into caller-owned device buffers.
+ * Repack packed HalfTree correction words into caller-owned device buffers.
  * Scheme is PackedHalfTreeDpf or HalfTreeGrottoDcf. words contains key_count
- * complete key-major correction rows, including the final correction. words
- * has at least (kDepth + 1) * key_count entries.
+ * complete key-major rows of correction words, including the final
+ * correction word. words has at least (kDepth + 1) * key_count entries.
  * cw_s has at least kDepth * key_count entries in
  * [level * key_count + key] order. terminal has at least key_count entries.
  * All storage must outlive work queued on stream.
@@ -97,7 +97,7 @@ void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
     cuda::std::span<int4> cw_s, cuda::std::span<int4> terminal, cudaStream_t stream = 0);
 
 /**
- * Repack Dcf corrections into separate caller-owned device buffers.
+ * Repack Dcf correction words into separate caller-owned device buffers.
  * words has at least (in_bits + 1) * key_count entries in key-major order.
  * cw_s and cw_v each have at least in_bits * key_count entries in
  * [level * key_count + key] order. terminal has at least key_count entries.
@@ -111,7 +111,7 @@ void RepackGpu(cuda::std::span<const typename Scheme::Cw> words, int key_count,
     cuda::std::span<int4> terminal, cudaStream_t stream = 0);
 
 /**
- * Repack Vdpf corrections and copy one four-block check record per key.
+ * Repack Vdpf correction words and copy one four-block check record per key.
  * words has at least (in_bits + 1) * key_count entries in key-major order.
  * cw_s has at least in_bits * key_count entries in
  * [level * key_count + key] order, with the left-control
@@ -483,7 +483,7 @@ __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
 
 // Point-evaluate in_bits-level VDPF keys, one thread per key. Same seed walk
 // as the DPF kernel plus the per-point verification hash; the walk carries no
-// hash cost, the tail applies the verification hash and, when t, the cs correction.
+// hash cost, the tail applies the verification hash and, when t, folds in cs.
 // cw_s/extra come from VdpfRepackKernel. cs and ocws stay per-key: each is
 // read once per evaluation, not once per level.
 template <int in_bits, int unroll, bool b, typename Descriptor, typename Query>
@@ -918,7 +918,7 @@ void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Hash, In>::
 /*
  * One-time repack of per-key Packed HalfTree DPF keys into the level-major
  * layout consumed by PackedHalfTreeDpfEvalPointGpu. cw_s has kDepth * nkeys
- * int4s. The final correction is extracted into terminal.
+ * int4s. The final correction word is extracted into terminal.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @tparam out_bits Output width of the keys.
@@ -941,7 +941,7 @@ void PackedHalfTreeDpfRepackGpu(const typename PackedHalfTreeDpf<in_bits, out_bi
 /*
  * One-time repack of per-key HalfTree Grotto DCF keys into the level-major
  * layout consumed by HalfTreeGrottoDcfEvalPointGpu, the layout of
- * PackedHalfTreeDpfRepackGpu. The final correction is extracted into terminal.
+ * PackedHalfTreeDpfRepackGpu. The final correction word is extracted into terminal.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param cws Correction words returned by Gen(), key-major, stride kDepth.
@@ -1078,7 +1078,7 @@ struct VdpfRepackLauncher<Vdpf<in_bits, Group, Prg, XorHash, Hash, In>> {
 /*
  * One-time repack of per-key VDPF keys into the level-major layout consumed
  * by VdpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra has nkeys
- * entries. The final correction is extracted into terminal.
+ * entries. The final correction word is extracted into terminal.
  *
  * @tparam in_bits Domain size as 2 ** in_bits.
  * @param cws Correction words returned by Gen(), key-major, stride in_bits.
@@ -1114,7 +1114,7 @@ void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::
  * @param seeds Party seeds, one per key.
  * @param cw_s Level-major correction words from HalfTreeDpfRepackGpu.
  * @param extra Packed last-level extra bits from HalfTreeDpfRepackGpu.
- * @param ocws Output corrections cws[in_bits].s, one per key.
+ * @param ocws Output correction words cws[in_bits].s, one per key.
  * @param xs Evaluation points, one per key.
  * @param ys Output array, one int4 per key.
  * @param nkeys Number of keys.

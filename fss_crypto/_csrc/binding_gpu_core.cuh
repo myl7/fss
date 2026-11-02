@@ -32,13 +32,13 @@ struct CoreGpuTraits;
 namespace fss::gpu {
 
 /**
- * Generate one DPF/DCF/HalfTree key's corrections on the device.
+ * Generate one DPF/DCF/HalfTree key's correction words on the device.
  *
  * Calls the actual Core Gen once. Scheme and seed storage must be device-accessible.
  * The configured backend must support device execution. Inputs and outputs retain
  * the same meaning and preconditions as Core Gen(). No memory is allocated.
  * @param scheme Initialized device scheme object.
- * @param cws Device output including the terminal correction.
+ * @param cws Device output including the terminal correction word.
  * @param s0s Device storage of the two initial seeds, preserved by generation.
  * @param a Secret point or threshold, passed by value.
  * @param b_buf Payload block, passed by value as in Core Gen().
@@ -49,25 +49,25 @@ template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kBlock)
 cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<const int4, 2> s0s, typename detail::CoreGpuTraits<Scheme>::Input a,
     int4 b_buf, cudaStream_t stream);
 
-/** Generate packed corrections once, using the Core uint64_t payload. */
+/** Generate packed correction words once, using the Core uint64_t payload. */
 template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kPacked)
 cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<const int4, 2> s0s, typename detail::CoreGpuTraits<Scheme>::Input a,
     uint64_t beta, cudaStream_t stream);
 
-/** Generate comparison corrections once without a payload argument. */
+/** Generate comparison correction words once without a payload argument. */
 template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kComparison)
 cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<const int4, 2> s0s, typename detail::CoreGpuTraits<Scheme>::Input a,
     cudaStream_t stream);
 
@@ -75,8 +75,8 @@ cudaError_t GenGpu(Scheme *scheme,
  * Attempt verifiable point generation once on the device.
  *
  * @param scheme Initialized device Vdpf scheme.
- * @param cws Device correction output including the terminal correction.
- * @param cs Device four-block verification correction output.
+ * @param cws Correction word output on the device, including the terminal correction word.
+ * @param cs Device four-block verification seed output.
  * @param s0s Device initial seeds. They are not modified.
  * @param a Secret point, with the Core domain precondition.
  * @param b_buf Core payload block.
@@ -88,7 +88,7 @@ template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kVerifiable)
 cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s,
     typename detail::CoreGpuTraits<Scheme>::Input a, int4 b_buf, int *status, cudaStream_t stream);
 
@@ -101,7 +101,7 @@ namespace fss::gpu::detail {
 template <typename In, size_t count, CoreGenKind kind>
 struct CoreGpuShape {
   using Input = In;
-  static constexpr size_t kCorrectionCount = count;
+  static constexpr size_t kCwCount = count;
   static constexpr CoreGenKind kGenKind = kind;
 };
 
@@ -240,7 +240,7 @@ template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kBlock)
 inline cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<const int4, 2> s0s, typename detail::CoreGpuTraits<Scheme>::Input a,
     int4 b_buf, cudaStream_t stream) {
   if (scheme == nullptr || cws.data() == nullptr || s0s.data() == nullptr) return cudaErrorInvalidValue;
@@ -251,7 +251,7 @@ template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kPacked)
 inline cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<const int4, 2> s0s, typename detail::CoreGpuTraits<Scheme>::Input a,
     uint64_t beta, cudaStream_t stream) {
   if (scheme == nullptr || cws.data() == nullptr || s0s.data() == nullptr) return cudaErrorInvalidValue;
@@ -262,7 +262,7 @@ template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kComparison)
 inline cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<const int4, 2> s0s, typename detail::CoreGpuTraits<Scheme>::Input a,
     cudaStream_t stream) {
   if (scheme == nullptr || cws.data() == nullptr || s0s.data() == nullptr) return cudaErrorInvalidValue;
@@ -274,7 +274,7 @@ template <typename Scheme>
   requires(detail::CoreGpuTraits<Scheme>::kGenKind == detail::CoreGenKind::kVerifiable)
 inline cudaError_t GenGpu(Scheme *scheme,
     std::type_identity_t<cuda::std::span<typename Scheme::Cw,
-        detail::CoreGpuTraits<Scheme>::kCorrectionCount>> cws,
+        detail::CoreGpuTraits<Scheme>::kCwCount>> cws,
     cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s,
     typename detail::CoreGpuTraits<Scheme>::Input a, int4 b_buf, int *status, cudaStream_t stream) {
   if (scheme == nullptr || cws.data() == nullptr || cs.data() == nullptr || s0s.data() == nullptr || status == nullptr)

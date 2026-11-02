@@ -113,7 +113,7 @@ void CheckConfiguredPackers() {
 
 }  // namespace
 
-TEST(ReleaseCompatibility, RawDpfAndDcfKeepCorrectionWordsAndOutputOrder) {
+TEST(ReleaseCompatibility, RawDpfAndDcfKeepCwsAndOutputOrder) {
   using Dpf = fss::Dpf<8, Bytes, fss::prg::ChaCha<2>, uint16_t>;
   using Dcf = fss::Dcf<8, Bytes, fss::prg::ChaCha<4>, uint16_t, fss::DcfPred::kLt>;
   auto dpf_prg = fss::prg::ChaCha<2>{1, 2};

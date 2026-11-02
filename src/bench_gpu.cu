@@ -780,17 +780,17 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
   CUDA_CHECK(cudaMalloc(&d_pi, 4 * sizeof(int4)));
   CUDA_CHECK(cudaMemcpy(d_cws, k0.cws, sizeof(k0.cws), cudaMemcpyHostToDevice));
 
-  const cuda::std::span<const typename Vdpf::Cw> corrections(d_cws, in_bits + 1);
+  const cuda::std::span<const typename Vdpf::Cw> cws(d_cws, in_bits + 1);
   const cuda::std::span<const int4, 4> checks(d_cs, 4);
   cuda::std::array<int4, 4> pi;
   // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
-  CUDA_CHECK((vdpf.template EvalAllMerkleGpu<16, 256>(false, k0.s0, corrections, checks,
+  CUDA_CHECK((vdpf.template EvalAllMerkleGpu<16, 256>(false, k0.s0, cws, checks,
       cuda::std::span<int4>(d_ys, n), cuda::std::span<int4, 4>(d_pi, 4))));
   CUDA_CHECK(cudaDeviceSynchronize());
   CUDA_CHECK(cudaMemcpy(&pi, d_pi, sizeof(pi), cudaMemcpyDeviceToHost));
 
   RunTimedKernel(state, [&] {
-    CUDA_CHECK((vdpf.template EvalAllMerkleGpu<16, 256>(false, k0.s0, corrections, checks,
+    CUDA_CHECK((vdpf.template EvalAllMerkleGpu<16, 256>(false, k0.s0, cws, checks,
         cuda::std::span<int4>(d_ys, n), cuda::std::span<int4, 4>(d_pi, 4))));
   });
   state.SetItemsProcessed(state.iterations() * n);
@@ -1111,14 +1111,14 @@ static void BM_GrottoDcfPreprocessGpu(benchmark::State &state) {
   CUDA_CHECK(cudaMalloc(&d_p, sizeof(bool) * (2 * N - 1)));
   CUDA_CHECK(cudaMemcpy(d_cws, k0.cws, sizeof(k0.cws), cudaMemcpyHostToDevice));
 
-  const cuda::std::span<const typename GdcfType::Cw> corrections(d_cws, in_bits + 1);
+  const cuda::std::span<const typename GdcfType::Cw> cws(d_cws, in_bits + 1);
 
   // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
-  CUDA_CHECK((dcf.template PreprocessGpu<16, 256>(false, k0.s0, corrections, cuda::std::span<bool>(d_p, 2 * N - 1))));
+  CUDA_CHECK((dcf.template PreprocessGpu<16, 256>(false, k0.s0, cws, cuda::std::span<bool>(d_p, 2 * N - 1))));
   CUDA_CHECK(cudaDeviceSynchronize());
 
   RunTimedKernel(state, [&] {
-    CUDA_CHECK((dcf.template PreprocessGpu<16, 256>(false, k0.s0, corrections, cuda::std::span<bool>(d_p, 2 * N - 1))));
+    CUDA_CHECK((dcf.template PreprocessGpu<16, 256>(false, k0.s0, cws, cuda::std::span<bool>(d_p, 2 * N - 1))));
   });
   state.SetItemsProcessed(state.iterations() * N);
 
@@ -1148,14 +1148,14 @@ static void BM_GrottoDcfEvalAllGpu(benchmark::State &state) {
   CUDA_CHECK(cudaMalloc(&d_ys, sizeof(bool) * N));
   CUDA_CHECK(cudaMemcpy(d_cws, k0.cws, sizeof(k0.cws), cudaMemcpyHostToDevice));
 
-  const cuda::std::span<const typename GdcfType::Cw> corrections(d_cws, in_bits + 1);
+  const cuda::std::span<const typename GdcfType::Cw> cws(d_cws, in_bits + 1);
 
   // Warm the clocks once, see BM_HalfTreeDpfEvalAllGpu.
-  CUDA_CHECK((dcf.template EvalAllGpu<16, 256>(false, k0.s0, corrections, cuda::std::span<bool>(d_ys, N))));
+  CUDA_CHECK((dcf.template EvalAllGpu<16, 256>(false, k0.s0, cws, cuda::std::span<bool>(d_ys, N))));
   CUDA_CHECK(cudaDeviceSynchronize());
 
   RunTimedKernel(state, [&] {
-    CUDA_CHECK((dcf.template EvalAllGpu<16, 256>(false, k0.s0, corrections, cuda::std::span<bool>(d_ys, N))));
+    CUDA_CHECK((dcf.template EvalAllGpu<16, 256>(false, k0.s0, cws, cuda::std::span<bool>(d_ys, N))));
   });
   state.SetItemsProcessed(state.iterations() * N);
 
