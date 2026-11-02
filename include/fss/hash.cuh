@@ -22,6 +22,37 @@ concept Hashable = requires(Hash hash, cuda::std::span<const int4, 4> msg) {
 };
 
 /**
+ * Optional four-message batch extension of Hashable.
+ * @ingroup fss_api
+ *
+ * Hash4() borrows four independent 64B messages through
+ * cuda::std::span<const cuda::std::array<int4, 4>, 4> and maps them to four
+ * 32B digests, indexed as [message_index][output_index]. Custom hash backends
+ * opt in by providing Hash4(msgs); no registration, inheritance, or
+ * specialization is required. Host evaluators use this method when available
+ * and otherwise call Hash() four times.
+ *
+ * For every j in [0, 4), Hash4(msgs)[j] must equal Hash(msgs[j]) word for
+ * word, evaluated with the same object and configuration. Hash4() must be
+ * callable on the host. It borrows the messages only for the duration of the
+ * call, must not modify them, and must not retain pointers or references to
+ * them; the returned digests are owned by the caller. Hash4() must not change
+ * the backend hash configuration, and scalar Hash() calls made afterwards with
+ * the same object remain valid. Concurrent-call requirements are the same as
+ * for the existing scalar Hash(); this concept adds no thread-safety promise.
+ *
+ * This concept checks only the expression shape and cannot verify these
+ * semantic or host-callability requirements.
+ *
+ * @tparam Hash User-provided or library-provided hash type.
+ */
+template <typename Hash>
+concept HasHash4 = Hashable<Hash> &&
+    requires(Hash hash, cuda::std::span<const cuda::std::array<int4, 4>, 4> msgs) {
+  { hash.Hash4(msgs) } -> std::same_as<cuda::std::array<cuda::std::array<int4, 2>, 4>>;
+};
+
+/**
  * Collision-resistant and XOR-collision-resistant hash interface.
  * @ingroup fss_api
  */

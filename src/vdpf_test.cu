@@ -619,6 +619,50 @@ TEST(VdpfRangeMerkle, CpuDefaultDepthUsesCallerForAllBackends) {
   }
 }
 
+TEST(VdpfRangeMerkle, Hash4MatchesScalarFallbackForOddLeaves) {
+  using Prg = fss::prg::ChaCha<2>;
+  using BatchScheme = fss::Vdpf<8, BytesGroup, Prg, fss::hash::Blake3,
+      fss::hash::Blake3, uint16_t>;
+  using FallbackScheme = fss::Vdpf<8, BytesGroup, Prg, fss::hash::Blake3,
+      MerkleRangeObservedHash, uint16_t>;
+  static_assert(HasHash4<fss::hash::Blake3>);
+  static_assert(!HasHash4<MerkleRangeObservedHash>);
+
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  fss::hash::Blake3 blake{cuda::std::span<const int4, 2>(iv, 2)};
+  MerkleRangeExecution execution;
+  MerkleRangeObservedHash fallback{blake, &execution};
+  BatchScheme batch{Prg{kNonce0, kNonce1}, blake, blake};
+  FallbackScheme scalar{Prg{kNonce0, kNonce1}, blake, fallback};
+
+  cuda::std::array<cuda::std::array<int4, 4>, 129> leaves;
+  for (size_t i = 0; i < leaves.size(); ++i) {
+    for (int j = 0; j < 4; ++j) {
+      const int base = static_cast<int>(16 * i + 4 * j);
+      leaves[i][j] = {base, -base - 1, base ^ 0x55aa55aa,
+          static_cast<int>(static_cast<uint32_t>(base) ^ 0xaaaaaaaau)};
+    }
+  }
+  const cuda::std::array<int4, 4> cs = {{{1, 2, 3, 4}, {-1, 0, 1, -1},
+      {2147483647, -2147483647 - 1, 0, 1},
+      {static_cast<int>(0x80000000u), -1, 1, 0}}};
+
+  for (size_t count : {5, 129}) {
+    cuda::std::array<int4, 4> batch_proof, fallback_proof;
+    batch.ProveMerkle(
+        cuda::std::span<const cuda::std::array<int4, 4>>(leaves.data(), count),
+        cuda::std::span<const int4, 4>(cs.data(), 4),
+        cuda::std::span<int4, 4>(batch_proof.data(), 4), 0);
+    scalar.ProveMerkle(
+        cuda::std::span<const cuda::std::array<int4, 4>>(leaves.data(), count),
+        cuda::std::span<const int4, 4>(cs.data(), 4),
+        cuda::std::span<int4, 4>(fallback_proof.data(), 4), 0);
+    EXPECT_GT(execution.calls.load(), 0);
+    EXPECT_FALSE(execution.invalid_context.load());
+    for (int j = 0; j < 4; ++j) ExpectMerkleBlock(fallback_proof[j], batch_proof[j]);
+  }
+}
+
 TEST(VdpfRangeMerkle, GpuRejectsInvalidRangeAndStorage) {
   using Prg = fss::prg::ChaCha<2>;
   using Hash = fss::hash::Blake3;

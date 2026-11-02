@@ -341,8 +341,9 @@ public:
    * Evaluation fuses share conversion and corrected leaf hashing. The ordered
    * fold uses two buffers with 32*(M + ceil(M/2)) scratch bytes for M inputs,
    * plus 16*M output bytes. These payload sizes exclude allocator overhead.
-   * The leaf kernel also reserves 256 int4 temporary states per thread and
-   * threads_per_block int4 shared frontier states per block.
+   * The leaf kernel keeps a bounded depth-first pending-sibling stack of at
+   * most eight int4 states per thread and threads_per_block int4 shared
+   * frontier states per block.
    * The proof uses actual inputs in increasing order and carries odd nodes.
    * Both parties must agree on the range, order, and Merkle mode externally.
    * @return First immediate CUDA error. Invalid endpoints, buffers, or byte
@@ -812,16 +813,46 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::ProveMerkle(
   assert(count >= 1);
 
   std::vector<cuda::std::array<int4, 2>> nodes(count);
-  fss::detail::ParallelFor(par_depth, count, [&](size_t i) {
-    nodes[i] = hash_.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
-  });
+  if constexpr (HasHash4<Hash>) {
+    const size_t groups = count / 4;
+    fss::detail::ParallelFor(par_depth, groups, [&](size_t g) {
+      auto out =
+          hash_.Hash4(cuda::std::span<const cuda::std::array<int4, 4>, 4>(pi_tildes.data() + 4 * g, 4));
+      for (size_t j = 0; j < 4; ++j) nodes[4 * g + j] = out[j];
+    });
+    for (size_t i = 4 * groups; i < count; ++i) {
+      nodes[i] = hash_.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
+    }
+  } else {
+    fss::detail::ParallelFor(par_depth, count, [&](size_t i) {
+      nodes[i] = hash_.Hash(cuda::std::span<const int4, 4>(pi_tildes[i]));
+    });
+  }
 
   while (count > 1) {
     const size_t next_count = count / 2 + count % 2;
     std::vector<cuda::std::array<int4, 2>> next(next_count);
-    fss::detail::ParallelFor(par_depth, next_count, [&](size_t i) {
-      next[i] = detail::VdpfMerkleFoldNode(hash_, nodes.data(), count, i);
-    });
+    if constexpr (HasHash4<Hash>) {
+      const size_t pairs = count / 2;
+      const size_t groups = pairs / 4;
+      fss::detail::ParallelFor(par_depth, groups, [&](size_t g) {
+        cuda::std::array<cuda::std::array<int4, 4>, 4> msgs;
+        for (size_t j = 0; j < 4; ++j) {
+          const auto *p = nodes.data() + 8 * g + 2 * j;
+          msgs[j] = {p[0][0], p[0][1], p[1][0], p[1][1]};
+        }
+        auto out = hash_.Hash4(cuda::std::span<const cuda::std::array<int4, 4>, 4>(msgs));
+        for (size_t j = 0; j < 4; ++j) next[4 * g + j] = out[j];
+      });
+      // Remaining complete pairs; an odd final node is carried by the helper.
+      for (size_t i = 4 * groups; i < next_count; ++i) {
+        next[i] = detail::VdpfMerkleFoldNode(hash_, nodes.data(), count, i);
+      }
+    } else {
+      fss::detail::ParallelFor(par_depth, next_count, [&](size_t i) {
+        next[i] = detail::VdpfMerkleFoldNode(hash_, nodes.data(), count, i);
+      });
+    }
     nodes = std::move(next);
     count = nodes.size();
   }

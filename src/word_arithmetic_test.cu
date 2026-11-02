@@ -230,6 +230,17 @@ void CheckChaChaDevice() {
 
 #endif
 
+// Declaration-only shape used to check rejection of a wrong-sized Hash4.
+struct WrongHash4Shape {
+  cuda::std::array<int4, 2> Hash(cuda::std::span<const int4, 4>);
+  cuda::std::array<cuda::std::array<int4, 2>, 3> Hash4(
+      cuda::std::span<const cuda::std::array<int4, 4>, 4>);
+};
+
+static_assert(Hashable<WrongHash4Shape>);
+static_assert(!HasHash4<WrongHash4Shape>);
+static_assert(HasHash4<fss::hash::Blake3>);
+
 }  // namespace
 
 TEST(WordArithmetic, ChaChaMatchesUnsignedReference) {
@@ -269,6 +280,49 @@ TEST(WordArithmetic, Blake3HighWordsAndTupleMatchUnsignedReference) {
       auto expected = ReferenceBlake3(iv, padded, 32);
       for (int i = 0; i < 2; ++i) ExpectBlock(tuple[2 * bit + i], expected[i]);
     }
+  }
+}
+
+TEST(WordArithmetic, Blake3Hash4MatchesScalarWithCustomIvs) {
+  const int4 ivs[2][2] = {
+      {{1, 2, 3, 4}, {5, 6, 7, 8}},
+      {{INT_MIN, INT_MAX, -1, 0}, {static_cast<int>(0x80000000u), 0x7fffffff, 0x55555555,
+          static_cast<int>(0xaaaaaaaau)}}};
+  const cuda::std::array<cuda::std::array<int4, 4>, 4> messages = {{
+      {{{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}},
+      {{{-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1}}},
+      {{{INT_MIN, INT_MAX, -1, 1}, {INT_MAX, INT_MIN, 0, -1},
+          {-1, 1, INT_MIN, INT_MAX}, {0, -1, INT_MAX, INT_MIN}}},
+      {{{static_cast<int>(0x80000000u), static_cast<int>(0x7fffffffu),
+            static_cast<int>(0xaaaaaaaau), static_cast<int>(0x55555555u)},
+          {static_cast<int>(0xdeadbeefu), static_cast<int>(0x80000001u), 1, 0},
+          {-1, 0, static_cast<int>(0x80000000u), static_cast<int>(0x7fffffffu)},
+          {static_cast<int>(0xfffffff0u), 15, -15, static_cast<int>(0xffffff00u)}}},
+  }};
+  for (const auto &iv : ivs) {
+    fss::hash::Blake3 hash(cuda::std::span<const int4, 2>(iv, 2));
+    cuda::std::array<cuda::std::array<int4, 4>, 4> input = messages;
+    cuda::std::array<cuda::std::array<int4, 2>, 4> expected;
+    for (int i = 0; i < 4; ++i)
+      expected[i] = hash.Hash(cuda::std::span<const int4, 4>(input[i].data(), 4));
+
+    auto actual = hash.Hash4(
+        cuda::std::span<const cuda::std::array<int4, 4>, 4>(input.data(), 4));
+    for (int i = 0; i < 4; ++i)
+      for (int j = 0; j < 2; ++j) ExpectBlock(actual[i][j], expected[i][j]);
+
+    for (int i = 0; i < 4; ++i) {
+      auto scalar = hash.Hash(cuda::std::span<const int4, 4>(input[i].data(), 4));
+      for (int j = 0; j < 2; ++j) ExpectBlock(scalar[j], expected[i][j]);
+    }
+
+    auto retained = actual;
+    input[0][0] = {-1, 0, 1, INT_MIN};
+    input[3][2].w = INT_MAX;
+    [[maybe_unused]] auto mutated = hash.Hash4(
+        cuda::std::span<const cuda::std::array<int4, 4>, 4>(input.data(), 4));
+    for (int i = 0; i < 4; ++i)
+      for (int j = 0; j < 2; ++j) ExpectBlock(retained[i][j], expected[i][j]);
   }
 }
 
