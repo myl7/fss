@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 #include <vector>
+#include <atomic>
+#include <thread>
 #include <fss/vdpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
@@ -389,3 +391,262 @@ TEST_F(VdpfUint128ChaChaTest, EvalAllMerkle) {
 TEST_F(VdpfUint128ChaChaTest, ProveMerkleOdd) {
   TestProveMerkleOdd();
 }
+
+namespace {
+
+struct MerkleRangeUint127Group {
+  Uint127Group value;
+  __host__ __device__ MerkleRangeUint127Group operator+(MerkleRangeUint127Group rhs) const {
+    return {value + rhs.value};
+  }
+  __host__ __device__ MerkleRangeUint127Group operator-() const { return {-value}; }
+  __host__ __device__ static MerkleRangeUint127Group From(int4 input) {
+    return {Uint127Group::From(input)};
+  }
+  __host__ __device__ int4 Into() const { return value.Into(); }
+};
+
+template <typename T>
+struct MerkleRangeDeviceBuffer {
+  T *data = nullptr;
+  ~MerkleRangeDeviceBuffer() {
+    if (data != nullptr) EXPECT_EQ(cudaFree(data), cudaSuccess);
+  }
+  cudaError_t Allocate(size_t count) { return cudaMalloc(&data, count * sizeof(T)); }
+};
+
+void ExpectMerkleBlock(int4 actual, int4 expected) {
+  EXPECT_EQ(actual.x, expected.x);
+  EXPECT_EQ(actual.y, expected.y);
+  EXPECT_EQ(actual.z, expected.z);
+  EXPECT_EQ(actual.w, expected.w);
+}
+
+template <int bits, typename In, typename Group, int frontier = 16, int threads = 256>
+void CheckRangeMerkle(In first, In last, bool gpu) {
+  using Prg = fss::prg::ChaCha<2>;
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Hash, Hash, In>;
+  const size_t count = static_cast<size_t>(last - first) + 1;
+  const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  const int4 beta = {42, 12, 24, 36};
+  const int4 guard = {23, 45, 67, 88};
+  Prg prg{kNonce0, kNonce1};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{prg, hash, hash};
+  typename Scheme::Key keys[2];
+  ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, first, beta), 0);
+  cuda::std::array<int4, 4> proofs[2];
+  for (int party = 0; party < 2; ++party) {
+    SCOPED_TRACE(::testing::Message() << "party " << party << " count " << count);
+    const auto &key = keys[party];
+    std::vector<int4> expected(count);
+    std::vector<cuda::std::array<int4, 4>> material(count);
+    for (size_t j = 0; j < count; ++j)
+      material[j] = scheme.Eval(party, key.s0, key.cws, key.cs,
+          static_cast<In>(first + j), expected[j]);
+    scheme.ProveMerkle(material, key.cs, proofs[party]);
+    for (int par_depth : {0, 2}) {
+      std::vector<int4> actual(count + 2, guard);
+      cuda::std::array<int4, 4> proof;
+      scheme.EvalRangeMerkle(party, first, last, key.s0, key.cws, key.cs,
+          cuda::std::span<int4>(actual.data() + 1, count + 1), proof, par_depth);
+      ExpectMerkleBlock(actual.front(), guard);
+      ExpectMerkleBlock(actual.back(), guard);
+      for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(actual[j + 1], expected[j]);
+      for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proof[j], proofs[party][j]);
+    }
+    if (!gpu) continue;
+    MerkleRangeDeviceBuffer<typename Scheme::Cw> device_cws;
+    MerkleRangeDeviceBuffer<int4> device_cs, device_ys, device_pi;
+    ASSERT_EQ(device_cws.Allocate(bits + 1), cudaSuccess);
+    ASSERT_EQ(device_cs.Allocate(4), cudaSuccess);
+    ASSERT_EQ(device_ys.Allocate(count + 2), cudaSuccess);
+    ASSERT_EQ(device_pi.Allocate(4), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_cws.data, key.cws, sizeof(key.cws), cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_cs.data, key.cs, sizeof(key.cs), cudaMemcpyHostToDevice), cudaSuccess);
+    std::vector<int4> actual(count + 2, guard);
+    ASSERT_EQ(cudaMemcpy(device_ys.data, actual.data(), actual.size() * sizeof(int4), cudaMemcpyHostToDevice), cudaSuccess);
+    cudaStream_t stream;
+    ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
+    const cudaError_t launch = [&] {
+      if constexpr (frontier == 16 && threads == 256) {
+        return scheme.EvalRangeMerkleGpu(party, first, last, key.s0,
+            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
+            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+      } else {
+        return scheme.template EvalRangeMerkleGpu<frontier, threads>(party, first, last, key.s0,
+            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
+            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+      }
+    }();
+    EXPECT_EQ(launch, cudaSuccess);
+    const cudaError_t execution = cudaStreamSynchronize(stream);
+    EXPECT_EQ(execution, cudaSuccess);
+    EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+    ASSERT_EQ(launch, cudaSuccess);
+    ASSERT_EQ(execution, cudaSuccess);
+    cuda::std::array<int4, 4> proof;
+    ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data, actual.size() * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(proof.data(), device_pi.data, sizeof(proof), cudaMemcpyDeviceToHost), cudaSuccess);
+    ExpectMerkleBlock(actual.front(), guard);
+    ExpectMerkleBlock(actual.back(), guard);
+    for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(actual[j + 1], expected[j]);
+    for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proof[j], proofs[party][j]);
+  }
+  EXPECT_TRUE(Scheme::Verify(proofs[0], proofs[1]));
+}
+
+bool HasMerkleRangeDevice() {
+  int count = 0;
+  return cudaGetDeviceCount(&count) == cudaSuccess && count > 0;
+}
+
+TEST(VdpfRangeMerkle, CpuOddAndOffsetBytes) {
+  for (uint16_t count : {1, 4, 5, 7, 13, 257})
+    CheckRangeMerkle<16, uint16_t, BytesGroup>(3, 3 + count - 1, false);
+}
+
+TEST(VdpfRangeMerkle, CpuOddAndOffsetUint127) {
+  for (uint16_t count : {1, 4, 5, 7, 13})
+    CheckRangeMerkle<16, uint16_t, MerkleRangeUint127Group>(3, 3 + count - 1, false);
+}
+
+TEST(VdpfRangeMerkle, CpuWideDomain) {
+  const __uint128_t maximum = ~__uint128_t{0};
+  CheckRangeMerkle<128, __uint128_t, BytesGroup>(maximum - 12, maximum, false);
+  CheckRangeMerkle<128, __uint128_t, BytesGroup>((__uint128_t{1} << 127) - 3,
+      (__uint128_t{1} << 127) + 3, false);
+  CheckRangeMerkle<128, __uint128_t, BytesGroup>(maximum, maximum, false);
+}
+
+TEST(VdpfRangeMerkle, GpuOddAndOffsetBytes) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  for (uint16_t count : {1, 4, 5, 7, 13, 257, 1025})
+    CheckRangeMerkle<16, uint16_t, BytesGroup>(3, 3 + count - 1, true);
+}
+
+TEST(VdpfRangeMerkle, GpuOddAndOffsetUint127) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  for (uint16_t count : {1, 4, 5, 7, 13})
+    CheckRangeMerkle<16, uint16_t, MerkleRangeUint127Group>(3, 3 + count - 1, true);
+}
+
+TEST(VdpfRangeMerkle, GpuWideDomain) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  const __uint128_t maximum = ~__uint128_t{0};
+  CheckRangeMerkle<128, __uint128_t, BytesGroup>(maximum - 12, maximum, true);
+  CheckRangeMerkle<128, __uint128_t, BytesGroup>((__uint128_t{1} << 127) - 3,
+      (__uint128_t{1} << 127) + 3, true);
+  CheckRangeMerkle<128, __uint128_t, BytesGroup>(maximum, maximum, true);
+}
+
+TEST(VdpfRangeMerkle, GpuFixedFrontierAndChunkSplit) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  CheckRangeMerkle<1, uint8_t, BytesGroup>(0, 1, true);
+  CheckRangeMerkle<8, uint8_t, BytesGroup>(0, 255, true);
+  CheckRangeMerkle<16, uint16_t, BytesGroup, 2, 4>(3, 1027, true);
+  CheckRangeMerkle<128, __uint128_t, BytesGroup, 128, 1024>(0, 1023, true);
+  CheckRangeMerkle<16, uint16_t, BytesGroup, 0, 1>(0, 1023, true);
+  CheckRangeMerkle<16, uint16_t, BytesGroup, 16, 1024>(0, 1023, true);
+}
+
+struct MerkleRangeExecution {
+  const std::thread::id caller = std::this_thread::get_id();
+  std::atomic<int> active{0};
+  std::atomic<bool> invalid_context{false};
+  std::atomic<size_t> calls{0};
+  void Enter() {
+    ++calls;
+    if (active.fetch_add(1) != 0 || std::this_thread::get_id() != caller)
+      invalid_context = true;
+#ifdef _OPENMP
+    if (omp_in_parallel()) invalid_context = true;
+#endif
+  }
+};
+
+struct MerkleRangeObservedPrg {
+  fss::prg::ChaCha<2> prg;
+  MerkleRangeExecution *execution;
+  __host__ __device__ cuda::std::array<int4, 2> Gen(int4 seed) {
+#ifndef __CUDA_ARCH__
+    execution->Enter();
+#endif
+    auto result = prg.Gen(seed);
+#ifndef __CUDA_ARCH__
+    --execution->active;
+#endif
+    return result;
+  }
+};
+
+struct MerkleRangeObservedHash {
+  fss::hash::Blake3 hash;
+  MerkleRangeExecution *execution;
+  template <typename Input>
+  __host__ __device__ auto Hash(Input input) {
+#ifndef __CUDA_ARCH__
+    execution->Enter();
+#endif
+    auto result = hash.Hash(input);
+#ifndef __CUDA_ARCH__
+    --execution->active;
+#endif
+    return result;
+  }
+};
+
+TEST(VdpfRangeMerkle, CpuDefaultDepthUsesCallerForAllBackends) {
+  using Scheme = fss::Vdpf<8, BytesGroup, MerkleRangeObservedPrg,
+      MerkleRangeObservedHash, MerkleRangeObservedHash, uint16_t>;
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  MerkleRangeExecution prg_execution, xor_execution, hash_execution;
+  MerkleRangeObservedPrg prg{fss::prg::ChaCha<2>{kNonce0, kNonce1}, &prg_execution};
+  MerkleRangeObservedHash xor_hash{fss::hash::Blake3{iv}, &xor_execution};
+  MerkleRangeObservedHash hash{fss::hash::Blake3{iv}, &hash_execution};
+  Scheme scheme{prg, xor_hash, hash};
+  typename Scheme::Key keys[2];
+  const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, 42, int4{42, 12, 24, 36}), 0);
+  std::vector<int4> ys(65);
+  cuda::std::array<int4, 4> pi;
+  scheme.EvalRangeMerkle(false, 3, 67, keys[0].s0, keys[0].cws, keys[0].cs, ys, pi);
+  for (auto *execution : {&prg_execution, &xor_execution, &hash_execution}) {
+    EXPECT_GT(execution->calls.load(), 0);
+    EXPECT_EQ(execution->active.load(), 0);
+    EXPECT_FALSE(execution->invalid_context.load());
+  }
+}
+
+TEST(VdpfRangeMerkle, GpuRejectsInvalidRangeAndStorage) {
+  using Prg = fss::prg::ChaCha<2>;
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<128, BytesGroup, Prg, Hash, Hash, __uint128_t>;
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{Prg{kNonce0, kNonce1}, hash, hash};
+  typename Scheme::Cw cws[129];
+  int4 cs[4], ys[4], pi[4];
+  auto check = [&](auto first, auto last, size_t capacity) {
+    return scheme.EvalRangeMerkleGpu(false, first, last, int4{}, cws, cs, {ys, capacity}, pi);
+  };
+  EXPECT_EQ(check(__uint128_t{2}, __uint128_t{1}, 4), cudaErrorInvalidValue);
+  EXPECT_EQ(check(__uint128_t{0}, ~__uint128_t{0}, 4), cudaErrorInvalidValue);
+  EXPECT_EQ(check(__uint128_t{0}, __uint128_t{4}, 4), cudaErrorInvalidValue);
+  const size_t scratch_overflow = size_t(-1) / 32;
+  EXPECT_EQ(check(__uint128_t{0}, static_cast<__uint128_t>(scratch_overflow - 1),
+      scratch_overflow), cudaErrorInvalidValue);
+  EXPECT_EQ(scheme.EvalRangeMerkleGpu(false, 0, 0, int4{}, cws, cs,
+      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1}), pi), cudaErrorInvalidValue);
+  const size_t grid_overflow = static_cast<size_t>(INT_MAX) * 256 * 2 + 1;
+  EXPECT_EQ(check(__uint128_t{0}, static_cast<__uint128_t>(grid_overflow - 1),
+      grid_overflow), cudaErrorInvalidConfiguration);
+  using Small = fss::Vdpf<4, BytesGroup, Prg, Hash, Hash, uint16_t>;
+  Small small{Prg{kNonce0, kNonce1}, hash, hash};
+  typename Small::Cw small_cws[5];
+  EXPECT_EQ(small.EvalRangeMerkleGpu(false, 15, 16, int4{}, small_cws, cs, ys, pi), cudaErrorInvalidValue);
+}
+
+}  // namespace

@@ -191,6 +191,23 @@ public:
 
 
   /**
+   * Evaluate the closed interval [first, last] on the given CUDA stream.
+   * Output ys[j] corresponds to first+j. Extra output capacity is unchanged.
+   * Resources and asynchronous error handling follow EvalAllGpu().
+   * frontier_depth is relative to each aligned evaluation subtree and is capped
+   * to its depth.
+   * Private subdivision keeps the tail at most eight output levels and the
+   * block-root depth at most 30, without backend or hardware tuning.
+   * Invalid endpoints, buffers, counts or byte sizes return cudaErrorInvalidValue.
+   * Grid limits return cudaErrorInvalidConfiguration.
+   * The input domain itself need not fit in size_t.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t EvalRangeGpu(bool b, In first, In last, int4 s0,
+      cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
+      cudaStream_t stream = 0) const;
+
+  /**
    * Launch full-domain CUDA evaluation using this host-accessible scheme.
    *
    * Backend values are kernel arguments. The caller prepares all device buffers
@@ -309,22 +326,30 @@ struct DcfGpuSchemeTraits;
 #if defined(__CUDACC__)
 
 // One block-local traversal serves the single-key and key-major batch kernels.
-template <typename Scheme, int frontier_depth, int block_root_depth>
+template <typename Scheme, int frontier_depth, int block_root_depth, bool range = false>
 __device__ __forceinline__ void DcfMemberEvalAllBlock(bool b, int4 s0,
     const typename Scheme::Cw *cws, int4 *ys,
     typename DcfGpuSchemeTraits<Scheme>::Backend &prg, int subtree_block_index,
     int64_t thread_index, int4 *shared_states,
-    typename DcfGpuSchemeTraits<Scheme>::GroupType *shared_values) {
+    typename DcfGpuSchemeTraits<Scheme>::GroupType *shared_values,
+    __uint128_t first = 0, int subtree_depth = DcfGpuSchemeTraits<Scheme>::kInputBits,
+    int range_frontier = frontier_depth, int range_block_root = block_root_depth) {
   using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   constexpr int kInputBits = DcfGpuSchemeTraits<Scheme>::kInputBits;
-  constexpr int kTailDepth = kInputBits - frontier_depth;
-  constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
+  constexpr int kTailCapacity = range ? 8 : kInputBits - frontier_depth;
+  const int start_depth = range ? kInputBits - subtree_depth : 0;
+  const int frontier = range ? start_depth + range_frontier : frontier_depth;
+  const int root_depth = range ? start_depth + range_block_root : block_root_depth;
+  const int tail_depth = kInputBits - frontier;
+  const int block_subtree_depth = frontier - root_depth;
   if (threadIdx.x == 0) {
     int4 st = util::SetLsb(s0, b);
     Group v;
 #pragma unroll
-    for (int i = 0; i < block_root_depth; ++i) {
-      bool x_bit = (subtree_block_index >> (block_root_depth - 1 - i)) & 1;
+    for (int i = 0; i < root_depth; ++i) {
+      bool x_bit = i < start_depth
+          ? ((first >> (kInputBits - 1 - i)) & 1) != 0
+          : ((subtree_block_index >> (root_depth - 1 - i)) & 1) != 0;
       {
         auto path_prg = prg;
         fss::detail::SchemeAccess::DcfPathStep<Scheme>(path_prg, st, v, b, cws[i], x_bit, st, v);
@@ -337,7 +362,7 @@ __device__ __forceinline__ void DcfMemberEvalAllBlock(bool b, int4 s0,
 
   // Phase 1: breadth-parallel expansion of the block's subtree, levels block_root_depth..frontier_depth.
 #pragma unroll
-  for (int i = 0; i < kBlockSubtreeDepth; ++i) {
+  for (int i = 0; i < block_subtree_depth; ++i) {
     const bool active = threadIdx.x < (1 << (i + 1));
     int4 n = {0, 0, 0, 0};
     Group nv;
@@ -352,7 +377,7 @@ __device__ __forceinline__ void DcfMemberEvalAllBlock(bool b, int4 s0,
       Group v_left, v_right;
       {
         auto node_prg = prg;
-        fss::detail::SchemeAccess::DcfExpandNode<Scheme>(node_prg, n, nv, b, cws[block_root_depth + i], left, v_left, right, v_right);
+        fss::detail::SchemeAccess::DcfExpandNode<Scheme>(node_prg, n, nv, b, cws[root_depth + i], left, v_left, right, v_right);
       }
       shared_states[threadIdx.x] = (threadIdx.x & 1) ? right : left;
       shared_values[threadIdx.x] = (threadIdx.x & 1) ? v_right : v_left;
@@ -360,43 +385,96 @@ __device__ __forceinline__ void DcfMemberEvalAllBlock(bool b, int4 s0,
     __syncthreads();
   }
 
-  // Phase 2: expand the subtree below depth frontier_depth, then convert to leaves.
-  int4 nodes[1 << kTailDepth];
-  Group vs[1 << kTailDepth];
-  nodes[0] = shared_states[threadIdx.x];
-  vs[0] = shared_values[threadIdx.x];
-  int count = 1;
-#pragma unroll
-  for (int lev = frontier_depth; lev < kInputBits; ++lev) {
-#pragma unroll
-    for (int k = count - 1; k >= 0; --k) {
-      int4 left, right;
-      Group v_left, v_right;
-      {
-        auto node_prg = prg;
-        fss::detail::SchemeAccess::DcfExpandNode<Scheme>(node_prg, nodes[k], vs[k], b, cws[lev], left, v_left, right, v_right);
+  if constexpr (range) {
+    int4 pending[8];
+    Group pending_values[8];
+    int4 node = shared_states[threadIdx.x];
+    Group value = shared_values[threadIdx.x];
+    int level = frontier;
+    const int count = 1 << tail_depth;
+    const size_t offset = static_cast<size_t>(thread_index) << tail_depth;
+    const auto correction = Group::From(cws[kInputBits].v);
+    for (int index = 0; index < count; ++index) {
+      while (level < kInputBits) {
+        int4 left, right;
+        Group left_value, right_value;
+        {
+          auto node_prg = prg;
+          fss::detail::SchemeAccess::DcfExpandNode<Scheme>(node_prg, node,
+              value, b, cws[level], left, left_value, right, right_value);
+        }
+        pending[level - frontier] = right;
+        pending_values[level - frontier] = right_value;
+        node = left;
+        value = left_value;
+        ++level;
       }
-      nodes[2 * k] = left;
-      vs[2 * k] = v_left;
-      nodes[2 * k + 1] = right;
-      vs[2 * k + 1] = v_right;
+      auto term = Group::From(util::SetLsb(node, false));
+      if (util::GetLsb(node)) term = term + correction;
+      if (b) term = -term;
+      ys[offset + index] = (value + term).Into();
+      if (index + 1 < count) {
+        int next = index + 1;
+        level = kInputBits - 1;
+        while ((next & 1) == 0) {
+          --level;
+          next >>= 1;
+        }
+        node = pending[level - frontier];
+        value = pending_values[level - frontier];
+        ++level;
+      }
     }
-    count *= 2;
-  }
-
-  auto v_cw_np1 = Group::From(cws[kInputBits].v);
-  const size_t out_base = static_cast<size_t>(thread_index) << kTailDepth;
+  } else {
+    // Phase 2: expand the subtree below depth frontier_depth, then convert to leaves.
+    int4 nodes[1 << kTailCapacity];
+    Group vs[1 << kTailCapacity];
+    nodes[0] = shared_states[threadIdx.x];
+    vs[0] = shared_values[threadIdx.x];
+    int count = 1;
 #pragma unroll
-  for (int k = 0; k < count; ++k) {
-    int4 st_cur = nodes[k];
-    bool t_cur = util::GetLsb(st_cur);
-    int4 s_cur = util::SetLsb(st_cur, false);
-    auto term = Group::From(s_cur);
-    if (t_cur) term = term + v_cw_np1;
-    if (b) term = -term;
-    auto y = vs[k] + term;
-    ys[out_base + k] = y.Into();
+    for (int lev = frontier; lev < kInputBits; ++lev) {
+#pragma unroll
+      for (int k = count - 1; k >= 0; --k) {
+        int4 left, right;
+        Group v_left, v_right;
+        {
+          auto node_prg = prg;
+          fss::detail::SchemeAccess::DcfExpandNode<Scheme>(node_prg, nodes[k], vs[k], b, cws[lev], left, v_left, right, v_right);
+        }
+        nodes[2 * k] = left;
+        vs[2 * k] = v_left;
+        nodes[2 * k + 1] = right;
+        vs[2 * k + 1] = v_right;
+      }
+      count *= 2;
+    }
+
+    auto v_cw_np1 = Group::From(cws[kInputBits].v);
+    const size_t out_base = static_cast<size_t>(thread_index) << tail_depth;
+#pragma unroll
+    for (int k = 0; k < count; ++k) {
+      int4 st_cur = nodes[k];
+      bool t_cur = util::GetLsb(st_cur);
+      int4 s_cur = util::SetLsb(st_cur, false);
+      auto term = Group::From(s_cur);
+      if (t_cur) term = term + v_cw_np1;
+      if (b) term = -term;
+      auto y = vs[k] + term;
+      ys[out_base + k] = y.Into();
+    }
   }
+}
+
+template <typename Scheme, int threads_per_block>
+__global__ void DcfEvalRangeKernel(bool b, int4 s0,
+    const typename Scheme::Cw *cws, int4 *ys, __uint128_t first,
+    int depth, int frontier, int root, typename DcfGpuSchemeTraits<Scheme>::Backend prg) {
+  __shared__ int4 states[threads_per_block];
+  __shared__ typename DcfGpuSchemeTraits<Scheme>::GroupType values[threads_per_block];
+  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  DcfMemberEvalAllBlock<Scheme, 0, 0, true>(b, s0, cws, ys, prg,
+      blockIdx.x, thread_index, states, values, first, depth, frontier, root);
 }
 
 template <typename Scheme, int frontier_depth, int block_root_depth>
@@ -1042,6 +1120,53 @@ struct Dcf<in_bits, Group, Prg, In, pred>::GpuLaunchShape {
   static_assert(kBlockRootDepth <= 30, "gpu block index exceeds the signed-int range");
   static constexpr size_t kBlocksPerKey = size_t{1} << (kBlockRootDepth <= 30 ? kBlockRootDepth : 0);
 };
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalRangeGpu(
+    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
+    cuda::std::span<int4> ys, cudaStream_t stream) const {
+#if defined(__CUDACC__)
+  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  size_t count;
+  if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) ||
+      cws.size() < in_bits + 1 || cws.data() == nullptr || ys.data() == nullptr)
+    return cudaErrorInvalidValue;
+  constexpr int kThreadBits = [] {
+    int bits = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
+    return bits;
+  }();
+  constexpr int kMaxDepth = [] {
+    int depth = 30 + kThreadBits;
+    if (depth >= sizeof(size_t) * CHAR_BIT) depth = sizeof(size_t) * CHAR_BIT - 1;
+    if (frontier_depth < depth && depth - frontier_depth > 8) depth = frontier_depth + 8;
+    return depth;
+  }();
+  return detail::ForEachAlignedRange<in_bits>(first, last, kMaxDepth,
+      [&](In chunk_first, int depth, size_t offset, size_t) {
+        int frontier = frontier_depth < depth ? frontier_depth : depth;
+        if (frontier < 0) frontier = 0;
+        int thread_bits = kThreadBits < frontier ? kThreadBits : frontier;
+        int root = frontier - thread_bits;
+        size_t blocks = size_t{1} << root;
+        if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
+          return cudaErrorInvalidConfiguration;
+        gpu::detail::DcfEvalRangeKernel<Dcf, threads_per_block>
+            <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), ys.data() + offset,
+                chunk_first, depth, frontier, root, prg_);
+        return cudaGetLastError();
+      });
+#else
+  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&

@@ -17,7 +17,7 @@
  * - Key generation: $Gen(1^\lambda, f_{a, b}) \rightarrow (k_0, k_1)$.
  * - Evaluation: $Eval(k_i, x) \rightarrow (y_{i,x}, \tilde\pi_{i,x})$.
  * - Proof accumulation: $Prove(\{\tilde\pi\}, cs) \rightarrow \pi$.
- * `ProveMerkle`/`EvalAllMerkle` replaces the sequential chain with a parallel Merkle
+ * `ProveMerkle`, `EvalAllMerkle`, and `EvalRangeMerkle` replace the sequential chain with a parallel Merkle
  * fold over a fixed ordered sequence of corrected per-point hashes. See doc/vdpf_merkle_fold_security.md.
  * - Verification: $Verify(\pi_0, \pi_1) \rightarrow \{Accept, Reject\}$.
  *
@@ -63,9 +63,10 @@ class SchemeAccess;
  * 2-party VDPF scheme.
  *
  * Gen() and scalar Eval() support host and device calls when their backends do.
- * Full-domain, range, and proof-accumulation operations run on the host.
+ * CPU full-domain, range, and proof accumulation run on the host.
+ * The Gpu methods launch asynchronous device evaluation.
  * Prove(), EvalAll(), and EvalRange() use chain accumulation.
- * ProveMerkle() and EvalAllMerkle() use a Merkle fold over a fixed ordered sequence.
+ * ProveMerkle(), EvalAllMerkle(), and EvalRangeMerkle() use a Merkle fold over a fixed ordered sequence.
  * Both parties must use the same accumulator, key configuration, and ordered inputs.
  * Chain and Merkle proofs have the same representation but different values.
  *
@@ -309,6 +310,52 @@ public:
       cudaStream_t stream = 0) const
     requires(in_bits < sizeof(size_t) * 8);
 
+
+  /**
+   * Evaluate [first, last] and apply ProveMerkle to its ordered corrected hashes.
+   *
+   * ys[j] is the share for first + j. Extra output capacity is unchanged.
+   * The proof tree covers this sequence, with odd nodes carried unchanged.
+   * Both parties must agree on the range, order, and accumulator externally.
+   * For M = last - first + 1, proof scratch payload is at most
+   * 96*M + 32*ceil(M/2) bytes, plus 16*M output bytes and allocator overhead.
+   * @pre first <= last < 2^in_bits. Output and proof scratch bytes fit size_t.
+   * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   */
+  void EvalRangeMerkle(bool b, In first, In last, int4 s0,
+      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
+
+  /**
+   * Launch range evaluation and the canonical ordered-sequence Merkle fold.
+   *
+   * Uses caller-owned device components and backend resources. Internal scratch
+   * is allocated and released on stream. No upload or synchronization occurs.
+   * Backend resources must support concurrent device calls and remain valid
+   * until the stream completes. The host instance supplies backend values.
+   * frontier_depth is relative to each aligned evaluation subtree, capped at
+   * its depth. Deep subtrees are split privately to leave at most eight tail
+   * levels and a block-root depth of at most 30. threads_per_block is a power
+   * of two in [1, 1024], capped at each subtree frontier width.
+   * Evaluation fuses share conversion and corrected leaf hashing. The ordered
+   * fold uses two buffers with 32*(M + ceil(M/2)) scratch bytes for M inputs,
+   * plus 16*M output bytes. These payload sizes exclude allocator overhead.
+   * The leaf kernel also reserves 256 int4 temporary states per thread and
+   * threads_per_block int4 shared frontier states per block.
+   * The proof uses actual inputs in increasing order and carries odd nodes.
+   * Both parties must agree on the range, order, and Merkle mode externally.
+   * @return First immediate CUDA error. Invalid endpoints, buffers, or byte
+   * counts return cudaErrorInvalidValue. An oversized grid returns
+   * cudaErrorInvalidConfiguration. Execution errors are observed by the caller
+   * when synchronizing stream.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t EvalRangeMerkleGpu(bool b, In first, In last, int4 s0,
+      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
+      cudaStream_t stream = 0) const;
+
 private:
   friend class detail::SchemeAccess;
 
@@ -328,9 +375,118 @@ private:
 
 // -----------------------------------------------------------------------------
 
+namespace detail {
+
+template <typename Hash>
+__host__ __device__ inline cuda::std::array<int4, 2> VdpfMerkleFoldNode(
+    Hash &hash, const cuda::std::array<int4, 2> *nodes, size_t count, size_t index) {
+  const size_t left = 2 * index;
+  if (left + 1 == count) return nodes[left];
+  const int4 msg[4] = {nodes[left][0], nodes[left][1], nodes[left + 1][0], nodes[left + 1][1]};
+  return hash.Hash(cuda::std::span<const int4, 4>(msg));
+}
+
+}  // namespace detail
+
 namespace gpu::detail {
 
 #if defined(__CUDACC__)
+
+template <int in_bits, int threads_per_block, typename Group, typename Prg,
+    typename XorHash, typename Hash, typename In, typename Cw, typename MathScheme>
+__global__ void VdpfRangeMerkleLeavesKernel(bool b, In first, int subtree_depth,
+    int frontier_depth, int block_root_depth, int4 s0, const Cw *cws, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *leaves, Prg prg, XorHash xor_hash, Hash hash) {
+  const int root_depth = in_bits - subtree_depth;
+  const int block_subtree_depth = frontier_depth - block_root_depth;
+  const int tail_depth = subtree_depth - frontier_depth;
+  __shared__ int4 frontier[threads_per_block];
+  if (threadIdx.x == 0) {
+    int4 st = util::SetLsb(s0, b);
+    for (int level = 0; level < root_depth; ++level) {
+      const bool right = (first >> (in_bits - level - 1)) & 1;
+      st = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(
+          prg, st, cws[level].s, cws[level].tr, right);
+    }
+    for (int level = 0; level < block_root_depth; ++level) {
+      const bool right = (blockIdx.x >> (block_root_depth - level - 1)) & 1;
+      st = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(
+          prg, st, cws[root_depth + level].s, cws[root_depth + level].tr, right);
+    }
+    frontier[0] = st;
+  }
+  __syncthreads();
+  for (int level = 0; level < block_subtree_depth; ++level) {
+    const bool active = threadIdx.x < (1u << (level + 1));
+    int4 st = {0, 0, 0, 0};
+    if (active) st = frontier[threadIdx.x >> 1];
+    __syncthreads();
+    if (active) {
+      int4 left, right;
+      const int cw_index = root_depth + block_root_depth + level;
+      fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(
+          prg, st, cws[cw_index].s, cws[cw_index].tr, left, right);
+      frontier[threadIdx.x] = (threadIdx.x & 1) ? right : left;
+    }
+    __syncthreads();
+  }
+  int4 pending[8];
+  int4 node = frontier[threadIdx.x];
+  const int frontier_level = root_depth + frontier_depth;
+  int level = frontier_level;
+  const int count = 1 << tail_depth;
+  const size_t thread_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t offset = thread_index << tail_depth;
+  const auto correction = Group::From(cws[in_bits].s);
+  for (int i = 0; i < count; ++i) {
+    while (level < in_bits) {
+      int4 left, right;
+      fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(
+          prg, node, cws[level].s, cws[level].tr, left, right);
+      pending[level - frontier_level] = right;
+      node = left;
+      ++level;
+    }
+    const bool t = util::GetLsb(node);
+    const int4 seed = util::SetLsb(node, false);
+    auto value = Group::From(seed);
+    if (t) value = value + correction;
+    if (b) value = -value;
+    ys[offset + i] = value.Into();
+    const In x = static_cast<In>(first + offset + i);
+    auto corrected = xor_hash.Hash(cuda::std::tuple<int4, const int4>{fss::detail::Pack(x), seed});
+    if (t) corrected = util::Xor(cuda::std::span<const int4, 4>(corrected),
+        cuda::std::span<const int4, 4>(cs, 4));
+    leaves[offset + i] = hash.Hash(cuda::std::span<const int4, 4>(corrected));
+    if (i + 1 < count) {
+      int next = i + 1;
+      level = in_bits - 1;
+      while ((next & 1) == 0) {
+        --level;
+        next >>= 1;
+      }
+      node = pending[level - frontier_level];
+      ++level;
+    }
+  }
+}
+
+template <typename Hash>
+__global__ void VdpfRangeMerkleFoldKernel(const cuda::std::array<int4, 2> *nodes,
+    size_t count, cuda::std::array<int4, 2> *next, Hash hash) {
+  const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count / 2 + count % 2)
+    next[index] = fss::detail::VdpfMerkleFoldNode(hash, nodes, count, index);
+}
+
+template <typename Node>
+__global__ void VdpfRangeMerkleProofKernel(const Node *root,
+    const int4 *cs, int4 *pi) {
+  pi[0] = (*root)[0];
+  pi[1] = (*root)[1];
+  pi[2] = cs[2];
+  pi[3] = cs[3];
+}
 
 template <int in_bits, int frontier_depth, int block_root_depth, typename Group, typename Prg, typename XorHash, typename Hash, typename In,
     typename Cw, typename MathScheme>
@@ -611,7 +767,7 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
   const int4 st = util::SetLsb(s0, b);
   const int par_depth_ = fss::detail::ResolveParDepth(par_depth, in_bits);
 
-  // Phase 1: tree traversal, store (s, t) packed into ys temporarily
+  // Traversal stores the packed seed and control bit in output storage temporarily.
   if (par_depth_ == 0) {
     EvalPrunedTree(st, cws, ys, In{0}, max_input, 0, 0, first, last);
   } else {
@@ -674,13 +830,11 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::ProveMerkle(
   });
 
   while (count > 1) {
-    size_t pairs = count / 2;
-    std::vector<cuda::std::array<int4, 2>> next(pairs + count % 2);
-    fss::detail::ParallelFor(par_depth, pairs, [&](size_t i) {
-      int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
-      next[i] = hash_.Hash(cuda::std::span<const int4, 4>(msg));
+    const size_t next_count = count / 2 + count % 2;
+    std::vector<cuda::std::array<int4, 2>> next(next_count);
+    fss::detail::ParallelFor(par_depth, next_count, [&](size_t i) {
+      next[i] = detail::VdpfMerkleFoldNode(hash_, nodes.data(), count, i);
     });
-    if (count % 2 != 0) next[pairs] = nodes[count - 1];
     nodes = std::move(next);
     count = nodes.size();
   }
@@ -697,36 +851,48 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAllMerkle(
     bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth) {
-  assert(par_depth >= 0);
-  int4 st = s0;
-  bool t = b;
-  st = util::SetLsb(st, t);
+  constexpr size_t kOutputCount = detail::FullDomainSize<cuda::std::array<int4, 4>, in_bits>();
+  EvalRangeMerkle(b, In{0}, static_cast<In>(kOutputCount - 1), s0, cws, cs, ys, pi, par_depth);
+}
 
-  constexpr size_t kOutputCount =
-      detail::FullDomainSize<cuda::std::array<int4, 4>, in_bits>();
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
+    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
+    cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
+    cuda::std::span<int4, 4> pi, int par_depth) {
+  assert(par_depth >= 0);
+  In max_input = static_cast<In>(~In{0});
+  if constexpr (in_bits < sizeof(In) * 8) {
+    max_input = static_cast<In>((In{1} << in_bits) - 1);
+  }
+  assert(first <= last && last <= max_input);
+  const __uint128_t distance = static_cast<__uint128_t>(last) - first;
+  constexpr size_t kMaxBytes = size_t(-1);
+  assert(distance < kMaxBytes / sizeof(cuda::std::array<int4, 4>));
+  const size_t kOutputCount = static_cast<size_t>(distance) + 1;
+  const size_t next_count = kOutputCount / 2 + kOutputCount % 2;
+  assert(kOutputCount <= kMaxBytes / (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>)));
+  const size_t initial_bytes = kOutputCount *
+      (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>));
+  assert(next_count <= (kMaxBytes - initial_bytes) / sizeof(cuda::std::array<int4, 2>));
+  const int4 st = util::SetLsb(s0, b);
   assert(cws.size() >= in_bits + 1);
   assert(ys.size() >= kOutputCount);
-  size_t l = 0;
-  size_t r = kOutputCount;
-  int i = 0;
 
   int par_depth_ = fss::detail::ResolveParDepth(par_depth, in_bits);
 
-  // Phase 1: tree traversal, store (s, t) packed into ys temporarily
+  // Traversal stores the packed seed and control bit in output storage temporarily.
   if (par_depth_ == 0) {
-    EvalTree(st, cws, ys, l, r, i, 0);
+    EvalPrunedTree(st, cws, ys, In{0}, max_input, 0, 0, first, last);
   } else {
-    int threads = fss::detail::ResolveParThreads(par_depth_, r);
+    int threads = fss::detail::ResolveParThreads(par_depth_, kOutputCount);
 #pragma omp parallel num_threads(threads)
 #pragma omp single
-    EvalTree(st, cws, ys, l, r, i, par_depth_);
+    EvalPrunedTree(st, cws, ys, In{0}, max_input, 0, par_depth_, first, last);
   }
 
-  // Phase 2: parallel output conversion and leaf hashing, then the Merkle fold
-  pi[0] = cs[0];
-  pi[1] = cs[1];
-  pi[2] = cs[2];
-  pi[3] = cs[3];
   const size_t n = kOutputCount;
   int4 ocw = cws[in_bits].s;
   assert((ocw.w & 1) == 0);
@@ -742,7 +908,7 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAllMerkle(
     if (b) g = -g;
     ys[j] = g.Into();
 
-    int4 x_buf = fss::detail::Pack(static_cast<In>(j));
+    int4 x_buf = fss::detail::Pack(static_cast<In>(first + j));
 
     auto pi_tilde = xor_hash_.Hash(cuda::std::tuple<int4, const int4>{x_buf, sj});
     if (tj) {
@@ -1033,6 +1199,80 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAl
       <<<1, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           block_roots, static_cast<int>(LaunchShape::kBlockCount), cs.data(), pi.data(), hash_);
   return gpu::detail::ReleaseScratch(cudaGetLastError(), {&roots_storage});
+#else
+  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkleGpu(
+    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
+    cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
+    cuda::std::span<int4, 4> pi, cudaStream_t stream) const {
+  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
+  static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+#if defined(__CUDACC__)
+  using Node = cuda::std::array<int4, 2>;
+  size_t count = 0;
+  if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) ||
+      cws.size() < in_bits + 1 || cws.data() == nullptr || cs.data() == nullptr ||
+      ys.data() == nullptr || pi.data() == nullptr) return cudaErrorInvalidValue;
+  const size_t second_count = count / 2 + count % 2;
+  constexpr size_t kMaxNodes = size_t(-1) / sizeof(Node);
+  if (count > kMaxNodes || second_count > kMaxNodes - count) return cudaErrorInvalidValue;
+  constexpr int kThreadBits = [] {
+    int bits = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
+    return bits;
+  }();
+  constexpr int kTailCap = frontier_depth < 30 + kThreadBits ? frontier_depth : 30 + kThreadBits;
+  constexpr int kChunkDepth = kTailCap + 8 < 30 + kThreadBits ? kTailCap + 8 : 30 + kThreadBits;
+  const size_t fold_count = count / 2 + count % 2;
+  const size_t fold_blocks = fold_count / threads_per_block + (fold_count % threads_per_block != 0);
+  if (fold_blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+  gpu::detail::DeviceScratch first_storage(stream), second_storage(stream);
+  cudaError_t status = first_storage.Allocate<Node>(count);
+  if (status != cudaSuccess) return status;
+  status = second_storage.Allocate<Node>(second_count);
+  if (status != cudaSuccess) return status;
+  auto *nodes = first_storage.Get<Node>();
+  auto *next = second_storage.Get<Node>();
+  using MathScheme = Dpf<in_bits, Group, Prg, In>;
+  status = detail::ForEachAlignedRange<in_bits>(first, last, kChunkDepth,
+      [&](In chunk_first, int depth, size_t offset, size_t) {
+        const int frontier = depth < frontier_depth ? depth : frontier_depth;
+        const int thread_bits = frontier < kThreadBits ? frontier : kThreadBits;
+        const int block_root_depth = frontier - thread_bits;
+        const size_t blocks = size_t{1} << block_root_depth;
+        if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+        gpu::detail::VdpfRangeMerkleLeavesKernel<in_bits, threads_per_block,
+            Group, Prg, XorHash, Hash, In, Cw, MathScheme>
+            <<<blocks, 1 << thread_bits, 0, stream>>>(b, chunk_first, depth,
+                frontier, block_root_depth, s0, cws.data(), cs.data(),
+                ys.data() + offset, nodes + offset, prg_, xor_hash_, hash_);
+        return cudaGetLastError();
+      });
+  if (status != cudaSuccess) return status;
+  while (count > 1) {
+    const size_t next_count = count / 2 + count % 2;
+    const size_t blocks = next_count / threads_per_block + (next_count % threads_per_block != 0);
+    gpu::detail::VdpfRangeMerkleFoldKernel<<<blocks, threads_per_block, 0, stream>>>(
+        nodes, count, next, hash_);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) return status;
+    auto *previous = nodes;
+    nodes = next;
+    next = previous;
+    count = next_count;
+  }
+  gpu::detail::VdpfRangeMerkleProofKernel<<<1, 1, 0, stream>>>(nodes, cs.data(), pi.data());
+  return gpu::detail::ReleaseScratch(cudaGetLastError(), {&first_storage, &second_storage});
 #else
   static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
   return cudaErrorNotSupported;

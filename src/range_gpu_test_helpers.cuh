@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: Apache-2.0
+#pragma once
+#include <gtest/gtest.h>
+#include <cuda_runtime.h>
+#include <vector>
+#include "core_api_test_helpers.cuh"
+
+namespace fss_test {
+
+struct RangeUint127Group {
+  using Impl = fss::group::Uint<__uint128_t, (__uint128_t{1} << 127)>;
+  Impl value;
+  __host__ __device__ RangeUint127Group operator+(RangeUint127Group rhs) const {
+    return {value + rhs.value};
+  }
+  __host__ __device__ RangeUint127Group operator-() const { return {-value}; }
+  __host__ __device__ static RangeUint127Group From(int4 input) { return {Impl::From(input)}; }
+  __host__ __device__ int4 Into() const { return value.Into(); }
+};
+
+template <int bits, typename In, int frontier = 16, int threads = 256, typename Scheme>
+void CheckGpuRange(Scheme &scheme, In first, In last) {
+  int devices = 0;
+  cudaError_t status = cudaGetDeviceCount(&devices);
+  if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver ||
+      (status == cudaSuccess && devices == 0)) GTEST_SKIP() << "no CUDA device available";
+  ASSERT_EQ(status, cudaSuccess);
+  const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  typename Scheme::Key keys[2];
+  GenPair(scheme, keys[0], keys[1], cuda::std::span<const int4, 2>(seeds, 2),
+      first + (last - first) / 2, int4{7, 19, 23, 42});
+  const size_t count = static_cast<size_t>(last - first) + 1;
+  using Cw = typename Scheme::Cw;
+  Cw *corrections = nullptr;
+  int4 *outputs = nullptr;
+  cudaStream_t stream;
+  ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&corrections, (bits + 1) * sizeof(Cw)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&outputs, (count + 1) * sizeof(int4)), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(corrections, keys[0].cws, (bits + 1) * sizeof(Cw),
+      cudaMemcpyHostToDevice, stream), cudaSuccess);
+  const int4 sentinel = {91, 92, 93, 94};
+  std::vector<int4> actual(count + 1, sentinel);
+  for (int party = 0; party < 2; ++party) {
+    SCOPED_TRACE(party);
+    actual.assign(count + 1, sentinel);
+    ASSERT_EQ(cudaMemcpyAsync(outputs, actual.data(), actual.size() * sizeof(int4),
+        cudaMemcpyHostToDevice, stream), cudaSuccess);
+    ASSERT_EQ((scheme.template EvalRangeGpu<frontier, threads>(party, first, last,
+        seeds[party], {corrections, bits + 1}, {outputs, count + 1}, stream)), cudaSuccess);
+    ASSERT_EQ(cudaMemcpyAsync(actual.data(), outputs, actual.size() * sizeof(int4),
+        cudaMemcpyDeviceToHost, stream), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    for (size_t index = 0; index < count; ++index) {
+      int4 expected = EvalKey(scheme, party, keys[party], static_cast<In>(first + index));
+      EXPECT_EQ(actual[index].x, expected.x) << index;
+      EXPECT_EQ(actual[index].y, expected.y) << index;
+      EXPECT_EQ(actual[index].z, expected.z) << index;
+      EXPECT_EQ(actual[index].w, expected.w) << index;
+    }
+    EXPECT_EQ(actual[count].x, sentinel.x);
+    EXPECT_EQ(actual[count].y, sentinel.y);
+    EXPECT_EQ(actual[count].z, sentinel.z);
+    EXPECT_EQ(actual[count].w, sentinel.w);
+  }
+  EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{1}, In{0},
+      seeds[0], {corrections, bits + 1}, {outputs, count}, stream)), cudaErrorInvalidValue);
+  EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, first, last,
+      seeds[0], {corrections, bits}, {outputs, count}, stream)), cudaErrorInvalidValue);
+  EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, first, last,
+      seeds[0], {corrections, bits + 1}, {outputs, count - 1}, stream)), cudaErrorInvalidValue);
+  EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, first, last,
+      seeds[0], {corrections, bits + 1}, {static_cast<int4 *>(nullptr), count}, stream)), cudaErrorInvalidValue);
+  if constexpr (bits == 128) {
+    EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{0}, ~In{0},
+        seeds[0], {corrections, bits + 1}, {outputs, size_t(-1)}, stream)), cudaErrorInvalidValue);
+    EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{0},
+        static_cast<In>(size_t(-1) / sizeof(int4)), seeds[0],
+        {corrections, bits + 1}, {outputs, size_t(-1)}, stream)), cudaErrorInvalidValue);
+  } else if constexpr (bits < sizeof(In) * 8) {
+    EXPECT_EQ((scheme.template EvalRangeGpu<frontier, threads>(false, In{0}, In{1} << bits,
+        seeds[0], {corrections, bits + 1}, {outputs, count}, stream)), cudaErrorInvalidValue);
+  }
+  EXPECT_EQ(cudaFree(outputs), cudaSuccess);
+  EXPECT_EQ(cudaFree(corrections), cudaSuccess);
+  EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+}
+
+}  // namespace fss_test

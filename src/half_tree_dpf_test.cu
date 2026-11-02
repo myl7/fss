@@ -12,6 +12,7 @@
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include "core_api_test_helpers.cuh"
+#include "range_gpu_test_helpers.cuh"
 #include <atomic>
 #include <limits>
 
@@ -789,3 +790,32 @@ TEST(HalfTreeRange, RejectsInvalidPreconditions) {
 }
 #endif  // NDEBUG
 }  // namespace
+
+
+TEST(HalfTreeDpfGpuRangeTest, ClosedIntervalsAndFrontiers) {
+  fss::HalfTreeDpf<8, BytesGroup, fss_test::TestCcrHash, uint16_t> scheme{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 0, 255);
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 13, 201);
+  fss_test::CheckGpuRange<8, uint16_t, 2, 4>(scheme, 13, 201);
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 0, 0);
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 255, 255);
+}
+
+TEST(HalfTreeDpfGpuRangeTest, WideDomainAndBoundedSubdivision) {
+  fss::HalfTreeDpf<128, BytesGroup, fss_test::TestCcrHash, __uint128_t> wide{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
+  fss_test::CheckGpuRange<128, __uint128_t>(wide, ~__uint128_t{0} - 128, ~__uint128_t{0});
+  fss_test::CheckGpuRange<128, __uint128_t, 2, 4>(wide,
+      (__uint128_t{1} << 100) - 17, (__uint128_t{1} << 100) + 19);
+  fss::HalfTreeDpf<12, BytesGroup, fss_test::TestCcrHash, uint16_t> split{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
+  fss_test::CheckGpuRange<12, uint16_t, 0, 1>(split, 0, 4095);
+  fss_test::CheckGpuRange<12, uint16_t>(split, 0, 4095);
+}
+
+TEST(HalfTreeDpfGpuRangeTest, ArithmeticGroupNarrowInputAndCappedFrontier) {
+  fss::HalfTreeDpf<8, fss_test::RangeUint127Group, fss_test::TestCcrHash, uint8_t> scheme{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
+  fss_test::CheckGpuRange<8, uint8_t, 999, 1024>(scheme, 0, 255);
+  fss_test::CheckGpuRange<8, uint8_t, 2, 4>(scheme, 13, 201);
+  fss::HalfTreeDpf<1, fss_test::RangeUint127Group, fss_test::TestCcrHash, uint8_t> tiny{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
+  fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
+  fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
+}

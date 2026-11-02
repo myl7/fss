@@ -1262,7 +1262,7 @@ void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_r
 
 /*
  * GPU batch evaluation of a VDMPF key with the Merkle-fold proof:
- * ys[i] = BatchEvalMerkle(b, key, xs)[i] and d_pi receives the proof. Launches
+ * ys matches host BatchEvalMerkle() for xs, and d_pi receives its proof. Launches
  * on the stream: a Locate pass writes per-(point, hash) Cuckoo records, a
  * stable CUB radix sort groups them by bucket in the same canonical order the
  * host BatchEvalMerkle walks its per-bucket lists, an evaluation pass computes

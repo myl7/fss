@@ -151,6 +151,23 @@ public:
 
 
   /**
+   * Evaluate the closed interval [first, last] on the given CUDA stream.
+   * Output ys[j] corresponds to first+j. Extra output capacity is unchanged.
+   * Resources and asynchronous error handling follow EvalAllGpu().
+   * frontier_depth is relative to each aligned evaluation subtree and is capped
+   * to its depth (before HalfTreeDpf's special final layer).
+   * Private subdivision keeps the tail at most eight output levels and the
+   * block-root depth at most 30, without backend or hardware tuning.
+   * Invalid endpoints, buffers, counts or byte sizes return cudaErrorInvalidValue.
+   * Grid limits return cudaErrorInvalidConfiguration.
+   * The input domain itself need not fit in size_t.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t EvalRangeGpu(bool b, In first, In last, int4 s0,
+      cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
+      cudaStream_t stream = 0) const;
+
+  /**
    * Launch full-domain CUDA evaluation from this host-accessible instance.
    *
    * Hash values and the instance seed are passed as kernel arguments. The caller
@@ -262,19 +279,27 @@ struct HalfTreeGpuTraits;
 
 #if defined(__CUDACC__)
 
-template <typename Scheme, int frontier_depth, int block_root_depth>
+template <typename Scheme, int frontier_depth, int block_root_depth, bool range = false>
 __device__ __forceinline__ void HalfTreeEvalAllBlock(bool b, int4 s0,
     const typename Scheme::Cw *cws, int4 *ys, int4 instance_seed,
     typename HalfTreeGpuTraits<Scheme>::Backend &hash, int subtree_block_index,
-    int64_t thread_index, int4 *shared_frontier) {
+    int64_t thread_index, int4 *shared_frontier,
+    __uint128_t first = 0, int subtree_depth = HalfTreeGpuTraits<Scheme>::kOutputBits,
+    int range_frontier = frontier_depth, int range_block_root = block_root_depth) {
   using Traits = HalfTreeGpuTraits<Scheme>;
-  constexpr int kTailDepth = Traits::kOutputBits - frontier_depth;
-  constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
+  constexpr int kTailCapacity = range ? 8 : Traits::kOutputBits - frontier_depth;
+  const int start_depth = range ? Traits::kOutputBits - subtree_depth : 0;
+  const int frontier = range ? start_depth + range_frontier : frontier_depth;
+  const int root_depth = range ? start_depth + range_block_root : block_root_depth;
+  const int tail_depth = Traits::kOutputBits - frontier;
+  const int block_subtree_depth = frontier - root_depth;
   if (threadIdx.x == 0) {
     int4 node = util::SetLsb(s0, b);
 #pragma unroll
-    for (int level = 0; level < block_root_depth; ++level) {
-      bool take_right = (subtree_block_index >> (block_root_depth - 1 - level)) & 1;
+    for (int level = 0; level < root_depth; ++level) {
+      bool take_right = level < start_depth
+          ? ((first >> (Traits::kOutputBits - 1 - level)) & 1) != 0
+          : ((subtree_block_index >> (root_depth - 1 - level)) & 1) != 0;
       // Preserve the former by-value helper's backend lifetime per path step.
       auto node_hash = hash;
       node = fss::detail::SchemeAccess::HalfTreePathStep<Scheme>(
@@ -285,7 +310,7 @@ __device__ __forceinline__ void HalfTreeEvalAllBlock(bool b, int4 s0,
   __syncthreads();
 
 #pragma unroll
-  for (int level = 0; level < kBlockSubtreeDepth; ++level) {
+  for (int level = 0; level < block_subtree_depth; ++level) {
     const bool active = threadIdx.x < (1 << (level + 1));
     int4 node = {0, 0, 0, 0};
     if (active) node = shared_frontier[threadIdx.x >> 1];
@@ -295,47 +320,108 @@ __device__ __forceinline__ void HalfTreeEvalAllBlock(bool b, int4 s0,
       int4 left, right;
       auto node_hash = hash;
       fss::detail::SchemeAccess::HalfTreeExpandNode<Scheme>(node_hash, instance_seed,
-          node, cws[block_root_depth + level].s, left, right);
+          node, cws[root_depth + level].s, left, right);
       shared_frontier[threadIdx.x] = (threadIdx.x & 1) ? right : left;
     }
     __syncthreads();
   }
 
-  int4 nodes[1 << kTailDepth];
-  nodes[0] = shared_frontier[threadIdx.x];
-  int count = 1;
-#pragma unroll
-  for (int level = frontier_depth; level < Traits::kExpansionDepth; ++level) {
-#pragma unroll
-    for (int index = count - 1; index >= 0; --index) {
-      int4 left, right;
-      fss::detail::SchemeAccess::HalfTreeExpandNode<Scheme>(
-          hash, instance_seed, nodes[index], cws[level].s, left, right);
-      nodes[2 * index] = left;
-      nodes[2 * index + 1] = right;
-    }
-    count *= 2;
-  }
-
-  const size_t output_offset = static_cast<size_t>(thread_index) << kTailDepth;
-  if constexpr (Traits::kPacked) {
-#pragma unroll
+  if constexpr (range && !Traits::kPacked) {
+    int4 pending[8];
+    int4 node = shared_frontier[threadIdx.x];
+    int level = frontier;
+    const int count = 1 << (Traits::kExpansionDepth - frontier);
+    const size_t offset = static_cast<size_t>(thread_index) << tail_depth;
+    using OutputGroup = typename Traits::OutputGroup;
+    auto correction = OutputGroup::From(cws[Traits::kOutputBits].s);
     for (int index = 0; index < count; ++index) {
-      ys[output_offset + index] = fss::detail::SchemeAccess::PackedConvertLeaf<Scheme>(
-          hash, instance_seed, nodes[index], cws[Traits::kExpansionDepth].s);
+      while (level < Traits::kExpansionDepth) {
+        int4 left, right;
+        fss::detail::SchemeAccess::HalfTreeExpandNode<Scheme>(hash, instance_seed,
+            node, cws[level].s, left, right);
+        pending[level - frontier] = right;
+        node = left;
+        ++level;
+      }
+      int4 left, right;
+      fss::detail::SchemeAccess::HalfTreeConvertLeafPair<Scheme>(b, hash,
+          instance_seed, node, cws[Traits::kExpansionDepth], correction, left, right);
+      ys[offset + 2 * index] = left;
+      ys[offset + 2 * index + 1] = right;
+      if (index + 1 < count) {
+        int next = index + 1;
+        level = Traits::kExpansionDepth - 1;
+        while ((next & 1) == 0) {
+          --level;
+          next >>= 1;
+        }
+        node = pending[level - frontier];
+        ++level;
+      }
     }
   } else {
-    using OutputGroup = typename Traits::OutputGroup;
-    auto output_correction = OutputGroup::From(cws[Traits::kOutputBits].s);
+    int4 nodes[1 << kTailCapacity];
+    nodes[0] = shared_frontier[threadIdx.x];
+    int count = 1;
 #pragma unroll
-    for (int index = 0; index < count; ++index) {
-      int4 left, right;
-      fss::detail::SchemeAccess::HalfTreeConvertLeafPair<Scheme>(b, hash, instance_seed,
-          nodes[index], cws[Traits::kExpansionDepth], output_correction, left, right);
-      ys[output_offset + 2 * index] = left;
-      ys[output_offset + 2 * index + 1] = right;
+    for (int level = frontier; level < Traits::kExpansionDepth; ++level) {
+#pragma unroll
+      for (int index = count - 1; index >= 0; --index) {
+        int4 left, right;
+        fss::detail::SchemeAccess::HalfTreeExpandNode<Scheme>(
+            hash, instance_seed, nodes[index], cws[level].s, left, right);
+        nodes[2 * index] = left;
+        nodes[2 * index + 1] = right;
+      }
+      count *= 2;
+    }
+
+    const size_t output_offset = static_cast<size_t>(thread_index) << tail_depth;
+    if constexpr (Traits::kPacked) {
+#pragma unroll
+      for (int index = 0; index < count; ++index) {
+        ys[output_offset + index] = fss::detail::SchemeAccess::PackedConvertLeaf<Scheme>(
+            hash, instance_seed, nodes[index], cws[Traits::kExpansionDepth].s);
+      }
+    } else {
+      using OutputGroup = typename Traits::OutputGroup;
+      auto output_correction = OutputGroup::From(cws[Traits::kOutputBits].s);
+#pragma unroll
+      for (int index = 0; index < count; ++index) {
+        int4 left, right;
+        fss::detail::SchemeAccess::HalfTreeConvertLeafPair<Scheme>(b, hash, instance_seed,
+            nodes[index], cws[Traits::kExpansionDepth], output_correction, left, right);
+        ys[output_offset + 2 * index] = left;
+        ys[output_offset + 2 * index + 1] = right;
+      }
     }
   }
+}
+
+template <typename Scheme, int threads_per_block>
+__global__ void HalfTreeDpfEvalRangeKernel(bool b, int4 s0,
+    const typename Scheme::Cw *cws, int4 *ys, __uint128_t first,
+    int depth, int frontier, int root, int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
+  __shared__ int4 states[threads_per_block];
+  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (depth == 0) {
+    int4 node = util::SetLsb(s0, b);
+    for (int level = 0; level < HalfTreeGpuTraits<Scheme>::kExpansionDepth; ++level) {
+      auto node_hash = hash;
+      node = fss::detail::SchemeAccess::HalfTreePathStep<Scheme>(node_hash,
+          instance_seed, node, cws[level].s,
+          ((first >> (HalfTreeGpuTraits<Scheme>::kOutputBits - 1 - level)) & 1) != 0);
+    }
+    int4 left, right;
+    using OutputGroup = typename HalfTreeGpuTraits<Scheme>::OutputGroup;
+    auto correction = OutputGroup::From(cws[HalfTreeGpuTraits<Scheme>::kOutputBits].s);
+    fss::detail::SchemeAccess::HalfTreeConvertLeafPair<Scheme>(b, hash, instance_seed,
+        node, cws[HalfTreeGpuTraits<Scheme>::kExpansionDepth], correction, left, right);
+    ys[0] = (first & 1) ? right : left;
+    return;
+  }
+  HalfTreeEvalAllBlock<Scheme, 0, 0, true>(b, s0, cws, ys, instance_seed, hash,
+      blockIdx.x, thread_index, states, first, depth, frontier, root);
 }
 
 template <typename Scheme, int frontier_depth, int block_root_depth>
@@ -820,6 +906,53 @@ struct HalfTreeDpf<in_bits, Group, Hash, In>::GpuLaunchShape {
   static_assert(kBlockRootDepth <= 30, "gpu block index exceeds the signed-int range");
   static constexpr size_t kBlocksPerKey = size_t{1} << (kBlockRootDepth <= 30 ? kBlockRootDepth : 0);
 };
+
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
+    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
+    cuda::std::span<int4> ys, cudaStream_t stream) const {
+#if defined(__CUDACC__)
+  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  size_t count;
+  if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) ||
+      cws.size() < in_bits + 1 || cws.data() == nullptr || ys.data() == nullptr)
+    return cudaErrorInvalidValue;
+  constexpr int kThreadBits = [] {
+    int bits = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
+    return bits;
+  }();
+  constexpr int kMaxDepth = [] {
+    int depth = 30 + kThreadBits + 1;
+    if (depth >= sizeof(size_t) * CHAR_BIT) depth = sizeof(size_t) * CHAR_BIT - 1;
+    if (frontier_depth < depth && depth - frontier_depth > 8) depth = frontier_depth + 8;
+    return depth;
+  }();
+  return detail::ForEachAlignedRange<in_bits>(first, last, kMaxDepth,
+      [&](In chunk_first, int depth, size_t offset, size_t) {
+        int frontier = frontier_depth < depth - 1 ? frontier_depth : depth - 1;
+        if (frontier < 0) frontier = 0;
+        int thread_bits = kThreadBits < frontier ? kThreadBits : frontier;
+        int root = frontier - thread_bits;
+        size_t blocks = size_t{1} << root;
+        if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
+          return cudaErrorInvalidConfiguration;
+        gpu::detail::HalfTreeDpfEvalRangeKernel<HalfTreeDpf, threads_per_block>
+            <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), ys.data() + offset,
+                chunk_first, depth, frontier, root, instance_seed_, hash_);
+        return cudaGetLastError();
+      });
+#else
+  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
 
 template <int in_bits, typename Group, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&

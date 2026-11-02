@@ -12,6 +12,7 @@
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
 #include "core_api_test_helpers.cuh"
+#include "range_gpu_test_helpers.cuh"
 #include <atomic>
 #include <thread>
 
@@ -690,4 +691,33 @@ TEST(DpfRangeTest, PositiveDepthUsesConcurrentSafeBackend) {
   omp_set_num_threads(old_threads);
   omp_set_dynamic(old_dynamic);
 #endif
+}
+
+
+TEST(DpfGpuRangeTest, ClosedIntervalsAndFrontiers) {
+  fss::Dpf<8, BytesGroup, fss::prg::ChaCha<2>, uint16_t> scheme{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 0, 255);
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 13, 201);
+  fss_test::CheckGpuRange<8, uint16_t, 2, 4>(scheme, 13, 201);
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 0, 0);
+  fss_test::CheckGpuRange<8, uint16_t>(scheme, 255, 255);
+}
+
+TEST(DpfGpuRangeTest, WideDomainAndBoundedSubdivision) {
+  fss::Dpf<128, BytesGroup, fss::prg::ChaCha<2>, __uint128_t> wide{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
+  fss_test::CheckGpuRange<128, __uint128_t>(wide, ~__uint128_t{0} - 128, ~__uint128_t{0});
+  fss_test::CheckGpuRange<128, __uint128_t, 2, 4>(wide,
+      (__uint128_t{1} << 100) - 17, (__uint128_t{1} << 100) + 19);
+  fss::Dpf<12, BytesGroup, fss::prg::ChaCha<2>, uint16_t> split{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
+  fss_test::CheckGpuRange<12, uint16_t, 0, 1>(split, 0, 4095);
+  fss_test::CheckGpuRange<12, uint16_t>(split, 0, 4095);
+}
+
+TEST(DpfGpuRangeTest, ArithmeticGroupNarrowInputAndCappedFrontier) {
+  fss::Dpf<8, fss_test::RangeUint127Group, fss::prg::ChaCha<2>, uint8_t> scheme{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
+  fss_test::CheckGpuRange<8, uint8_t, 999, 1024>(scheme, 0, 255);
+  fss_test::CheckGpuRange<8, uint8_t, 2, 4>(scheme, 13, 201);
+  fss::Dpf<1, fss_test::RangeUint127Group, fss::prg::ChaCha<2>, uint8_t> tiny{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
+  fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
+  fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }

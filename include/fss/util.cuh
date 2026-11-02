@@ -64,6 +64,44 @@ __host__ __device__ inline bool GetLsb(int4 val) {
 
 namespace fss::detail {
 
+// Check subtraction before adding one, including a 128-bit full-domain range.
+template <int in_bits, typename In>
+__host__ inline bool RangeOutputCount(In first, In last, size_t capacity, size_t &count) {
+  if (first > last) return false;
+  if constexpr (in_bits < sizeof(In) * CHAR_BIT) {
+    if ((last >> in_bits) != 0) return false;
+  }
+  In difference = last - first;
+  constexpr size_t kMaxCount = std::numeric_limits<size_t>::max() / sizeof(int4);
+  if (difference >= kMaxCount) return false;
+  count = static_cast<size_t>(difference) + 1;
+  return count <= capacity;
+}
+
+// Visit aligned power-of-two chunks in input order without shifting by In's width.
+// A caller may cap depth to split chunks further for its kernel's fixed limits.
+template <int in_bits, typename In, typename Callback>
+__host__ inline cudaError_t ForEachAlignedRange(
+    In first, In last, int max_depth, Callback callback) {
+  size_t offset = 0;
+  for (;;) {
+    int depth = 0;
+    while (depth < max_depth && depth < in_bits &&
+        depth < sizeof(In) * CHAR_BIT) {
+      In half_mask = (In{1} << depth) - 1;
+      In mask = half_mask * 2 + 1;
+      if ((first & mask) != 0 || last - first < mask) break;
+      ++depth;
+    }
+    size_t count = size_t{1} << depth;
+    cudaError_t error = callback(first, depth, offset, count);
+    if (error != cudaSuccess) return error;
+    if (last - first == static_cast<In>(count - 1)) return cudaSuccess;
+    first += static_cast<In>(count);
+    offset += count;
+  }
+}
+
 // Resolve a tree split depth without shifting beyond a machine word.
 inline int ResolveParDepth(int par_depth, int useful_depth = sizeof(size_t) * CHAR_BIT - 1) {
   assert(par_depth >= 0);
