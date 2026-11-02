@@ -322,7 +322,7 @@ void CheckPackedGpu() {
       if (party == 1) {
         for (size_t x = 0; x < n; ++x) {
           int4 sum = fss::util::Xor(first[key * blocks + x / kLanes], actual[key * blocks + x / kLanes]);
-          EXPECT_EQ(Scheme::Extract(sum, static_cast<uint>(x)), x == size_t{42 + key} ? beta : 0) << "input " << x;
+          EXPECT_EQ(Scheme::Extract(sum, static_cast<uint>(x)), x == static_cast<size_t>(42 + key) ? beta : 0) << "input " << x;
         }
       }
     }
@@ -389,7 +389,7 @@ void CheckDcfGpu() {
         ExpectOutput(actual[key * n + x], expected, x);
         if (party == 0) first[key * n + x] = actual[key * n + x];
         else {
-          const bool hit = pred == fss::DcfPred::kLt ? x < size_t{alpha + key} : x > size_t{alpha + key};
+          const bool hit = pred == fss::DcfPred::kLt ? x < static_cast<size_t>(alpha + key) : x > static_cast<size_t>(alpha + key);
           int4 sum = (Group::From(first[key * n + x]) + Group::From(actual[key * n + x])).Into();
           ExpectOutput(sum, Group::From(hit ? beta : int4{0, 0, 0, 0}).Into(), x);
         }
