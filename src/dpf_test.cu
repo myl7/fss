@@ -1953,11 +1953,11 @@ TEST(DpfComponentGenGpu, InterleavedKeys) {
 }
 
 // -----------------------------------------------------------------------------
-// Split correction-word full-domain and range API: bit-exactness against the Cw forms.
+// Split-Cws full-domain and range API: bit-exactness against the Cw forms.
 
 namespace {
 
-// Checks the split correction-word full-domain API against the Cw forms for one
+// Checks the split-Cws full-domain API against the Cw forms for one
 // configuration: Gen() correction words, every EvalAll and EvalRange output, and the
 // two-party reconstruction. stride == 0 selects the default-argument call.
 template <int in_bits, typename Group, typename In>

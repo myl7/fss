@@ -1,4 +1,4 @@
-"""Thin component-buffer bindings for the C++ verifiable point function."""
+"""Thin bindings over the key buffers of the C++ verifiable point function."""
 
 from fss_crypto._scheme import _Scheme, _parallel_depth
 

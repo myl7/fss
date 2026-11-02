@@ -64,7 +64,7 @@ using ProofNode = cuda::std::array<int4, 2>;
 namespace fss::gpu {
 
 /**
- * Borrowed device components of a multi-point key.
+ * Borrowed device arrays of a multi-point key.
  *
  * Seeds and rows of correction words are contiguous in bucket order. Each row of
  * correction words contains bucket_bits+1 entries, including the final output correction word.
@@ -82,10 +82,10 @@ struct MultiComponents {
 };
 
 /**
- * Borrowed device components of a verifiable multi-point key.
+ * Borrowed device arrays of a verifiable multi-point key.
  *
  * The same row and lifetime rules as MultiComponents apply. Each cs row has
- * four blocks. All components and the scheme must outlive submitted work.
+ * four blocks. All arrays and the scheme must outlive submitted work.
  */
 template <typename Scheme>
   requires(detail::ProofGpuTraits<Scheme>::kKind == detail::ProofGpuKind::kVdmpf)
@@ -118,7 +118,7 @@ cudaError_t ProveMerkleGpu(Scheme *scheme,
  *
  * Uses three PRP candidates and the full Core input/bucket widths. No compact
  * 32-bit index representation or temporary allocation is required. An empty
- * query span is a no-op and does not access the scheme or key components.
+ * query span is a no-op and does not access the scheme or key arrays.
  */
 template <typename Scheme>
   requires(detail::ProofGpuTraits<Scheme>::kKind == detail::ProofGpuKind::kDmpf)

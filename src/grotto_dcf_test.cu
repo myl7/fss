@@ -244,7 +244,7 @@ namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split correction-word API against the Cw forms for one configuration:
+// Checks the split-Cws API against the Cw forms for one configuration:
 // every correction word entry, every Eval share, the preprocessed parity tree, the
 // owned tree, every EvalAll share, and the two-party reconstruction. stride == 0
 // selects the default-argument call.

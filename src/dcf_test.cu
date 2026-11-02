@@ -812,13 +812,13 @@ TEST(DcfGenHalf, GpuAesSoftSelectedRange) {
 }
 
 // -----------------------------------------------------------------------------
-// Split correction-word API: bit-exactness against the Cw forms.
+// Split-Cws API: bit-exactness against the Cw forms.
 
 namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split correction-word API against the Cw forms for one configuration:
+// Checks the split-Cws API against the Cw forms for one configuration:
 // every correction word field, every output of Eval, EvalAll and EvalRange, and the
 // two-party reconstruction. stride == 0 selects the default-argument call.
 template <int in_bits, typename Group, typename Prg, typename In, fss::DcfPred pred>

@@ -38,7 +38,7 @@ class Dpf(_Scheme):
         self._native.gen(self._cws(cws), s0s, a, b_buf)
 
     def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> torch.Tensor:
-        """Return one int4 share using raw Core ``Eval`` components."""
+        """Return one int4 share using the raw Core ``Eval`` buffers."""
         return self._native.eval(b, s0, self._cws(cws), x)
 
     def eval_range(self, b: bool, first: int, last: int, s0: torch.Tensor,

@@ -154,7 +154,7 @@ public:
       Cw cws[], cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf);
 
   /**
-   * Evaluate one input from caller-owned key components.
+   * Evaluate one input from a caller-owned key.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
@@ -191,7 +191,7 @@ public:
   __host__ __device__ static bool Verify(cuda::std::span<const int4, 4> pi0, cuda::std::span<const int4, 4> pi1);
 
   /**
-   * Evaluate the full domain and produce a chain proof from key components.
+   * Evaluate the full domain and produce a chain proof from a caller-owned key.
    *
    * The tree traversal supports OpenMP. Zero runs sequentially, and
    * positive depths split the traversal into 2^par_depth subtrees.
@@ -330,7 +330,7 @@ public:
   /**
    * Launch range evaluation and the canonical ordered-sequence Merkle fold.
    *
-   * Uses caller-owned device components and backend resources. Internal scratch
+   * Uses caller-owned device arrays and backend resources. Internal scratch
    * is allocated and released on stream. No upload or synchronization occurs.
    * Backend resources must support concurrent device calls and remain valid
    * until the stream completes. The host instance supplies backend values.

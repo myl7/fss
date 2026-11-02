@@ -1,4 +1,4 @@
-"""Thin component-buffer bindings for C++ Dmpf."""
+"""Thin bindings over the C++ Dmpf key buffers."""
 
 from fss_crypto._scheme import _Scheme, _parallel_depth
 

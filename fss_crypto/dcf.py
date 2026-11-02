@@ -51,7 +51,7 @@ class Dcf(_Scheme):
         self._native.gen(self._cws(cws), s0s, a, b_buf)
 
     def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> torch.Tensor:
-        """Return one int4 comparison share from raw Core components."""
+        """Return one int4 comparison share from the raw Core buffers."""
         return self._native.eval(b, s0, self._cws(cws), x)
 
     def eval_range(self, b: bool, first: int, last: int, s0: torch.Tensor,

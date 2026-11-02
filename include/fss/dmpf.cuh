@@ -69,7 +69,7 @@ class SchemeAccess;
  * The PRP permutes [0, 3*kDomainSize), where kDomainSize = 2^in_bits.
  * kBucketCount is the allocated bucket count for max_points. Gen() returns the active
  * bucket count m_rt and bucket-domain size b_size_rt for the actual point count.
- * These runtime values, the PRP seed, and all per-bucket components must come
+ * These runtime values, the PRP seed, and all per-bucket arrays must come
  * from the same successful Gen() call.
  * The supported point-count interval is [kMinPoints, max_points]. Increasing
  * bucket_bits can lower kMinPoints at the cost of more correction word storage.

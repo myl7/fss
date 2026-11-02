@@ -1,4 +1,4 @@
-"""Thin component-buffer bindings for C++ Vdmpf."""
+"""Thin bindings over the C++ Vdmpf key buffers."""
 
 from fss_crypto._scheme import _Scheme
 

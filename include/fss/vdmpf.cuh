@@ -78,7 +78,7 @@ class SchemeAccess;
  * The PRP permutes [0, 3*kDomainSize), where kDomainSize = 2^in_bits.
  * kBucketCount is the allocated bucket count for max_points. Gen() returns the active
  * bucket count m_rt and bucket-domain size b_size_rt for the actual point count.
- * These runtime values, the PRP seed, and all per-bucket components must come
+ * These runtime values, the PRP seed, and all per-bucket arrays must come
  * from the same successful Gen() call.
  * The supported point-count interval is [kMinPoints, max_points]. Increasing
  * bucket_bits can lower kMinPoints at the cost of more correction word storage.
@@ -86,9 +86,9 @@ class SchemeAccess;
  * Both parties must use the same accumulator, key configuration, and query sequence.
  * EvalAll() and EvalAllMerkle() use the same accumulators for the full domain
  * in increasing input order.
- * Eval() is the split form of the per-input evaluation and returns the proof
- * material for Prove() (chain) or ProveMerkle() (Merkle). The split methods
- * share the fused paths' bucket-level folds; with the same key and query
+ * Eval() evaluates one input per call and returns the proof material for
+ * Prove() (chain) or ProveMerkle() (Merkle). The per-input methods share the
+ * fused paths' bucket-level folds; with the same key and query
  * sequence they produce the same proofs, and the same shares for the
  * commutative Group backends in this repository.
  *
@@ -267,7 +267,7 @@ public:
   /**
    * Evaluate one input and return the corrected per-point hashes for Prove() or ProveMerkle().
    *
-   * The split counterpart of the fused evaluation: with the same key and the
+   * The per-input counterpart of the fused evaluation: with the same key and the
    * same query sequence, Eval() per input followed by Prove() produces the same
    * chain proof as one BatchEval() call, and by ProveMerkle() the same Merkle
    * proof as one BatchEvalMerkle() call. The proofs do not depend on the group
@@ -294,7 +294,7 @@ public:
    * @param x Input point to evaluate.
    * @param y Output share for this input.
    * @return Corrected per-point hashes in candidate order, as described by EvalProof.
-   * @pre All key components and metadata come from the same successful Gen().
+   * @pre All key arrays and metadata come from the same successful Gen().
    */
   __host__ __device__ EvalProof Eval(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -302,9 +302,9 @@ public:
       In x, int4 &y);
 
   /**
-   * Proof accumulation method for the split evaluation.
+   * Proof accumulation method for the per-input evaluation.
    *
-   * The split counterpart of BatchEval(): accumulates the corrected per-point
+   * The per-input counterpart of BatchEval(): accumulates the corrected per-point
    * hashes of Eval() into the chain proof with the same per-bucket and
    * cross-bucket folds as the fused path. With the same key and the same query
    * sequence, Eval() per input followed by Prove() gives the same proof as one
@@ -325,7 +325,7 @@ public:
    * @param proof_values proof_values[i] is the EvalProof returned by Eval() for
    * xs[i]. Entries for candidates outside the allocated buckets are not read.
    * @param pi Borrowed output storage for four proof blocks.
-   * @pre All key components and metadata come from the same successful Gen().
+   * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
    */
   void Prove(int4 sigma, int m_rt, __uint128_t b_size_rt,
@@ -346,7 +346,7 @@ public:
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four chain-proof blocks.
-   * @pre All key components and metadata come from the same successful Gen().
+   * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
    */
   void EvalAll(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
@@ -403,9 +403,9 @@ public:
       cuda::std::span<int4, 4> pi);
 
   /**
-   * Proof accumulation method for the split evaluation with the Merkle-fold proof.
+   * Proof accumulation method for the per-input evaluation with the Merkle-fold proof.
    *
-   * The split counterpart of BatchEvalMerkle(): folds the corrected per-point
+   * The per-input counterpart of BatchEvalMerkle(): folds the corrected per-point
    * hashes of Eval() with the same per-bucket and cross-bucket Merkle folds as
    * the fused path, in the order of the query sequence. With the same key and
    * the same query sequence, Eval() per input followed by ProveMerkle() gives
@@ -427,7 +427,7 @@ public:
    * @param proof_values proof_values[i] is the EvalProof returned by Eval() for
    * xs[i]. Entries for candidates outside the allocated buckets are not read.
    * @param pi Borrowed output storage for four proof blocks.
-   * @pre All key components and metadata come from the same successful Gen().
+   * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
    */
   void ProveMerkle(int4 sigma, int m_rt, __uint128_t b_size_rt,
@@ -448,7 +448,7 @@ public:
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four Merkle-proof blocks.
-   * @pre All key components and metadata come from the same successful Gen().
+   * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
    */
   void EvalAllMerkle(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
