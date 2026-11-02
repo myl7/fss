@@ -147,8 +147,7 @@ public:
    * stride of 1 stores the components contiguously.
    * @pre a is in [0, 2^in_bits).
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
@@ -188,8 +187,7 @@ public:
    * @return This party's XOR share of the predicate alpha <= x.
    * @pre x is in [0, 2^in_bits).
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre All accessed storage is accessible from the calling execution space.
    */
@@ -251,8 +249,7 @@ public:
    * Positive depths require backends that support concurrent calls.
    * @param stride Positive stride between correction entries.
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre The parity-tree element count and byte size fit size_t.
    * @post ParityTreeView{p} can be queried through Eval() and EvalAll().
@@ -357,8 +354,7 @@ public:
    * Positive depths require backends that support concurrent calls.
    * @param stride Positive stride between correction entries.
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre The output element count and byte size fit size_t.
    * @post ys[x] contains this party's XOR share of alpha <= x.
@@ -839,14 +835,9 @@ __host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::Eval(bool b, int4 s
     cuda::std::span<const int4> cws, In tr, In x, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // The empty path has no level and no control correction.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   return EvalCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, x);
 }
 
@@ -872,14 +863,9 @@ inline void GrottoDcf<in_bits, Prg, In>::Preprocess(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, bool p[], int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // The empty path has no level and no control correction.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   PreprocessCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, p, par_depth);
 }
 
@@ -948,14 +934,9 @@ inline void GrottoDcf<in_bits, Prg, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, bool ys[], int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // The empty path has no level and no control correction.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   EvalAllCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, ys, par_depth);
 }
 
@@ -1101,7 +1082,7 @@ __host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::PreprocessGpu(
   constexpr size_t kTreeSize = kLeaves + (kLeaves - 1);
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   if (!detail::FitsBinaryTree<bool, in_bits>() || stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
       cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
       tree.size() < kTreeSize || cws.data() == nullptr || tree.data() == nullptr)
     return cudaErrorInvalidValue;
@@ -1172,7 +1153,7 @@ __host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::EvalAllGpu(
   constexpr size_t kOutputs = size_t{1} << in_bits;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   if (!detail::FitsFullDomain<bool, in_bits>() || stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
       kOutputs > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
       cws.size() < static_cast<size_t>(in_bits) * stride + 1 || ys.size() < kOutputs ||
       cws.data() == nullptr || ys.data() == nullptr) return cudaErrorInvalidValue;
@@ -1247,14 +1228,9 @@ inline OwnedParityTree<GrottoDcf<in_bits, Prg, In>> GrottoDcf<in_bits, Prg, In>:
     bool b, int4 s0, cuda::std::span<const int4> cws, In tr, int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // The empty path has no level and no control correction.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   return PreprocessOwnedCorrections(b, s0,
       ComponentCorrections{cws.data(), tr, stride}, par_depth);
 }

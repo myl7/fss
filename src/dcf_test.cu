@@ -973,10 +973,8 @@ void CheckDcfSplitFromCwStorage(In alpha, int4 beta) {
 
 }  // namespace
 
-// in_bits 0 and 1 exercise the empty and single-level trees, 3 keeps the
-// recursive EvalTree() walk, and 6 and 8 run the batched EvalAll() frontier.
-TEST(DcfSplitCorrectionsTest, Depth0Lt) { CheckDcfSplitStrides<0, BytesGroup, uint8_t, fss::DcfPred::kLt>(0); }
-TEST(DcfSplitCorrectionsTest, Depth0Gt) { CheckDcfSplitStrides<0, BytesGroup, uint8_t, fss::DcfPred::kGt>(0); }
+// in_bits 1 exercises the single-level tree, 3 keeps the recursive EvalTree()
+// walk, and 6 and 8 run the batched EvalAll() frontier.
 TEST(DcfSplitCorrectionsTest, Depth1Lt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kLt>(1); }
 TEST(DcfSplitCorrectionsTest, Depth1Gt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kGt>(0); }
 TEST(DcfSplitCorrectionsTest, Depth3Uint127Lt) { CheckDcfSplitStrides<3, Uint127Group, uint8_t, fss::DcfPred::kLt>(5); }

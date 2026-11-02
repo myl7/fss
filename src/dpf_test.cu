@@ -901,7 +901,6 @@ std::vector<__uint128_t> WideComponentQueries(__uint128_t alpha) {
 }  // namespace
 
 TEST(DpfComponentEval, BytesDepths) {
-  CheckComponentEvalStrides<BytesGroup, 0, uint8_t>({0}, uint8_t{0}, kComponentBeta);
   CheckComponentEvalStrides<BytesGroup, 1, uint8_t>({0, 1}, uint8_t{1}, kComponentBeta);
   CheckComponentEvalStrides<BytesGroup, 3, uint8_t>({0, 1, 2, 3, 4, 5, 6, 7}, uint8_t{5},
       kComponentBeta);
@@ -949,50 +948,6 @@ TEST(DpfComponentEval, LargeStrideDepthOne) {
       EXPECT_EQ(memcmp(&aos, &got, sizeof(int4)), 0) << "party=" << party << " x=" << x;
     }
   }
-}
-
-TEST(DpfComponentEval, ZeroDepthTerminalConsumedByPartyOne) {
-  using Prg = fss::prg::ChaCha<2>;
-  using Scheme = fss::Dpf<0, BytesGroup, Prg, uint8_t>;
-  Scheme scheme{Prg(kNonce0, kNonce1)};
-  typename Scheme::Key k0, k1;
-  fss_test::GenPair(scheme, k0, k1, kComponentSeeds, uint8_t{0}, kComponentBeta);
-
-  const int4 terminal_a = k0.cws[0].s;
-  const int4 terminal_b = make_int4(terminal_a.x ^ 0x55, terminal_a.y ^ 0xaa,
-      terminal_a.z ^ 0x33, (terminal_a.w ^ 0x2) & ~1);
-  ASSERT_NE(memcmp(&terminal_a, &terminal_b, sizeof(int4)), 0);
-
-  auto direct = [&](int party, int4 terminal) {
-    const int4 s = party == 0 ? k0.s0 : k1.s0;
-    BytesGroup value = BytesGroup::From(fss::util::SetLsb(s, false));
-    if (party != 0) value = -(value + BytesGroup::From(terminal));
-    return value.Into();
-  };
-
-  const int4 terminals[2] = {terminal_a, terminal_b};
-  int4 outputs[2][2];
-  for (int t = 0; t < 2; ++t) {
-    typename Scheme::Cw one[1] = {{terminals[t], false}};
-    const int4 terminal_slot[1] = {terminals[t]};
-    const cuda::std::span<const int4> terminal_span(terminal_slot, 1);
-    for (int party = 0; party < 2; ++party) {
-      const bool is_party1 = party != 0;
-      const int4 s = is_party1 ? k1.s0 : k0.s0;
-      const int4 expected = direct(party, terminals[t]);
-      const int4 aos = scheme.Eval(is_party1, s, one, uint8_t{0});
-      const int4 got = scheme.Eval(is_party1, s, terminal_span, uint8_t{0xff}, uint8_t{0});
-      EXPECT_EQ(memcmp(&aos, &expected, sizeof(int4)), 0) << "AoS t=" << t << " party=" << party;
-      EXPECT_EQ(memcmp(&got, &expected, sizeof(int4)), 0)
-          << "component t=" << t << " party=" << party;
-      EXPECT_EQ(memcmp(&got, &aos, sizeof(int4)), 0);
-      outputs[t][party] = got;
-    }
-  }
-  EXPECT_NE(memcmp(&outputs[0][1], &outputs[1][1], sizeof(int4)), 0)
-      << "party 1 must consume the terminal correction";
-  EXPECT_EQ(memcmp(&outputs[0][0], &outputs[1][0], sizeof(int4)), 0)
-      << "party 0 does not consume the terminal correction";
 }
 
 TEST(DpfComponentEval, AsymmetricPackedRightControls) {
@@ -1122,7 +1077,7 @@ void CheckComponentEvalBackendCalls() {
     EXPECT_GE(counts.copies, 1);
     EXPECT_EQ(counts.live, 1);
 
-    constexpr uint8_t kX = bits == 0 ? 0 : 3;
+    constexpr uint8_t kX = 3;
     typename Scheme::Key k0, k1;
     fss_test::GenPair(scheme, k0, k1, kComponentSeeds, kX, kComponentBeta);
     EXPECT_EQ(counts.live, 1);
@@ -1166,8 +1121,6 @@ void CheckComponentEvalBackendCalls() {
 }  // namespace
 
 TEST(DpfComponentEval, BackendCallsSelectedAndFallback) {
-  CheckComponentEvalBackendCalls<true, 0>();
-  CheckComponentEvalBackendCalls<false, 0>();
   CheckComponentEvalBackendCalls<true, 5>();
   CheckComponentEvalBackendCalls<false, 5>();
 }
@@ -1175,23 +1128,12 @@ TEST(DpfComponentEval, BackendCallsSelectedAndFallback) {
 #ifndef NDEBUG
 TEST(DpfComponentEval, DebugRejectsInvalidComponentInputs) {
   using Prg = fss::prg::ChaCha<2>;
-  using Zero = fss::Dpf<0, BytesGroup, Prg, uint8_t>;
   using Three = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
-  Zero zero{Prg(kNonce0, kNonce1)};
   Three three{Prg(kNonce0, kNonce1)};
   const int4 seed = {1, 2, 3, 4};
-  const int4 odd_terminal = {5, 6, 7, 9};
-  const cuda::std::span<const int4> empty;
   int4 tiny[8] = {};
   const cuda::std::span<const int4> tiny_span(tiny);
-  const int4 odd_slot[1] = {odd_terminal};
-  const cuda::std::span<const int4> odd_span(odd_slot, 1);
 
-  EXPECT_DEATH((void)zero.Eval(false, seed, empty, uint8_t{0}, uint8_t{0}, size_t{0}),
-      "Assertion.*failed");
-  // in_bits == 0 still needs the terminal slot.
-  EXPECT_DEATH((void)zero.Eval(false, seed, empty, uint8_t{0}, uint8_t{0}),
-      "Assertion.*failed");
   EXPECT_DEATH((void)three.Eval(false, seed, tiny_span, uint8_t{0}, uint8_t{0}, size_t{0}),
       "Assertion.*failed");
   // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
@@ -1205,8 +1147,6 @@ TEST(DpfComponentEval, DebugRejectsInvalidComponentInputs) {
   const size_t overflowing_stride = (kMaxElements - 1) / 3 + 1;
   EXPECT_DEATH((void)three.Eval(false, seed, tiny_span, uint8_t{0}, uint8_t{0},
                     overflowing_stride),
-      "Assertion.*failed");
-  EXPECT_DEATH((void)zero.Eval(false, seed, odd_span, uint8_t{0}, uint8_t{0}),
       "Assertion.*failed");
 }
 #endif  // NDEBUG
@@ -1366,7 +1306,6 @@ TEST(DpfComponentEvalGpu, DeviceMatchesHostAos) {
   const __uint128_t alpha = (__uint128_t{1} << 127) | (__uint128_t{1} << 64) | 0x42;
   const std::vector<__uint128_t> wide = ComponentGpuDepth128Queries(alpha);
   for (const size_t stride : {size_t{1}, size_t{2}, size_t{7}}) {
-    CheckComponentEvalGpu<0, uint8_t>({0}, uint8_t{0}, kComponentBeta, stride);
     CheckComponentEvalGpu<1, uint8_t>({0, 1}, uint8_t{1}, kComponentBeta, stride);
     CheckComponentEvalGpu<3, uint8_t>({0, 5, 7}, uint8_t{5}, kComponentBeta, stride);
     CheckComponentEvalGpu<8, uint16_t>({0, 1, 165, 255}, uint16_t{165}, kComponentBeta, stride);
@@ -1838,7 +1777,7 @@ void CheckGenBackendCalls() {
     typename Scheme::Cw legacy[bits + 1];
     int4 fixed[bits + 1];
     std::vector<int4> strided(static_cast<size_t>(bits) * 2 + 1, kComponentSentinel);
-    const uint8_t alpha = bits == 0 ? 0 : 3;
+    const uint8_t alpha = 3;
     for (int method = 0; method < 3; ++method) {
       counts.ResetCalls();
       const int live_before = counts.live;
@@ -1886,7 +1825,6 @@ void CheckSingleGenCases(bool gpu) {
       kComponentBeta.w | 1);
   const __uint128_t alpha = (__uint128_t{1} << 127) | (__uint128_t{1} << 64) | 0x42;
   for (const size_t stride : {size_t{1}, size_t{2}, size_t{7}}) {
-    CheckSingleGenCase<BytesGroup, 0, uint8_t>(gpu, {0}, uint8_t{0}, beta, stride);
     CheckSingleGenCase<BytesGroup, 1, uint8_t>(gpu, {1, 0}, uint8_t{1}, beta, stride);
     CheckSingleGenCase<BytesGroup, 3, uint8_t>(gpu, {5, 4, 0, 7}, uint8_t{5}, beta, stride);
     CheckSingleGenCase<BytesGroup, 8, uint16_t>(gpu, {165, 164, 0, 255}, uint16_t{165},
@@ -1899,11 +1837,6 @@ void CheckSingleGenCases(bool gpu) {
 void CheckInterleavedGenCases(bool gpu) {
   const int4 betas[2] = {kComponentBeta, make_int4(kInterleavedBeta.x, kInterleavedBeta.y,
       kInterleavedBeta.z, kInterleavedBeta.w | 1)};
-  const uint8_t alphas0[2] = {0, 0};
-  const std::vector<uint8_t> q0 = {0};
-  const std::vector<uint8_t> queries0[2] = {q0, q0};
-  CheckGenSharedCase<2, BytesGroup, 0, uint8_t>(gpu, kInterleavedSeeds, alphas0, betas,
-      queries0, 3);
   const uint8_t alphas1[2] = {0, 1};
   const std::vector<uint8_t> q1 = {0, 1};
   const std::vector<uint8_t> queries1[2] = {q1, q1};
@@ -1955,8 +1888,6 @@ TEST(DpfComponentGen, InterleavedSharedStrideThree) {
 }
 
 TEST(DpfComponentGen, BackendCalls) {
-  CheckGenBackendCalls<true, 0>();
-  CheckGenBackendCalls<false, 0>();
   CheckGenBackendCalls<true, 5>();
   CheckGenBackendCalls<false, 5>();
 }
@@ -1964,11 +1895,9 @@ TEST(DpfComponentGen, BackendCalls) {
 #ifndef NDEBUG
 TEST(DpfComponentGen, DebugRejectsInvalidInputs) {
   using Prg = fss::prg::ChaCha<2>;
-  using Zero = fss::Dpf<0, BytesGroup, Prg, uint8_t>;
   using One = fss::Dpf<1, BytesGroup, Prg, uint8_t>;
   using Three = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
   using Wide = fss::Dpf<128, BytesGroup, Prg, __uint128_t>;
-  Zero zero{Prg(kNonce0, kNonce1)};
   One one{Prg(kNonce0, kNonce1)};
   Three three{Prg(kNonce0, kNonce1)};
   Wide wide{Prg(kNonce0, kNonce1)};
@@ -1977,15 +1906,10 @@ TEST(DpfComponentGen, DebugRejectsInvalidInputs) {
   int4 slot[4] = {kComponentSentinel, kComponentSentinel, kComponentSentinel,
       kComponentSentinel};
   const cuda::std::span<int4> one_slot(slot, 1);
-  const cuda::std::span<int4> empty;
   uint8_t tr8 = 0;
   __uint128_t tr128 = 0;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
-  EXPECT_DEATH(zero.Gen(one_slot, tr8, seed_span, uint8_t{0}, kComponentBeta, size_t{0}),
-      "Assertion.*failed");
   EXPECT_DEATH(three.Gen(one_slot, tr8, seed_span, uint8_t{0}, kComponentBeta, size_t{0}),
-      "Assertion.*failed");
-  EXPECT_DEATH(zero.Gen(empty, tr8, seed_span, uint8_t{0}, kComponentBeta, size_t{1}),
       "Assertion.*failed");
   EXPECT_DEATH(one.Gen(one_slot, tr8, seed_span, uint8_t{0}, kComponentBeta, size_t{1}),
       "Assertion.*failed");
@@ -2135,9 +2059,8 @@ void CheckDpfSplitStrides(In alpha) {
 
 }  // namespace
 
-// in_bits 0 and 1 exercise the empty and single-level trees, 3 keeps the
-// per-input EvalAll() path, and 6 and 8 run the batched EvalAll() frontier.
-TEST(DpfSplitCorrectionsTest, Depth0) { CheckDpfSplitStrides<0, BytesGroup, uint8_t>(0); }
+// in_bits 1 exercises the single-level tree, 3 keeps the per-input EvalAll()
+// path, and 6 and 8 run the batched EvalAll() frontier.
 TEST(DpfSplitCorrectionsTest, Depth1) { CheckDpfSplitStrides<1, BytesGroup, uint8_t>(1); }
 TEST(DpfSplitCorrectionsTest, Depth3) { CheckDpfSplitStrides<3, BytesGroup, uint8_t>(5); }
 TEST(DpfSplitCorrectionsTest, Depth6) { CheckDpfSplitStrides<6, BytesGroup, uint8_t>(43); }

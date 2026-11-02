@@ -28,6 +28,8 @@ inline constexpr size_t kDenseStride = 0;
 /**
  * Unsigned input storage wide enough for an input domain of in_bits bits.
  *
+ * in_bits must be at least 1: a zero-bit input domain has no inputs, so it is
+ * rejected instead of supported.
  * bool is excluded even though standard type traits classify it as unsigned.
  * __uint128_t is accepted explicitly because standard type traits do not
  * recognize it as unsigned in every compiler mode.
@@ -39,6 +41,7 @@ inline constexpr size_t kDenseStride = 0;
  */
 template <typename In, int in_bits>
 concept ValidForInputBits =
+    in_bits >= 1 &&
     !std::is_same_v<std::remove_cv_t<In>, bool> &&
     (std::is_unsigned_v<In> || std::is_same_v<In, __uint128_t>) &&
     in_bits <= sizeof(In) * 8;

@@ -191,8 +191,7 @@ public:
    * stride of 1 stores the components contiguously.
    * @pre a is in the input domain.
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws and vws have at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
@@ -233,8 +232,7 @@ public:
    * @param stride Positive element stride between layer entries.
    * @return This party's output share for the selected predicate.
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws and vws have at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
    * @pre vws[in_bits*stride].w & 1 == 0.
    * @pre All accessed storage is accessible from the calling execution space.
@@ -288,8 +286,7 @@ public:
    * @param stride Positive element stride between layer entries.
    * @pre first <= last and both endpoints are in the input domain.
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws and vws have at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
    * @pre vws[in_bits*stride].w & 1 == 0.
    * @pre The interval's output count and byte size fit size_t, and ys has at
@@ -333,8 +330,7 @@ public:
    * Positive depths require backends that support concurrent calls.
    * @param stride Positive element stride between layer entries.
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws and vws have at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
    * @pre vws[in_bits*stride].w & 1 == 0.
    * @pre The output element count and byte size fit size_t, and ys is allocated.
@@ -939,14 +935,9 @@ inline __host__ __device__ void Dcf<in_bits, Group, Prg, In, pred>::Gen(
     cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    // The empty tree writes only the two terminal slots.
-    assert(cws.size() >= 1 && vws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required && vws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required && vws.size() >= required);
   Generate(ComponentWriter{cws.data(), vws.data(), stride, tr}, s0s.data(), a, b_buf);
 }
 
@@ -1057,14 +1048,9 @@ inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::Eval(
     In tr, In x, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    // The empty path reads only the two terminal slots.
-    assert(cws.size() >= 1 && vws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required && vws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required && vws.size() >= required);
   return EvalWalk(b, s0, ComponentCorrections{cws.data(), vws.data(), tr, stride}, x);
 }
 
@@ -1145,14 +1131,9 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRange(bool b, In first, In l
     cuda::std::span<int4> ys, int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    // The empty tree reads only the two terminal slots.
-    assert(cws.size() >= 1 && vws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required && vws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required && vws.size() >= required);
   EvalRangeCorrections(b, first, last, s0,
       ComponentCorrections{cws.data(), vws.data(), tr, stride}, ys, par_depth);
 }
@@ -1232,14 +1213,9 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAll(bool b, int4 s0,
     int4 ys[], int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    // The empty tree reads only the two terminal slots.
-    assert(cws.size() >= 1 && vws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required && vws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required && vws.size() >= required);
   EvalAllCorrections(b, s0, ComponentCorrections{cws.data(), vws.data(), tr, stride}, ys, par_depth);
 }
 
@@ -1751,7 +1727,7 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalRangeGpu(
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   size_t count;
   if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) || stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
       cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
       vws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
       cws.data() == nullptr || vws.data() == nullptr || ys.data() == nullptr)
@@ -1802,7 +1778,7 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalAllGpu(
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   if (stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)))
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)))
     return cudaErrorInvalidValue;
   const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   if (cws.size() < required || vws.size() < required || ys.size() < kOutputsPerKey ||
@@ -1844,7 +1820,7 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalAllGpuBatch(
     return cudaErrorInvalidValue;
   // kDenseStride resolves to the key count, which is the dense level-major layout.
   const size_t resolved_stride = stride == kDenseStride ? key_count : stride;
-  if (in_bits > 0 && resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(in_bits))
+  if (resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(in_bits))
     return cudaErrorInvalidValue;
   const size_t required = static_cast<size_t>(in_bits) * resolved_stride + key_count;
   if (cws.size() < required || vws.size() < required || tr.size() < key_count ||

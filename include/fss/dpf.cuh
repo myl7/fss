@@ -166,8 +166,7 @@ public:
    * @param stride Positive element stride between component entries.
    * @pre a is in [0, 2^in_bits).
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
@@ -207,8 +206,7 @@ public:
    * @return This party's output share.
    * @pre x is in [0, 2^in_bits).
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre cws[in_bits*stride].w & 1 == 0.
    * @pre All accessed storage is accessible from the calling execution space.
@@ -258,8 +256,7 @@ public:
    * @param stride Positive element stride between component entries.
    * @pre first <= last and both endpoints are in [0, 2^in_bits).
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre cws[in_bits*stride].w & 1 == 0.
    * @pre cws and ys.data() are nonnull and refer to accessible host storage.
@@ -305,8 +302,7 @@ public:
    * @param stride Positive element stride between component entries.
    * @pre The output element count and byte size fit size_t.
    * @pre stride > 0.
-   * @pre For in_bits == 0, cws has at least one element.
-   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre cws[in_bits*stride].w & 1 == 0.
    * @post ys[x] contains this party's output share for x.
@@ -954,13 +950,9 @@ __host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Gen(
     In a, int4 b_buf, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    assert(cws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   Generate(ComponentWriter{cws.data(), stride, tr}, s0s.data(), a, b_buf);
 }
 
@@ -1045,14 +1037,9 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(bool b, int4 
     cuda::std::span<const int4> cws, In tr, In x, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    // The empty path reads only the terminal.
-    assert(cws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   return EvalCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, x);
 }
 
@@ -1085,14 +1072,9 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalRange(bool b, In first, In last,
     int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    // The empty tree reads only the terminal.
-    assert(cws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   assert(cws.data() != nullptr);
   EvalRangeCorrections(b, first, last, s0, ComponentCorrections{cws.data(), tr, stride},
       ys, par_depth);
@@ -1179,14 +1161,9 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, int4 ys[], int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits == 0) {
-    // The empty tree reads only the terminal.
-    assert(cws.size() >= 1);
-  } else {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   EvalAllCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, ys, par_depth);
 }
 
@@ -1550,7 +1527,7 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalRangeGpu(
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   size_t count;
   if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) || stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
       cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
       cws.data() == nullptr || ys.data() == nullptr)
     return cudaErrorInvalidValue;
@@ -1600,7 +1577,7 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpu(
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   if (stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)))
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)))
     return cudaErrorInvalidValue;
   const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   if (cws.size() < required || ys.size() < kOutputsPerKey ||
@@ -1642,7 +1619,7 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpuBatch(
     return cudaErrorInvalidValue;
   // kDenseStride resolves to the key count, which is the dense level-major layout.
   const size_t resolved_stride = stride == kDenseStride ? key_count : stride;
-  if (in_bits > 0 && resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(in_bits))
+  if (resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(in_bits))
     return cudaErrorInvalidValue;
   const size_t required = static_cast<size_t>(in_bits) * resolved_stride + key_count;
   if (cws.size() < required || tr.size() < key_count ||
