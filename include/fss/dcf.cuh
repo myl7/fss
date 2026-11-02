@@ -798,8 +798,15 @@ __global__ void DcfEvalRangeKernel(bool b, int4 s0,
     int depth, int frontier, int root, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
   const auto *cws = static_cast<const typename Scheme::Cw *>(cws_buf);
+  using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   __shared__ int4 states[threads_per_block];
   __shared__ typename DcfGpuSchemeTraits<Scheme>::GroupType values[threads_per_block];
+  // A function-scope __shared__ array with a user-provided default constructor
+  // is not initialized by the compiler, so fill it with the group identity.
+  for (int i = static_cast<int>(threadIdx.x); i < threads_per_block; i += static_cast<int>(blockDim.x))
+    values[i] = Group{};
+  // The initialization must complete before the traversal writes or reads the array.
+  __syncthreads();
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   DcfMemberEvalAllBlock<Scheme, 0, 0, true>(b, s0, cws, ys, prg,
       blockIdx.x, thread_index, states, values, first, depth, frontier, root);
@@ -815,6 +822,12 @@ __global__ void DcfMemberEvalAllKernel(bool b, int4 s0,
   constexpr int kBlockWidth = 1 << (frontier_depth - block_root_depth);
   __shared__ int4 shared_states[kBlockWidth];
   __shared__ Group shared_values[kBlockWidth];
+  // A function-scope __shared__ array with a user-provided default constructor
+  // is not initialized by the compiler, so fill it with the group identity.
+  for (int i = static_cast<int>(threadIdx.x); i < kBlockWidth; i += static_cast<int>(blockDim.x))
+    shared_values[i] = Group{};
+  // The initialization must complete before the traversal writes or reads the array.
+  __syncthreads();
   const int subtree_block_index = blockIdx.x;
   const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
   DcfMemberEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0,
@@ -838,6 +851,12 @@ __global__ void DcfMemberEvalAllBatchKernel(bool b, const int4 *s0s,
   int4 *key_outputs = ys + static_cast<size_t>(key_index) * (size_t{1} << kInputBits);
   __shared__ int4 shared_states[kBlockWidth];
   __shared__ Group shared_values[kBlockWidth];
+  // A function-scope __shared__ array with a user-provided default constructor
+  // is not initialized by the compiler, so fill it with the group identity.
+  for (int i = static_cast<int>(threadIdx.x); i < kBlockWidth; i += static_cast<int>(blockDim.x))
+    shared_values[i] = Group{};
+  // The initialization must complete before the traversal writes or reads the array.
+  __syncthreads();
   DcfMemberEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
       key_cws, key_outputs, prg, subtree_block_index, thread_index, shared_states, shared_values);
 }
@@ -856,8 +875,15 @@ __global__ void DcfSplitEvalRangeKernel(bool b, int4 s0,
       typename DcfGpuSchemeTraits<Scheme>::InputType, DcfGpuSchemeTraits<Scheme>::kInputBits>;
   const auto *cws = static_cast<const int4 *>(cws_buf);
   const auto *vws = static_cast<const int4 *>(vws_buf);
+  using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   __shared__ int4 states[threads_per_block];
   __shared__ typename DcfGpuSchemeTraits<Scheme>::GroupType values[threads_per_block];
+  // A function-scope __shared__ array with a user-provided default constructor
+  // is not initialized by the compiler, so fill it with the group identity.
+  for (int i = static_cast<int>(threadIdx.x); i < threads_per_block; i += static_cast<int>(blockDim.x))
+    values[i] = Group{};
+  // The initialization must complete before the traversal writes or reads the array.
+  __syncthreads();
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   DcfMemberEvalAllBlock<Scheme, 0, 0, true>(b, s0, Cws{cws, vws, tr, stride},
       ys, prg, blockIdx.x, thread_index, states, values, first, depth, frontier, root);
@@ -877,6 +903,12 @@ __global__ void DcfSplitMemberEvalAllKernel(bool b, int4 s0,
   constexpr int kBlockWidth = 1 << (frontier_depth - block_root_depth);
   __shared__ int4 shared_states[kBlockWidth];
   __shared__ Group shared_values[kBlockWidth];
+  // A function-scope __shared__ array with a user-provided default constructor
+  // is not initialized by the compiler, so fill it with the group identity.
+  for (int i = static_cast<int>(threadIdx.x); i < kBlockWidth; i += static_cast<int>(blockDim.x))
+    shared_values[i] = Group{};
+  // The initialization must complete before the traversal writes or reads the array.
+  __syncthreads();
   const int subtree_block_index = blockIdx.x;
   const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
   DcfMemberEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0,
@@ -904,6 +936,12 @@ __global__ void DcfSplitMemberEvalAllBatchKernel(bool b, const int4 *s0s,
   int4 *key_outputs = ys + static_cast<size_t>(key_index) * (size_t{1} << kInputBits);
   __shared__ int4 shared_states[kBlockWidth];
   __shared__ Group shared_values[kBlockWidth];
+  // A function-scope __shared__ array with a user-provided default constructor
+  // is not initialized by the compiler, so fill it with the group identity.
+  for (int i = static_cast<int>(threadIdx.x); i < kBlockWidth; i += static_cast<int>(blockDim.x))
+    shared_values[i] = Group{};
+  // The initialization must complete before the traversal writes or reads the array.
+  __syncthreads();
   DcfMemberEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
       Cws{cws + key_index, vws + key_index, trs[key_index], stride},
       key_outputs, prg, subtree_block_index, thread_index, shared_states, shared_values);
