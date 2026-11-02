@@ -52,9 +52,7 @@ struct HalfTreeDpfCwsView {
 
   __host__ __device__ inline Cw operator[](int l) const {
     const int4 s_cw = cws[static_cast<size_t>(l) * stride];
-    if constexpr (in_bits >= 1) {
-      if (l == in_bits - 1) return Cw{s_cw, ((packed_tr >> (in_bits - 1)) & 1) != 0};
-    }
+    if (l == in_bits - 1) return Cw{s_cw, ((packed_tr >> (in_bits - 1)) & 1) != 0};
     return Cw{s_cw, false};
   }
 };
@@ -883,14 +881,9 @@ __host__ __device__ inline void HalfTreeDpf<in_bits, Group, Hash, In>::Gen(
     In a, int4 b_buf, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // This branch keeps the guard free of a division by zero.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   Generate(CwsWriter{cws.data(), stride, tr}, s0s.data(), a, b_buf);
 }
 
@@ -1018,14 +1011,9 @@ __host__ __device__ inline int4 HalfTreeDpf<in_bits, Group, Hash, In>::Eval(
     bool b, int4 s0, cuda::std::span<const int4> cws, In tr, In x, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // This branch keeps the guard free of a division by zero.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
   assert((terminal.w & 1) == 0);
   return EvalWalk(b, s0, CwsView{cws.data(), tr, stride}, x);
@@ -1066,14 +1054,9 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, int4 ys[], int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // This branch keeps the guard free of a division by zero.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
   assert((terminal.w & 1) == 0);
   EvalAllCws(b, s0, CwsView{cws.data(), tr, stride}, ys, par_depth);
@@ -1138,14 +1121,9 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalRange(bool b, In first, I
     int par_depth, size_t stride) {
   assert(stride > 0);
   [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  if constexpr (in_bits >= 1) {
-    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-    assert(cws.size() >= required);
-  } else {
-    // This branch keeps the guard free of a division by zero.
-    assert(cws.size() >= 1);
-  }
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
   assert(cws.data() != nullptr);
   assert(ys.data() != nullptr);
   const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
@@ -1425,7 +1403,6 @@ struct HalfTreeDpf<in_bits, Group, Hash, In>::GpuLaunchShape {
   static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
       "gpu block size must be a power of two in [1,1024]");
-  static_assert(in_bits - 1 >= 0, "gpu tree must have a nonnegative expansion depth");
   static constexpr int kFrontierDepth = frontier_depth < in_bits - 1 ? frontier_depth : in_bits - 1;
   static_assert(in_bits - kFrontierDepth <= 8,
       "gpu frontier leaves more than eight tail levels; specify a larger frontier_depth");
@@ -1506,7 +1483,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   size_t count;
   if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) || stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
       cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
       cws.data() == nullptr || ys.data() == nullptr)
     return cudaErrorInvalidValue;
@@ -1584,7 +1561,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpu(
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   if (stride == 0 ||
-      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)))
+      (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)))
     return cudaErrorInvalidValue;
   const size_t required = static_cast<size_t>(in_bits) * stride + 1;
   if (cws.size() < required || ys.size() < kOutputsPerKey ||
@@ -1662,7 +1639,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpuBat
     return cudaErrorInvalidValue;
   // kDenseStride resolves to the key count, which is the dense level-major layout.
   const size_t resolved_stride = stride == kDenseStride ? key_count : stride;
-  if (in_bits > 0 && resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(in_bits))
+  if (resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(in_bits))
     return cudaErrorInvalidValue;
   const size_t required = static_cast<size_t>(in_bits) * resolved_stride + key_count;
   if (cws.size() < required || tr.size() < key_count || ys.size() < key_count * kOutputsPerKey ||
