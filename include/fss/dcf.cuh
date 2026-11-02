@@ -320,6 +320,14 @@ private:
 
 namespace gpu::detail {
 
+// Hold the scheme behind a tag so wide Group non-type template parameters stay
+// out of CUDA host stub signatures.
+template <int n, typename GroupTag, typename Prg, typename In, DcfPred pred>
+struct DcfGpuKernelDescriptor {
+  using Scheme = Dcf<n, typename GroupTag::type, Prg, In, pred>;
+  using Backend = Prg;
+};
+
 template <typename Scheme>
 struct DcfGpuSchemeTraits;
 
@@ -466,10 +474,12 @@ __device__ __forceinline__ void DcfMemberEvalAllBlock(bool b, int4 s0,
   }
 }
 
-template <typename Scheme, int threads_per_block>
+template <typename Descriptor, int threads_per_block>
 __global__ void DcfEvalRangeKernel(bool b, int4 s0,
-    const typename Scheme::Cw *cws, int4 *ys, __uint128_t first,
-    int depth, int frontier, int root, typename DcfGpuSchemeTraits<Scheme>::Backend prg) {
+    const void *corrections, int4 *ys, __uint128_t first,
+    int depth, int frontier, int root, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   __shared__ int4 states[threads_per_block];
   __shared__ typename DcfGpuSchemeTraits<Scheme>::GroupType values[threads_per_block];
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -477,10 +487,12 @@ __global__ void DcfEvalRangeKernel(bool b, int4 s0,
       blockIdx.x, thread_index, states, values, first, depth, frontier, root);
 }
 
-template <typename Scheme, int frontier_depth, int block_root_depth>
+template <typename Descriptor, int frontier_depth, int block_root_depth>
 __global__ void DcfMemberEvalAllKernel(bool b, int4 s0,
-    const typename Scheme::Cw *cws, int4 *ys,
-    typename DcfGpuSchemeTraits<Scheme>::Backend prg) {
+    const void *corrections, int4 *ys,
+    typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   constexpr int kBlockWidth = 1 << (frontier_depth - block_root_depth);
   __shared__ int4 shared_states[kBlockWidth];
@@ -491,10 +503,12 @@ __global__ void DcfMemberEvalAllKernel(bool b, int4 s0,
       cws, ys, prg, subtree_block_index, thread_index, shared_states, shared_values);
 }
 
-template <typename Scheme, int frontier_depth, int block_root_depth>
+template <typename Descriptor, int frontier_depth, int block_root_depth>
 __global__ void DcfMemberEvalAllBatchKernel(bool b, const int4 *s0s,
-    const typename Scheme::Cw *cws, int4 *ys,
-    typename DcfGpuSchemeTraits<Scheme>::Backend prg) {
+    const void *corrections, int4 *ys,
+    typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   constexpr int kInputBits = DcfGpuSchemeTraits<Scheme>::kInputBits;
   constexpr int kBlocksPerKey = 1 << block_root_depth;
@@ -1115,6 +1129,8 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalRangeGpu(
     bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
     cuda::std::span<int4> ys, cudaStream_t stream) const {
 #if defined(__CUDACC__)
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
@@ -1143,7 +1159,7 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalRangeGpu(
         size_t blocks = size_t{1} << root;
         if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
           return cudaErrorInvalidConfiguration;
-        gpu::detail::DcfEvalRangeKernel<Dcf, threads_per_block>
+        gpu::detail::DcfEvalRangeKernel<Descriptor, threads_per_block>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), ys.data() + offset,
                 chunk_first, depth, frontier, root, prg_);
         return cudaGetLastError();
@@ -1164,11 +1180,13 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalAllGpu(
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   if (cws.size() < in_bits + 1 || ys.size() < kOutputsPerKey ||
       cws.data() == nullptr || ys.data() == nullptr ||
       kOutputsPerKey > std::numeric_limits<size_t>::max() / sizeof(int4)) return cudaErrorInvalidValue;
-  gpu::detail::DcfMemberEvalAllKernel<Dcf, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::DcfMemberEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(b, s0, cws.data(), ys.data(), prg_);
   return cudaGetLastError();
 #else
@@ -1187,6 +1205,8 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalAllGpuBatch(
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kCorrectionsPerKey = in_bits + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
@@ -1197,7 +1217,7 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalAllGpuBatch(
       s0s.data() == nullptr || cws.data() == nullptr || ys.data() == nullptr) return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
     return cudaErrorInvalidConfiguration;
-  gpu::detail::DcfMemberEvalAllBatchKernel<Dcf, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::DcfMemberEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0s.data(), cws.data(), ys.data(), prg_);
   return cudaGetLastError();

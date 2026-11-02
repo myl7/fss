@@ -284,12 +284,24 @@ private:
 
 namespace gpu::detail {
 
+// Hold the merge group and backends behind a descriptor so wide Group
+// non-type template parameters stay out of CUDA host stub signatures.
+template <typename GroupTag, typename Prp, typename In>
+struct DmpfMergeGpuKernelDescriptor {
+  using Group = typename GroupTag::type;
+  using PrpBackend = Prp;
+  using InputType = In;
+};
+
 #if defined(__CUDACC__)
 
 // Each domain input gathers the three PRP-selected inner DPF outputs.
-template <int in_bits, int bucket_bits, typename Group, typename Prp, typename In>
+template <int in_bits, int bucket_bits, typename Descriptor>
 __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int active_buckets,
-    __uint128_t bucket_size, const int4 *bucket_ys, Prp prp) {
+    __uint128_t bucket_size, const int4 *bucket_ys, typename Descriptor::PrpBackend prp) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
+  using Prp = typename Descriptor::PrpBackend;
   constexpr size_t kOutputs = size_t{1} << in_bits;
   const size_t input_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (input_index >= kOutputs) return;
@@ -548,6 +560,8 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   requires(in_bits <= 38 && in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable");
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DmpfMergeGpuKernelDescriptor<GroupTag, Prp, In>;
   constexpr size_t kOutputs = size_t{1} << in_bits;
   constexpr size_t kBucketOutputs = size_t{1} << bucket_bits;
   constexpr size_t kCorrectionsPerBucket = bucket_bits + 1;
@@ -579,7 +593,7 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
       s0s.first(bucket_count), cws.first(bucket_count * kCorrectionsPerBucket),
       cuda::std::span<int4>(bucket_ys, bucket_count * kBucketOutputs), stream);
   if (status != cudaSuccess) return status;
-  gpu::detail::DmpfMergeKernel<in_bits, bucket_bits, Group, Prp, In>
+  gpu::detail::DmpfMergeKernel<in_bits, bucket_bits, Descriptor>
       <<<kMergeBlocks, kMergeThreads, 0, stream>>>(ys.data(), sigma, active_buckets,
           bucket_size, bucket_ys, prp_);
   return gpu::detail::ReleaseScratch(cudaGetLastError(), {&bucket_storage});

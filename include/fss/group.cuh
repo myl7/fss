@@ -52,3 +52,16 @@ concept Groupable = std::is_default_constructible_v<Group> && requires(Group lhs
   { Group::From(buf) } -> std::same_as<Group>;
   { lhs.Into() } -> std::same_as<int4>;
 };
+
+// -----------------------------------------------------------------------------
+
+namespace fss::detail {
+
+// Maps a group to the type used as its kernel launch tag.
+// Defaults to identity; built-in Uint specializations keep large NTTPs out of NVCC host stubs.
+template <typename Group>
+struct GpuGroupTag {
+  using Type = std::type_identity<Group>;
+};
+
+}  // namespace fss::detail

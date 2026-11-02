@@ -8,9 +8,16 @@ namespace fss::python {
 namespace {
 using Proof = cuda::std::array<int4, 4>;
 
-template <typename S>
-__global__ void EvalKernel(S *scheme, bool b, const int4 *seed,
-    const typename S::Cw *cws, const int4 *cs, InType x, int4 *y, Proof *pi) {
+// Host-only descriptor selection keeps the wide Group tag out of the stub.
+using VdpfLaunchDescriptor = fss::gpu::detail::VdpfGpuKernelDescriptor<kInBits,
+    typename fss::detail::GpuGroupTag<GroupType>::Type, PrgType, XorHashType, HashType, InType>;
+
+template <typename Descriptor>
+__global__ void EvalKernel(void *scheme_storage, bool b, const int4 *seed,
+    const void *cws_storage, const int4 *cs, InType x, int4 *y, Proof *pi) {
+  using S = typename Descriptor::Scheme;
+  S *scheme = static_cast<S *>(scheme_storage);
+  const typename S::Cw *cws = static_cast<const typename S::Cw *>(cws_storage);
   *pi = scheme->Eval(b, *seed, {cws, kInBits + 1}, cuda::std::span<const int4,4>(cs,4), x, *y);
 }
 
@@ -55,7 +62,8 @@ Tensor Eval(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
       {words, kInBits + 1}, cuda::std::span<const int4,4>(ConstBlocks(cs),4), input, *Blocks(y));
   else if constexpr (kGpuSupported) {
     c10::cuda::CUDAGuard guard(y.device()); auto stream = CurrentStream();
-    EvalKernel<S><<<1, 1, 0, stream>>>(state.template Device<kGpuSupported, S>(stream), b, ConstBlocks(seed),
+    EvalKernel<VdpfLaunchDescriptor><<<1, 1, 0, stream>>>(
+        state.template Device<kGpuSupported, S>(stream), b, ConstBlocks(seed),
         words, ConstBlocks(cs), input, Blocks(y), proof);
     CheckCuda(cudaGetLastError()); state.RecordUse(stream);
     RecordTensors({seed, cws, cs, y, pi}, stream);

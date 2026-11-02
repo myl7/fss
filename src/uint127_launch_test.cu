@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: Apache-2.0
+// Compile-only regression for the wide Uint127 Group in CUDA host stubs.
+// Each function instantiates a fixed public GPU entry point; no main() and no
+// GPU work. Built as an object target under BUILD_TESTING.
+
+// SPDX-License-Identifier: Apache-2.0
+
+
+#include <cstdint>
+#include <cuda_runtime.h>
+#include <cuda/std/span>
+#include <fss/dcf.cuh>
+#include <fss/dmpf.cuh>
+#include <fss/dpf.cuh>
+#include <fss/group/uint.cuh>
+#include <fss/half_tree_dpf.cuh>
+#include <fss/hash/blake3.cuh>
+#include <fss/prg/chacha.cuh>
+#include <fss/prp/chacha_feistel.cuh>
+#include <fss/vdpf.cuh>
+#include <fss/vdmpf.cuh>
+
+namespace probe {
+
+// The wide Group under audit.
+using Uint127 = fss::group::Uint<__uint128_t, static_cast<__uint128_t>(1) << 127>;
+
+// Minimal CCR hash. Probes only need the expression shape for constraints.
+struct CcrHash {
+  __host__ __device__ int4 Hash(int4 block) const { return block; }
+};
+
+using DpfPrg = fss::prg::ChaCha<2>;
+using DcfPrg = fss::prg::ChaCha<4>;
+using Prp = fss::prp::ChaChaFeistel;
+using Hash = fss::hash::Blake3;
+
+using DpfScheme = fss::Dpf<8, Uint127, DpfPrg, uint32_t>;
+using DcfScheme = fss::Dcf<8, Uint127, DcfPrg, uint32_t, fss::DcfPred::kLt>;
+using HalfTreeScheme = fss::HalfTreeDpf<8, Uint127, CcrHash, uint32_t>;
+using VdpfScheme = fss::Vdpf<8, Uint127, DpfPrg, Hash, Hash, uint32_t>;
+using DmpfScheme = fss::Dmpf<8, 30, 4, Uint127, DpfPrg, Prp, uint32_t>;
+using VdmpfScheme = fss::Vdmpf<8, 30, 4, Uint127, DpfPrg, Hash, Hash, Prp, uint16_t>;
+
+}  // namespace probe
+#include <fss/repack_gpu.cuh>
+
+namespace {
+
+void ProbeDpfEvalAllGpu(const probe::DpfScheme &scheme, const probe::DpfScheme::Cw *cws, int4 *ys) {
+  (void)scheme.template EvalAllGpu<8, 256>(false, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::DpfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeDpfEvalAllGpuBatch(const probe::DpfScheme &scheme, const int4 *s0s, const probe::DpfScheme::Cw *cws,
+    int4 *ys) {
+  (void)scheme.template EvalAllGpuBatch<8, 256>(false, cuda::std::span<const int4>(s0s, 1),
+      cuda::std::span<const probe::DpfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeDpfEvalRangeGpu(const probe::DpfScheme &scheme, const probe::DpfScheme::Cw *cws, int4 *ys) {
+  (void)scheme.template EvalRangeGpu<8, 256>(false, uint32_t{0}, uint32_t{255}, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::DpfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeDpfEvalPointGpu(const probe::DpfScheme &scheme, const int4 *seeds, const int4 *cw_s, const uint32_t *extra,
+    const int4 *out_cw, const uint32_t *xs, int4 *ys) {
+  fss::gpu::detail::DpfEvalPointGpu<4>(false, seeds, cw_s, extra, out_cw, xs, ys, 1, scheme);
+}
+
+void ProbeDpfRepackFamily(const probe::DpfScheme::Cw *cws, int4 *cw_s, uint32_t *extra, int4 *out_cw) {
+  fss::gpu::detail::DpfRepackGpu<8, probe::Uint127, probe::DpfPrg, uint32_t>(cws, 1, cw_s, extra, out_cw);
+}
+
+void ProbeRepackGpuDpf(const probe::DpfScheme::Cw *words, int4 *cw_s, uint32_t *control, int4 *terminal) {
+  fss::gpu::RepackGpu<probe::DpfScheme>(cuda::std::span<const probe::DpfScheme::Cw>(words, 9), 1,
+      cuda::std::span<int4>(cw_s, 8), cuda::std::span<uint32_t>(control, 1), cuda::std::span<int4>(terminal, 1));
+}
+
+void ProbeDcfEvalAllGpu(const probe::DcfScheme &scheme, const probe::DcfScheme::Cw *cws, int4 *ys) {
+  (void)scheme.template EvalAllGpu<8, 256>(false, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::DcfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeDcfEvalAllGpuBatch(const probe::DcfScheme &scheme, const int4 *s0s, const probe::DcfScheme::Cw *cws,
+    int4 *ys) {
+  (void)scheme.template EvalAllGpuBatch<8, 256>(false, cuda::std::span<const int4>(s0s, 1),
+      cuda::std::span<const probe::DcfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeDcfEvalRangeGpu(const probe::DcfScheme &scheme, const probe::DcfScheme::Cw *cws, int4 *ys) {
+  (void)scheme.template EvalRangeGpu<8, 256>(false, uint32_t{0}, uint32_t{255}, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::DcfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeDcfEvalPointGpu(const probe::DcfScheme &scheme, const int4 *seeds, const int4 *cw_s, const int4 *cw_v,
+    const int4 *out_cw, const uint32_t *xs, int4 *ys) {
+  fss::gpu::detail::DcfEvalPointGpu<4>(false, seeds, cw_s, cw_v, out_cw, xs, ys, 1, scheme);
+}
+
+void ProbeDcfRepackFamily(const probe::DcfScheme::Cw *cws, int4 *cw_s, int4 *cw_v, int4 *out_cw) {
+  fss::gpu::detail::DcfRepackGpu<8, probe::Uint127, probe::DcfPrg, uint32_t>(cws, 1, cw_s, cw_v, out_cw);
+}
+
+void ProbeRepackGpuDcf(const probe::DcfScheme::Cw *words, int4 *cw_s, int4 *cw_v, int4 *terminal) {
+  fss::gpu::RepackGpu<probe::DcfScheme>(cuda::std::span<const probe::DcfScheme::Cw>(words, 9), 1,
+      cuda::std::span<int4>(cw_s, 8), cuda::std::span<int4>(cw_v, 8), cuda::std::span<int4>(terminal, 1));
+}
+
+void ProbeHalfTreeEvalAllGpu(const probe::HalfTreeScheme &scheme, const probe::HalfTreeScheme::Cw *cws, int4 *ys) {
+  (void)scheme.template EvalAllGpu<8, 256>(false, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::HalfTreeScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeHalfTreeEvalAllGpuBatch(const probe::HalfTreeScheme &scheme, const int4 *s0s,
+    const probe::HalfTreeScheme::Cw *cws, int4 *ys) {
+  (void)scheme.template EvalAllGpuBatch<8, 256>(false, cuda::std::span<const int4>(s0s, 1),
+      cuda::std::span<const probe::HalfTreeScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeHalfTreeEvalRangeGpu(const probe::HalfTreeScheme &scheme, const probe::HalfTreeScheme::Cw *cws, int4 *ys) {
+  (void)scheme.template EvalRangeGpu<8, 256>(false, uint32_t{0}, uint32_t{255}, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::HalfTreeScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeHalfTreeEvalPointGpu(const probe::HalfTreeScheme &scheme, const int4 *seeds, const int4 *cw_s,
+    const uint32_t *extra, const int4 *ocws, const uint32_t *xs, int4 *ys) {
+  fss::gpu::detail::HalfTreeDpfEvalPointGpu<4>(false, seeds, cw_s, extra, ocws, xs, ys, 1, scheme);
+}
+
+void ProbeHalfTreeRepackFamily(const probe::HalfTreeScheme::Cw *cws, int4 *cw_s, uint32_t *extra, int4 *terminal) {
+  fss::gpu::detail::HalfTreeDpfRepackGpu<8, probe::Uint127, probe::CcrHash, uint32_t>(cws, 1, cw_s, extra, terminal);
+}
+
+void ProbeRepackGpuHalfTree(const probe::HalfTreeScheme::Cw *words, int4 *cw_s, uint32_t *control, int4 *terminal) {
+  fss::gpu::RepackGpu<probe::HalfTreeScheme>(cuda::std::span<const probe::HalfTreeScheme::Cw>(words, 9), 1,
+      cuda::std::span<int4>(cw_s, 8), cuda::std::span<uint32_t>(control, 1), cuda::std::span<int4>(terminal, 1));
+}
+
+void ProbeVdpfEvalAllMerkleGpu(const probe::VdpfScheme &scheme, const probe::VdpfScheme::Cw *cws, const int4 *cs,
+    int4 *ys, int4 *pi) {
+  (void)scheme.template EvalAllMerkleGpu<8, 256>(false, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::VdpfScheme::Cw>(cws, 9), cuda::std::span<const int4, 4>(cs, 4),
+      cuda::std::span<int4>(ys, 256), cuda::std::span<int4, 4>(pi, 4));
+}
+
+void ProbeVdpfEvalRangeMerkleGpu(const probe::VdpfScheme &scheme, const probe::VdpfScheme::Cw *cws, const int4 *cs,
+    int4 *ys, int4 *pi) {
+  (void)scheme.template EvalRangeMerkleGpu<8, 256>(false, uint32_t{0}, uint32_t{255}, int4{0, 0, 0, 0},
+      cuda::std::span<const probe::VdpfScheme::Cw>(cws, 9), cuda::std::span<const int4, 4>(cs, 4),
+      cuda::std::span<int4>(ys, 256), cuda::std::span<int4, 4>(pi, 4));
+}
+
+void ProbeVdpfEvalPointGpu(const probe::VdpfScheme &scheme, const int4 *seeds, const int4 *cw_s,
+    const uint32_t *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const uint32_t *xs, int4 *ys,
+    cuda::std::array<int4, 4> *pi) {
+  fss::gpu::detail::VdpfEvalPointGpu<4>(false, seeds, cw_s, extra, cs, ocws, xs, ys, pi, 1, scheme);
+}
+
+void ProbeVdpfRepackFamily(const probe::VdpfScheme::Cw *cws, int4 *cw_s, uint32_t *extra, int4 *terminal) {
+  fss::gpu::detail::VdpfRepackGpu<8, probe::Uint127, probe::DpfPrg, probe::Hash, probe::Hash, uint32_t>(
+      cws, 1, cw_s, extra, terminal);
+}
+
+void ProbeRepackGpuVdpf(const probe::VdpfScheme::Cw *words, int4 *cw_s, uint32_t *control, int4 *terminal,
+    cuda::std::array<int4, 4> *output_cs, const cuda::std::array<int4, 4> *input_cs) {
+  fss::gpu::RepackGpu<probe::VdpfScheme>(cuda::std::span<const probe::VdpfScheme::Cw>(words, 9), 1,
+      cuda::std::span<int4>(cw_s, 8), cuda::std::span<uint32_t>(control, 1), cuda::std::span<int4>(terminal, 1),
+      cuda::std::span<cuda::std::array<int4, 4>>(output_cs, 1),
+      cuda::std::span<const cuda::std::array<int4, 4>>(input_cs, 1));
+}
+
+void ProbeDmpfEvalAllGpu(const probe::DmpfScheme &scheme, const int4 *s0s, const probe::DmpfScheme::Cw *cws,
+    int4 *ys) {
+  (void)scheme.template EvalAllGpu<8, 256>(false, int4{0, 0, 0, 0}, 1, __uint128_t{1},
+      cuda::std::span<const int4>(s0s, 1), cuda::std::span<const probe::DmpfScheme::Cw>(cws, 5),
+      cuda::std::span<int4>(ys, 256));
+}
+
+void ProbeDmpfBatchEvalGpu(const probe::DmpfScheme &scheme, const uint32_t *xs, int4 *ys, const int4 *s0s,
+    const int4 *cw_s, const uint32_t *extra, const int4 *out_cw) {
+  fss::gpu::detail::DmpfBatchEvalGpu<4>(false, xs, ys, 1, int4{0, 0, 0, 0}, 1, __uint128_t{1}, s0s, cw_s, extra,
+      out_cw, scheme);
+}
+
+void ProbeVdmpfEvalAllMerkleGpu(const probe::VdmpfScheme &scheme, const int4 *s0s, const probe::VdmpfScheme::Cw *cws,
+    const int4 *cs, int4 *ys, int4 *pi) {
+  (void)scheme.template EvalAllMerkleGpu<256>(false, int4{0, 0, 0, 0}, 1, __uint128_t{1},
+      cuda::std::span<const int4>(s0s, 1), cuda::std::span<const probe::VdmpfScheme::Cw>(cws, 5),
+      cuda::std::span<const int4>(cs, 4), cuda::std::span<int4>(ys, 256),
+      cuda::std::span<int4, 4>(pi, 4));
+}
+
+void ProbeVdmpfBatchEvalMerkleGpu(const probe::VdmpfScheme &scheme, const uint16_t *xs, int4 *ys,
+    cuda::std::array<int4, 4> *pi, const int4 *s0s, const int4 *cw_s, const uint32_t *extra,
+    const cuda::std::array<int4, 4> *cs, const int4 *ocws) {
+  fss::gpu::detail::VdmpfBatchEvalMerkleGpu<4>(false, xs, ys, pi, 1, int4{0, 0, 0, 0}, 1, __uint128_t{1}, s0s,
+      cw_s, extra, cs, ocws, scheme);
+}
+
+}  // namespace

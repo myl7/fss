@@ -305,3 +305,157 @@ def test_high_bit_domain_values_roundtrip_through_native(bits, scheme_name):
     else:
         with pytest.raises((RuntimeError, ValueError), match="address|overflow|fit|represent"):
             scheme.preprocess(False, seeds[0], cws, torch.empty(0, dtype=torch.bool))
+
+
+_GROUP_DEVICE_PARAMS = [
+    pytest.param("cpu", id="cpu"),
+    pytest.param("cuda", id="cuda",
+                 marks=pytest.mark.skipif(not torch.cuda.is_available(),
+                                          reason="CUDA required")),
+]
+
+
+def _run_group_operations(device, operations):
+    target = torch.device(device)
+    if target.type == "cpu":
+        return operations()
+    with torch.cuda.stream(torch.cuda.Stream(device=target)):
+        return operations()
+
+
+def _signed_group_word(word):
+    word &= 0xFFFFFFFF
+    return word if word < (1 << 31) else word - (1 << 32)
+
+
+def _uint_block_words(value, bits):
+    if bits == 128:
+        words = (value & 0xFFFFFFFF, (value >> 32) & 0xFFFFFFFF,
+                 (value >> 64) & 0xFFFFFFFF,
+                 ((value >> 96) & 0x7FFFFFFF) << 1)
+    else:
+        words = (value & 0xFFFFFFFF, (value >> 32) & 0xFFFFFFFF, 0, 0)
+    return [_signed_group_word(word) for word in words]
+
+
+def _uint_block(value, bits, device):
+    return torch.tensor(_uint_block_words(value, bits), dtype=torch.int32,
+                        device=device)
+
+
+def _uint_boundary_payloads(bits, mod):
+    width = 127 if bits == 128 else bits
+    limit = 1 << width
+    mixed = {
+        8: 0xA5,
+        16: 0xA5C3,
+        32: 0xA5C3F00D,
+        64: 0xA5C3F00DDEADBEEF,
+        128: ((0x5A5A5A5A << 96) | (0xDEADBEEF << 64) |
+              (0x89ABCDEF << 32) | 0x76543210),
+    }[bits]
+    payloads = [0, 1, 1 << (width - 1), limit - 1, mixed]
+    if mod:
+        payloads.extend(candidate for candidate in (mod - 1, mod, mod + 1)
+                        if candidate < limit)
+    return list(dict.fromkeys(payloads))
+
+
+@pytest.mark.parametrize("bits,mod", [
+    pytest.param(8, 0, id="u8"),
+    pytest.param(8, 131, id="u8mod"),
+    pytest.param(16, 0, id="u16"),
+    pytest.param(16, 32771, id="u16mod"),
+    pytest.param(32, 0, id="u32"),
+    pytest.param(32, 2147483659, id="u32mod"),
+    pytest.param(64, 0, id="u64"),
+    pytest.param(64, 9223372036854775837, id="u64mod"),
+    pytest.param(128, 1 << 127, id="u127"),
+    pytest.param(128, (1 << 126) + 17, id="u127mod"),
+])
+@pytest.mark.parametrize("device", _GROUP_DEVICE_PARAMS)
+def test_group_value_uint_boundaries(bits, mod, device):
+    group = fss_crypto.group.Uint(bits=bits, mod=mod)
+
+    def run():
+        for payload in _uint_boundary_payloads(bits, mod):
+            expected = payload if mod == 0 else payload % mod
+            block = _uint_block(payload, bits, device)
+            value = group.from_(block)
+
+            assert value.value() == expected
+            assert int(value) == expected
+
+            into = value.into()
+            assert into.dtype == torch.int32
+            assert tuple(into.shape) == (4,)
+            assert into.device == block.device
+            into_words = into.cpu().tolist()
+            assert into_words == _uint_block_words(expected, bits)
+            assert into_words[0] == _signed_group_word(expected & 0xFFFFFFFF)
+            if bits >= 64:
+                assert into_words[1] == _signed_group_word((expected >> 32) & 0xFFFFFFFF)
+            else:
+                assert into_words[1] == 0
+            if bits == 128:
+                assert into_words[2] == _signed_group_word((expected >> 64) & 0xFFFFFFFF)
+                high31 = (expected >> 96) & 0x7FFFFFFF
+                assert (into_words[3] & 0xFFFFFFFF) == high31 << 1
+                assert (into_words[3] & 0xFFFFFFFF) % 2 == 0
+            else:
+                assert into_words[2:] == [0, 0]
+
+            zero = group.zero(device=block.device)
+            inverse_sum = value + (-value)
+            assert zero.value() == 0
+            assert int(zero) == 0
+            assert zero.into().cpu().tolist() == [0, 0, 0, 0]
+            assert inverse_sum.value() == 0
+            assert int(inverse_sum) == 0
+            assert inverse_sum.into().cpu().tolist() == [0, 0, 0, 0]
+
+    _run_group_operations(device, run)
+
+
+@pytest.mark.parametrize("device", _GROUP_DEVICE_PARAMS)
+def test_group_value_bytes_boundaries(device):
+    group = fss_crypto.group.Bytes()
+    unsigned_words = [0x80000000, 0xFFFFFFFF, 0xDEADBEEF, 0xFFFFFFFE]
+    words = [_signed_group_word(word) for word in unsigned_words]
+    expected_bytes = b"".join(word.to_bytes(4, "little")
+                              for word in unsigned_words)
+
+    def run():
+        block = torch.tensor(words, dtype=torch.int32, device=device)
+        value = group.from_(block)
+
+        for result in (value.value(), value.into()):
+            assert result.dtype == torch.int32
+            assert tuple(result.shape) == (4,)
+            assert result.device == block.device
+            assert result.cpu().tolist() == words
+        assert bytes(value) == expected_bytes
+
+        zero = group.zero(device=block.device)
+        for result in (zero.value(), zero.into()):
+            assert result.dtype == torch.int32
+            assert tuple(result.shape) == (4,)
+            assert result.device == block.device
+            assert result.cpu().tolist() == [0, 0, 0, 0]
+        assert bytes(zero) == bytes(16)
+
+        doubled = value + value
+        for result in (doubled.value(), doubled.into()):
+            assert result.dtype == torch.int32
+            assert tuple(result.shape) == (4,)
+            assert result.device == block.device
+            assert result.cpu().tolist() == [0, 0, 0, 0]
+
+        negated = -value
+        for result in (negated.value(), negated.into()):
+            assert result.dtype == torch.int32
+            assert tuple(result.shape) == (4,)
+            assert result.device == block.device
+            assert result.cpu().tolist() == words
+
+    _run_group_operations(device, run)

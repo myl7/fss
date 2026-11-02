@@ -274,6 +274,14 @@ private:
 
 namespace gpu::detail {
 
+// Hold the scheme behind a tag so wide Group non-type template parameters stay
+// out of CUDA host stub signatures.
+template <int n, typename GroupTag, typename Hash, typename In>
+struct HalfTreeGpuKernelDescriptor {
+  using Scheme = HalfTreeDpf<n, typename GroupTag::type, Hash, In>;
+  using Backend = Hash;
+};
+
 template <typename Scheme>
 struct HalfTreeGpuTraits;
 
@@ -398,10 +406,12 @@ __device__ __forceinline__ void HalfTreeEvalAllBlock(bool b, int4 s0,
   }
 }
 
-template <typename Scheme, int threads_per_block>
+template <typename Descriptor, int threads_per_block>
 __global__ void HalfTreeDpfEvalRangeKernel(bool b, int4 s0,
-    const typename Scheme::Cw *cws, int4 *ys, __uint128_t first,
-    int depth, int frontier, int root, int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
+    const void *corrections, int4 *ys, __uint128_t first,
+    int depth, int frontier, int root, int4 instance_seed, typename Descriptor::Backend hash) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   __shared__ int4 states[threads_per_block];
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (depth == 0) {
@@ -424,9 +434,11 @@ __global__ void HalfTreeDpfEvalRangeKernel(bool b, int4 s0,
       blockIdx.x, thread_index, states, first, depth, frontier, root);
 }
 
-template <typename Scheme, int frontier_depth, int block_root_depth>
-__global__ void HalfTreeEvalAllKernel(bool b, int4 s0, const typename Scheme::Cw *cws,
-    int4 *ys, int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void HalfTreeEvalAllKernel(bool b, int4 s0, const void *corrections,
+    int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (thread_index >= (1LL << frontier_depth)) return;
   __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
@@ -434,10 +446,12 @@ __global__ void HalfTreeEvalAllKernel(bool b, int4 s0, const typename Scheme::Cw
       b, s0, cws, ys, instance_seed, hash, blockIdx.x, thread_index, shared_frontier);
 }
 
-template <typename Scheme, int frontier_depth, int block_root_depth>
+template <typename Descriptor, int frontier_depth, int block_root_depth>
 __global__ void HalfTreeEvalAllBatchKernel(bool b, const int4 *s0s,
-    const typename Scheme::Cw *cws, int4 *ys, int4 instance_seed,
-    typename HalfTreeGpuTraits<Scheme>::Backend hash) {
+    const void *corrections, int4 *ys, int4 instance_seed,
+    typename Descriptor::Backend hash) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   constexpr int kBlocksPerKey = 1 << block_root_depth;
   constexpr int kCorrectionCount = HalfTreeGpuTraits<Scheme>::kExpansionDepth +
       (HalfTreeGpuTraits<Scheme>::kPacked ? 1 : 2);
@@ -915,6 +929,8 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
     bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
     cuda::std::span<int4> ys, cudaStream_t stream) const {
 #if defined(__CUDACC__)
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
@@ -943,7 +959,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
         size_t blocks = size_t{1} << root;
         if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
           return cudaErrorInvalidConfiguration;
-        gpu::detail::HalfTreeDpfEvalRangeKernel<HalfTreeDpf, threads_per_block>
+        gpu::detail::HalfTreeDpfEvalRangeKernel<Descriptor, threads_per_block>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), ys.data() + offset,
                 chunk_first, depth, frontier, root, instance_seed_, hash_);
         return cudaGetLastError();
@@ -964,13 +980,15 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpu(
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kCorrectionsPerKey = in_bits + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
   if (cws.size() < kCorrectionsPerKey || ys.size() < kOutputsPerKey ||
       cws.data() == nullptr || ys.data() == nullptr ||
       kOutputsPerKey > kMaxAddressableSize / sizeof(int4)) return cudaErrorInvalidValue;
-  gpu::detail::HalfTreeEvalAllKernel<HalfTreeDpf<in_bits, Group, Hash, In>, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::HalfTreeEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), ys.data(), instance_seed_, hash_);
   return cudaGetLastError();
@@ -990,6 +1008,8 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpuBat
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kCorrectionsPerKey = in_bits + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
@@ -1002,7 +1022,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpuBat
     return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
     return cudaErrorInvalidConfiguration;
-  gpu::detail::HalfTreeEvalAllBatchKernel<HalfTreeDpf<in_bits, Group, Hash, In>, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::HalfTreeEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0s.data(), cws.data(), ys.data(), instance_seed_, hash_);
   return cudaGetLastError();

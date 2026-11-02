@@ -158,10 +158,20 @@ __device__ __host__ inline bool GetBit(T x, int i) {
   return ((x >> i) & 1) != 0;
 }
 
+// Exposes a scheme's exact correction word to a shared repack kernel without
+// putting a wide group tag into the kernel's template arguments.
+template <typename S>
+struct PlainRepackKernelDescriptor {
+  using Scheme = S;
+};
+
 // Pack per-key HalfTree DPF cws (stride in_bits + 1) into level-major cw_s and the
 // last-level extra bit (bit 0 of extra[k]).
-template <int in_bits, typename Cw>
-__global__ void HalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extra, int4 *terminal, int nkeys) {
+template <int in_bits, typename Descriptor>
+__global__ void HalfTreeDpfRepackKernel(
+    const void *packed, int4 *cw_s, uint32_t *extra, int4 *terminal, int nkeys) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *pk = static_cast<const typename Scheme::Cw *>(packed);
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   uint32_t e = 0;
@@ -176,8 +186,11 @@ __global__ void HalfTreeDpfRepackKernel(const Cw *pk, int4 *cw_s, uint32_t *extr
 // Pack per-key DPF cws (stride in_bits + 1) into level-major cw_s, the tr bits
 // (bit i of extra[k] = level i), and the output correction word unless out_cw
 // is null, as for Grotto DCF keys, which leave it unused.
-template <int in_bits, typename Cw>
-__global__ void DpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extra, int4 *out_cw, int nkeys) {
+template <int in_bits, typename Descriptor>
+__global__ void DpfRepackKernel(
+    const void *packed, int4 *cw_s, ExtBits<in_bits> *extra, int4 *out_cw, int nkeys) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *pk = static_cast<const typename Scheme::Cw *>(packed);
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   ExtBits<in_bits> e = 0;
@@ -191,8 +204,11 @@ __global__ void DpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extr
 
 // Pack per-key VDPF cws (stride in_bits + 1) into level-major cw_s and the tr
 // bits (bit i of extra[k] = level i).
-template <int in_bits, typename Cw>
-__global__ void VdpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *extra, int4 *terminal, int nkeys) {
+template <int in_bits, typename Descriptor>
+__global__ void VdpfRepackKernel(
+    const void *packed, int4 *cw_s, ExtBits<in_bits> *extra, int4 *terminal, int nkeys) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *pk = static_cast<const typename Scheme::Cw *>(packed);
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   ExtBits<in_bits> e = 0;
@@ -206,8 +222,11 @@ __global__ void VdpfRepackKernel(const Cw *pk, int4 *cw_s, ExtBits<in_bits> *ext
 
 // Pack per-key DCF cws (stride in_bits + 1) into level-major cw_s and cw_v and
 // the final correction word's v part.
-template <int in_bits, typename Cw>
-__global__ void DcfRepackKernel(const Cw *pk, int4 *cw_s, int4 *cw_v, int4 *out_cw, int nkeys) {
+template <int in_bits, typename Descriptor>
+__global__ void DcfRepackKernel(
+    const void *packed, int4 *cw_s, int4 *cw_v, int4 *out_cw, int nkeys) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *pk = static_cast<const typename Scheme::Cw *>(packed);
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= nkeys) return;
   for (int i = 0; i < in_bits; ++i) {
@@ -219,9 +238,11 @@ __global__ void DcfRepackKernel(const Cw *pk, int4 *cw_s, int4 *cw_v, int4 *out_
 
 // Point-evaluate in_bits-level HalfTree DPF keys: one thread per key, one
 // output value per key at xs[tid]. cw_s/extra come from HalfTreeDpfRepackKernel.
-template <int in_bits, int unroll, bool b, typename Group, typename Hash, typename In, typename Query = In>
+template <int in_bits, int unroll, bool b, typename Descriptor, typename In, typename Query = In>
 __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const uint32_t *extra,
-    const int4 *ocws, const Query *xs, int nkeys, Hash hash, int4 instance_seed) {
+    const int4 *ocws, const Query *xs, int nkeys, typename Descriptor::Backend hash, int4 instance_seed) {
+  using Scheme = typename Descriptor::Scheme;
+  using Group = typename HalfTreeGpuTraits<Scheme>::OutputGroup;
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
@@ -390,9 +411,11 @@ void DpfEvalPointLaunch(bool b, const int4 *seeds, const int4 *cw_s, const ExtBi
 
 // Point-evaluate in_bits-level DCF keys, one thread per key. cw_s/cw_v/out_cw
 // come from DcfRepackKernel. Group default construction provides the additive identity.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename In, typename Query = In>
+template <int in_bits, int unroll, bool b, typename Descriptor, typename In, typename Query = In>
 __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw,
-    const Query *xs, int nkeys, Prg prg) {
+    const Query *xs, int nkeys, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
@@ -463,11 +486,12 @@ __global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s
 // hash cost, the tail applies the verification hash and, when t, the cs correction.
 // cw_s/extra come from VdpfRepackKernel. cs and ocws stay per-key: each is
 // read once per evaluation, not once per level.
-template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash, typename In,
-    typename Query = In>
+template <int in_bits, int unroll, bool b, typename Descriptor, typename Query>
 __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, const int4 *seeds, const int4 *cw_s,
     const ExtBits<in_bits> *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs, int nkeys,
-    Prg prg, XorHash xor_hash) {
+    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
@@ -521,6 +545,16 @@ __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, con
   for (int j = 0; j < 4; ++j) pi[tid][j] = pi_tilde[j];
 }
 
+// Holds the DMPF group tag and backends so the batch kernel template arguments
+// carry no wide Group type.
+template <int in_bits, int bucket_bits, typename GroupTag, typename Prg, typename Prp, typename In>
+struct DmpfBatchGpuKernelDescriptor {
+  using Group = typename GroupTag::type;
+  using PrgBackend = Prg;
+  using PrpBackend = Prp;
+  using InputType = In;
+};
+
 // Batch-evaluate a DMPF key: one thread per input point. Each thread runs the
 // kappa Cuckoo Locate calls on its own point and descends the located bucket
 // keys itself, so the outputs need no atomics and no cross-thread
@@ -528,15 +562,18 @@ __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, con
 // active bucket keys; a warp's bucket indices are pseudorandom, so per-level
 // loads scatter inside the level's row instead of following the per-key
 // layout's one-line-per-thread pattern.
-template <int in_bits, int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename Prp, typename In>
-__global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma, int m_rt, __uint128_t b_rt, const int4 *s0s,
-    const int4 *cw_s, const ExtBits<bucket_bits> *extra, const int4 *out_cw, Prg prg, Prp prp) {
+template <int in_bits, int bucket_bits, int unroll, bool b, typename Descriptor>
+__global__ void DmpfBatchEvalKernel(int4 *ys, const typename Descriptor::InputType *xs, int n, int4 sigma, int m_rt,
+    __uint128_t b_rt, const int4 *s0s, const int4 *cw_s, const ExtBits<bucket_bits> *extra, const int4 *out_cw,
+    typename Descriptor::PrgBackend prg, typename Descriptor::PrpBackend prp) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   In x = xs[tid];
   constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
-  cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp};
+  cuckoo_hash::detail::PrpHash<typename Descriptor::PrpBackend, In> prp_hash{prp};
   auto acc = Group::From(Zero4());
   for (int k = 0; k < 3; ++k) {
     auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
@@ -607,14 +644,25 @@ __global__ void VdmpfLocateKernel(
   }
 }
 
+// Holds the VDMPF group tag and backends so the batch kernel template arguments
+// carry no wide Group type.
+template <int bucket_bits, typename GroupTag, typename Prg, typename XorHash>
+struct VdmpfBatchGpuKernelDescriptor {
+  using Group = typename GroupTag::type;
+  using PrgBackend = Prg;
+  using XorHashBackend = XorHash;
+};
+
 // Batch-evaluate a VDMPF key: one thread per input point computes its kappa
 // contributions (from the Locate records) and writes each corrected per-point
 // hash pi_tilde at its contribution index. cw_s/extra come from VdpfRepackGpu
 // over the m_rt active bucket keys; cs and ocws are indexed by bucket.
-template <int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash>
+template <int bucket_bits, int unroll, bool b, typename Descriptor>
 __global__ void VdmpfBatchEvalKernel(int4 *ys, int n, int m_rt, const int4 *s0s, const int4 *cw_s,
     const ExtBits<bucket_bits> *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws,
-    cuda::std::array<int4, 4> *pi_tilde_buf, const uint32_t *keys, const uint64_t *vals, Prg prg, XorHash xor_hash) {
+    cuda::std::array<int4, 4> *pi_tilde_buf, const uint32_t *keys, const uint64_t *vals,
+    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash) {
+  using Group = typename Descriptor::Group;
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   auto acc = Group::From(Zero4());
@@ -829,6 +877,24 @@ __global__ void VdmpfBucketFoldKernel(cuda::std::array<int4, 4> *pi, const cuda:
 
 
 
+// Decomposes HalfTreeDpf into its template arguments so the launch spells a
+// descriptor instead of the scheme's correction word, whose wide group tag
+// would otherwise reach the CUDA host stub.
+template <typename Scheme>
+struct HalfTreeDpfRepackLauncher;
+
+template <int in_bits, typename Group, typename Hash, typename In>
+struct HalfTreeDpfRepackLauncher<HalfTreeDpf<in_bits, Group, Hash, In>> {
+  static void Launch(const typename HalfTreeDpf<in_bits, Group, Hash, In>::Cw *cws, int nkeys,
+      int4 *cw_s, uint32_t *extra, int4 *terminal, cudaStream_t stream) {
+    using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+    using Descriptor = HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
+    constexpr int kBs = 256;
+    int blocks = (nkeys + kBs - 1) / kBs;
+    HalfTreeDpfRepackKernel<in_bits, Descriptor><<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, terminal, nkeys);
+  }
+};
+
 /*
  * One-time repack of per-key HalfTree DPF keys into the level-major layout
  * consumed by HalfTreeDpfEvalPointGpu. cw_s has in_bits * nkeys int4s,
@@ -845,10 +911,8 @@ template <int in_bits, typename Group, typename Hash, typename In>
 void HalfTreeDpfRepackGpu(const typename HalfTreeDpf<in_bits, Group, Hash, In>::Cw *cws, int nkeys,
     int4 *cw_s, uint32_t *extra, int4 *terminal, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
-  constexpr int kBs = 256;
-  int blocks = (nkeys + kBs - 1) / kBs;
-  detail::HalfTreeDpfRepackKernel<in_bits, typename HalfTreeDpf<in_bits, Group, Hash, In>::Cw>
-      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, terminal, nkeys);
+  HalfTreeDpfRepackLauncher<HalfTreeDpf<in_bits, Group, Hash, In>>::Launch(
+      cws, nkeys, cw_s, extra, terminal, stream);
 }
 
 /*
@@ -891,6 +955,24 @@ void HalfTreeGrottoDcfRepackGpu(const typename HalfTreeGrottoDcf<in_bits, Hash, 
   PackedHalfTreeDpfRepackGpu<in_bits, 1, Hash, In>(cws, nkeys, cw_s, terminal, stream);
 }
 
+// Decomposes Dpf into its template arguments so the launch spells a descriptor
+// instead of the scheme's correction word, whose wide group tag would otherwise
+// reach the CUDA host stub.
+template <typename Scheme>
+struct DpfRepackLauncher;
+
+template <int in_bits, typename Group, typename Prg, typename In>
+struct DpfRepackLauncher<Dpf<in_bits, Group, Prg, In>> {
+  static void Launch(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
+      ExtBits<in_bits> *extra, int4 *out_cw, cudaStream_t stream) {
+    using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+    using Descriptor = DpfGpuKernelDescriptor<in_bits, GroupTag, Prg, In>;
+    constexpr int kBs = 256;
+    int blocks = (nkeys + kBs - 1) / kBs;
+    DpfRepackKernel<in_bits, Descriptor><<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, out_cw, nkeys);
+  }
+};
+
 /*
  * One-time repack of per-key DPF keys into the level-major layout consumed
  * by DpfEvalPointGpu. cw_s has in_bits * nkeys int4s; extra and out_cw have
@@ -908,11 +990,27 @@ template <int in_bits, typename Group, typename Prg, typename In>
 void DpfRepackGpu(const typename Dpf<in_bits, Group, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
     ExtBits<in_bits> *extra, int4 *out_cw, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
-  constexpr int kBs = 256;
-  int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DpfRepackKernel<in_bits, typename Dpf<in_bits, Group, Prg, In>::Cw>
-      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, out_cw, nkeys);
+  DpfRepackLauncher<Dpf<in_bits, Group, Prg, In>>::Launch(
+      cws, nkeys, cw_s, extra, out_cw, stream);
 }
+
+// Decomposes Dcf into its template arguments so the launch spells a descriptor
+// instead of the scheme's correction word, whose wide group tag would otherwise
+// reach the CUDA host stub.
+template <typename Scheme>
+struct DcfRepackLauncher;
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+struct DcfRepackLauncher<Dcf<in_bits, Group, Prg, In, pred>> {
+  static void Launch(const typename Dcf<in_bits, Group, Prg, In, pred>::Cw *cws, int nkeys,
+      int4 *cw_s, int4 *cw_v, int4 *out_cw, cudaStream_t stream) {
+    using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+    using Descriptor = DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
+    constexpr int kBs = 256;
+    int blocks = (nkeys + kBs - 1) / kBs;
+    DcfRepackKernel<in_bits, Descriptor><<<blocks, kBs, 0, stream>>>(cws, cw_s, cw_v, out_cw, nkeys);
+  }
+};
 
 /*
  * One-time repack of per-key DCF keys into the level-major layout consumed
@@ -932,10 +1030,8 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred =
 void DcfRepackGpu(const typename Dcf<in_bits, Group, Prg, In, pred>::Cw *cws, int nkeys, int4 *cw_s,
     int4 *cw_v, int4 *out_cw, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
-  constexpr int kBs = 256;
-  int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DcfRepackKernel<in_bits, typename Dcf<in_bits, Group, Prg, In, pred>::Cw>
-      <<<blocks, kBs, 0, stream>>>(cws, cw_s, cw_v, out_cw, nkeys);
+  DcfRepackLauncher<Dcf<in_bits, Group, Prg, In, pred>>::Launch(
+      cws, nkeys, cw_s, cw_v, out_cw, stream);
 }
 
 /*
@@ -954,11 +1050,30 @@ template <int in_bits, typename Prg, typename In>
 void GrottoDcfRepackGpu(const typename GrottoDcf<in_bits, Prg, In>::Cw *cws, int nkeys, int4 *cw_s,
     ExtBits<in_bits> *extra, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
+  using Descriptor = PlainRepackKernelDescriptor<GrottoDcf<in_bits, Prg, In>>;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
-  detail::DpfRepackKernel<in_bits, typename GrottoDcf<in_bits, Prg, In>::Cw>
+  detail::DpfRepackKernel<in_bits, Descriptor>
       <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, nullptr, nkeys);
 }
+
+// Decomposes Vdpf into its template arguments so the launch spells a descriptor
+// instead of the scheme's correction word, whose wide group tag would otherwise
+// reach the CUDA host stub.
+template <typename Scheme>
+struct VdpfRepackLauncher;
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+struct VdpfRepackLauncher<Vdpf<in_bits, Group, Prg, XorHash, Hash, In>> {
+  static void Launch(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws, int nkeys,
+      int4 *cw_s, ExtBits<in_bits> *extra, int4 *terminal, cudaStream_t stream) {
+    using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+    using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
+    constexpr int kBs = 256;
+    int blocks = (nkeys + kBs - 1) / kBs;
+    VdpfRepackKernel<in_bits, Descriptor><<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, terminal, nkeys);
+  }
+};
 
 /*
  * One-time repack of per-key VDPF keys into the level-major layout consumed
@@ -976,10 +1091,8 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
 void VdpfRepackGpu(const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw *cws, int nkeys,
     int4 *cw_s, ExtBits<in_bits> *extra, int4 *terminal, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
-  constexpr int kBs = 256;
-  int blocks = (nkeys + kBs - 1) / kBs;
-  detail::VdpfRepackKernel<in_bits, typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw>
-      <<<blocks, kBs, 0, stream>>>(cws, cw_s, extra, terminal, nkeys);
+  VdpfRepackLauncher<Vdpf<in_bits, Group, Prg, XorHash, Hash, In>>::Launch(
+      cws, nkeys, cw_s, extra, terminal, stream);
 }
 
 
@@ -1015,15 +1128,17 @@ void HalfTreeDpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const 
     const Query *xs, int4 *ys, int nkeys, const HalfTreeDpf<in_bits, Group, Hash, In> &dpf,
     cudaStream_t stream = 0) {
   if (nkeys == 0) return;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Group, Hash, In, Query>
+    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Descriptor, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys,
         fss::detail::SchemeAccess::GetHash(dpf),
         fss::detail::SchemeAccess::GetInstanceSeed(dpf));
   } else {
-    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Group, Hash, In, Query>
+    detail::HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Descriptor, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, extra, ocws, xs, nkeys,
         fss::detail::SchemeAccess::GetHash(dpf),
         fss::detail::SchemeAccess::GetInstanceSeed(dpf));
@@ -1133,13 +1248,15 @@ template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In
 void DcfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const int4 *cw_v, const int4 *out_cw, const Query *xs,
     int4 *ys, int nkeys, const Dcf<in_bits, Group, Prg, In, pred> &dcf, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::DcfEvalPointKernel<in_bits, unroll, true, Group, Prg, In, Query>
+    detail::DcfEvalPointKernel<in_bits, unroll, true, Descriptor, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, fss::detail::SchemeAccess::GetPrg(dcf));
   } else {
-    detail::DcfEvalPointKernel<in_bits, unroll, false, Group, Prg, In, Query>
+    detail::DcfEvalPointKernel<in_bits, unroll, false, Descriptor, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds, cw_s, cw_v, out_cw, xs, nkeys, fss::detail::SchemeAccess::GetPrg(dcf));
   }
 }
@@ -1196,15 +1313,17 @@ void VdpfEvalPointGpu(bool b, const int4 *seeds, const int4 *cw_s, const ExtBits
     const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs, int4 *ys, cuda::std::array<int4, 4> *pi, int nkeys,
     const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    detail::VdpfEvalPointKernel<in_bits, unroll, true, Group, Prg, XorHash, In, Query>
+    detail::VdpfEvalPointKernel<in_bits, unroll, true, Descriptor, Query>
         <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys,
         fss::detail::SchemeAccess::GetPrg(vdpf),
         fss::detail::SchemeAccess::GetXorHash(vdpf));
   } else {
-    detail::VdpfEvalPointKernel<in_bits, unroll, false, Group, Prg, XorHash, In, Query>
+    detail::VdpfEvalPointKernel<in_bits, unroll, false, Descriptor, Query>
         <<<blocks, kBs, 0, stream>>>(ys, pi, seeds, cw_s, extra, cs, ocws, xs, nkeys,
         fss::detail::SchemeAccess::GetPrg(vdpf),
         fss::detail::SchemeAccess::GetXorHash(vdpf));
@@ -1245,15 +1364,17 @@ void DmpfBatchEvalGpu(bool b, const In *xs, int4 *ys, int n, int4 sigma, int m_r
     cudaStream_t stream = 0) {
   if (n == 0) return;
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = DmpfBatchGpuKernelDescriptor<in_bits, bucket_bits, GroupTag, Prg, Prp, In>;
   constexpr int kBs = 256;
   int blocks = (n + kBs - 1) / kBs;
   if (b) {
-    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Group, Prg, Prp, In>
+    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Descriptor>
         <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw,
         fss::detail::SchemeAccess::GetPrg(dmpf),
         fss::detail::SchemeAccess::GetPrp(dmpf));
   } else {
-    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Group, Prg, Prp, In>
+    detail::DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Descriptor>
         <<<blocks, kBs, 0, stream>>>(ys, xs, n, sigma, m_rt, b_rt, s0s, cw_s, extra, out_cw,
         fss::detail::SchemeAccess::GetPrg(dmpf),
         fss::detail::SchemeAccess::GetPrp(dmpf));
@@ -1381,13 +1502,15 @@ void VdmpfBatchEvalMerkleGpu(bool b, const In *xs, int4 *ys, cuda::std::array<in
   detail::CheckCudaStatus(cudaGetLastError());
   detail::CheckCudaStatus(cub::DeviceRadixSort::SortPairs(
       d_cub_temp, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out, static_cast<int>(total), 0, 16, stream));
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = VdmpfBatchGpuKernelDescriptor<bucket_bits, GroupTag, Prg, XorHash>;
   if (b) {
-    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, true, Group, Prg, XorHash><<<blocks, kBs, 0, stream>>>(
+    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, true, Descriptor><<<blocks, kBs, 0, stream>>>(
         ys, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
         fss::detail::SchemeAccess::GetPrg(vdmpf),
         fss::detail::SchemeAccess::GetXorHash(vdmpf));
   } else {
-    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, false, Group, Prg, XorHash>
+    detail::VdmpfBatchEvalKernel<bucket_bits, unroll, false, Descriptor>
         <<<blocks, kBs, 0, stream>>>(
             ys, n, m_rt, s0s, cw_s, extra, cs, ocws, d_pi_tilde, d_keys, d_vals,
         fss::detail::SchemeAccess::GetPrg(vdmpf),

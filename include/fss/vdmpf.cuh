@@ -480,12 +480,18 @@ inline cudaError_t VdmpfFullLaunchBlocks(size_t count, int threads, int &blocks)
   return cudaSuccess;
 }
 
-template <int in_bits, int bucket_bits, typename Group, typename Inner, typename In,
-    typename Prg, typename XorHash, typename Hash, typename Prp>
+// The VDPF descriptor keeps wide Group non-type template parameters out of
+// CUDA host stubs. Corrections stay opaque on the host and recover their type
+// in the device body.
+template <int in_bits, int bucket_bits, typename Descriptor, typename In, typename Prp>
 __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_size,
-    const int4 *s0s, const typename Inner::Cw *cws, const int4 *cs, int4 *ys,
+    const int4 *s0s, const void *corrections, const int4 *cs, int4 *ys,
     uint32_t *buckets, VdmpfFullNode *nodes, uint32_t *counts, size_t count,
-    Prg prg, XorHash xor_hash, Hash hash, Prp prp) {
+    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
+    typename Descriptor::HashBackend hash, Prp prp) {
+  using Group = typename Descriptor::Group;
+  using Inner = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(corrections);
   size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (omega >= count) return;
   Inner inner{prg, xor_hash, hash};
@@ -497,7 +503,7 @@ __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_siz
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
     auto corrected = inner.Eval(b, s0s[bucket],
-        cuda::std::span<const typename Inner::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
+        cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
     // Stable sorting by bucket preserves this outer-input, candidate order.
     size_t record = 3 * omega + k;
@@ -982,6 +988,9 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
   static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
       "gpu block size must be a power of two in [1,1024]");
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor =
+      gpu::detail::VdpfGpuKernelDescriptor<bucket_bits, GroupTag, Prg, XorHash, Hash, __uint128_t>;
   constexpr size_t kOutputs = size_t{1} << in_bits;
   constexpr size_t kBuckets = kBucketCount;
   constexpr size_t kCorrectionStride = bucket_bits + 1;
@@ -1032,7 +1041,7 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
     gpu::detail::VdmpfFullClearCountsKernel<<<bucket_grid, threads_per_block, 0, stream>>>(counts, kBuckets);
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
-    gpu::detail::VdmpfFullLeavesKernel<in_bits, bucket_bits, Group, InnerVdpf, In>
+    gpu::detail::VdmpfFullLeavesKernel<in_bits, bucket_bits, Descriptor, In, Prp>
         <<<query_grid, threads_per_block, 0, stream>>>(b, sigma, bucket_size,
             s0s.data(), cws.data(), cs.data(), ys.data(), keys, nodes, counts, kOutputs,
             prg_, xor_hash_, hash_, prp_);

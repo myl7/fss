@@ -11,34 +11,48 @@
 namespace fss::python {
 inline namespace FSS_NATIVE_ABI {
 
-template <typename T>
-__global__ void GroupValueZeroKernel(T *out) {
-  new (out) T{};
+// Primitive type is selected by the module; the tag stays private to this translation unit.
+namespace {
+struct NativePrimitiveTag {
+  using Type = PrimitiveType;
+};
+}  // namespace
+
+template <typename Tag>
+__global__ void GroupValueZeroKernel(void *out) {
+  using T = typename Tag::Type;
+  new (static_cast<T *>(out)) T{};
 }
 
-template <typename T>
-__global__ void GroupValueFromKernel(const int4 *input, T *out) {
-  new (out) T(T::From(input[0]));
+template <typename Tag>
+__global__ void GroupValueFromKernel(const int4 *input, void *out) {
+  using T = typename Tag::Type;
+  new (static_cast<T *>(out)) T(T::From(input[0]));
 }
 
-template <typename T>
-__global__ void GroupValueAddKernel(const T *lhs, const T *rhs, T *out) {
-  new (out) T(*lhs + *rhs);
+template <typename Tag>
+__global__ void GroupValueAddKernel(const void *lhs, const void *rhs, void *out) {
+  using T = typename Tag::Type;
+  new (static_cast<T *>(out)) T(*static_cast<const T *>(lhs) + *static_cast<const T *>(rhs));
 }
 
-template <typename T>
-__global__ void GroupValueNegateKernel(const T *input, T *out) {
-  new (out) T(-*input);
+template <typename Tag>
+__global__ void GroupValueNegateKernel(const void *input, void *out) {
+  using T = typename Tag::Type;
+  new (static_cast<T *>(out)) T(-*static_cast<const T *>(input));
 }
 
-template <typename T>
-__global__ void GroupValueIntoKernel(const T *input, int4 *out) {
-  out[0] = input->Into();
+template <typename Tag>
+__global__ void GroupValueIntoKernel(const void *input, int4 *out) {
+  using T = typename Tag::Type;
+  out[0] = static_cast<const T *>(input)->Into();
 }
 
-template <typename T, typename Result>
-__global__ void GroupValueReadKernel(const T *input, Result *out) {
-  out[0] = input->Value();
+template <typename Tag>
+__global__ void GroupValueReadKernel(const void *input, void *out) {
+  using T = typename Tag::Type;
+  using Result = decltype(std::declval<const T &>().Value());
+  static_cast<Result *>(out)[0] = static_cast<const T *>(input)->Value();
 }
 
 // Each handle owns one constructed group element in its execution space.
@@ -53,7 +67,7 @@ public:
     c10::cuda::CUDAGuard guard(prototype.device());
     auto stream = CurrentStream();
     auto result = Device(prototype.options());
-    GroupValueZeroKernel<T><<<1, 1, 0, stream>>>(result->DeviceData());
+    GroupValueZeroKernel<NativePrimitiveTag><<<1, 1, 0, stream>>>(result->DeviceData());
     result->Finish(stream);
     return result;
   }
@@ -67,7 +81,7 @@ public:
     c10::cuda::CUDAGuard guard(input.device());
     auto stream = CurrentStream();
     auto result = Device(input.options());
-    GroupValueFromKernel<T><<<1, 1, 0, stream>>>(ConstBlocks(input), result->DeviceData());
+    GroupValueFromKernel<NativePrimitiveTag><<<1, 1, 0, stream>>>(ConstBlocks(input), result->DeviceData());
     result->Finish(stream);
     RecordTensors({input}, stream);
     return result;
@@ -94,7 +108,7 @@ public:
     auto stream = CurrentStream();
     Await(stream);
     auto output = EmptyBlocks(1, storage_.options());
-    GroupValueIntoKernel<T><<<1, 1, 0, stream>>>(DeviceData(), Blocks(output));
+    GroupValueIntoKernel<NativePrimitiveTag><<<1, 1, 0, stream>>>(DeviceData(), Blocks(output));
     CheckCuda(cudaGetLastError());
     RecordTensors({storage_, output}, stream);
     return output.view({4});
@@ -111,7 +125,7 @@ public:
       Await(stream);
       auto output = at::empty({static_cast<int64_t>(sizeof(Result))}, storage_.options());
       auto *output_data = static_cast<Result *>(output.data_ptr());
-      GroupValueReadKernel<T, Result><<<1, 1, 0, stream>>>(DeviceData(), output_data);
+      GroupValueReadKernel<NativePrimitiveTag><<<1, 1, 0, stream>>>(DeviceData(), output_data);
       CheckCuda(cudaGetLastError());
       RecordTensors({storage_, output}, stream);
       Result result{};
@@ -130,7 +144,7 @@ public:
     Await(stream);
     rhs.Await(stream);
     auto result = Device(storage_.options());
-    GroupValueAddKernel<T><<<1, 1, 0, stream>>>(DeviceData(), rhs.DeviceData(), result->DeviceData());
+    GroupValueAddKernel<NativePrimitiveTag><<<1, 1, 0, stream>>>(DeviceData(), rhs.DeviceData(), result->DeviceData());
     result->Finish(stream);
     RecordTensors({storage_, rhs.storage_}, stream);
     return result;
@@ -142,7 +156,7 @@ public:
     auto stream = CurrentStream();
     Await(stream);
     auto result = Device(storage_.options());
-    GroupValueNegateKernel<T><<<1, 1, 0, stream>>>(DeviceData(), result->DeviceData());
+    GroupValueNegateKernel<NativePrimitiveTag><<<1, 1, 0, stream>>>(DeviceData(), result->DeviceData());
     result->Finish(stream);
     RecordTensors({storage_}, stream);
     return result;
@@ -150,6 +164,7 @@ public:
 
 private:
   static_assert(std::is_trivially_destructible_v<T>);
+  static_assert(std::is_same_v<T, NativePrimitiveTag::Type>);
 
   explicit NativeGroupValue(T value) : host_(value) {}
 

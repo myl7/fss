@@ -2,6 +2,13 @@
 #pragma once
 #include "binding_materials.cuh"
 #include "binding_device_init.cuh"
+#include "binding_multi_descriptor.cuh"
+#include <fss/dpf.cuh>
+#include <fss/dcf.cuh>
+#include <fss/half_tree_dpf.cuh>
+#include <fss/vdpf.cuh>
+#include <fss/dmpf.cuh>
+#include <fss/vdmpf.cuh>
 #include <cstddef>
 #include <map>
 #include <memory>
@@ -79,9 +86,11 @@ struct NativeDeviceState {
   }
 };
 
-template <typename Core, typename Prg = PrgType, typename XorHash = XorHashType,
+template <typename DescriptorType, typename Prg = PrgType, typename XorHash = XorHashType,
     typename Hash = HashType, typename Prp = PrpType>
 struct NativeDeviceFactory {
+  using Descriptor = DescriptorType;
+  using Core = typename DescriptorType::Scheme;
   Prg *prg;
   XorHash *xor_hash;
   Hash *hash;
@@ -96,6 +105,67 @@ struct NativeDeviceFactory {
     else return Core{*prg, *xor_hash, *hash, *prp};
   }
 };
+
+// Host-only overloads keep the raw scheme type out of the factory type.
+template <typename Core>
+inline NativeDeviceFactory<fss::gpu::detail::CoreLaunchIdentityDescriptor<Core>>
+MakeNativeDeviceFactory(Core *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
+    PrpType *prp, int4 instance_seed) {
+  return {prg, xor_hash, hash, prp, instance_seed};
+}
+
+template <int n, typename Group, typename In>
+inline NativeDeviceFactory<fss::gpu::detail::DpfGpuKernelDescriptor<n,
+    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, In>> MakeNativeDeviceFactory(
+    Dpf<n, Group, PrgType, In> *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
+    PrpType *prp, int4 instance_seed) {
+  return {prg, xor_hash, hash, prp, instance_seed};
+}
+
+template <int n, typename Group, typename In, DcfPred pred>
+inline NativeDeviceFactory<fss::gpu::detail::DcfGpuKernelDescriptor<n,
+    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, In, pred>> MakeNativeDeviceFactory(
+    Dcf<n, Group, PrgType, In, pred> *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
+    PrpType *prp, int4 instance_seed) {
+  return {prg, xor_hash, hash, prp, instance_seed};
+}
+
+template <int n, typename Group, typename In>
+inline NativeDeviceFactory<fss::gpu::detail::HalfTreeGpuKernelDescriptor<n,
+    typename fss::detail::GpuGroupTag<Group>::Type, HashType, In>> MakeNativeDeviceFactory(
+    HalfTreeDpf<n, Group, HashType, In> *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
+    PrpType *prp, int4 instance_seed) {
+  return {prg, xor_hash, hash, prp, instance_seed};
+}
+
+template <int n, typename Group, typename In>
+inline NativeDeviceFactory<fss::gpu::detail::VdpfGpuKernelDescriptor<n,
+    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, XorHashType, HashType, In>>
+MakeNativeDeviceFactory(
+    Vdpf<n, Group, PrgType, XorHashType, HashType, In> *, PrgType *prg, XorHashType *xor_hash,
+    HashType *hash, PrpType *prp, int4 instance_seed) {
+  return {prg, xor_hash, hash, prp, instance_seed};
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename In, int ch_lambda>
+inline NativeDeviceFactory<fss::gpu::detail::DmpfLaunchDescriptor<in_bits, max_points, bucket_bits,
+    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, PrpType, In, ch_lambda>>
+MakeNativeDeviceFactory(
+    Dmpf<in_bits, max_points, bucket_bits, Group, PrgType, PrpType, In, ch_lambda> *,
+    PrgType *prg, XorHashType *xor_hash, HashType *hash, PrpType *prp, int4 instance_seed) {
+  return {prg, xor_hash, hash, prp, instance_seed};
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename In, int ch_lambda>
+inline NativeDeviceFactory<fss::gpu::detail::VdmpfLaunchDescriptor<in_bits, max_points, bucket_bits,
+    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, XorHashType, HashType, PrpType, In,
+    ch_lambda>>
+MakeNativeDeviceFactory(
+    Vdmpf<in_bits, max_points, bucket_bits, Group, PrgType, XorHashType, HashType, PrpType, In,
+        ch_lambda> *,
+    PrgType *prg, XorHashType *xor_hash, HashType *hash, PrpType *prp, int4 instance_seed) {
+  return {prg, xor_hash, hash, prp, instance_seed};
+}
 
 class NativeState {
 public:
@@ -141,8 +211,9 @@ public:
       int device = 0;
       CheckCuda(cudaGetDevice(&device));
       auto &state = EnsureDeviceState(device, stream);
-      NativeDeviceFactory<Core> factory{prg_->Device(device, stream), xor_hash_->Device(device, stream),
-          hash_->Device(device, stream), prp_->Device(device, stream), instance_seed_};
+      auto factory = MakeNativeDeviceFactory(static_cast<Core *>(nullptr),
+          prg_->Device(device, stream), xor_hash_->Device(device, stream),
+          hash_->Device(device, stream), prp_->Device(device, stream), instance_seed_);
       if (!state.object.defined()) {
         Tensor object_storage = at::empty({static_cast<int64_t>(sizeof(Core))},
             c10::TensorOptions().dtype(at::kByte).device(c10::Device(c10::kCUDA, device)));

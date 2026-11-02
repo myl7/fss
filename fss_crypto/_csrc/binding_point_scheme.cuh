@@ -10,11 +10,55 @@ namespace fss::python {
 namespace detail {
 
 // Scalar Python coordinates are kernel arguments, not temporary input tensors.
-template <typename Core>
-__global__ void PointEvalOneKernel(Core *scheme, bool b, const int4 *s0,
-    const typename Core::Cw *cws, InType x, int4 *y) {
+template <typename Descriptor>
+__global__ void PointEvalOneKernel(void *scheme_storage, bool b, const int4 *s0,
+    const void *cws_storage, InType x, int4 *y) {
+  using Core = typename Descriptor::Scheme;
+  Core *scheme = static_cast<Core *>(scheme_storage);
+  const typename Core::Cw *cws = static_cast<const typename Core::Cw *>(cws_storage);
   y[0] = scheme->Eval(b, s0[0], cws, x);
 }
+
+// Host-only launchers select a safe descriptor where one exists. The primary
+// template is the identity fallback for schemes without one.
+template <typename Core>
+struct PointEvalOneLauncher {
+  static inline void Launch(Core *scheme, bool b, const int4 *s0,
+      const typename Core::Cw *cws, InType x, int4 *y, cudaStream_t stream) {
+    PointEvalOneKernel<fss::gpu::detail::CoreLaunchIdentityDescriptor<Core>>
+        <<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+  }
+};
+
+template <int n, typename Group, typename Prg, typename In>
+struct PointEvalOneLauncher<Dpf<n, Group, Prg, In>> {
+  static inline void Launch(Dpf<n, Group, Prg, In> *scheme, bool b, const int4 *s0,
+      const typename Dpf<n, Group, Prg, In>::Cw *cws, In x, int4 *y, cudaStream_t stream) {
+    using Descriptor = fss::gpu::detail::DpfGpuKernelDescriptor<n,
+        typename fss::detail::GpuGroupTag<Group>::Type, Prg, In>;
+    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+  }
+};
+
+template <int n, typename Group, typename Prg, typename In, DcfPred pred>
+struct PointEvalOneLauncher<Dcf<n, Group, Prg, In, pred>> {
+  static inline void Launch(Dcf<n, Group, Prg, In, pred> *scheme, bool b, const int4 *s0,
+      const typename Dcf<n, Group, Prg, In, pred>::Cw *cws, In x, int4 *y, cudaStream_t stream) {
+    using Descriptor = fss::gpu::detail::DcfGpuKernelDescriptor<n,
+        typename fss::detail::GpuGroupTag<Group>::Type, Prg, In, pred>;
+    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+  }
+};
+
+template <int n, typename Group, typename Hash, typename In>
+struct PointEvalOneLauncher<HalfTreeDpf<n, Group, Hash, In>> {
+  static inline void Launch(HalfTreeDpf<n, Group, Hash, In> *scheme, bool b, const int4 *s0,
+      const typename HalfTreeDpf<n, Group, Hash, In>::Cw *cws, In x, int4 *y, cudaStream_t stream) {
+    using Descriptor = fss::gpu::detail::HalfTreeGpuKernelDescriptor<n,
+        typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
+    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+  }
+};
 
 template <typename Core>
 __global__ void PackedExtractOneKernel(const int4 *block, InType x, uint64_t *out) {
@@ -94,8 +138,8 @@ Tensor PointEval(NativeState &state, bool b, const Tensor &s0, const Tensor &cws
     if constexpr (kGpuSupported) {
       c10::cuda::CUDAGuard guard(s0.device());
       auto stream = CurrentStream();
-      PointEvalOneKernel<Core><<<1, 1, 0, stream>>>(
-          state.template Device<kGpuSupported, Core>(stream), b, ConstBlocks(s0), words, point, Blocks(y));
+      PointEvalOneLauncher<Core>::Launch(
+          state.template Device<kGpuSupported, Core>(stream), b, ConstBlocks(s0), words, point, Blocks(y), stream);
       CheckCuda(cudaGetLastError());
       RecordTensors({s0, cws, y}, stream);
       state.RecordUse(stream);

@@ -440,6 +440,22 @@ private:
 
 namespace gpu::detail {
 
+// Hold the scheme behind a tag so wide Group non-type template parameters stay
+// out of CUDA host stub signatures.
+template <int n, typename GroupTag, typename Prg, typename In>
+struct DpfGpuKernelDescriptor {
+  using Scheme = Dpf<n, typename GroupTag::type, Prg, In>;
+  using Backend = Prg;
+};
+
+// Point evaluation also needs the exact control and query types. They stay in
+// the descriptor so kernel signatures carry only narrow template arguments.
+template <int n, typename GroupTag, typename Prg, typename In, typename C, typename Q>
+struct DpfPointGpuKernelDescriptor : DpfGpuKernelDescriptor<n, GroupTag, Prg, In> {
+  using Control = C;
+  using Query = Q;
+};
+
 template <typename Scheme>
 struct DpfGpuSchemeTraits;
 
@@ -558,28 +574,34 @@ __device__ __forceinline__ void DpfEvalAllBlock(bool b, int4 s0, const typename 
   }
 }
 
-template <typename Scheme, int threads_per_block>
+template <typename Descriptor, int threads_per_block>
 __global__ void DpfEvalRangeKernel(bool b, int4 s0,
-    const typename Scheme::Cw *cws, int4 *ys, __uint128_t first,
-    int depth, int frontier, int root, typename DpfGpuSchemeTraits<Scheme>::Backend prg) {
+    const void *corrections, int4 *ys, __uint128_t first,
+    int depth, int frontier, int root, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   __shared__ int4 states[threads_per_block];
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   DpfEvalAllBlock<Scheme, 0, 0, true>(b, s0, cws, ys, prg,
       blockIdx.x, thread_index, states, first, depth, frontier, root);
 }
 
-template <typename Scheme, int frontier_depth, int block_root_depth>
-__global__ void DpfEvalAllKernel(bool b, int4 s0, const typename Scheme::Cw *cws, int4 *ys,
-    typename DpfGpuSchemeTraits<Scheme>::Backend prg) {
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void DpfEvalAllKernel(bool b, int4 s0, const void *corrections, int4 *ys,
+    typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (thread_index >= (1LL << frontier_depth)) return;
   __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
   DpfEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0, cws, ys, prg, blockIdx.x, thread_index, shared_frontier);
 }
 
-template <typename Scheme, int frontier_depth, int block_root_depth>
-__global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s, const typename Scheme::Cw *cws,
-    int4 *ys, typename DpfGpuSchemeTraits<Scheme>::Backend prg) {
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s, const void *corrections,
+    int4 *ys, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Scheme::Cw *>(corrections);
   constexpr int kInputBits = DpfGpuSchemeTraits<Scheme>::kInputBits;
   constexpr int kBlocksPerKey = 1 << block_root_depth;
   const int key_index = blockIdx.x / kBlocksPerKey;
@@ -593,10 +615,13 @@ __global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s, const typename Sc
 }
 
 // Control is inferred from the prepared SoA layout, independently of its public alias.
-template <typename Scheme, int unroll, bool b, typename Control, typename Query>
+template <typename Descriptor, int unroll, bool b>
 __global__ void DpfCoreEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s,
-    const Control *extra, const int4 *out_cw, const Query *xs, int key_count,
-    typename DpfGpuSchemeTraits<Scheme>::Backend prg) {
+    const typename Descriptor::Control *extra, const int4 *out_cw,
+    const typename Descriptor::Query *xs, int key_count,
+    typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  using Control = typename Descriptor::Control;
   using In = typename DpfGpuSchemeTraits<Scheme>::Input;
   constexpr int kInputBits = DpfGpuSchemeTraits<Scheme>::kInputBits;
   static_assert(kInputBits <= sizeof(In) * 8, "In too narrow for kInputBits");
@@ -615,20 +640,38 @@ __global__ void DpfCoreEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *
   ys[thread_index] = fss::detail::SchemeAccess::DpfConvertLeaf<Scheme>(b, state, out_cw[thread_index]);
 }
 
+// The scheme is decomposed into its template arguments here so the kernel
+// launch spells narrow descriptor arguments instead of the wide Dpf type.
+template <typename Scheme, typename Control, typename Query>
+struct DpfPointGpuLauncher;
+
+template <int n, typename Group, typename Prg, typename In, typename Control, typename Query>
+struct DpfPointGpuLauncher<Dpf<n, Group, Prg, In>, Control, Query> {
+  template <int unroll>
+  static void Launch(bool b, const int4 *seeds, const int4 *cw_s, const Control *extra,
+      const int4 *out_cw, const Query *xs, int4 *ys, int key_count, Prg prg,
+      cudaStream_t stream) {
+    using Descriptor = DpfPointGpuKernelDescriptor<n,
+        typename fss::detail::GpuGroupTag<Group>::Type, Prg, In, Control, Query>;
+    constexpr int kThreadsPerBlock = 256;
+    int block_count = (key_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
+    if (b) {
+      DpfCoreEvalPointKernel<Descriptor, unroll, true>
+          <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, key_count, prg);
+    } else {
+      DpfCoreEvalPointKernel<Descriptor, unroll, false>
+          <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, key_count, prg);
+    }
+  }
+};
+
 template <int unroll, typename Scheme, typename Control, typename Query>
 void DpfCoreEvalPointLaunch(bool b, const int4 *seeds, const int4 *cw_s, const Control *extra,
     const int4 *out_cw, const Query *xs, int4 *ys, int key_count,
     typename DpfGpuSchemeTraits<Scheme>::Backend prg, cudaStream_t stream) {
   if (key_count == 0) return;
-  constexpr int kThreadsPerBlock = 256;
-  int block_count = (key_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  if (b) {
-    DpfCoreEvalPointKernel<Scheme, unroll, true>
-        <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, key_count, prg);
-  } else {
-    DpfCoreEvalPointKernel<Scheme, unroll, false>
-        <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, key_count, prg);
-  }
+  DpfPointGpuLauncher<Scheme, Control, Query>::template Launch<unroll>(
+      b, seeds, cw_s, extra, out_cw, xs, ys, key_count, prg, stream);
 }
 
 #endif  // defined(__CUDACC__)
@@ -1079,6 +1122,8 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalRangeGpu(
     bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
     cuda::std::span<int4> ys, cudaStream_t stream) const {
 #if defined(__CUDACC__)
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DpfGpuKernelDescriptor<in_bits, GroupTag, Prg, In>;
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
@@ -1107,7 +1152,7 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalRangeGpu(
         size_t blocks = size_t{1} << root;
         if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
           return cudaErrorInvalidConfiguration;
-        gpu::detail::DpfEvalRangeKernel<Dpf, threads_per_block>
+        gpu::detail::DpfEvalRangeKernel<Descriptor, threads_per_block>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), ys.data() + offset,
                 chunk_first, depth, frontier, root, prg_);
         return cudaGetLastError();
@@ -1128,11 +1173,13 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpu(
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DpfGpuKernelDescriptor<in_bits, GroupTag, Prg, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   if (cws.size() < in_bits + 1 || ys.size() < kOutputsPerKey ||
       cws.data() == nullptr || ys.data() == nullptr ||
       kOutputsPerKey > std::numeric_limits<size_t>::max() / sizeof(int4)) return cudaErrorInvalidValue;
-  gpu::detail::DpfEvalAllKernel<Dpf, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::DpfEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(b, s0, cws.data(), ys.data(), prg_);
   return cudaGetLastError();
 #else
@@ -1151,6 +1198,8 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpuBatch(
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DpfGpuKernelDescriptor<in_bits, GroupTag, Prg, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kCorrectionsPerKey = in_bits + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
@@ -1161,7 +1210,7 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpuBatch(
       s0s.data() == nullptr || cws.data() == nullptr || ys.data() == nullptr) return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
     return cudaErrorInvalidConfiguration;
-  gpu::detail::DpfEvalAllBatchKernel<Dpf, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::DpfEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0s.data(), cws.data(), ys.data(), prg_);
   return cudaGetLastError();

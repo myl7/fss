@@ -109,3 +109,21 @@ static_assert(Groupable<Uint<uint64_t>>);
 static_assert(Groupable<Uint<__uint128_t, static_cast<__uint128_t>(1) << 127>>);
 
 }  // namespace fss::group
+
+// -----------------------------------------------------------------------------
+
+namespace fss::detail {
+
+// Lossless low/high tag: stores the modulus in two 64-bit halves so CUDA stubs avoid wide NTTPs.
+template <typename T, uint64_t low, uint64_t high>
+struct UintGpuGroupTag {
+  using type = group::Uint<T, static_cast<T>((static_cast<__uint128_t>(high) << 64) | static_cast<__uint128_t>(low))>;
+};
+
+template <typename T, T mod>
+struct GpuGroupTag<group::Uint<T, mod>> {
+  using Type = UintGpuGroupTag<T, static_cast<uint64_t>(mod),
+      static_cast<uint64_t>(static_cast<__uint128_t>(mod) >> 64)>;
+};
+
+}  // namespace fss::detail

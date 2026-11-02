@@ -750,6 +750,14 @@ struct HalfTreeGpuTraits<PackedHalfTreeDpf<in_bits, out_bits, Hash, In>> {
   static constexpr bool kPacked = true;
 };
 
+// Hold the packed scheme behind a tag so the shared HalfTree kernels do not
+// spell it in their host stub signatures.
+template <int in_bits, int out_bits, typename Hash, typename In>
+struct PackedHalfTreeGpuKernelDescriptor {
+  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Hash, In>;
+  using Backend = Hash;
+};
+
 }  // namespace gpu::detail
 
 template <int in_bits, int out_bits, typename Hash, typename In>
@@ -786,13 +794,14 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
   requires(kDepth < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using Descriptor = gpu::detail::PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << kDepth;
   constexpr size_t kCorrectionsPerKey = kDepth + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
   if (cws.size() < kCorrectionsPerKey || ys.size() < kOutputsPerKey ||
       cws.data() == nullptr || ys.data() == nullptr ||
       kOutputsPerKey > kMaxAddressableSize / sizeof(int4)) return cudaErrorInvalidValue;
-  gpu::detail::HalfTreeEvalAllKernel<PackedHalfTreeDpf<in_bits, out_bits, Hash, In>, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::HalfTreeEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), ys.data(), instance_seed_, hash_);
   return cudaGetLastError();
@@ -812,6 +821,7 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
   requires(kDepth < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using Descriptor = gpu::detail::PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << kDepth;
   constexpr size_t kCorrectionsPerKey = kDepth + 1;
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
@@ -824,7 +834,7 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
     return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
     return cudaErrorInvalidConfiguration;
-  gpu::detail::HalfTreeEvalAllBatchKernel<PackedHalfTreeDpf<in_bits, out_bits, Hash, In>, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+  gpu::detail::HalfTreeEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0s.data(), cws.data(), ys.data(), instance_seed_, hash_);
   return cudaGetLastError();

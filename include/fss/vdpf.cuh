@@ -391,13 +391,31 @@ __host__ __device__ inline cuda::std::array<int4, 2> VdpfMerkleFoldNode(
 
 namespace gpu::detail {
 
+// Hold the VDPF and its DPF math scheme behind a group tag so wide Group
+// non-type template parameters stay out of CUDA host stub signatures.
+template <int in_bits, typename GroupTag, typename Prg, typename XorHash, typename Hash, typename Input>
+struct VdpfGpuKernelDescriptor {
+  using Group = typename GroupTag::type;
+  using Scheme = Vdpf<in_bits, Group, Prg, XorHash, Hash, Input>;
+  using MathScheme = Dpf<in_bits, Group, Prg, Input>;
+  using Cw = typename Scheme::Cw;
+  using InputType = Input;
+  using PrgBackend = Prg;
+  using XorHashBackend = XorHash;
+  using HashBackend = Hash;
+};
+
 #if defined(__CUDACC__)
 
-template <int in_bits, int threads_per_block, typename Group, typename Prg,
-    typename XorHash, typename Hash, typename In, typename Cw, typename MathScheme>
-__global__ void VdpfRangeMerkleLeavesKernel(bool b, In first, int subtree_depth,
-    int frontier_depth, int block_root_depth, int4 s0, const Cw *cws, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *leaves, Prg prg, XorHash xor_hash, Hash hash) {
+template <int in_bits, int threads_per_block, typename Descriptor>
+__global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputType first, int subtree_depth,
+    int frontier_depth, int block_root_depth, int4 s0, const void *corrections, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
+    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
+  using MathScheme = typename Descriptor::MathScheme;
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(corrections);
   const int root_depth = in_bits - subtree_depth;
   const int block_subtree_depth = frontier_depth - block_root_depth;
   const int tail_depth = subtree_depth - frontier_depth;
@@ -489,10 +507,14 @@ __global__ void VdpfRangeMerkleProofKernel(const Node *root,
   pi[3] = cs[3];
 }
 
-template <int in_bits, int frontier_depth, int block_root_depth, typename Group, typename Prg, typename XorHash, typename Hash, typename In,
-    typename Cw, typename MathScheme>
-__global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const Cw *cws, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *roots, Prg prg, XorHash xor_hash, Hash hash) {
+template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
+__global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *corrections, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
+    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
+  using MathScheme = typename Descriptor::MathScheme;
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(corrections);
   constexpr int kTailDepth = in_bits - frontier_depth;
   constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
   const int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1206,9 +1228,10 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAl
   cudaError_t status = roots_storage.Allocate<cuda::std::array<int4, 2>>(LaunchShape::kBlockCount);
   if (status != cudaSuccess) return status;
   auto *block_roots = roots_storage.Get<cuda::std::array<int4, 2>>();
-  using MathScheme = Dpf<in_bits, Group, Prg, In>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   gpu::detail::VdpfMerkleFrontierKernel<in_bits, LaunchShape::kFrontierDepth,
-      LaunchShape::kBlockRootDepth, Group, Prg, XorHash, Hash, In, Cw, MathScheme>
+      LaunchShape::kBlockRootDepth, Descriptor>
       <<<LaunchShape::kBlockCount, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), cs.data(), ys.data(), block_roots, prg_, xor_hash_, hash_);
   status = cudaGetLastError();
@@ -1261,7 +1284,8 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRa
   if (status != cudaSuccess) return status;
   auto *nodes = first_storage.Get<Node>();
   auto *next = second_storage.Get<Node>();
-  using MathScheme = Dpf<in_bits, Group, Prg, In>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   status = detail::ForEachAlignedRange<in_bits>(first, last, kChunkDepth,
       [&](In chunk_first, int depth, size_t offset, size_t) {
         const int frontier = depth < frontier_depth ? depth : frontier_depth;
@@ -1269,8 +1293,7 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRa
         const int block_root_depth = frontier - thread_bits;
         const size_t blocks = size_t{1} << block_root_depth;
         if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
-        gpu::detail::VdpfRangeMerkleLeavesKernel<in_bits, threads_per_block,
-            Group, Prg, XorHash, Hash, In, Cw, MathScheme>
+        gpu::detail::VdpfRangeMerkleLeavesKernel<in_bits, threads_per_block, Descriptor>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, chunk_first, depth,
                 frontier, block_root_depth, s0, cws.data(), cs.data(),
                 ys.data() + offset, nodes + offset, prg_, xor_hash_, hash_);

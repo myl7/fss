@@ -21,11 +21,12 @@ namespace fss::python {
 #undef FSS_PRIMITIVE_APPLY
 #undef FSS_PRIMITIVE_SPACE
 
-template <typename T>
-__global__ void PrimitiveKernel(T *backend, const int4 *lhs,
+template <typename Tag>
+__global__ void PrimitiveKernel(void *backend, const int4 *lhs,
     int4 *out, int mode, __uint128_t x, __uint128_t domain) {
+  using T = typename Tag::Type;
   ApplyPrimitiveDevice<T, kPrimitiveKind>(
-      *backend, lhs, out, mode, x, domain);
+      *static_cast<T *>(backend), lhs, out, mode, x, domain);
 }
 
 template <typename T>
@@ -49,7 +50,7 @@ public:
         auto stream = CurrentStream();
         int device = lhs.get_device();
         auto *object = material_->Device(device, stream);
-        PrimitiveKernel<T><<<1, 1, 0, stream>>>(object, ConstBlocks(lhs),
+        PrimitiveKernel<NativePrimitiveTag><<<1, 1, 0, stream>>>(object, ConstBlocks(lhs),
             Blocks(out), mode, x, domain);
         CheckCuda(cudaGetLastError());
         RecordTensors({lhs, out}, stream);

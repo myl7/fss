@@ -1612,10 +1612,15 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
     constexpr size_t n = size_t{1} << kInBits;
     int active_blocks = 0;
     if constexpr (half_tree) {
-      auto *kernel = &fss::gpu::detail::HalfTreeEvalAllKernel<Scheme, z, b1>;
+      using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+      using Descriptor = fss::gpu::detail::HalfTreeGpuKernelDescriptor<kInBits, GroupTag, GpuCcr, uint>;
+      auto *kernel = &fss::gpu::detail::HalfTreeEvalAllKernel<Descriptor, z, b1>;
       CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, kernel, kThreadsPerBlock, size_t{0}));
     } else {
-      auto *kernel = &fss::gpu::detail::DpfEvalAllKernel<Scheme, z, b1>;
+      using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+      using Descriptor =
+          fss::gpu::detail::DpfGpuKernelDescriptor<kInBits, GroupTag, fss::prg::ChaCha<2>, uint>;
+      auto *kernel = &fss::gpu::detail::DpfEvalAllKernel<Descriptor, z, b1>;
       CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, kernel, kThreadsPerBlock, size_t{0}));
     }
     if (active_blocks == 0) {

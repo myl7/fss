@@ -136,6 +136,11 @@ if(BUILD_TESTING)
     target_link_libraries(word_arithmetic_test GTest::gtest_main fss)
     gtest_discover_tests(word_arithmetic_test)
 
+    # Compile-only coverage for the wide Uint127 Group in CUDA host stubs.
+    add_library(uint127_launch_test OBJECT src/uint127_launch_test.cu)
+    target_link_libraries(uint127_launch_test PRIVATE fss)
+    add_custom_target(uint127_launch_test_compile ALL DEPENDS uint127_launch_test)
+
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)
