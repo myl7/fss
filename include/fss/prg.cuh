@@ -56,6 +56,22 @@ concept HasGenHalf = mul > 0 && mul % 2 == 0 && Prgable<Prg, mul> && requires(Pr
  * This semantic requirement is the implementer's responsibility.
  * Gen8() must be callable on the host for host batch evaluation.
  *
+ * Host-side full-domain evaluation of Dcf and Dpf expands eight seeds per
+ * call. It calls Gen8() when the PRG provides it and calls Gen() eight times
+ * otherwise. Dmpf takes the same path through its inner Dpf when bucket_bits
+ * is at least 6. Point evaluation, key generation, and GPU evaluation never
+ * call Gen8().
+ *
+ * Gen8() can help when the backend expands eight seeds faster than the
+ * generic eight-call fallback does. For the library's Aes128MmoRaw on one
+ * x86 host with one thread, Gen8() made Dcf's full-domain evaluation faster.
+ * It made no difference to Dpf's that the measurement could separate from
+ * its own bias.
+ *
+ * Gen8() must be bit-exact with Gen(). Full-domain evaluation uses Gen8() and
+ * point evaluation uses Gen(), so a mismatch makes the two disagree without
+ * any error.
+ *
  * @tparam Prg User-provided or library-provided PRG type.
  * @tparam mul Seed expansion factor, as in Prgable.
  * @ingroup fss_api

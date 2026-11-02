@@ -67,6 +67,9 @@ public:
      *
      * Only for host side.
      *
+     * See the HasGen8 concept for the effect on the schemes that batch their PRG
+     * expansion through this member and for when a backend gains from it.
+     *
      * @param seeds 8 independent 16B seeds.
      * @return For each seed j, the mul MMO output blocks out[j][i] = E_{keys[i]}(seeds[j]) ^ seeds[j].
      */
