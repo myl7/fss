@@ -154,6 +154,47 @@ void PointEvalAll(NativeState &state, bool b, const Tensor &s0, const Tensor &cw
 }
 
 template <typename Core>
+void PointEvalRange(NativeState &state, bool b, const py::int_ &first,
+    const py::int_ &last, const Tensor &s0, const Tensor &cws,
+    const Tensor &ys, int par_depth) {
+  CheckSameDevice({s0, cws, ys});
+  CheckBlocks(s0, 1);
+  constexpr size_t corrections = CorrectionCount<Core>();
+  const auto *words = ConstCwPtr(cws, corrections);
+  const InType left = ReadInput<InType>(first, kInBits);
+  const InType right = ReadInput<InType>(last, kInBits);
+  constexpr size_t lanes = [] {
+    if constexpr (kSchemeKind == 4) return Core::kLanes;
+    else return 1;
+  }();
+  const int64_t count = RangeBlockCount(left, right, lanes);
+  CheckBlockCapacity(ys, count);
+  if (ys.is_cuda()) {
+    if constexpr (kSchemeKind == 4) {
+      throw py::type_error("packed range evaluation requires CPU storage");
+    } else if constexpr (kGpuSupported && ValidRangeGpuLaunch()) {
+      c10::cuda::CUDAGuard guard(ys.device());
+      auto stream = CurrentStream();
+      auto &scheme = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
+      CheckCuda(scheme.template EvalRangeGpu<kFrontierDepth, kThreadsPerBlock>(b,
+          left, right, FetchBlock(s0),
+          cuda::std::span<const typename Core::Cw>(words, corrections),
+          cuda::std::span<int4>(Blocks(ys), count), stream));
+      RecordTensors({s0, cws, ys}, stream);
+      state.RecordUse(stream);
+    } else {
+      throw py::value_error("configured backend or GPU launch shape is unavailable; check frontier_depth and threads_per_block");
+    }
+  } else {
+    constexpr int roles = kSchemeKind == 3 || kSchemeKind == 4
+        ? NativeState::kHashRole : NativeState::kPrgRole;
+    state.CheckCpuParallel(par_depth, roles);
+    static_cast<Core &>(state.Cpu()).EvalRange(b, left, right, ConstBlocks(s0)[0],
+        words, cuda::std::span<int4>(Blocks(ys), count), par_depth);
+  }
+}
+
+template <typename Core>
 void PointEvalAllGpuBatch(NativeState &state, bool b, const Tensor &s0s,
     const Tensor &cws, const Tensor &ys) {
   CheckSameDevice({s0s, cws, ys});
@@ -228,6 +269,8 @@ void BindPointScheme(py::module_ &module) {
   }
   cls.def("eval", &PointEval<Core>, py::arg("b"), py::arg("s0"), py::arg("cws"), py::arg("x"));
   cls.def("eval_all", &PointEvalAll<Core>, py::arg("b"), py::arg("s0"), py::arg("cws"), py::arg("ys"), py::arg("par_depth") = 0);
+  cls.def("eval_range", &PointEvalRange<Core>, py::arg("b"), py::arg("first"),
+      py::arg("last"), py::arg("s0"), py::arg("cws"), py::arg("ys"), py::arg("par_depth") = 0);
   cls.def("eval_all_gpu_batch", &PointEvalAllGpuBatch<Core>, py::arg("b"),
       py::arg("s0s"), py::arg("cws"), py::arg("ys"));
 }

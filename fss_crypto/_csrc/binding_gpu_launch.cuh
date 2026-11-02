@@ -3,6 +3,11 @@
 
 namespace fss::python {
 
+constexpr bool ValidRangeGpuLaunch() {
+  return kFrontierDepth >= 0 && kThreadsPerBlock >= 1 && kThreadsPerBlock <= 1024 &&
+      (kThreadsPerBlock & (kThreadsPerBlock - 1)) == 0;
+}
+
 template <int depth, int frontier_limit = depth, bool merkle = false>
 constexpr bool ValidCoreGpuLaunch() {
   constexpr int frontier = kFrontierDepth < frontier_limit ? kFrontierDepth : frontier_limit;

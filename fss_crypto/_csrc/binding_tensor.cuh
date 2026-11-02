@@ -63,6 +63,23 @@ inline void CheckBlocks(const Tensor &tensor, int64_t count = -1) {
   CheckAlignment(tensor, alignof(int4));
 }
 
+inline void CheckBlockCapacity(const Tensor &tensor, int64_t count) {
+  CheckBlocks(tensor);
+  TORCH_CHECK(count >= 0 && tensor.numel() / 4 >= count,
+      "int4 storage has insufficient block capacity");
+}
+
+template <typename In>
+int64_t RangeBlockCount(In first, In last, size_t lanes = 1) {
+  TORCH_CHECK(first <= last, "range endpoints must be ordered");
+  const __uint128_t distance = static_cast<__uint128_t>(last) - first;
+  const __uint128_t block_distance = distance / lanes;
+  TORCH_CHECK(block_distance < std::numeric_limits<size_t>::max() / sizeof(int4) &&
+      block_distance < std::numeric_limits<int64_t>::max() / 4,
+      "range output size overflows");
+  return static_cast<int64_t>(block_distance) + 1;
+}
+
 inline int4 *Blocks(const Tensor &tensor) {
   CheckBlocks(tensor);
   return reinterpret_cast<int4 *>(tensor.data_ptr<int32_t>());

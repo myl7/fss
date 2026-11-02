@@ -75,7 +75,7 @@ class Vdmpf(_Scheme):
                                 t, max_evictions)
 
     def batch_eval(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, xs, ys, pi):
-        """Write caller-owned output shares and a CPU chain proof."""
+        """Write output shares and a CPU chain proof, rejecting CUDA buffers."""
         self._native.batch_eval(b, sigma, m_rt, b_size_rt, s0s,
                                 self._cws(cws), cs, xs, ys, pi)
 
@@ -93,7 +93,8 @@ class Vdmpf(_Scheme):
     def eval_all(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, ys, pi):
         """Write the full CPU output domain and its Core chain proof.
 
-        All buffers must use CPU storage. Outputs and proof match
+        All buffers must use CPU storage. CUDA buffers are rejected.
+        Outputs and proof match
         ``batch_eval`` over all domain inputs in increasing order.
         The caller allocates ``ys`` and ``pi``.
         """

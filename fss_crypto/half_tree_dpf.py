@@ -10,8 +10,8 @@ class HalfTreeDpf(_Scheme):
 
     ``instance_seed`` supplies the four 32-bit words of S. int4 storage uses
     contiguous ``torch.int32`` tensors with a final dimension of four words.
-    ``s0s`` contains two blocks, ``s0`` and ``b_buf`` contain one, and ``ys``
-    contains exactly ``2**in_bits`` blocks. Allocate ``cws`` as a contiguous
+    ``s0s`` contains two blocks, ``s0`` and ``b_buf`` contain one, and ``eval_all`` output
+    ``ys`` contains exactly ``2**in_bits`` blocks. Allocate ``cws`` as a contiguous
     uint8 tensor with ``cws_shape``, including the terminal correction.
     """
 
@@ -39,6 +39,22 @@ class HalfTreeDpf(_Scheme):
     def eval(self, b: bool, s0: torch.Tensor, cws, x: int) -> torch.Tensor:
         """Return one raw Core int4 share without a separate output correction."""
         return self._native.eval(b, s0, self._cws(cws), x)
+
+    def eval_range(self, b: bool, first: int, last: int, s0: torch.Tensor,
+                   cws, ys: torch.Tensor, *, par_depth: int = 0,
+                   frontier_depth: int = 16, threads_per_block: int = 256) -> None:
+        """Fill caller-owned shares for the closed interval [first, last].
+
+        first and last are Python integers in the configured input domain.
+        ys contains last - first + 1 int4 blocks in input order.
+        All tensors must be contiguous and use the same exact CPU/CUDA device.
+        CPU uses par_depth and ignores the GPU launch knobs.
+        CUDA ignores par_depth and uses frontier_depth/threads_per_block.
+        Scalar seed fetch and backend launch-view preparation may synchronize.
+        """
+        self._execution_native(ys, frontier_depth, threads_per_block).eval_range(
+            b, first, last, s0, self._cws(cws), ys,
+            _parallel_depth(par_depth, ys))
 
     def eval_all(self, b: bool, s0: torch.Tensor, cws, ys: torch.Tensor, *, par_depth: int = 0,
                  frontier_depth: int = 16, threads_per_block: int = 256) -> None:

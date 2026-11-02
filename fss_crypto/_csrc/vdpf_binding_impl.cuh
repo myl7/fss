@@ -119,20 +119,54 @@ void Full(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
   } else TORCH_CHECK(false, "full domain does not fit a tensor allocation");
 }
 
-template <typename S = SchemeType>
-void Range(NativeState &state, bool b, const py::int_ &left, const py::int_ &right, Tensor seed,
-    Tensor cws, Tensor cs, Tensor ys, Tensor pi, int par_depth) {
-  CheckCpu({seed, cws, cs, ys, pi}); CheckBlocks(seed, 1); CheckBlocks(cs, 4); CheckBlocks(pi, 4);
-  const InType L = ReadIn(left);
-  const InType R = ReadIn(right);
-  TORCH_CHECK(L <= R, "range endpoints must be ordered");
-  const __uint128_t distance = static_cast<__uint128_t>(R) - L;
-  TORCH_CHECK(distance < static_cast<size_t>(-1) / sizeof(int4), "range output size overflows");
-  const size_t count = static_cast<size_t>(distance) + 1;
-  CheckBlocks(ys, static_cast<int64_t>(count)); state.CheckCpuParallel(par_depth, NativeState::kPrgRole);
-  static_cast<S &>(state.Cpu()).EvalRange(b, L, R, *ConstBlocks(seed),
-      {ConstCwPtr(cws, kInBits+1), kInBits+1}, cuda::std::span<const int4,4>(ConstBlocks(cs),4),
-      {Blocks(ys), count}, cuda::std::span<int4,4>(Blocks(pi),4), par_depth);
+template <bool merkle, typename S = SchemeType>
+void Range(NativeState &state, bool b, const py::int_ &first, const py::int_ &last,
+    Tensor seed, Tensor cws, Tensor cs, Tensor ys, Tensor pi, int par_depth) {
+  CheckSameDevice({seed, cws, cs, ys, pi});
+  CheckBlocks(seed, 1); CheckBlocks(cs, 4); CheckBlocks(pi, 4);
+  const InType left = ReadIn(first);
+  const InType right = ReadIn(last);
+  const int64_t count = RangeBlockCount(left, right);
+  CheckBlockCapacity(ys, count);
+  const auto *words = ConstCwPtr(cws, kInBits + 1);
+  if (ys.is_cpu()) {
+    if constexpr (merkle) {
+      constexpr size_t max_bytes = std::numeric_limits<size_t>::max();
+      constexpr size_t initial_size = sizeof(Proof) + sizeof(cuda::std::array<int4, 2>);
+      const size_t next_count = count / 2 + count % 2;
+      TORCH_CHECK(static_cast<size_t>(count) <= max_bytes / initial_size,
+          "range proof scratch size overflows");
+      const size_t initial_bytes = static_cast<size_t>(count) * initial_size;
+      TORCH_CHECK(next_count <= (max_bytes - initial_bytes) / sizeof(cuda::std::array<int4, 2>),
+          "range proof scratch size overflows");
+    }
+    state.CheckCpuParallel(par_depth, merkle
+        ? NativeState::kPrgRole | NativeState::kXorHashRole | NativeState::kHashRole
+        : NativeState::kPrgRole);
+    auto &core = static_cast<S &>(state.Cpu());
+    if constexpr (merkle) {
+      core.EvalRangeMerkle(b, left, right, *ConstBlocks(seed),
+          {words, kInBits + 1}, cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+          {Blocks(ys), static_cast<size_t>(count)}, cuda::std::span<int4, 4>(Blocks(pi), 4), par_depth);
+    } else {
+      core.EvalRange(b, left, right, *ConstBlocks(seed),
+          {words, kInBits + 1}, cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+          {Blocks(ys), static_cast<size_t>(count)}, cuda::std::span<int4, 4>(Blocks(pi), 4), par_depth);
+    }
+  } else if constexpr (!merkle) {
+    throw py::type_error("chain range evaluation requires CPU storage; use eval_range_merkle for CUDA");
+  } else if constexpr (kGpuSupported && ValidRangeGpuLaunch()) {
+    c10::cuda::CUDAGuard guard(ys.device());
+    auto stream = CurrentStream();
+    auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
+    CheckCuda(core.template EvalRangeMerkleGpu<kFrontierDepth, kThreadsPerBlock>(b,
+        left, right, FetchBlock(seed), {words, kInBits + 1},
+        cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+        {Blocks(ys), static_cast<size_t>(count)}, cuda::std::span<int4, 4>(Blocks(pi), 4), stream));
+    state.RecordUse(stream); RecordTensors({seed, cws, cs, ys, pi}, stream);
+  } else {
+    throw py::value_error("configured backend or GPU launch shape is unavailable; check frontier_depth and threads_per_block");
+  }
 }
 
 bool Verify(NativeState &, Tensor p0, Tensor p1) {
@@ -160,6 +194,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   cls.def("prove_merkle", [](NativeState &s, Tensor h, Tensor cs, Tensor pi, int par_depth) { Prove(s,h,cs,pi,true,par_depth); });
   cls.def("eval_all", [](NativeState &s, bool b, Tensor seed, Tensor c, Tensor cs, Tensor ys, Tensor pi, int par_depth) { Full(s,b,seed,c,cs,ys,pi,false,par_depth); });
   cls.def("eval_all_merkle", [](NativeState &s, bool b, Tensor seed, Tensor c, Tensor cs, Tensor ys, Tensor pi, int par_depth) { Full(s,b,seed,c,cs,ys,pi,true,par_depth); });
-  cls.def("eval_range", &Range<>);
+  cls.def("eval_range", &Range<false>, py::arg("b"), py::arg("first"),
+      py::arg("last"), py::arg("s0"), py::arg("cws"), py::arg("cs"),
+      py::arg("ys"), py::arg("pi"), py::arg("par_depth") = 0);
+  cls.def("eval_range_merkle", &Range<true>, py::arg("b"), py::arg("first"),
+      py::arg("last"), py::arg("s0"), py::arg("cws"), py::arg("cs"),
+      py::arg("ys"), py::arg("pi"), py::arg("par_depth") = 0);
   cls.def("verify", &Verify);
 }

@@ -42,7 +42,7 @@ class Vdpf(_Scheme):
         return self._native.eval(b, s0, self._cws(cws), cs, x, y)
 
     def prove(self, pi_tildes, cs, pi):
-        """Write the Core chain proof on CPU from corrected hashes [N, 4, 4]."""
+        """Write a CPU chain proof from hashes [N, 4, 4], rejecting CUDA buffers."""
         self._native.prove(pi_tildes, cs, pi)
 
     def prove_merkle(self, pi_tildes, cs, pi, *, par_depth: int = 0):
@@ -63,7 +63,7 @@ class Vdpf(_Scheme):
 
         par_depth controls CPU partitioning; 0 is sequential.
         Positive values require OpenMP and a parallel-safe backend.
-        This chain-proof operation requires CPU buffers.
+        This chain-proof operation requires CPU buffers and rejects CUDA buffers.
         """
         self._native.eval_all(b, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth, pi))
 
@@ -75,9 +75,26 @@ class Vdpf(_Scheme):
 
         par_depth controls CPU partitioning; 0 is sequential.
         Positive values require OpenMP and a parallel-safe backend.
-        This chain-proof operation requires CPU buffers.
+        This chain-proof operation requires CPU buffers and rejects CUDA buffers.
         """
         self._native.eval_range(b, first, last, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth))
+
+    def eval_range_merkle(self, b, first, last, s0, cws, cs, ys, pi, *,
+                          par_depth: int = 0, frontier_depth: int = 16,
+                          threads_per_block: int = 256):
+        """Write closed-range shares and their canonical ordered Merkle proof.
+
+        first and last are Python integers in the configured input domain.
+        ys contains last - first + 1 int4 blocks, and pi has shape [4, 4].
+        The proof matches prove_merkle over scalar corrected hashes in input order.
+        All tensors must be contiguous and use the same exact CPU/CUDA device.
+        CPU uses par_depth and ignores the GPU launch knobs.
+        CUDA ignores par_depth and uses frontier_depth/threads_per_block.
+        Scalar seed fetch and backend launch-view preparation may synchronize.
+        """
+        self._execution_native(ys, frontier_depth, threads_per_block).eval_range_merkle(
+            b, first, last, s0, self._cws(cws), cs, ys, pi,
+            _parallel_depth(par_depth, ys))
 
     def eval_all_merkle(self, b, s0, cws, cs, ys, pi, *, par_depth: int = 0,
                         frontier_depth: int = 16, threads_per_block: int = 256):

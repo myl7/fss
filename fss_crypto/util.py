@@ -1,6 +1,37 @@
-"""Tensor helpers for the control bit in an FSS int4 seed."""
+"""Tensor storage helpers for FSS inputs and int4 seed control bits."""
 
 import torch as _torch
+
+
+def input_dtype_and_shape(in_type: str) -> tuple[_torch.dtype, tuple[int, ...]]:
+    """Return the tensor dtype and shape of one unsigned input value.
+
+    ``in_type`` accepts the same names as scheme constructors: ``uint8``,
+    ``uint16``, ``uint32``, ``uint64``, and ``uint128``.
+    The first four use their matching unsigned dtype and scalar shape ``()``.
+    ``uint128`` uses ``torch.uint64`` with item shape ``(2,)``, storing the
+    low 64-bit limb first and the high 64-bit limb second.
+    ``item_shape`` describes one value, excluding the batch count.
+
+    Allocate caller-owned storage with::
+
+        dtype, item_shape = input_dtype_and_shape(in_type)
+        inputs = torch.empty((count, *item_shape), dtype=dtype, device=device)
+
+    This function allocates no tensors and converts no values.
+    Unknown names raise ``ValueError``.
+    """
+    formats = {
+        "uint8": (_torch.uint8, ()),
+        "uint16": (_torch.uint16, ()),
+        "uint32": (_torch.uint32, ()),
+        "uint64": (_torch.uint64, ()),
+        "uint128": (_torch.uint64, (2,)),
+    }
+    try:
+        return formats[in_type]
+    except KeyError:
+        raise ValueError("in_type must be uint8, uint16, uint32, uint64, or uint128") from None
 
 
 def _check_seed(seed):
@@ -37,4 +68,4 @@ def get_seed_control_bit(seed) -> bool:
     return bool((seed[3] & 1).item())
 
 
-__all__ = ["set_seed_control_bit", "get_seed_control_bit"]
+__all__ = ["input_dtype_and_shape", "set_seed_control_bit", "get_seed_control_bit"]

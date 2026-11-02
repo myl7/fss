@@ -55,12 +55,29 @@ class PackedHalfTreeDpf(_Scheme):
         """Return x's lane through Core ``Extract``.
 
         For full-domain output, use ``extract(ys[x // kLanes], x)``.
-        The lane is ``x % kLanes``. Pass the original x, not the block index.
+        For point and full-domain output, x is the original input and the lane
+        is ``x % kLanes``. For range output, use the range-relative offset j
+        with ``extract(ys[j // kLanes], j)``.
         For in_bits=8 and out_bits=8, kLanes=16, so x=42 uses
         ``extract(ys[2], 42)`` and reads lane 10.
         Returning a Python integer synchronizes when ``block`` is on CUDA.
         """
         return self._native.extract(block, x)
+
+    def eval_range(self, b: bool, first: int, last: int, s0: torch.Tensor,
+                   cws, ys: torch.Tensor, *, par_depth: int = 0) -> None:
+        """Fill packed shares for the closed interval [first, last] on CPU.
+
+        first and last are Python integers in the configured input domain.
+        Allocate ceil((last - first + 1) / kLanes) int4 blocks in ys.
+        Range-relative lane zero corresponds to first.
+        Read offset j with ``extract(ys[j // kLanes], j)``.
+        Unused lanes in the final block are zero.
+        All tensors must be contiguous CPU buffers.
+        par_depth controls CPU partitioning, and 0 is sequential.
+        """
+        self._native.eval_range(b, first, last, s0, self._cws(cws), ys,
+                                _parallel_depth(par_depth))
 
     def eval_all(self, b: bool, s0: torch.Tensor, cws, ys: torch.Tensor, *, par_depth: int = 0,
                  frontier_depth: int = 16, threads_per_block: int = 256) -> None:

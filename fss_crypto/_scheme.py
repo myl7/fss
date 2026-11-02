@@ -79,7 +79,10 @@ class _Scheme:
 
     @property
     def in_type(self) -> str:
-        """Return the concrete unsigned C++ input transport type."""
+        """Return the canonical unsigned input name for ``input_dtype_and_shape``.
+
+        Use the returned dtype and item shape to allocate batched input storage.
+        """
         return self._in_type
 
     @property
