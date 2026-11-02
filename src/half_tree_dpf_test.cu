@@ -819,3 +819,478 @@ TEST(HalfTreeDpfGpuRangeTest, ArithmeticGroupNarrowInputAndCappedFrontier) {
   fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
   fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }
+
+namespace {
+
+constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
+
+// Checks the split-corrections API against the Cw forms for one configuration:
+// every correction entry, the packed control bit, every output of Eval, EvalAll
+// and EvalRange, and the two-party reconstruction. stride == 0 selects the
+// default-argument call.
+template <int in_bits, typename Group, typename In>
+void CheckHalfTreeSplit(In alpha, int4 beta, size_t stride) {
+  using Scheme = fss::HalfTreeDpf<in_bits, Group, fss_test::TestCcrHash, In>;
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  const cuda::std::span<const int4, 2> seed_span(seeds, 2);
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  const bool default_stride = stride == 0;
+  const size_t level_stride = default_stride ? 1 : stride;
+  const size_t used = static_cast<size_t>(in_bits) * level_stride + 1;
+  constexpr size_t kExtra = 3;
+  constexpr size_t kDomain = size_t{1} << in_bits;
+
+  typename Scheme::Cw ref[in_bits + 1];
+  scheme.Gen(ref, seeds, alpha, beta);
+
+  std::vector<int4> cws(used + kExtra, kSplitSentinel);
+  const auto cws_out = cuda::std::span<int4>(cws.data(), cws.size());
+  In tr = 0;
+  if (default_stride) scheme.Gen(cws_out, tr, seed_span, alpha, beta);
+  else scheme.Gen(cws_out, tr, seed_span, alpha, beta, stride);
+
+  for (int l = 0; l < in_bits; ++l) {
+    const size_t index = static_cast<size_t>(l) * level_stride;
+    EXPECT_EQ(memcmp(&cws[index], &ref[l].s, sizeof(int4)), 0) << "cws layer " << l;
+  }
+  // The control component exists only at the last tree level: bit in_bits - 1 of
+  // tr carries LCW_1 and every other bit is zero on output.
+  EXPECT_EQ(tr, static_cast<In>(ref[in_bits - 1].extra) << (in_bits - 1))
+      << "packed control bit";
+  EXPECT_EQ(memcmp(&cws[used - 1], &ref[in_bits].s, sizeof(int4)), 0) << "cws terminal";
+  // Only the described prefix is written: gap entries and trailing capacity keep the sentinel.
+  for (size_t i = 0; i < cws.size(); ++i) {
+    if (i % level_stride == 0 && i / level_stride <= static_cast<size_t>(in_bits)) continue;
+    EXPECT_EQ(memcmp(&cws[i], &kSplitSentinel, sizeof(int4)), 0) << "cws untouched at " << i;
+  }
+
+  const cuda::std::span<const int4> split_cws(cws.data(), used);
+  std::vector<int4> split_all[2];
+  for (int party = 0; party < 2; ++party) {
+    const bool b = party != 0;
+    const int4 s0 = seeds[party];
+    for (size_t x = 0; x < kDomain; ++x) {
+      const In xi = static_cast<In>(x);
+      const int4 aos = scheme.Eval(b, s0, ref, xi);
+      const int4 got = default_stride
+          ? scheme.Eval(b, s0, split_cws, tr, xi)
+          : scheme.Eval(b, s0, split_cws, tr, xi, stride);
+      EXPECT_EQ(memcmp(&aos, &got, sizeof(int4)), 0) << "Eval party=" << party << " x=" << x;
+    }
+
+    std::vector<int4> aos_all(kDomain, kSplitSentinel);
+    split_all[party].assign(kDomain + 2, kSplitSentinel);
+    scheme.EvalAll(b, s0, ref, aos_all.data());
+    if (default_stride) scheme.EvalAll(b, s0, split_cws, tr, split_all[party].data());
+    else scheme.EvalAll(b, s0, split_cws, tr, split_all[party].data(), 0, stride);
+    EXPECT_EQ(memcmp(aos_all.data(), split_all[party].data(), kDomain * sizeof(int4)), 0)
+        << "EvalAll party=" << party;
+    EXPECT_EQ(memcmp(&split_all[party][kDomain], &kSplitSentinel, sizeof(int4)), 0)
+        << "EvalAll extra capacity party=" << party;
+
+    for (int par_depth : {0, 2}) {
+      std::vector<int4> aos_range(kDomain + 2, kSplitSentinel);
+      std::vector<int4> split_range(kDomain + 2, kSplitSentinel);
+      scheme.EvalRange(b, In{0}, static_cast<In>(kDomain - 1), s0, ref,
+          cuda::std::span<int4>(aos_range.data(), kDomain), par_depth);
+      const auto ys = cuda::std::span<int4>(split_range.data(), kDomain);
+      if (default_stride) {
+        scheme.EvalRange(b, In{0}, static_cast<In>(kDomain - 1), s0, split_cws, tr, ys, par_depth);
+      } else {
+        scheme.EvalRange(b, In{0}, static_cast<In>(kDomain - 1), s0, split_cws, tr, ys,
+            par_depth, stride);
+      }
+      EXPECT_EQ(memcmp(aos_range.data(), split_range.data(), kDomain * sizeof(int4)), 0)
+          << "EvalRange party=" << party << " par_depth=" << par_depth;
+      for (size_t i = kDomain; i < split_range.size(); ++i) {
+        EXPECT_EQ(memcmp(&split_range[i], &kSplitSentinel, sizeof(int4)), 0)
+            << "EvalRange extra capacity at " << i;
+      }
+    }
+  }
+
+  for (size_t x = 0; x < kDomain; ++x) {
+    const int4 expected = static_cast<In>(x) == alpha ? Group::From(beta).Into() : int4{};
+    const int4 actual = (Group::From(split_all[0][x]) + Group::From(split_all[1][x])).Into();
+    EXPECT_EQ(memcmp(&actual, &expected, GroupCompareSize<Group>()), 0) << "reconstruction x=" << x;
+  }
+}
+
+template <int in_bits, typename Group, typename In>
+void CheckHalfTreeSplitStrides(In alpha) {
+  const int4 beta = {604, 981, 273, 84};
+  for (size_t stride : {size_t{0}, size_t{1}, size_t{3}, size_t{5}}) {
+    CheckHalfTreeSplit<in_bits, Group, In>(alpha, beta, stride);
+  }
+}
+
+// A Cw[] array is already an int4 array at stride 2, so it feeds the split API
+// once the packed control bit is materialized (R9).
+template <int in_bits, typename Group, typename In>
+void CheckHalfTreeSplitFromCwStorage(In alpha, int4 beta) {
+  using Scheme = fss::HalfTreeDpf<in_bits, Group, fss_test::TestCcrHash, In>;
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  typename Scheme::Cw words[in_bits + 1];
+  scheme.Gen(words, seeds, alpha, beta);
+
+  std::vector<int4> storage(2 * (in_bits + 1), kSplitSentinel);
+  for (int l = 0; l <= in_bits; ++l) storage[2 * l] = words[l].s;
+  const In tr = words[in_bits - 1].extra
+      ? static_cast<In>(static_cast<In>(1) << (in_bits - 1)) : In{0};
+  const auto cws = cuda::std::span<const int4>(storage.data(), storage.size());
+  constexpr size_t kDomain = size_t{1} << in_bits;
+  for (int party = 0; party < 2; ++party) {
+    for (size_t x = 0; x < kDomain; ++x) {
+      const In xi = static_cast<In>(x);
+      const int4 expected = scheme.Eval(party, seeds[party], words, xi);
+      const int4 actual = scheme.Eval(party, seeds[party], cws, tr, xi, 2);
+      EXPECT_EQ(memcmp(&actual, &expected, sizeof(int4)), 0) << "party=" << party << " x=" << x;
+    }
+    std::vector<int4> expected_all(kDomain, kSplitSentinel);
+    std::vector<int4> actual_all(kDomain, kSplitSentinel);
+    scheme.EvalAll(party, seeds[party], words, expected_all.data());
+    scheme.EvalAll(party, seeds[party], cws, tr, actual_all.data(), 0, 2);
+    EXPECT_EQ(memcmp(actual_all.data(), expected_all.data(), kDomain * sizeof(int4)), 0)
+        << "EvalAll party=" << party;
+  }
+}
+
+}  // namespace
+
+// in_bits 1 is the single-level tree, 4 is the smallest batched EvalAll()
+// domain, 6 keeps the batched frontier with two parallel tasks, and 8 runs the
+// full frontier. The Uint127 group covers the arithmetic path.
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth1) { CheckHalfTreeSplitStrides<1, BytesGroup, uint8_t>(1); }
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth2) { CheckHalfTreeSplitStrides<2, BytesGroup, uint8_t>(3); }
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth3) { CheckHalfTreeSplitStrides<3, BytesGroup, uint8_t>(5); }
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth4) { CheckHalfTreeSplitStrides<4, BytesGroup, uint8_t>(11); }
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth6) { CheckHalfTreeSplitStrides<6, BytesGroup, uint8_t>(11); }
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth8) { CheckHalfTreeSplitStrides<8, BytesGroup, uint8_t>(kAlpha); }
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth6Uint127) {
+  CheckHalfTreeSplitStrides<6, Uint127Group, uint8_t>(11);
+}
+TEST(HalfTreeDpfSplitCorrectionsTest, Depth8GenericGroup) {
+  CheckHalfTreeSplitStrides<8, Uint64Group, uint8_t>(kAlpha);
+}
+TEST(HalfTreeDpfSplitCorrectionsTest, CwStorageView) {
+  CheckHalfTreeSplitFromCwStorage<8, BytesGroup, uint8_t>(kAlpha, {604, 981, 273, 84});
+}
+
+// Pins the packed control bit position: HalfTreeDpf uses only bit in_bits - 1 of
+// tr. Gen writes no other bit, the other bits are ignored on input, and moving
+// the bit to a wrong position changes the evaluation, so the position is caught.
+TEST(HalfTreeDpfSplitCorrectionsTest, TrBitPosition) {
+  constexpr int in_bits = 4;
+  using Scheme = fss::HalfTreeDpf<in_bits, BytesGroup, fss_test::TestCcrHash, uint8_t>;
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  const int4 beta = {604, 981, 273, 84};
+  constexpr size_t kDomain = size_t{1} << in_bits;
+
+  // An odd alpha makes the alpha path use LCW_1 at the final level. Pick one whose
+  // LCW_1 is set so that moving the bit is observable.
+  uint8_t alpha = 1;
+  typename Scheme::Cw ref[in_bits + 1];
+  for (; alpha < kDomain; alpha += 2) {
+    scheme.Gen(ref, seeds, alpha, beta);
+    if (ref[in_bits - 1].extra) break;
+  }
+  ASSERT_TRUE(ref[in_bits - 1].extra) << "no alpha with LCW_1 set";
+
+  std::vector<int4> cws(in_bits + 1 + 2, kSplitSentinel);
+  uint8_t tr = 0;
+  scheme.Gen(cuda::std::span<int4>(cws.data(), cws.size()), tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+  const auto split_cws = cuda::std::span<const int4>(cws.data(), in_bits + 1);
+  EXPECT_EQ(tr, static_cast<uint8_t>(static_cast<uint8_t>(1) << (in_bits - 1)))
+      << "Gen writes only bit in_bits - 1";
+
+  // Bits other than in_bits - 1 are ignored on input, including bits at or above in_bits.
+  for (uint8_t noise : {static_cast<uint8_t>(0x0f), static_cast<uint8_t>(0x30)}) {
+    const uint8_t noisy = static_cast<uint8_t>(tr | noise);
+    for (size_t x = 0; x < kDomain; ++x) {
+      for (int party = 0; party < 2; ++party) {
+        const int4 expected = scheme.Eval(party, seeds[party], ref, static_cast<uint8_t>(x));
+        const int4 actual =
+            scheme.Eval(party, seeds[party], split_cws, noisy, static_cast<uint8_t>(x));
+        EXPECT_EQ(memcmp(&actual, &expected, sizeof(int4)), 0)
+            << "noise=" << static_cast<int>(noise) << " party=" << party << " x=" << x;
+      }
+    }
+  }
+
+  // Moving the bit to bit 0 clears the true position and must change the result.
+  const uint8_t moved = static_cast<uint8_t>(tr >> (in_bits - 1));
+  size_t differences = 0;
+  for (size_t x = 0; x < kDomain; ++x) {
+    for (int party = 0; party < 2; ++party) {
+      const int4 expected = scheme.Eval(party, seeds[party], ref, static_cast<uint8_t>(x));
+      const int4 actual =
+          scheme.Eval(party, seeds[party], split_cws, moved, static_cast<uint8_t>(x));
+      if (memcmp(&actual, &expected, sizeof(int4)) != 0) ++differences;
+    }
+  }
+  EXPECT_GT(differences, size_t{0}) << "a wrong control bit position was not caught";
+}
+
+#ifndef NDEBUG
+TEST(HalfTreeDpfSplitCorrectionsTest, RejectsInvalidInputs) {
+  using Scheme = fss::HalfTreeDpf<3, BytesGroup, fss_test::TestCcrHash, uint8_t>;
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  const cuda::std::span<const int4, 2> seed_span(seeds, 2);
+  const int4 beta = {604, 981, 273, 84};
+  int4 cws[4] = {};
+  int4 ys[8] = {};
+  uint8_t tr = 0;
+  const auto cws_out = cuda::std::span<int4>(cws, 4);
+  const auto cws_in = cuda::std::span<const int4>(cws, 4);
+  const int4 s0 = seeds[0];
+
+  // A zero stride is only the batch sentinel, so a non-batch method rejects it.
+  EXPECT_DEBUG_DEATH((void)scheme.Gen(cws_out, tr, seed_span, uint8_t{5}, beta, 0),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0}, 0),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cws_in, uint8_t{0}, ys, 0, 0),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{7}, s0, cws_in,
+                        uint8_t{0}, cuda::std::span<int4>(ys, 8), 0, 0),
+      "Assertion.*failed");
+  // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
+  EXPECT_DEBUG_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, 3), tr, seed_span,
+                        uint8_t{5}, beta),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, 3),
+                        uint8_t{0}, uint8_t{0}),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, 3),
+                        uint8_t{0}, ys),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{7}, s0,
+                        cuda::std::span<const int4>(cws, 3), uint8_t{0},
+                        cuda::std::span<int4>(ys, 8)),
+      "Assertion.*failed");
+  // The terminal output correction must have a zero LSB.
+  int4 odd_cws[4] = {};
+  odd_cws[3].w = 1;
+  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(odd_cws, 4),
+                        uint8_t{0}, uint8_t{0}),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(odd_cws, 4),
+                        uint8_t{0}, ys),
+      "Assertion.*failed");
+  // A stride past the addressable guard is rejected.
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  const size_t overflowing_stride = (kMaxElements - 1) / 3 + 1;
+  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0},
+                        overflowing_stride),
+      "Assertion.*failed");
+}
+#endif  // NDEBUG
+
+// The batch geometry validation is host code that runs before any CUDA call, so
+// these checks need no device and read no buffer.
+TEST(HalfTreeDpfSplitGpuTest, RejectsInvalidBatchGeometry) {
+  using Wide = fss::HalfTreeDpf<32, BytesGroup, fss_test::TestCcrHash, uint64_t>;
+  Wide wide{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  int4 seed_storage[1] = {};
+  int4 cws_storage[1] = {};
+  int4 ys_storage[1] = {};
+  uint64_t tr_storage[1] = {};
+
+  // 2^32 keys of 2^32 outputs make the output product wrap in size_t, so the
+  // guard must reject the call before the product is formed. The correction
+  // spans are sized nominally here and the key count is above the launch grid
+  // limit for every launch shape, so a variant without the output guard would
+  // stop at cudaErrorInvalidConfiguration instead of launching into the
+  // one-element output buffer.
+  constexpr size_t kKeys = size_t{1} << 32;
+  constexpr size_t kMinCorrections = 32 * kKeys + kKeys;
+  EXPECT_EQ((wide.template EvalAllGpuBatch<24, 256>(false,
+      cuda::std::span<const int4>(seed_storage, kKeys),
+      cuda::std::span<const int4>(cws_storage, kMinCorrections),
+      cuda::std::span<const uint64_t>(tr_storage, kKeys),
+      cuda::std::span<int4>(ys_storage, 1), 0)), cudaErrorInvalidValue);
+
+  using Small = fss::HalfTreeDpf<8, BytesGroup, fss_test::TestCcrHash, uint16_t>;
+  Small small{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  constexpr size_t kSmallKeys = 2;
+  constexpr size_t kSmallRequired = 8 * kSmallKeys + kSmallKeys;
+  int4 small_s0s[kSmallKeys] = {};
+  int4 small_cws[kSmallRequired] = {};
+  int4 small_ys[kSmallKeys * 256] = {};
+  uint16_t small_tr[kSmallKeys] = {};
+  const auto s0s = cuda::std::span<const int4>(small_s0s, kSmallKeys);
+  const auto cws = cuda::std::span<const int4>(small_cws, kSmallRequired);
+  const auto tr = cuda::std::span<const uint16_t>(small_tr, kSmallKeys);
+  const auto ys = cuda::std::span<int4>(small_ys, kSmallKeys * 256);
+
+  // A stride below the key count is rejected.
+  EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s, cws, tr, ys, 0, 1)),
+      cudaErrorInvalidValue);
+  // A stride past the element guard is rejected.
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s, cws, tr, ys, 0,
+                        kMaxElements + 1)),
+      cudaErrorInvalidValue);
+  // A correction span that omits the terminal column is rejected.
+  EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, s0s,
+                        cuda::std::span<const int4>(small_cws, kSmallRequired - 1), tr, ys)),
+      cudaErrorInvalidValue);
+  // An empty batch succeeds without reading any buffer.
+  EXPECT_EQ((small.template EvalAllGpuBatch<16, 256>(false, cuda::std::span<const int4>(),
+                        cuda::std::span<const int4>(), cuda::std::span<const uint16_t>(),
+                        cuda::std::span<int4>())),
+      cudaSuccess);
+}
+
+// The GPU split launches are compile-verified here and executed only on a
+// machine with a free device, comparing against the host Cw-form outputs.
+namespace {
+
+template <typename Group>
+void CheckHalfTreeSplitGpuLaunches() {
+  int devices = 0;
+  cudaError_t device_status = cudaGetDeviceCount(&devices);
+  if (device_status == cudaErrorNoDevice || device_status == cudaErrorInsufficientDriver ||
+      (device_status == cudaSuccess && devices == 0)) GTEST_SKIP() << "no CUDA device available";
+  ASSERT_EQ(device_status, cudaSuccess);
+
+  constexpr int kBits = 8;
+  constexpr size_t kDomain = size_t{1} << kBits;
+  using Scheme = fss::HalfTreeDpf<kBits, Group, fss_test::TestCcrHash, uint16_t>;
+  Scheme scheme{fss_test::TestCcrHash{}, {11, 22, 33, 44}};
+  const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  const int4 beta = {7, 19, 23, 42};
+  const uint16_t alpha = 107;
+  constexpr size_t kStride = 2;
+
+  typename Scheme::Cw ref[kBits + 1];
+  scheme.Gen(ref, seeds, alpha, beta);
+  std::vector<int4> cws((kBits + 1) * kStride + 2, kSplitSentinel);
+  uint16_t tr = 0;
+  scheme.Gen(cuda::std::span<int4>(cws.data(), cws.size()), tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha, beta, kStride);
+
+  int4 *device_cws = nullptr;
+  int4 *device_ys = nullptr;
+  uint16_t *device_tr = nullptr;
+  cudaStream_t stream;
+  ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
+  constexpr size_t kKeys = 2;
+  ASSERT_EQ(cudaMalloc(&device_cws, cws.size() * sizeof(int4)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_tr, kKeys * sizeof(uint16_t)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_ys, kDomain * sizeof(int4)), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(device_cws, cws.data(), cws.size() * sizeof(int4),
+      cudaMemcpyHostToDevice, stream), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(device_tr, &tr, sizeof(uint16_t), cudaMemcpyHostToDevice, stream),
+      cudaSuccess);
+
+  for (int party = 0; party < 2; ++party) {
+    SCOPED_TRACE(party);
+    const bool b = party != 0;
+    const auto span_cws = cuda::std::span<const int4>(device_cws, cws.size());
+    std::vector<int4> actual(kDomain, kSplitSentinel);
+    ASSERT_EQ((scheme.template EvalAllGpu<8, 16>(b, seeds[party], span_cws, tr,
+        cuda::std::span<int4>(device_ys, kDomain), stream, kStride)), cudaSuccess);
+    ASSERT_EQ(cudaMemcpyAsync(actual.data(), device_ys, kDomain * sizeof(int4),
+        cudaMemcpyDeviceToHost, stream), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    for (size_t x = 0; x < kDomain; ++x) {
+      const int4 expected = scheme.Eval(b, seeds[party], ref, static_cast<uint16_t>(x));
+      EXPECT_EQ(memcmp(&actual[x], &expected, sizeof(int4)), 0) << "x=" << x;
+    }
+    // EvalRangeGpu over a partial interval leaves the extra device capacity untouched.
+    std::vector<int4> filled(kDomain, kSplitSentinel);
+    ASSERT_EQ(cudaMemcpyAsync(device_ys, filled.data(), kDomain * sizeof(int4),
+        cudaMemcpyHostToDevice, stream), cudaSuccess);
+    ASSERT_EQ((scheme.template EvalRangeGpu<8, 16>(b, uint16_t{13}, uint16_t{201},
+        seeds[party], span_cws, tr, cuda::std::span<int4>(device_ys, kDomain), stream, kStride)),
+        cudaSuccess);
+    ASSERT_EQ(cudaMemcpyAsync(filled.data(), device_ys, kDomain * sizeof(int4),
+        cudaMemcpyDeviceToHost, stream), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    for (uint16_t x = 13; x <= 201; ++x) {
+      const int4 expected = scheme.Eval(b, seeds[party], ref, x);
+      EXPECT_EQ(memcmp(&filled[x - 13], &expected, sizeof(int4)), 0) << "range x=" << x;
+    }
+    for (size_t i = 201 - 13 + 1; i < kDomain; ++i) {
+      EXPECT_EQ(memcmp(&filled[i], &kSplitSentinel, sizeof(int4)), 0) << "untouched at " << i;
+    }
+  }
+
+  // A zero stride and a span that omits the terminal slot are rejected.
+  EXPECT_EQ((scheme.template EvalAllGpu<8, 16>(false, seeds[0],
+      cuda::std::span<const int4>(device_cws, cws.size()), tr,
+      cuda::std::span<int4>(device_ys, kDomain), stream, 0)), cudaErrorInvalidValue);
+  EXPECT_EQ((scheme.template EvalRangeGpu<8, 16>(false, uint16_t{0}, uint16_t{255}, seeds[0],
+      cuda::std::span<const int4>(device_cws, kBits), tr,
+      cuda::std::span<int4>(device_ys, kDomain), stream)), cudaErrorInvalidValue);
+
+  // Batch launches: the default stride is the dense level-major key count.
+  typename Scheme::Cw ref_batch[kKeys][kBits + 1];
+  std::vector<int4> batch_cws((kBits + 1) * kKeys, kSplitSentinel);
+  int4 batch_s0s[kKeys];
+  uint16_t batch_tr[kKeys] = {0, 0};
+  for (size_t key = 0; key < kKeys; ++key) {
+    batch_s0s[key] = seeds[key];
+    scheme.Gen(ref_batch[key], seeds, static_cast<uint16_t>(alpha + key), beta);
+    uint16_t key_tr = 0;
+    // Offsetting by the key index fills the dense level-major layout.
+    scheme.Gen(cuda::std::span<int4>(batch_cws.data() + key, batch_cws.size() - key), key_tr,
+        cuda::std::span<const int4, 2>(seeds, 2), static_cast<uint16_t>(alpha + key), beta, kKeys);
+    batch_tr[key] = key_tr;
+  }
+  ASSERT_EQ(cudaMemcpyAsync(device_cws, batch_cws.data(), batch_cws.size() * sizeof(int4),
+      cudaMemcpyHostToDevice, stream), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(device_tr, batch_tr, sizeof(batch_tr), cudaMemcpyHostToDevice, stream),
+      cudaSuccess);
+  int4 *device_s0s = nullptr;
+  ASSERT_EQ(cudaMalloc(&device_s0s, sizeof(batch_s0s)), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(device_s0s, batch_s0s, sizeof(batch_s0s),
+      cudaMemcpyHostToDevice, stream), cudaSuccess);
+  int4 *device_batch_ys = nullptr;
+  ASSERT_EQ(cudaMalloc(&device_batch_ys, kKeys * kDomain * sizeof(int4)), cudaSuccess);
+  const auto span_batch_cws = cuda::std::span<const int4>(device_cws, batch_cws.size());
+  const auto span_batch_tr = cuda::std::span<const uint16_t>(device_tr, kKeys);
+  const auto span_batch_ys = cuda::std::span<int4>(device_batch_ys, kKeys * kDomain);
+  for (int use_sentinel = 0; use_sentinel < 2; ++use_sentinel) {
+    SCOPED_TRACE(use_sentinel);
+    const size_t stride = use_sentinel == 0 ? fss::kDenseStride : kKeys;
+    ASSERT_EQ((scheme.template EvalAllGpuBatch<8, 16>(false,
+        cuda::std::span<const int4>(device_s0s, kKeys), span_batch_cws, span_batch_tr,
+        span_batch_ys, stream, stride)), cudaSuccess);
+    std::vector<int4> actual(kKeys * kDomain, kSplitSentinel);
+    ASSERT_EQ(cudaMemcpyAsync(actual.data(), device_batch_ys, actual.size() * sizeof(int4),
+        cudaMemcpyDeviceToHost, stream), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    for (size_t key = 0; key < kKeys; ++key) {
+      for (size_t x = 0; x < kDomain; ++x) {
+        const int4 expected =
+            scheme.Eval(false, batch_s0s[key], ref_batch[key], static_cast<uint16_t>(x));
+        EXPECT_EQ(memcmp(&actual[key * kDomain + x], &expected, sizeof(int4)), 0)
+            << "key=" << key << " x=" << x;
+      }
+    }
+  }
+  // A stride below the key count is rejected.
+  EXPECT_EQ((scheme.template EvalAllGpuBatch<8, 16>(false,
+      cuda::std::span<const int4>(device_s0s, kKeys), span_batch_cws, span_batch_tr,
+      span_batch_ys, stream, 1)), cudaErrorInvalidValue);
+
+  EXPECT_EQ(cudaFree(device_batch_ys), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_s0s), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_ys), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_tr), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_cws), cudaSuccess);
+  EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+}
+
+}  // namespace
+
+TEST(HalfTreeDpfSplitGpuTest, SplitLaunchesMatchCwHost) { CheckHalfTreeSplitGpuLaunches<BytesGroup>(); }
+TEST(HalfTreeDpfSplitGpuTest, WideGroupSplitLaunchesCompile) {
+  CheckHalfTreeSplitGpuLaunches<Uint127Group>();
+}

@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - VDPF `EvalRange`, which evaluates a contiguous input range and proves at most one nonzero output within it
+- VDMPF split evaluation (`EvalProof`, `Eval`, `Prove`, `ProveMerkle`), which evaluates each input separately and accumulates the chain or Merkle proof into caller-owned storage. The proofs match the fused `BatchEval`, `BatchEvalMerkle`, `EvalAll`, and `EvalAllMerkle` exactly, and the output shares match for the commutative Group backends in this repository
+- `kCuckooChoices` is now public on VDMPF and DMPF, so the fixed Cuckoo candidate count is available to callers
 - GPU point evaluation for the packed HalfTree DPF (`PackedHalfTreeDpfRepackGpu`, `PackedHalfTreeDpfEvalPointGpu`)
 - Single-path Grotto DCF evaluation, `GrottoDcf::Eval(b, key, x)`: Grotto's prefix-parity algorithm on one root-to-leaf path, with in_bits PRG calls per query and no preprocessing, plus the GPU launcher `GrottoDcfEvalPointGpu` after `GrottoDcfRepackGpu`
 - Grotto DCF on packed HalfTree DPF keys (`HalfTreeGrottoDcf`, experimental): shares of `1[alpha <= x]` from a 1-bit packed HalfTree DPF key with beta = 1 at the cost of its `Eval`, plus the GPU launcher `HalfTreeGrottoDcfEvalPointGpu` after `HalfTreeGrottoDcfRepackGpu`

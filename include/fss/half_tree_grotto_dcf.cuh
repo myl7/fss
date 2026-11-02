@@ -116,6 +116,30 @@ public:
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a);
 
   /**
+   * Key generation method for split corrections. Delegates to
+   * PackedHalfTreeDpf::Gen() with beta = 1.
+   *
+   * Layer l is stored at cws[l*stride] and the packed-output correction at
+   * cws[kDepth*stride]. The construction carries no control bits, so there is no
+   * packed-control parameter.
+   *
+   * @param cws Output storage; its capacity includes kDepth*stride+1 elements.
+   * @param s0s 2 initial seeds. Users can randomly sample them.
+   * @param a The secret comparison threshold in [0, 2^in_bits).
+   * @param stride Positive element stride between layer entries. The default
+   * stride of 1 stores the components contiguously.
+   * @pre stride > 0.
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
+   * and cws has at least kDepth*stride+1 elements.
+   * @pre Inputs and outputs do not overlap.
+   * @pre All accessed storage is accessible from the calling execution space.
+   * @post cws and s0s[party] form the corresponding party's key.
+   * @post Only the described prefix is written, and storage beyond it is untouched.
+   */
+  __host__ __device__ void Gen(cuda::std::span<int4> cws,
+      cuda::std::span<const int4, 2> s0s, In a, size_t stride = 1);
+
+  /**
    * Evaluation method, see "Evaluation" in the file details.
    *
    * @param b Party index. False for 0 and true for 1.
@@ -125,6 +149,28 @@ public:
    * @return bool share such that share_0 XOR share_1 = 1[alpha <= x].
    */
   __host__ __device__ bool Eval(bool b, int4 s0, const Cw cws[], In x);
+
+  /**
+   * Evaluation method for split corrections, see "Evaluation" in the file details.
+   *
+   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * cws[kDepth*stride]. The construction carries no control bits, so there is no
+   * packed-control parameter.
+   *
+   * @param b Party index. False for 0 and true for 1.
+   * @param s0 This party's seed from generation.
+   * @param cws Correction components, with layer l at index l*stride and the
+   * packed-output correction at index kDepth*stride.
+   * @param x Query point in [0, 2^in_bits).
+   * @param stride Positive stride between correction entries.
+   * @return bool share such that share_0 XOR share_1 = 1[alpha <= x].
+   * @pre stride > 0.
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
+   * and cws has at least kDepth*stride+1 elements.
+   * @pre All accessed storage is accessible from the calling execution space.
+   */
+  __host__ __device__ bool Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
+      In x, size_t stride = 1);
 
   /**
    * Borrowed, read-only packed leaves and their block-parity tree.
@@ -168,6 +214,30 @@ public:
   void Preprocess(bool b, int4 s0, const Cw cws[], int4 blocks[], bool p[], int par_depth = 0);
 
   /**
+   * Build packed leaves and their parity tree from split corrections.
+   *
+   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * cws[kDepth*stride]. The construction carries no control bits, so there is no
+   * packed-control parameter. The produced arrays match the Cw form entry for entry.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's initial seed.
+   * @param cws Correction components, with layer l at index l*stride.
+   * @param blocks Writable output array of at least 2^kDepth int4 entries.
+   * @param p Writable output array of at least 2^(kDepth+1)-1 bool entries.
+   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @param stride Positive stride between correction entries.
+   * @pre stride > 0.
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
+   * and cws has at least kDepth*stride+1 elements.
+   * @pre Packed-block and parity-tree element counts and byte sizes fit size_t.
+   * @post ParityTreeView{blocks, p} can be passed to Eval() and EvalAll().
+   */
+  void Preprocess(bool b, int4 s0, cuda::std::span<const int4> cws, int4 blocks[],
+      bool p[], int par_depth = 0, size_t stride = 1);
+
+  /**
    * Allocate and populate packed leaves and their parity tree in host storage.
    *
    * The returned owner holds independent storage; this instance keeps no key
@@ -186,6 +256,26 @@ public:
    */
   OwnedPackedParityTree<HalfTreeGrottoDcf> PreprocessOwned(
       bool b, int4 s0, const Cw cws[], int par_depth = 0);
+
+  /**
+   * Allocate and populate packed leaves and their parity tree from split corrections.
+   *
+   * The returned owner holds independent storage; this instance keeps no key
+   * or preprocessed tree. Its View() is accepted by Eval() and EvalAll().
+   * Layer l is read from cws[l*stride], as in the Cw form.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's seed from generation.
+   * @param cws Correction components, with layer l at index l*stride.
+   * @param par_depth Nonnegative CPU split depth for this call. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @param stride Positive stride between correction entries.
+   * @return Move-only owner of the populated host storage.
+   * @pre stride > 0 and cws holds at least kDepth*stride+1 elements.
+   * @pre All allocated element counts and byte sizes fit size_t.
+   */
+  OwnedPackedParityTree<HalfTreeGrottoDcf> PreprocessOwned(bool b, int4 s0,
+      cuda::std::span<const int4> cws, int par_depth = 0, size_t stride = 1);
 
   /**
    * Query a preprocessed tree without hash calls.
@@ -214,6 +304,29 @@ public:
    * @post ys[x] is this party's XOR share of alpha <= x, using the leaf-prefix route.
    */
   void EvalAll(bool b, int4 s0, const Cw cws[], bool ys[], int par_depth = 0);
+
+  /**
+   * Evaluate all comparison shares from split corrections on the host.
+   *
+   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * cws[kDepth*stride]. The construction carries no control bits, so there is no
+   * packed-control parameter. Outputs match the Cw form share for share.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's initial seed.
+   * @param cws Correction components, with layer l at index l*stride.
+   * @param ys Output array of at least 2^in_bits bool entries.
+   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @param stride Positive stride between correction entries.
+   * @pre stride > 0.
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
+   * and cws has at least kDepth*stride+1 elements.
+   * @pre The output and packed-block element counts and byte sizes fit size_t.
+   * @post ys[x] is this party's XOR share of alpha <= x, using the leaf-prefix route.
+   */
+  void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, bool ys[],
+      int par_depth = 0, size_t stride = 1);
 
   /**
    * Evaluate all comparison shares from preprocessed packed leaves on the host.
@@ -258,6 +371,35 @@ public:
     requires(kDepth < sizeof(size_t) * 8);
 
   /**
+   * Build packed leaves and their parity tree on the GPU from split corrections.
+   *
+   * Reuses PackedHalfTreeDpf::EvalAllGpu(). Layer l is read from cws[l*stride] and
+   * the packed-output correction from cws[kDepth*stride]. The hash value and
+   * instance seed are passed as kernel arguments; resources referenced by the hash
+   * must already be device-accessible and allow concurrent use. No allocation,
+   * upload, deep copy, or synchronization is performed.
+   *
+   * @param b Party index.
+   * @param s0 This party's initial seed, passed by value to the kernel.
+   * @param cws Device correction components, with layer l at index l*stride.
+   * @param blocks Device output of at least 2^kDepth packed int4 blocks.
+   * @param tree Device output of at least 2^(kDepth+1)-1 bool parity entries.
+   * @param stream Stream on the device owning the referenced resources.
+   * @param stride Positive stride between correction entries.
+   * @pre stride > 0 and cws holds at least kDepth*stride+1 elements.
+   * @pre Packed-block and parity-tree counts and byte counts fit size_t.
+   * @pre Buffers and backend resources remain valid until queued work completes.
+   * @return Immediate CUDA status. Invalid buffers or unaddressable counts
+   * return cudaErrorInvalidValue; oversized grids return cudaErrorInvalidConfiguration.
+   * Work remains asynchronous, and execution errors are observed on the stream.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t PreprocessGpu(bool b, int4 s0, cuda::std::span<const int4> cws,
+      cuda::std::span<int4> blocks, cuda::std::span<bool> tree,
+      cudaStream_t stream = 0, size_t stride = 1) const
+    requires(kDepth < sizeof(size_t) * 8);
+
+  /**
    * Evaluate all comparison shares on the GPU without building a parity tree.
    *
    * Expands packed blocks, unpacks their bits, and scans their prefix XOR.
@@ -281,6 +423,33 @@ public:
   __host__ cudaError_t EvalAllGpu(bool b, int4 s0,
       cuda::std::span<const Cw> cws, cuda::std::span<bool> ys,
       cudaStream_t stream = 0) const
+    requires(in_bits < sizeof(size_t) * 8);
+
+  /**
+   * Evaluate all comparison shares on the GPU from split corrections.
+   *
+   * Expands packed blocks, unpacks their bits, and scans their prefix XOR.
+   * Layer l is read from cws[l*stride] and the packed-output correction from
+   * cws[kDepth*stride]. The host instance passes its hash value and instance seed
+   * to the packed evaluator. Referenced backend resources must already be
+   * device-accessible. Packed-block and CUB scan scratch are allocated and
+   * released on stream. No backend upload, deep copy, synchronization, or event
+   * management occurs.
+   *
+   * @param b Party index.
+   * @param s0 This party's seed, passed by value.
+   * @param cws Device correction components, with layer l at index l*stride.
+   * @param ys Device output of at least 2^in_bits bool entries, in input order.
+   * @param stream Stream used for evaluation, scanning, and temporary storage.
+   * @param stride Positive stride between correction entries.
+   * @pre stride > 0 and cws holds at least kDepth*stride+1 elements.
+   * @pre Buffers and backend resources remain valid until queued work completes.
+   * @return The first immediate CUDA failure, including allocation or release.
+   * Invalid buffers/counts return cudaErrorInvalidValue. Work is asynchronous.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t EvalAllGpu(bool b, int4 s0, cuda::std::span<const int4> cws,
+      cuda::std::span<bool> ys, cudaStream_t stream = 0, size_t stride = 1) const
     requires(in_bits < sizeof(size_t) * 8);
 
   /**
@@ -308,6 +477,31 @@ private:
   int4 instance_seed_;
 
   __host__ __device__ DpfType MakeDpf() const;
+
+  // Split corrections view over the caller's array. The host methods and the
+  // split GPU kernels share this one view; see detail::PackedHalfTreeSplitCorrections.
+  using SplitCorrections = detail::PackedHalfTreeSplitCorrections<Cw>;
+
+  // Shared path evaluation over Cw-shaped or split corrections.
+  template <typename Corrections>
+  __host__ __device__ bool EvalCorrections(bool b, int4 s0, Corrections cws, In x);
+
+  // Shared preprocessing over Cw-shaped or split corrections.
+  template <typename Corrections>
+  void PreprocessCorrections(
+      bool b, int4 s0, Corrections cws, int4 blocks[], bool p[], int par_depth);
+
+  // Shared full-domain evaluation over Cw-shaped or split corrections.
+  template <typename Corrections>
+  void EvalAllCorrections(bool b, int4 s0, Corrections cws, bool ys[], int par_depth);
+
+  // Shared owner-producing preprocessing over Cw-shaped or split corrections.
+  template <typename Corrections>
+  OwnedPackedParityTree<HalfTreeGrottoDcf> PreprocessOwnedCorrections(
+      bool b, int4 s0, Corrections cws, int par_depth);
+
+  // Block-parity entries of the packed leaves, shared by both Preprocess() forms.
+  static void BuildBlockTree(const int4 blocks[], bool p[]);
 
   // Prefix or suffix parity selected by the final tree bit of x.
   static __host__ __device__ bool LeafParity(int4 block, In x);
@@ -360,7 +554,36 @@ __host__ __device__ inline void HalfTreeGrottoDcf<in_bits, Hash, In>::Gen(
 
 template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+__host__ __device__ inline void HalfTreeGrottoDcf<in_bits, Hash, In>::Gen(
+    cuda::std::span<int4> cws, cuda::std::span<const int4, 2> s0s, In a, size_t stride) {
+  // The key is the packed DPF key with beta = 1, so the split layout is
+  // PackedHalfTreeDpf's and the packed generator owns the stride and span guards.
+  MakeDpf().Gen(cws, s0s, a, 1, stride);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 __host__ __device__ inline bool HalfTreeGrottoDcf<in_bits, Hash, In>::Eval(bool b, int4 s0, const Cw cws[], In x) {
+  return EvalCorrections(b, s0, cws, x);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+__host__ __device__ inline bool HalfTreeGrottoDcf<in_bits, Hash, In>::Eval(bool b, int4 s0,
+    cuda::std::span<const int4> cws, In x, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  assert(cws.size() >= required);
+  return EvalCorrections(b, s0, SplitCorrections{cws.data(), stride}, x);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+template <typename Corrections>
+__host__ __device__ inline bool HalfTreeGrottoDcf<in_bits, Hash, In>::EvalCorrections(
+    bool b, int4 s0, Corrections cws, In x) {
   DpfType dpf = MakeDpf();
   detail::GrottoTurns turns;
   int4 node = dpf.Walk(b, s0, cws, x, turns);
@@ -371,11 +594,38 @@ template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 inline void HalfTreeGrottoDcf<in_bits, Hash, In>::Preprocess(
     bool b, int4 s0, const Cw cws[], int4 blocks[], bool p[], int par_depth) {
+  PreprocessCorrections(b, s0, cws, blocks, p, par_depth);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+inline void HalfTreeGrottoDcf<in_bits, Hash, In>::Preprocess(bool b, int4 s0,
+    cuda::std::span<const int4> cws, int4 blocks[], bool p[], int par_depth, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  assert(cws.size() >= required);
+  PreprocessCorrections(b, s0, SplitCorrections{cws.data(), stride}, blocks, p, par_depth);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+template <typename Corrections>
+inline void HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessCorrections(
+    bool b, int4 s0, Corrections cws, int4 blocks[], bool p[], int par_depth) {
   assert(par_depth >= 0);
   static_assert(detail::FitsBinaryTree<bool, kDepth>(),
       "parity-tree count and byte size must fit in size_t");
+  // The packed scheme owns the expansion body, shared with its own EvalAll() forms.
+  MakeDpf().template EvalAllCorrections(b, s0, cws, blocks, par_depth);
+  BuildBlockTree(blocks, p);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+inline void HalfTreeGrottoDcf<in_bits, Hash, In>::BuildBlockTree(const int4 blocks[], bool p[]) {
   constexpr size_t count = detail::FullDomainSize<int4, kDepth>();
-  MakeDpf().EvalAll(b, s0, cws, blocks, par_depth);
   for (size_t j = 0; j < count; ++j) {
     // A lane-only x selects an inclusive prefix, so lane 127 covers the whole block.
     p[count - 1 + j] = LeafParity(blocks[j], static_cast<In>(kLanes - 1));
@@ -407,10 +657,31 @@ template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 inline void HalfTreeGrottoDcf<in_bits, Hash, In>::EvalAll(
     bool b, int4 s0, const Cw cws[], bool ys[], int par_depth) {
+  EvalAllCorrections(b, s0, cws, ys, par_depth);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+inline void HalfTreeGrottoDcf<in_bits, Hash, In>::EvalAll(bool b, int4 s0,
+    cuda::std::span<const int4> cws, bool ys[], int par_depth, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  assert(cws.size() >= required);
+  EvalAllCorrections(b, s0, SplitCorrections{cws.data(), stride}, ys, par_depth);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+template <typename Corrections>
+inline void HalfTreeGrottoDcf<in_bits, Hash, In>::EvalAllCorrections(
+    bool b, int4 s0, Corrections cws, bool ys[], int par_depth) {
   assert(par_depth >= 0);
   constexpr size_t count = detail::FullDomainSize<int4, kDepth>();
   auto blocks = std::make_unique<int4[]>(count);
-  MakeDpf().EvalAll(b, s0, cws, blocks.get(), par_depth);
+  // The packed scheme owns the expansion body, shared with its own EvalAll() forms.
+  MakeDpf().template EvalAllCorrections(b, s0, cws, blocks.get(), par_depth);
   ScanBlocks(blocks.get(), ys);
 }
 
@@ -499,6 +770,42 @@ __host__ inline cudaError_t HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessGpu(
 #endif
 }
 
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessGpu(
+    bool b, int4 s0, cuda::std::span<const int4> cws, cuda::std::span<int4> blocks,
+    cuda::std::span<bool> tree, cudaStream_t stream, size_t stride) const
+  requires(kDepth < sizeof(size_t) * 8) {
+#if defined(__CUDACC__)
+  using LaunchShape = gpu::detail::GrottoGpuLaunchShape<kDepth, frontier_depth, threads_per_block>;
+  constexpr size_t kBlocks = size_t{1} << kDepth;
+  constexpr size_t kTreeSize = kBlocks + (kBlocks - 1);
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  if (!detail::FitsFullDomain<int4, kDepth>() || !detail::FitsBinaryTree<bool, kDepth>() ||
+      stride == 0 || stride > (kMaxElements - 1) / static_cast<size_t>(kDepth) ||
+      cws.size() < static_cast<size_t>(kDepth) * stride + 1 ||
+      blocks.size() < kBlocks || tree.size() < kTreeSize ||
+      cws.data() == nullptr || blocks.data() == nullptr || tree.data() == nullptr)
+    return cudaErrorInvalidValue;
+  constexpr size_t kParityBlocks = kBlocks / LaunchShape::kThreadsPerBlock +
+      (kBlocks % LaunchShape::kThreadsPerBlock != 0);
+  if (kParityBlocks > static_cast<size_t>(std::numeric_limits<int>::max()))
+    return cudaErrorInvalidConfiguration;
+  cudaError_t status = MakeDpf().template EvalAllGpu<frontier_depth, threads_per_block>(
+      b, s0, cws, blocks, stream, stride);
+  if (status != cudaSuccess) return status;
+  gpu::detail::GrottoPackedParityKernel<<<kParityBlocks, LaunchShape::kThreadsPerBlock, 0, stream>>>(
+      blocks.data(), tree.data() + kBlocks - 1, kBlocks);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  return gpu::detail::BuildGrottoParityTree<kDepth, LaunchShape>(tree.data(), stream);
+#else
+  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
 
 template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
@@ -533,6 +840,55 @@ __host__ inline cudaError_t HalfTreeGrottoDcf<in_bits, Hash, In>::EvalAllGpu(
   auto *blocks = packed_storage.Get<int4>();
   status = MakeDpf().template EvalAllGpu<frontier_depth, threads_per_block>(
       b, s0, cws, cuda::std::span<int4>(blocks, kBlocks), stream);
+  if (status != cudaSuccess) return status;
+  gpu::detail::GrottoUnpackBitsKernel<<<unpack_grid, threads_per_block, 0, stream>>>(
+      blocks, ys.data(), kOutputs);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  status = cub::DeviceScan::InclusiveScan(scan_storage.Get<unsigned char>(), bytes,
+      ys.data(), ys.data(), gpu::detail::GrottoGpuBoolXor{}, static_cast<int64_t>(kOutputs), stream);
+  return gpu::detail::ReleaseScratch(status, {&packed_storage, &scan_storage});
+#else
+  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t HalfTreeGrottoDcf<in_bits, Hash, In>::EvalAllGpu(
+    bool b, int4 s0, cuda::std::span<const int4> cws, cuda::std::span<bool> ys,
+    cudaStream_t stream, size_t stride) const
+  requires(in_bits < sizeof(size_t) * 8) {
+#if defined(__CUDACC__)
+  static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  constexpr size_t kOutputs = size_t{1} << in_bits;
+  constexpr size_t kBlocks = size_t{1} << kDepth;
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  if (!detail::FitsFullDomain<bool, in_bits>() || !detail::FitsFullDomain<int4, kDepth>() ||
+      stride == 0 || stride > (kMaxElements - 1) / static_cast<size_t>(kDepth) ||
+      kOutputs > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+      cws.size() < static_cast<size_t>(kDepth) * stride + 1 || ys.size() < kOutputs ||
+      cws.data() == nullptr || ys.data() == nullptr) return cudaErrorInvalidValue;
+  int unpack_grid;
+  cudaError_t status = gpu::detail::GrottoUnpackGrid(kOutputs, threads_per_block, unpack_grid);
+  if (status != cudaSuccess) return status;
+  size_t bytes = 0;
+  status = cub::DeviceScan::InclusiveScan(nullptr, bytes,
+      ys.data(), ys.data(), gpu::detail::GrottoGpuBoolXor{}, static_cast<int64_t>(kOutputs), stream);
+  if (status != cudaSuccess) return status;
+  gpu::detail::DeviceScratch packed_storage(stream);
+  gpu::detail::DeviceScratch scan_storage(stream);
+  status = packed_storage.Allocate<int4>(kBlocks);
+  if (status != cudaSuccess) return status;
+  status = scan_storage.Allocate<unsigned char>(bytes == 0 ? 1 : bytes);
+  if (status != cudaSuccess) return status;
+  auto *blocks = packed_storage.Get<int4>();
+  status = MakeDpf().template EvalAllGpu<frontier_depth, threads_per_block>(
+      b, s0, cws, cuda::std::span<int4>(blocks, kBlocks), stream, stride);
   if (status != cudaSuccess) return status;
   gpu::detail::GrottoUnpackBitsKernel<<<unpack_grid, threads_per_block, 0, stream>>>(
       blocks, ys.data(), kOutputs);
@@ -598,12 +954,33 @@ template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 inline OwnedPackedParityTree<HalfTreeGrottoDcf<in_bits, Hash, In>> HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessOwned(
     bool b, int4 s0, const Cw cws[], int par_depth) {
+  return PreprocessOwnedCorrections(b, s0, cws, par_depth);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+inline OwnedPackedParityTree<HalfTreeGrottoDcf<in_bits, Hash, In>> HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessOwned(
+    bool b, int4 s0, cuda::std::span<const int4> cws, int par_depth, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  assert(cws.size() >= required);
+  return PreprocessOwnedCorrections(b, s0, SplitCorrections{cws.data(), stride}, par_depth);
+}
+
+template <int in_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
+template <typename Corrections>
+inline OwnedPackedParityTree<HalfTreeGrottoDcf<in_bits, Hash, In>>
+HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessOwnedCorrections(
+    bool b, int4 s0, Corrections cws, int par_depth) {
   using Scheme = HalfTreeGrottoDcf<in_bits, Hash, In>;
   constexpr size_t count = detail::FullDomainSize<int4, Scheme::kDepth>();
   constexpr size_t tree_size = detail::FullBinaryTreeSize<bool, Scheme::kDepth>();
   auto blocks = std::make_unique<int4[]>(count);
   auto p = std::make_unique<bool[]>(tree_size);
-  Preprocess(b, s0, cws, blocks.get(), p.get(), par_depth);
+  PreprocessCorrections(b, s0, cws, blocks.get(), p.get(), par_depth);
   return OwnedPackedParityTree<Scheme>(std::move(blocks), std::move(p));
 }
 

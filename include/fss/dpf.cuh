@@ -61,6 +61,27 @@ namespace detail {
 class SchemeAccess;
 }  // namespace detail
 
+namespace detail {
+
+// Split correction view shared by the host and device split paths. Layer i is
+// read from cws[i*stride] and the right-control correction is bit i of
+// packed_tr, so bits of packed_tr at or above the domain depth are never read.
+// The layer LSB keeps the left-control correction exactly as the Cw layout
+// does. operator[] recovers the Cw the shared algorithms consume, so their
+// bodies stay identical on the Cw and split paths.
+template <typename Cw, typename In>
+struct DpfSplitCorrections {
+  const int4 *s;
+  In packed_tr;
+  size_t stride;
+
+  __host__ __device__ inline Cw operator[](int i) const {
+    return Cw{s[static_cast<size_t>(i) * stride], ((packed_tr >> i) & 1) != 0};
+  }
+};
+
+}  // namespace detail
+
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 class GrottoDcf;
@@ -217,6 +238,38 @@ public:
       cuda::std::span<int4> ys, int par_depth = 0);
 
   /**
+   * Evaluate the closed input interval [first, last] on the host from split corrections.
+   *
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input in the interval.
+   * @param last Last input in the interval, included in the output.
+   * @param s0 This party's seed from generation.
+   * @param cws Correction components, with layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control corrections, bit i for layer i.
+   * @param ys Output storage with at least last-first+1 elements.
+   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @param stride Positive element stride between component entries.
+   * @pre first <= last and both endpoints are in [0, 2^in_bits).
+   * @pre stride > 0.
+   * @pre For in_bits == 0, cws has at least one element.
+   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
+   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre cws and ys.data() are nonnull and refer to accessible host storage.
+   * @post ys[x-first] contains this party's output share for each x in the interval.
+   * Any extra elements of ys remain unchanged.
+   */
+  void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws,
+      In tr, cuda::std::span<int4> ys, int par_depth = 0, size_t stride = 1);
+
+  /**
    * Evaluate the full domain on the host using caller-owned storage.
    *
    * par_depth controls OpenMP partitioning for this call.
@@ -231,6 +284,35 @@ public:
    * @post ys[x] contains this party's output share for x.
    */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
+
+  /**
+   * Evaluate the full domain on the host from split corrections.
+   *
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
+   * par_depth controls OpenMP partitioning for this call.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's seed from generation.
+   * @param cws Correction components, with layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control corrections, bit i for layer i.
+   * @param ys Output array of at least 2^in_bits elements.
+   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
+   * Positive depths require backends that support concurrent calls.
+   * @param stride Positive element stride between component entries.
+   * @pre The output element count and byte size fit size_t.
+   * @pre stride > 0.
+   * @pre For in_bits == 0, cws has at least one element.
+   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
+   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @post ys[x] contains this party's output share for x.
+   */
+  void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
+      int4 ys[], int par_depth = 0, size_t stride = 1);
 
   /**
    * Evaluate the closed interval [first, last] on the given CUDA stream.
@@ -248,6 +330,38 @@ public:
   __host__ cudaError_t EvalRangeGpu(bool b, In first, In last, int4 s0,
       cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
       cudaStream_t stream = 0) const;
+
+  /**
+   * Evaluate the closed interval [first, last] on the given CUDA stream from split arrays.
+   * Output ys[j] corresponds to first+j. Extra output capacity is unchanged.
+   *
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
+   * Resources, subdivision and asynchronous error handling follow EvalRangeGpu().
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input in the interval.
+   * @param last Last input in the interval, included in the output.
+   * @param s0 This party's seed, passed by value as a kernel argument.
+   * @param cws Device correction components, with layer i at index i*stride and
+   * the terminal at index in_bits*stride.
+   * @param tr Packed right-control corrections, bit i for layer i.
+   * @param ys Device output storage. Entry x-first receives this party's share at x.
+   * @param stream Stream on the device owning the referenced resources.
+   * @param stride Positive element stride between component entries.
+   * @pre stride > 0 and cws holds at least in_bits*stride+1 elements.
+   * @pre The buffers and referenced backend resources remain valid until work completes.
+   * @return Immediate CUDA status. Invalid endpoints, buffers, strides, counts
+   * or byte sizes return cudaErrorInvalidValue. Execution completion remains
+   * asynchronous. The grid limit cannot be exceeded, because the subdivision
+   * caps the block-root depth at 30.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t EvalRangeGpu(bool b, In first, In last, int4 s0,
+      cuda::std::span<const int4> cws, In tr, cuda::std::span<int4> ys,
+      cudaStream_t stream = 0, size_t stride = 1) const;
 
   /**
    * Launch full-domain CUDA evaluation from this host-accessible scheme.
@@ -287,6 +401,34 @@ public:
     requires(in_bits < sizeof(size_t) * 8);
 
   /**
+   * Launch full-domain CUDA evaluation from split device arrays.
+   *
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
+   * Backend values, resource rules and tuning rules match EvalAllGpu().
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's seed, passed by value as a kernel argument.
+   * @param cws Device correction components, with layer i at index i*stride and
+   * the terminal at index in_bits*stride.
+   * @param tr Packed right-control corrections, bit i for layer i.
+   * @param ys Device output storage containing at least 2^in_bits blocks.
+   * @param stream Stream on the device owning the referenced resources.
+   * @param stride Positive element stride between component entries.
+   * @pre stride > 0 and cws holds at least in_bits*stride+1 elements.
+   * @pre The buffers and referenced backend resources remain valid until work completes.
+   * @return Immediate CUDA status. Invalid dimensions, buffers, strides, null
+   * used buffers, or unaddressable sizes return cudaErrorInvalidValue. Execution
+   * completion remains asynchronous.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t EvalAllGpu(bool b, int4 s0, cuda::std::span<const int4> cws,
+      In tr, cuda::std::span<int4> ys, cudaStream_t stream = 0, size_t stride = 1) const
+    requires(in_bits < sizeof(size_t) * 8);
+
+  /**
    * Launch full-domain CUDA evaluation for s0s.size() keys using this backend.
    *
    * Uses the same resource, execution, and tuning rules as EvalAllGpu().
@@ -309,6 +451,42 @@ public:
   __host__ cudaError_t EvalAllGpuBatch(bool b, cuda::std::span<const int4> s0s,
       cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
       cudaStream_t stream = 0) const
+    requires(in_bits < sizeof(size_t) * 8);
+
+  /**
+   * Launch full-domain CUDA evaluation for s0s.size() keys from split device arrays.
+   *
+   * The batch uses the level-major layout: key k layer i is read from
+   * cws[i*stride + k], key k's packed control is tr[k], and key k's terminal is
+   * cws[in_bits*stride + k]. Packed bit i of tr[k] is the right-control correction
+   * at layer i, and the left-control correction is the LSB of the layer's cws
+   * entry, exactly as the component form of Gen() writes them. Bits of tr[k] at
+   * and above in_bits are ignored.
+   * stride is kDenseStride (dense level-major, resolved to the key count) or a
+   * positive stride of at least s0s.size(). Uses the same resource, execution,
+   * and tuning rules as EvalAllGpu(). All keys share this scheme's backend
+   * configuration, and every key produces the whole domain.
+   *
+   * @param b Party index shared by the batch.
+   * @param s0s Device storage containing this party's seed for each key.
+   * @param cws Device level-major correction components.
+   * @param tr Device packed right-control corrections, one value per key.
+   * @param ys Device key-major rows of 2^in_bits output blocks per key.
+   * @param stream Stream on the device owning the referenced resources.
+   * @param stride kDenseStride or a positive element stride >= s0s.size().
+   * @pre stride is kDenseStride or at least s0s.size().
+   * @pre cws holds at least in_bits*stride + s0s.size() elements, where
+   * kDenseStride resolves to s0s.size(), and tr holds at least s0s.size() values.
+   * @pre The buffers and referenced backend resources remain valid until work completes.
+   * @return Immediate CUDA status. An empty batch succeeds without reading
+   * buffers. Invalid dimensions, null used buffers, strides, or unaddressable
+   * sizes return cudaErrorInvalidValue; an oversized grid returns
+   * cudaErrorInvalidConfiguration. Execution completion remains asynchronous.
+   */
+  template <int frontier_depth = 16, int threads_per_block = 256>
+  __host__ cudaError_t EvalAllGpuBatch(bool b, cuda::std::span<const int4> s0s,
+      cuda::std::span<const int4> cws, cuda::std::span<const In> tr,
+      cuda::std::span<int4> ys, cudaStream_t stream = 0, size_t stride = kDenseStride) const
     requires(in_bits < sizeof(size_t) * 8);
 
 private:
@@ -343,18 +521,9 @@ private:
   template <typename Correction>
   __host__ __device__ static int4 ConvertLeaf(bool party, int4 state, Correction &correction);
 
-  // Component view of corrections without ownership or allocation. The s
-  // pointer is indexed with the positive stride, and packed_tr supplies the
-  // right-control bit for each layer.
-  struct ComponentCorrections {
-    const int4 *s;
-    In packed_tr;
-    size_t stride;
-
-    __host__ __device__ inline Cw operator[](int i) const {
-      return Cw{s[static_cast<size_t>(i) * stride], ((packed_tr >> i) & 1) != 0};
-    }
-  };
+  // Split corrections view over the caller's arrays. The host methods and the
+  // split GPU kernels share this one view; see detail::DpfSplitCorrections.
+  using ComponentCorrections = detail::DpfSplitCorrections<Cw, In>;
 
   // Writes Cw slots in the legacy AoS layout, covering each full 32B slot.
   struct AosWriter {
@@ -403,21 +572,37 @@ private:
   template <typename Corrections, typename Visit>
   __host__ __device__ int4 Walk(bool b, int4 s0, Corrections cws, In x, Visit &&visit);
 
+  // Shared scalar evaluation over Cw-shaped or split corrections.
+  template <typename Corrections>
+  __host__ __device__ int4 EvalCorrections(bool b, int4 s0, Corrections cws, In x);
+
+  // Shared interval evaluation over Cw-shaped or split corrections.
+  template <typename Corrections>
+  void EvalRangeCorrections(bool b, In first, In last, int4 s0, Corrections cws,
+      cuda::std::span<int4> ys, int par_depth);
+
+  // Shared full-domain evaluation over Cw-shaped or split corrections.
+  template <typename Corrections>
+  void EvalAllCorrections(bool b, int4 s0, Corrections cws, int4 ys[], int par_depth);
+
   // Closed node bounds avoid representing an unaddressable full-domain end.
-  void EvalRangeSerial(bool b, In first, In last, int4 s0, const Cw cws[], int4 ys[]);
+  template <typename Corrections>
+  void EvalRangeSerial(bool b, In first, In last, int4 s0, Corrections cws, int4 ys[]);
 
   // GCC 12.4.0 can discard these writes before the OpenMP walk after IPA
   // effect analysis. Keep this boundary opaque on GCC 12 releases before 12.5.
   // GCC PR115033 describes a related closure escape-analysis defect.
+  template <typename Corrections>
 #if defined(__GNUC__) && !defined(__clang__) && __GNUC__ == 12 && __GNUC_MINOR__ <= 4
   __attribute__((noipa))
 #endif
-  std::vector<int4> BuildParallelFrontier(int4 st, const Cw cws[], int split_depth);
+  std::vector<int4> BuildParallelFrontier(int4 st, Corrections cws, int split_depth);
 
   // Expands w scalar frontier nodes (t in LSB) by one level with cws[lv].
   // The children overwrite the frontier in place: iteration is in reverse so
   // the writes at 2j, 2j+1 never clobber nodes still to be read.
-  void ExpandFrontier(int4 frontier[], size_t w, const Cw cws[], int lv);
+  template <typename Corrections>
+  void ExpandFrontier(int4 frontier[], size_t w, Corrections cws, int lv);
 
   // Applies the level correction to one expanded child branchlessly.
   // m is 0 or -1 from the parent control bit t, and t_cw is the cw control bit
@@ -429,11 +614,13 @@ private:
   // 8-wide batched frontier: a kBatchPrefix-level scalar prefix, batched expansions, and
   // a kBatchTail-level tail converted in local memory.
   // Requires in_bits - i >= kBatchPrefix + kBatchTail.
-  void EvalBatched8(bool b, int4 st, const Cw cws[], int4 ys[], size_t l, int i);
+  template <typename Corrections>
+  void EvalBatched8(bool b, int4 st, Corrections cws, int4 ys[], size_t l, int i);
 
   // Evaluates a group of 8 consecutive frontier nodes (t in LSB) at level i, covering the
   // leaves [l, l + 8 << (in_bits - i)) in order. Requires in_bits - i >= kBatchTail.
-  void EvalBatched8Group(bool b, const int4 (&frontier)[8], const Cw cws[], int4 ys[], size_t l, int i);
+  template <typename Corrections>
+  void EvalBatched8Group(bool b, const int4 (&frontier)[8], Corrections cws, int4 ys[], size_t l, int i);
 };
 
 // -----------------------------------------------------------------------------
@@ -463,8 +650,10 @@ struct DpfGpuSchemeTraits;
 
 // The single-key and batch kernels share the same block-local frontier and tail.
 // Each node keeps the former full-domain helper's by-value backend lifetime.
-template <typename Scheme, int frontier_depth, int block_root_depth, bool range = false>
-__device__ __forceinline__ void DpfEvalAllBlock(bool b, int4 s0, const typename Scheme::Cw *cws,
+// Corrections is a Cw pointer on the array path and a kernel-boundary split view
+// on the split path, so the traversal body does not depend on the layout.
+template <typename Scheme, int frontier_depth, int block_root_depth, bool range = false, typename Corrections>
+__device__ __forceinline__ void DpfEvalAllBlock(bool b, int4 s0, Corrections cws,
     int4 *ys, typename DpfGpuSchemeTraits<Scheme>::Backend &prg, int subtree_block_index, int64_t thread_index, int4 *shared_frontier,
     __uint128_t first = 0, int subtree_depth = DpfGpuSchemeTraits<Scheme>::kInputBits,
     int range_frontier = frontier_depth, int range_block_root = block_root_depth) {
@@ -612,6 +801,60 @@ __global__ void DpfEvalAllBatchKernel(bool b, const int4 *s0s, const void *corre
   int4 *key_outputs = ys + static_cast<size_t>(key_index) * (size_t{1} << kInputBits);
   __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
   DpfEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index], key_corrections, key_outputs, prg, subtree_block_index, thread_index, shared_frontier);
+}
+
+// Split-layout counterparts of the three kernels above. The correction buffers
+// arrive type-erased and the boundary view reconstructs the per-layer Cw
+// entries, so the shared traversal stays identical on both paths.
+template <typename Descriptor, int threads_per_block>
+__global__ void DpfSplitEvalRangeKernel(bool b, int4 s0,
+    const void *cws_buf, typename DpfGpuSchemeTraits<typename Descriptor::Scheme>::Input tr,
+    size_t stride, int4 *ys, __uint128_t first,
+    int depth, int frontier, int root, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  using Corrections = fss::detail::DpfSplitCorrections<typename Scheme::Cw,
+      typename DpfGpuSchemeTraits<Scheme>::Input>;
+  const auto *cws = static_cast<const int4 *>(cws_buf);
+  __shared__ int4 states[threads_per_block];
+  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  DpfEvalAllBlock<Scheme, 0, 0, true>(b, s0, Corrections{cws, tr, stride}, ys, prg,
+      blockIdx.x, thread_index, states, first, depth, frontier, root);
+}
+
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void DpfSplitEvalAllKernel(bool b, int4 s0, const void *cws_buf,
+    typename DpfGpuSchemeTraits<typename Descriptor::Scheme>::Input tr, size_t stride,
+    int4 *ys, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  using Corrections = fss::detail::DpfSplitCorrections<typename Scheme::Cw,
+      typename DpfGpuSchemeTraits<Scheme>::Input>;
+  const auto *cws = static_cast<const int4 *>(cws_buf);
+  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (thread_index >= (1LL << frontier_depth)) return;
+  __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
+  DpfEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0, Corrections{cws, tr, stride},
+      ys, prg, blockIdx.x, thread_index, shared_frontier);
+}
+
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void DpfSplitEvalAllBatchKernel(bool b, const int4 *s0s, const void *cws_buf,
+    const typename DpfGpuSchemeTraits<typename Descriptor::Scheme>::Input *trs, size_t stride,
+    int4 *ys, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  using Corrections = fss::detail::DpfSplitCorrections<typename Scheme::Cw,
+      typename DpfGpuSchemeTraits<Scheme>::Input>;
+  const auto *cws = static_cast<const int4 *>(cws_buf);
+  constexpr int kInputBits = DpfGpuSchemeTraits<Scheme>::kInputBits;
+  constexpr int kBlocksPerKey = 1 << block_root_depth;
+  const int key_index = blockIdx.x / kBlocksPerKey;
+  const int subtree_block_index = blockIdx.x - key_index * kBlocksPerKey;
+  const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
+  if (thread_index >= (1LL << frontier_depth)) return;
+  int4 *key_outputs = ys + static_cast<size_t>(key_index) * (size_t{1} << kInputBits);
+  __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
+  DpfEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
+      Corrections{cws + key_index, trs[key_index], stride}, key_outputs, prg,
+      subtree_block_index, thread_index, shared_frontier);
 }
 
 // Control is inferred from the prepared SoA layout, independently of its public alias.
@@ -792,9 +1035,7 @@ template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
 __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(bool b, int4 s0, const Cw cws[], In x) {
-  int4 state = Walk(b, s0, cws, x, [](bool, bool) {});
-  assert((cws[in_bits].s.w & 1) == 0);
-  return ConvertLeaf(b, state, cws[in_bits].s);
+  return EvalCorrections(b, s0, cws, x);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In>
@@ -812,9 +1053,17 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(bool b, int4 
     [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
     assert(cws.size() >= required);
   }
-  int4 state = Walk(b, s0, ComponentCorrections{cws.data(), tr, stride}, x,
-      [](bool, bool) {});
-  const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
+  return EvalCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, x);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+template <typename Corrections>
+__host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::EvalCorrections(
+    bool b, int4 s0, Corrections cws, In x) {
+  int4 state = Walk(b, s0, cws, x, [](bool, bool) {});
+  const int4 terminal = cws[in_bits].s;
   assert((terminal.w & 1) == 0);
   return ConvertLeaf(b, state, terminal);
 }
@@ -824,13 +1073,44 @@ template <int in_bits, typename Group, typename Prg, typename In>
       Groupable<Group> && Prgable<Prg, 2>)
 inline void Dpf<in_bits, Group, Prg, In>::EvalRange(bool b, In first, In last,
     int4 s0, const Cw cws[], cuda::std::span<int4> ys, int par_depth) {
+  assert(cws != nullptr);
+  EvalRangeCorrections(b, first, last, s0, cws, ys, par_depth);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+inline void Dpf<in_bits, Group, Prg, In>::EvalRange(bool b, In first, In last,
+    int4 s0, cuda::std::span<const int4> cws, In tr, cuda::std::span<int4> ys,
+    int par_depth, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if constexpr (in_bits == 0) {
+    // The empty tree reads only the terminal.
+    assert(cws.size() >= 1);
+  } else {
+    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+    assert(cws.size() >= required);
+  }
+  assert(cws.data() != nullptr);
+  EvalRangeCorrections(b, first, last, s0, ComponentCorrections{cws.data(), tr, stride},
+      ys, par_depth);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+template <typename Corrections>
+inline void Dpf<in_bits, Group, Prg, In>::EvalRangeCorrections(bool b, In first, In last,
+    int4 s0, Corrections cws, cuda::std::span<int4> ys, int par_depth) {
   assert(par_depth >= 0);
   assert(first <= last);
   if constexpr (in_bits < sizeof(In) * 8) assert((last >> in_bits) == 0);
   const __uint128_t difference = static_cast<__uint128_t>(last) - first;
   assert(difference < std::numeric_limits<size_t>::max() / sizeof(int4));
   const size_t count = static_cast<size_t>(difference) + 1;
-  assert(ys.size() >= count && cws != nullptr && ys.data() != nullptr);
+  assert(ys.size() >= count && ys.data() != nullptr);
   assert((cws[in_bits].s.w & 1) == 0);
   const size_t partitions = detail::ResolveParPartitions(par_depth, count);
   detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
@@ -847,8 +1127,9 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalRange(bool b, In first, In last,
 template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
+template <typename Corrections>
 inline void Dpf<in_bits, Group, Prg, In>::EvalRangeSerial(bool b, In first, In last,
-    int4 s0, const Cw cws[], int4 ys[]) {
+    int4 s0, Corrections cws, int4 ys[]) {
   constexpr In domain_last = [] {
     if constexpr (in_bits == sizeof(In) * 8) return static_cast<In>(~In{0});
     else return static_cast<In>((In{1} << in_bits) - 1);
@@ -865,7 +1146,8 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalRangeSerial(bool b, In first, In l
   while (pending != 0) {
     const Frame node = stack[--pending];
     if (node.level == in_bits) {
-      ys[static_cast<size_t>(node.low - first)] = ConvertLeaf(b, node.state, cws[in_bits].s);
+      const int4 terminal = cws[in_bits].s;
+      ys[static_cast<size_t>(node.low - first)] = ConvertLeaf(b, node.state, terminal);
       continue;
     }
     const In middle = node.low + ((node.high - node.low) >> 1);
@@ -887,6 +1169,33 @@ template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
 inline void Dpf<in_bits, Group, Prg, In>::EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth) {
+  EvalAllCorrections(b, s0, cws, ys, par_depth);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+inline void Dpf<in_bits, Group, Prg, In>::EvalAll(bool b, int4 s0,
+    cuda::std::span<const int4> cws, In tr, int4 ys[], int par_depth, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if constexpr (in_bits == 0) {
+    // The empty tree reads only the terminal.
+    assert(cws.size() >= 1);
+  } else {
+    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+    assert(cws.size() >= required);
+  }
+  EvalAllCorrections(b, s0, ComponentCorrections{cws.data(), tr, stride}, ys, par_depth);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+template <typename Corrections>
+inline void Dpf<in_bits, Group, Prg, In>::EvalAllCorrections(
+    bool b, int4 s0, Corrections cws, int4 ys[], int par_depth) {
   assert(par_depth >= 0);
   static_assert(detail::FitsFullDomain<int4, in_bits>(),
       "full-domain output count and byte size must fit in size_t");
@@ -895,7 +1204,7 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalAll(bool b, int4 s0, const Cw cws[
     // Domains too small to fill an 8-wide frontier evaluate per input; the
     // point walk is cheaper than the batched machinery at this size.
     constexpr size_t n = size_t{1} << in_bits;
-    fss::detail::ParallelFor(par_depth, n, [&](size_t x) { ys[x] = Eval(b, s0, cws, static_cast<In>(x)); });
+    fss::detail::ParallelFor(par_depth, n, [&](size_t x) { ys[x] = EvalCorrections(b, s0, cws, static_cast<In>(x)); });
     return;
   }
 
@@ -978,8 +1287,9 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Walk(
 template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
+template <typename Corrections>
 inline std::vector<int4> Dpf<in_bits, Group, Prg, In>::BuildParallelFrontier(
-    int4 st, const Cw cws[], int split_depth) {
+    int4 st, Corrections cws, int split_depth) {
   std::vector<int4> frontier(size_t{1} << split_depth);
   frontier[0] = st;
   for (int lv = 0; lv < split_depth; ++lv) ExpandFrontier(frontier.data(), size_t{1} << lv, cws, lv);
@@ -989,7 +1299,8 @@ inline std::vector<int4> Dpf<in_bits, Group, Prg, In>::BuildParallelFrontier(
 template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
-inline void Dpf<in_bits, Group, Prg, In>::ExpandFrontier(int4 frontier[], size_t w, const Cw cws[], int lv) {
+template <typename Corrections>
+inline void Dpf<in_bits, Group, Prg, In>::ExpandFrontier(int4 frontier[], size_t w, Corrections cws, int lv) {
   int4 correction = cws[lv].s;
   bool right_control = cws[lv].tr;
   for (size_t j = w; j-- > 0;) {
@@ -1012,8 +1323,9 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::CorrectChild(int4 
 template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
+template <typename Corrections>
 inline void Dpf<in_bits, Group, Prg, In>::EvalBatched8(
-    bool b, int4 st, const Cw cws[], int4 ys[], size_t l, int i) {
+    bool b, int4 st, Corrections cws, int4 ys[], size_t l, int i) {
   int4 frontier[8];
   frontier[0] = st;
   for (int lv = i; lv < i + kBatchPrefix; ++lv) ExpandFrontier(frontier, size_t{1} << (lv - i), cws, lv);
@@ -1023,8 +1335,9 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalBatched8(
 template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
+template <typename Corrections>
 inline void Dpf<in_bits, Group, Prg, In>::EvalBatched8Group(
-    bool b, const int4 (&frontier)[8], const Cw cws[], int4 ys[], size_t l, int i) {
+    bool b, const int4 (&frontier)[8], Corrections cws, int4 ys[], size_t l, int i) {
   if (i == in_bits - kBatchTail) {
     // Expand the group to its 8 << kBatchTail leaves in local memory, then convert.
     int4 bufs[2][8 << kBatchTail];
@@ -1213,6 +1526,134 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpuBatch(
   gpu::detail::DpfEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
       <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0s.data(), cws.data(), ys.data(), prg_);
+  return cudaGetLastError();
+#else
+  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalRangeGpu(
+    bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws, In tr,
+    cuda::std::span<int4> ys, cudaStream_t stream, size_t stride) const {
+#if defined(__CUDACC__)
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DpfGpuKernelDescriptor<in_bits, GroupTag, Prg, In>;
+  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  size_t count;
+  if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) || stride == 0 ||
+      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)) ||
+      cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
+      cws.data() == nullptr || ys.data() == nullptr)
+    return cudaErrorInvalidValue;
+  constexpr int kThreadBits = [] {
+    int bits = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
+    return bits;
+  }();
+  constexpr int kMaxDepth = [] {
+    int depth = 30 + kThreadBits;
+    if (depth >= sizeof(size_t) * CHAR_BIT) depth = sizeof(size_t) * CHAR_BIT - 1;
+    if (frontier_depth < depth && depth - frontier_depth > 8) depth = frontier_depth + 8;
+    return depth;
+  }();
+  return detail::ForEachAlignedRange<in_bits>(first, last, kMaxDepth,
+      [&](In chunk_first, int depth, size_t offset, size_t) {
+        int frontier = frontier_depth < depth ? frontier_depth : depth;
+        if (frontier < 0) frontier = 0;
+        int thread_bits = kThreadBits < frontier ? kThreadBits : frontier;
+        int root = frontier - thread_bits;
+        size_t blocks = size_t{1} << root;
+        if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
+          return cudaErrorInvalidConfiguration;
+        gpu::detail::DpfSplitEvalRangeKernel<Descriptor, threads_per_block>
+            <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), tr, stride,
+                ys.data() + offset, chunk_first, depth, frontier, root, prg_);
+        return cudaGetLastError();
+      });
+#else
+  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpu(
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
+    cuda::std::span<int4> ys, cudaStream_t stream, size_t stride) const
+  requires(in_bits < sizeof(size_t) * 8) {
+#if defined(__CUDACC__)
+  using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DpfGpuKernelDescriptor<in_bits, GroupTag, Prg, In>;
+  constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  if (stride == 0 ||
+      (in_bits > 0 && stride > (kMaxElements - 1) / static_cast<size_t>(in_bits)))
+    return cudaErrorInvalidValue;
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required || ys.size() < kOutputsPerKey ||
+      cws.data() == nullptr || ys.data() == nullptr ||
+      kOutputsPerKey > std::numeric_limits<size_t>::max() / sizeof(int4)) return cudaErrorInvalidValue;
+  gpu::detail::DpfSplitEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+      <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
+          b, s0, cws.data(), tr, stride, ys.data(), prg_);
+  return cudaGetLastError();
+#else
+  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+template <int frontier_depth, int threads_per_block>
+__host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpuBatch(
+    bool b, cuda::std::span<const int4> s0s, cuda::std::span<const int4> cws,
+    cuda::std::span<const In> tr, cuda::std::span<int4> ys,
+    cudaStream_t stream, size_t stride) const
+  requires(in_bits < sizeof(size_t) * 8) {
+#if defined(__CUDACC__)
+  using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::DpfGpuKernelDescriptor<in_bits, GroupTag, Prg, In>;
+  constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
+  size_t key_count = s0s.size();
+  if (key_count == 0) return cudaSuccess;
+  // The output guard bounds key_count * kOutputsPerKey * sizeof(int4) so the
+  // product in the size check below cannot wrap.
+  if (key_count > kMaxElements ||
+      key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
+      (stride != kDenseStride && (stride < key_count || stride > kMaxElements)))
+    return cudaErrorInvalidValue;
+  // kDenseStride resolves to the key count, which is the dense level-major layout.
+  const size_t resolved_stride = stride == kDenseStride ? key_count : stride;
+  if (in_bits > 0 && resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(in_bits))
+    return cudaErrorInvalidValue;
+  const size_t required = static_cast<size_t>(in_bits) * resolved_stride + key_count;
+  if (cws.size() < required || tr.size() < key_count ||
+      ys.size() < key_count * kOutputsPerKey ||
+      s0s.data() == nullptr || cws.data() == nullptr || tr.data() == nullptr ||
+      ys.data() == nullptr) return cudaErrorInvalidValue;
+  if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
+    return cudaErrorInvalidConfiguration;
+  gpu::detail::DpfSplitEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
+      <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
+          b, s0s.data(), cws.data(), tr.data(), resolved_stride, ys.data(), prg_);
   return cudaGetLastError();
 #else
   static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");

@@ -99,6 +99,7 @@ class Dmpf {
 
 public:
   static constexpr int kBucketCount = cuckoo_hash::ChBucket(max_points, ch_lambda);  ///< Allocated bucket count.
+  static constexpr int kCuckooChoices = 3;  ///< Candidate count per input, fixed by the Cuckoo-hashing construction.
   static constexpr __uint128_t kDomainSize = __uint128_t(1) << in_bits;  ///< Input domain size.
   /**
    * Smallest point count supported by this bucket_bits configuration.
@@ -273,8 +274,6 @@ public:
 
 private:
   friend class detail::SchemeAccess;
-
-  static constexpr int kCuckooChoices = 3;
 
   Prg prg_;
   Prp prp_;

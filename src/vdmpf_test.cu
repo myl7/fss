@@ -39,12 +39,12 @@ cuda::std::array<int4, 2> ReferenceMerkleRoot(
 
 }  // namespace
 
-template <typename Group>
+template <typename Group, int InBits = 16, int MaxPoints = 30, int BucketBits = 14>
 class VdmpfChaChaTest : public ::testing::Test {
 protected:
-  static constexpr int kInBits = 16;
-  static constexpr int kMaxPoints = 30;
-  static constexpr int kBucketBits = 14;
+  static constexpr int kInBits = InBits;
+  static constexpr int kMaxPoints = MaxPoints;
+  static constexpr int kBucketBits = BucketBits;
   static constexpr int kT = 30;
 
   using Prg = fss::prg::ChaCha<2>;
@@ -291,6 +291,209 @@ protected:
       }
     }
   }
+
+  // Number of inputs whose three candidates locate in pairwise distinct buckets,
+  // so a test can confirm that the interesting routing case is exercised.
+  int CountDistinctCandidateBucketInputs(const typename VdmpfType::Key &key,
+      const std::vector<uint16_t> &xs) {
+    fss::cuckoo_hash::detail::PrpHash<Prp, uint16_t> hasher{prp_};
+    int count = 0;
+    for (uint16_t x : xs) {
+      cuda::std::array<int, VdmpfType::kCuckooChoices> buckets{};
+      for (int k = 0; k < VdmpfType::kCuckooChoices; ++k) {
+        buckets[k] = hasher.Locate(key.sigma, x, k, VdmpfType::kDomainSize, key.b_size_rt).bucket;
+      }
+      bool distinct = buckets[0] < m && buckets[1] < m && buckets[2] < m;
+      for (int k = 0; k < VdmpfType::kCuckooChoices && distinct; ++k) {
+        for (int j = 0; j < k; ++j) distinct = distinct && buckets[j] != buckets[k];
+      }
+      if (distinct) ++count;
+    }
+    return count;
+  }
+
+  // Split-path check over one query sequence: Eval() + Prove() must equal
+  // BatchEval() and Eval() + ProveMerkle() must equal BatchEvalMerkle(), word
+  // for word, for both parties, including every share and the two-party
+  // reconstruction. The proofs take no bucket ids, so Prove() and ProveMerkle()
+  // must re-locate the candidates from sigma, b_size_rt, and xs.
+  void CheckSplitMatchesFused(const typename VdmpfType::Key &k0, const typename VdmpfType::Key &k1,
+      const std::vector<uint16_t> &xs, bool expect_distinct_candidate_buckets = false) {
+    using EvalProof = typename VdmpfType::EvalProof;
+    VdmpfType scheme{prg, xor_hash, hash_, prp_};
+    std::vector<int4> fused_chain_ys[2], fused_merkle_ys[2], split_ys[2];
+    cuda::std::array<int4, 4> fused_chain[2], fused_merkle[2], split_chain[2], split_merkle[2];
+    std::vector<EvalProof> proofs[2];
+    for (int party = 0; party < 2; ++party) {
+      SCOPED_TRACE(::testing::Message() << "party=" << party);
+      const bool b = party != 0;
+      const auto &key = party == 0 ? k0 : k1;
+      fss_test::MultiRows<VdmpfType> rows(key);
+      fused_chain_ys[party].assign(xs.size(), int4{0, 0, 0, 0});
+      fused_merkle_ys[party].assign(xs.size(), int4{0, 0, 0, 0});
+      fss_test::BatchEvalKey(scheme, b, key, cuda::std::span<const uint16_t>(xs),
+          cuda::std::span<int4>(fused_chain_ys[party]), fused_chain[party]);
+      fss_test::BatchEvalMerkleKey(scheme, b, key, cuda::std::span<const uint16_t>(xs),
+          cuda::std::span<int4>(fused_merkle_ys[party]), fused_merkle[party]);
+      split_ys[party].assign(xs.size(), int4{0, 0, 0, 0});
+      proofs[party].resize(xs.size());
+      for (size_t i = 0; i < xs.size(); ++i) {
+        proofs[party][i] = scheme.Eval(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+            xs[i], split_ys[party][i]);
+      }
+      scheme.Prove(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+          cuda::std::span<const EvalProof>(proofs[party]), split_chain[party]);
+      scheme.ProveMerkle(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+          cuda::std::span<const EvalProof>(proofs[party]), split_merkle[party]);
+      for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_EQ(memcmp(&split_ys[party][i], &fused_chain_ys[party][i], sizeof(int4)), 0) << "query=" << i;
+        EXPECT_EQ(memcmp(&split_ys[party][i], &fused_merkle_ys[party][i], sizeof(int4)), 0) << "query=" << i;
+      }
+      for (int word = 0; word < 4; ++word) {
+        EXPECT_EQ(memcmp(&split_chain[party][word], &fused_chain[party][word], sizeof(int4)), 0)
+            << "chain proof word=" << word;
+        EXPECT_EQ(memcmp(&split_merkle[party][word], &fused_merkle[party][word], sizeof(int4)), 0)
+            << "merkle proof word=" << word;
+      }
+      // Chain and Merkle accumulators must not be mixed.
+      EXPECT_FALSE(VdmpfType::Verify(split_chain[party], split_merkle[party]));
+    }
+    EXPECT_TRUE(VdmpfType::Verify(split_chain[0], split_chain[1]));
+    EXPECT_TRUE(VdmpfType::Verify(split_merkle[0], split_merkle[1]));
+    for (size_t i = 0; i < xs.size(); ++i) {
+      int4 expected = {0, 0, 0, 0};
+      for (int j = 0; j < kT; ++j) {
+        if (xs[i] == alphas[j]) {
+          expected = betas[j];
+          expected.w &= ~1;
+          break;
+        }
+      }
+      int4 reconstructed = (Group::From(split_ys[0][i]) + Group::From(split_ys[1][i])).Into();
+      EXPECT_EQ(memcmp(&reconstructed, &expected, sizeof(int4)), 0) << "query=" << i;
+    }
+    if (expect_distinct_candidate_buckets) {
+      EXPECT_GT(CountDistinctCandidateBucketInputs(k0, xs), 0);
+    }
+  }
+
+  void TestSplitMatchesFusedBatch() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    std::vector<uint16_t> xs(alphas, alphas + kT);
+    std::mt19937 gen(20261102);
+    std::uniform_int_distribution<uint32_t> dis(0, (uint32_t{1} << kInBits) - 1);
+    for (int i = 0; i < 100; ++i) {
+      uint16_t x = static_cast<uint16_t>(dis(gen));
+      xs.push_back(x);
+      if (i % 10 == 0) xs.push_back(x);  // Repeated inputs share a bucket.
+    }
+    CheckSplitMatchesFused(k0, k1, xs);
+  }
+
+  void TestSplitMatchesFusedFullDomain() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    VdmpfType scheme{prg, xor_hash, hash_, prp_};
+    std::vector<uint16_t> xs(size_t{1} << kInBits);
+    for (size_t i = 0; i < xs.size(); ++i) xs[i] = static_cast<uint16_t>(i);
+    CheckSplitMatchesFused(k0, k1, xs);
+    // The full-domain fused paths use the same accumulators.
+    for (int party = 0; party < 2; ++party) {
+      SCOPED_TRACE(::testing::Message() << "party=" << party);
+      const bool b = party != 0;
+      const auto &key = party == 0 ? k0 : k1;
+      fss_test::MultiRows<VdmpfType> rows(key);
+      std::vector<int4> all_ys(xs.size()), all_merkle_ys(xs.size()), split_ys(xs.size());
+      cuda::std::array<int4, 4> all_pi, all_merkle_pi, split_chain, split_merkle;
+      scheme.EvalAll(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+          cuda::std::span<int4>(all_ys), all_pi);
+      scheme.EvalAllMerkle(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+          cuda::std::span<int4>(all_merkle_ys), all_merkle_pi);
+      std::vector<typename VdmpfType::EvalProof> proofs(xs.size());
+      for (size_t i = 0; i < xs.size(); ++i) {
+        proofs[i] = scheme.Eval(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+            xs[i], split_ys[i]);
+      }
+      scheme.Prove(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+          cuda::std::span<const typename VdmpfType::EvalProof>(proofs), split_chain);
+      scheme.ProveMerkle(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+          cuda::std::span<const typename VdmpfType::EvalProof>(proofs), split_merkle);
+      for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_EQ(memcmp(&split_ys[i], &all_ys[i], sizeof(int4)), 0) << "query=" << i;
+        EXPECT_EQ(memcmp(&split_ys[i], &all_merkle_ys[i], sizeof(int4)), 0) << "query=" << i;
+      }
+      for (int word = 0; word < 4; ++word) {
+        EXPECT_EQ(memcmp(&split_chain[word], &all_pi[word], sizeof(int4)), 0) << "EvalAll word=" << word;
+        EXPECT_EQ(memcmp(&split_merkle[word], &all_merkle_pi[word], sizeof(int4)), 0)
+            << "EvalAllMerkle word=" << word;
+      }
+    }
+  }
+
+  void TestSplitSingleInput() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    CheckSplitMatchesFused(k0, k1, std::vector<uint16_t>{alphas[0]});
+    CheckSplitMatchesFused(k0, k1, std::vector<uint16_t>{static_cast<uint16_t>(kMaxPoints + 1)});
+  }
+
+  // Configuration check for fixtures whose point count makes Gen() allocate
+  // fewer active buckets than kBucketCount: the inactive buckets still
+  // contribute their check seeds to both accumulators.
+  void TestSplitInactiveBuckets() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    EXPECT_LT(k0.m_rt, VdmpfType::kBucketCount);
+    std::vector<uint16_t> xs(alphas, alphas + kT);
+    std::mt19937 gen(20261104);
+    std::uniform_int_distribution<uint32_t> dis(0, (uint32_t{1} << kInBits) - 1);
+    for (int i = 0; i < 50; ++i) xs.push_back(static_cast<uint16_t>(dis(gen)));
+    CheckSplitMatchesFused(k0, k1, xs);
+  }
+
+  void TestSplitDistinctCandidateBuckets() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    std::vector<uint16_t> xs(alphas, alphas + kT);
+    std::mt19937 gen(20261103);
+    std::uniform_int_distribution<uint32_t> dis(0, (uint32_t{1} << kInBits) - 1);
+    for (int i = 0; i < 50; ++i) xs.push_back(static_cast<uint16_t>(dis(gen)));
+    CheckSplitMatchesFused(k0, k1, xs, true);
+  }
+
+#ifndef NDEBUG
+  // The split API adds an xs-nonempty precondition that the fused paths do not
+  // have: BatchEval() and BatchEvalMerkle() accept an empty xs and return
+  // normally, while Prove() and ProveMerkle() reject it by assertion. In Release
+  // the assertion is compiled out, so empty inputs reach the fold.
+  void TestSplitRejectsEmptyInputs() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    VdmpfType scheme{prg, xor_hash, hash_, prp_};
+    fss_test::MultiRows<VdmpfType> rows(k0);
+    std::vector<uint16_t> xs(alphas, alphas + kT);
+    std::vector<typename VdmpfType::EvalProof> proofs(kT);
+    for (int i = 0; i < kT; ++i) {
+      int4 y;
+      proofs[i] = scheme.Eval(false, k0.sigma, k0.m_rt, k0.b_size_rt, rows.s0s, rows.cws, rows.cs, xs[i], y);
+    }
+    cuda::std::array<int4, 4> pi;
+    cuda::std::span<const uint16_t> empty_xs;
+    cuda::std::span<const typename VdmpfType::EvalProof> empty_proofs;
+    EXPECT_DEATH((void)scheme.Prove(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs, empty_xs, empty_proofs, pi),
+        "Assertion.*failed");
+    EXPECT_DEATH(
+        (void)scheme.ProveMerkle(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs, empty_xs, empty_proofs, pi),
+        "Assertion.*failed");
+    EXPECT_DEATH((void)scheme.Prove(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs,
+                     cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
+        "Assertion.*failed");
+    EXPECT_DEATH((void)scheme.ProveMerkle(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs,
+                     cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
+        "Assertion.*failed");
+  }
+#endif  // NDEBUG
 };
 
 using VdmpfBytesChaChaTest = VdmpfChaChaTest<BytesGroup>;
@@ -325,6 +528,187 @@ TEST_F(VdmpfUint128ChaChaTest, VerifyBatchEval) {
 TEST_F(VdmpfUint128ChaChaTest, BatchEvalDuplicates) {
   TestBatchEvalDuplicates();
 }
+
+// in_bits = 12 with max_points = 64 and 30 points: Gen() returns m_rt = 53
+// while kBucketCount = 112, so 59 inactive buckets contribute their check
+// seeds to both accumulators.
+using VdmpfSplitInactiveBytesTest = VdmpfChaChaTest<BytesGroup, 12, 64, 14>;
+using VdmpfSplitInactiveUint128Test = VdmpfChaChaTest<Uint127Group, 12, 64, 14>;
+
+TEST_F(VdmpfBytesChaChaTest, SplitMatchesFusedBatch) {
+  TestSplitMatchesFusedBatch();
+}
+TEST_F(VdmpfBytesChaChaTest, SplitSingleInput) {
+  TestSplitSingleInput();
+}
+TEST_F(VdmpfBytesChaChaTest, SplitDistinctCandidateBuckets) {
+  TestSplitDistinctCandidateBuckets();
+}
+#ifndef NDEBUG
+TEST_F(VdmpfBytesChaChaTest, SplitRejectsEmptyInputs) {
+  TestSplitRejectsEmptyInputs();
+}
+#endif  // NDEBUG
+
+TEST_F(VdmpfUint128ChaChaTest, SplitMatchesFusedBatch) {
+  TestSplitMatchesFusedBatch();
+}
+TEST_F(VdmpfUint128ChaChaTest, SplitSingleInput) {
+  TestSplitSingleInput();
+}
+TEST_F(VdmpfUint128ChaChaTest, SplitDistinctCandidateBuckets) {
+  TestSplitDistinctCandidateBuckets();
+}
+
+TEST_F(VdmpfSplitInactiveBytesTest, SplitMatchesFusedWithInactiveBuckets) {
+  TestSplitInactiveBuckets();
+}
+TEST_F(VdmpfSplitInactiveBytesTest, SplitMatchesFusedFullDomain) {
+  TestSplitMatchesFusedFullDomain();
+}
+TEST_F(VdmpfSplitInactiveBytesTest, SplitSingleInput) {
+  TestSplitSingleInput();
+}
+TEST_F(VdmpfSplitInactiveBytesTest, SplitDistinctCandidateBuckets) {
+  TestSplitDistinctCandidateBuckets();
+}
+#ifndef NDEBUG
+TEST_F(VdmpfSplitInactiveBytesTest, SplitRejectsEmptyInputs) {
+  TestSplitRejectsEmptyInputs();
+}
+#endif  // NDEBUG
+
+TEST_F(VdmpfSplitInactiveUint128Test, SplitMatchesFusedWithInactiveBuckets) {
+  TestSplitInactiveBuckets();
+}
+TEST_F(VdmpfSplitInactiveUint128Test, SplitMatchesFusedFullDomain) {
+  TestSplitMatchesFusedFullDomain();
+}
+TEST_F(VdmpfSplitInactiveUint128Test, SplitSingleInput) {
+  TestSplitSingleInput();
+}
+
+// The split path carries no bucket ids. EvalProof stores exactly the three
+// corrected per-point hashes of one input, and Prove() and ProveMerkle() accept
+// no bucket array, so they must re-locate every candidate from sigma,
+// b_size_rt, and xs. The split/fused equivalence tests compare against the
+// fused paths, which route independently of EvalProof.
+TEST(VdmpfSplitProof, CarriesNoBucketIds) {
+  using Scheme = fss::Vdmpf<12, 30, 8, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3,
+      fss::prp::Aes128Feistel, uint16_t>;
+  using Expected = cuda::std::array<cuda::std::array<int4, 4>, 3>;
+  static_assert(std::is_same_v<typename Scheme::EvalProof, Expected>);
+  static_assert(std::is_same_v<std::remove_cvref_t<decltype(Scheme::EvalProof{}[0][0])>, int4>);
+  static_assert(sizeof(typename Scheme::EvalProof) == 3 * sizeof(cuda::std::array<int4, 4>));
+  static_assert(requires(Scheme &scheme, cuda::std::span<const int4> cs, cuda::std::span<const uint16_t> xs,
+                     cuda::std::span<const typename Scheme::EvalProof> proofs, cuda::std::span<int4, 4> pi) {
+    scheme.Prove(int4{0, 0, 0, 0}, 1, 1, cs, xs, proofs, pi);
+    scheme.ProveMerkle(int4{0, 0, 0, 0}, 1, 1, cs, xs, proofs, pi);
+  });
+}
+
+#if defined(__CUDACC__)
+
+namespace {
+namespace split_device {
+
+// Device-side instantiation check for the split evaluation. Eval() claims
+// __host__ __device__, so this kernel calls it for a device-capable backend set
+// and would not compile if the claim were wrong. The test below runs the kernel
+// and compares it with the host result, so the claim is verified rather than
+// assumed.
+using Group = fss::group::Bytes;
+using Prg = fss::prg::ChaCha<2>;
+using Hash = fss::hash::Blake3;
+using Prp = fss::prp::ChaChaFeistel;
+using Scheme = fss::Vdmpf<12, 30, 8, Group, Prg, Hash, Hash, Prp, uint16_t>;
+using EvalProof = typename Scheme::EvalProof;
+constexpr int kCwWords = 8 + 1;
+constexpr size_t kCwCount = size_t{Scheme::kBucketCount} * kCwWords;
+constexpr size_t kCsCount = size_t{Scheme::kBucketCount} * 4;
+const int4 kIv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
+    {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)}};
+
+__global__ void SplitEvalKernel(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt, const int4 *s0s,
+    const typename Scheme::Cw *cws, const int4 *cs, uint16_t x, int4 iv0, int4 iv1, int4 *y, EvalProof *proof) {
+  const int4 iv[2] = {iv0, iv1};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{Prg(kNonce0, kNonce1), hash, hash, Prp{}};
+  *proof = scheme.Eval(b, sigma, m_rt, b_size_rt,
+      cuda::std::span<const int4, Scheme::kBucketCount>(s0s, Scheme::kBucketCount),
+      cuda::std::span<const typename Scheme::Cw>(cws, kCwCount), cuda::std::span<const int4>(cs, kCsCount), x, *y);
+}
+
+}  // namespace split_device
+
+TEST(VdmpfSplitDevice, EvalMatchesHostOnDevice) {
+  using namespace split_device;
+  int devices = 0;
+  if (cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0) {
+    GTEST_SKIP() << "no CUDA device available";
+  }
+  Scheme scheme{Prg(kNonce0, kNonce1), Hash(cuda::std::span<const int4, 2>(kIv, 2)),
+      Hash(cuda::std::span<const int4, 2>(kIv, 2)), Prp{}};
+  Scheme::Key k0, k1;
+  int4 seeds[size_t{Scheme::kBucketCount} * 2];
+  for (int i = 0; i < Scheme::kBucketCount; ++i) {
+    seeds[i] = {i + 1, i + 2, i + 3, 2 * i};
+    seeds[size_t{Scheme::kBucketCount} + i] = {i + 5, i + 7, i + 11, 2 * i + 2};
+  }
+  uint16_t alphas[30];
+  int4 betas[30];
+  for (int i = 0; i < 30; ++i) {
+    alphas[i] = static_cast<uint16_t>(37 * i + 5);
+    betas[i] = {i + 1, i + 2, i + 3, 2 * i + 4};
+  }
+  int4 sigma = {3, 5, 7, 11};
+  ASSERT_EQ(fss_test::GenMulti(scheme, k0, k1, sigma, seeds, alphas, betas, 30, 1000), 0);
+
+  int4 host_s0s[Scheme::kBucketCount];
+  std::vector<typename Scheme::Cw> host_cws(kCwCount);
+  std::vector<int4> host_cs(kCsCount);
+  for (int i = 0; i < Scheme::kBucketCount; ++i) {
+    host_s0s[i] = k0.bks[i].s0;
+    for (int j = 0; j < kCwWords; ++j) host_cws[static_cast<size_t>(i) * kCwWords + j] = k0.bks[i].cws[j];
+    for (int j = 0; j < 4; ++j) host_cs[static_cast<size_t>(i) * 4 + j] = k0.bks[i].cs[j];
+  }
+  int4 host_y;
+  EvalProof host_proof = scheme.Eval(false, sigma, k0.m_rt, k0.b_size_rt,
+      cuda::std::span<const int4, Scheme::kBucketCount>(host_s0s, Scheme::kBucketCount),
+      cuda::std::span<const typename Scheme::Cw>(host_cws), cuda::std::span<const int4>(host_cs), alphas[0], host_y);
+
+  int4 *device_s0s = nullptr, *device_cs = nullptr, *device_y = nullptr;
+  typename Scheme::Cw *device_cws = nullptr;
+  EvalProof *device_proof = nullptr;
+  ASSERT_EQ(cudaMalloc(&device_s0s, sizeof(int4) * Scheme::kBucketCount), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_cws, sizeof(typename Scheme::Cw) * kCwCount), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_cs, sizeof(int4) * kCsCount), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_y, sizeof(int4)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_proof, sizeof(EvalProof)), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(device_s0s, host_s0s, sizeof(int4) * Scheme::kBucketCount, cudaMemcpyHostToDevice),
+      cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(device_cws, host_cws.data(), sizeof(typename Scheme::Cw) * kCwCount, cudaMemcpyHostToDevice),
+      cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(device_cs, host_cs.data(), sizeof(int4) * kCsCount, cudaMemcpyHostToDevice), cudaSuccess);
+  SplitEvalKernel<<<1, 1>>>(false, sigma, k0.m_rt, k0.b_size_rt, device_s0s, device_cws, device_cs, alphas[0],
+      kIv[0], kIv[1], device_y, device_proof);
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  int4 device_y_value;
+  EvalProof device_proof_value;
+  ASSERT_EQ(cudaMemcpy(&device_y_value, device_y, sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(&device_proof_value, device_proof, sizeof(EvalProof), cudaMemcpyDeviceToHost), cudaSuccess);
+  EXPECT_EQ(memcmp(&device_y_value, &host_y, sizeof(int4)), 0);
+  EXPECT_EQ(memcmp(&device_proof_value, &host_proof, sizeof(EvalProof)), 0);
+  EXPECT_EQ(cudaFree(device_s0s), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_cws), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_cs), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_y), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_proof), cudaSuccess);
+}
+
+}  // namespace
+
+#endif  // __CUDACC__
 
 TEST(VdmpfCuckooHashTest, Compact) {
   fss::prp::Aes128Feistel prp;

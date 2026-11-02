@@ -239,3 +239,281 @@ TEST(GrottoDcfGenHalf, SelectedAndFallback) {
   CheckGrottoGenHalf<true>();
   CheckGrottoGenHalf<false>();
 }
+
+namespace {
+
+constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
+
+// Checks the split-corrections API against the Cw forms for one configuration:
+// every correction entry, every Eval share, the preprocessed parity tree, the
+// owned tree, every EvalAll share, and the two-party reconstruction. stride == 0
+// selects the default-argument call.
+template <int in_bits, typename In>
+void CheckGrottoSplit(In alpha, size_t stride) {
+  using Scheme = fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, In>;
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  const cuda::std::span<const int4, 2> seed_span(seeds, 2);
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
+  const bool default_stride = stride == 0;
+  const size_t level_stride = default_stride ? 1 : stride;
+  const size_t used = static_cast<size_t>(in_bits) * level_stride + 1;
+  constexpr size_t kExtra = 3;
+  constexpr size_t kDomain = size_t{1} << in_bits;
+  constexpr size_t kTreeSize = 2 * kDomain - 1;
+
+  typename Scheme::Cw ref[in_bits + 1];
+  scheme.Gen(ref, seeds, alpha);
+  std::vector<int4> cws(used + kExtra, kSplitSentinel);
+  const auto cws_out = cuda::std::span<int4>(cws.data(), cws.size());
+  In tr = 0;
+  if (default_stride) scheme.Gen(cws_out, tr, seed_span, alpha);
+  else scheme.Gen(cws_out, tr, seed_span, alpha, stride);
+
+  In expected_tr = 0;
+  for (int l = 0; l < in_bits; ++l) {
+    const size_t index = static_cast<size_t>(l) * level_stride;
+    EXPECT_EQ(memcmp(&cws[index], &ref[l].s, sizeof(int4)), 0) << "cws layer " << l;
+    if (ref[l].tr) expected_tr |= static_cast<In>(static_cast<In>(1) << l);
+  }
+  EXPECT_EQ(tr, expected_tr) << "packed right-control bits";
+  EXPECT_EQ(memcmp(&cws[used - 1], &ref[in_bits].s, sizeof(int4)), 0) << "cws terminal";
+  // Only the described prefix is written: gap entries and trailing capacity keep the sentinel.
+  for (size_t i = 0; i < cws.size(); ++i) {
+    if (i % level_stride == 0 && i / level_stride <= static_cast<size_t>(in_bits)) continue;
+    EXPECT_EQ(memcmp(&cws[i], &kSplitSentinel, sizeof(int4)), 0) << "cws untouched at " << i;
+  }
+
+  const cuda::std::span<const int4> split_cws(cws.data(), used);
+  std::unique_ptr<bool[]> split_all[2];
+  for (int party = 0; party < 2; ++party) {
+    const bool b = party != 0;
+    const int4 s0 = seeds[party];
+    for (size_t x = 0; x < kDomain; ++x) {
+      const In xi = static_cast<In>(x);
+      const bool expected = scheme.Eval(b, s0, ref, xi);
+      const bool actual = default_stride
+          ? scheme.Eval(b, s0, split_cws, tr, xi)
+          : scheme.Eval(b, s0, split_cws, tr, xi, stride);
+      EXPECT_EQ(actual, expected) << "Eval party=" << party << " x=" << x;
+    }
+
+    // The split preprocessing produces the same tree as the Cw preprocessing.
+    auto expected_tree = std::make_unique<bool[]>(kTreeSize);
+    auto actual_tree = std::make_unique<bool[]>(kTreeSize);
+    scheme.Preprocess(b, s0, ref, expected_tree.get());
+    if (default_stride) scheme.Preprocess(b, s0, split_cws, tr, actual_tree.get());
+    else scheme.Preprocess(b, s0, split_cws, tr, actual_tree.get(), 0, stride);
+    for (size_t j = 0; j < kTreeSize; ++j) {
+      EXPECT_EQ(actual_tree[j], expected_tree[j]) << "Preprocess party=" << party << " j=" << j;
+    }
+    // The owned tree exposes the same entries.
+    auto owned = default_stride ? scheme.PreprocessOwned(b, s0, split_cws, tr)
+                                : scheme.PreprocessOwned(b, s0, split_cws, tr, 0, stride);
+    const auto view = owned.View();
+    for (size_t j = 0; j < kTreeSize; ++j) {
+      EXPECT_EQ(view.p[j], expected_tree[j]) << "PreprocessOwned party=" << party << " j=" << j;
+    }
+
+    auto expected_all = std::make_unique<bool[]>(kDomain);
+    split_all[party] = std::make_unique<bool[]>(kDomain);
+    scheme.EvalAll(b, s0, ref, expected_all.get());
+    if (default_stride) scheme.EvalAll(b, s0, split_cws, tr, split_all[party].get());
+    else scheme.EvalAll(b, s0, split_cws, tr, split_all[party].get(), 0, stride);
+    for (size_t x = 0; x < kDomain; ++x) {
+      EXPECT_EQ(split_all[party][x], expected_all[x]) << "EvalAll party=" << party << " x=" << x;
+    }
+  }
+
+  for (size_t x = 0; x < kDomain; ++x) {
+    EXPECT_EQ(split_all[0][x] != split_all[1][x], static_cast<In>(x) >= alpha)
+        << "reconstruction x=" << x;
+  }
+}
+
+template <int in_bits, typename In>
+void CheckGrottoSplitStrides(In alpha) {
+  for (size_t stride : {size_t{0}, size_t{1}, size_t{3}, size_t{5}}) {
+    CheckGrottoSplit<in_bits, In>(alpha, stride);
+  }
+}
+
+// A Cw[] array is already an int4 array at stride 2, so it feeds the split API
+// once the packed right-control bits are materialized (R9).
+template <int in_bits, typename In>
+void CheckGrottoSplitFromCwStorage(In alpha) {
+  using Scheme = fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, In>;
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
+  typename Scheme::Cw words[in_bits + 1];
+  scheme.Gen(words, seeds, alpha);
+
+  std::vector<int4> storage(2 * (in_bits + 1), kSplitSentinel);
+  for (int l = 0; l <= in_bits; ++l) storage[2 * l] = words[l].s;
+  In tr = 0;
+  for (int l = 0; l < in_bits; ++l) {
+    if (words[l].tr) tr |= static_cast<In>(static_cast<In>(1) << l);
+  }
+  const auto cws = cuda::std::span<const int4>(storage.data(), storage.size());
+  constexpr size_t kDomain = size_t{1} << in_bits;
+  for (int party = 0; party < 2; ++party) {
+    for (size_t x = 0; x < kDomain; ++x) {
+      const In xi = static_cast<In>(x);
+      const bool expected = scheme.Eval(party, seeds[party], words, xi);
+      const bool actual = scheme.Eval(party, seeds[party], cws, tr, xi, 2);
+      EXPECT_EQ(actual, expected) << "party=" << party << " x=" << x;
+    }
+    auto expected_all = std::make_unique<bool[]>(kDomain);
+    auto actual_all = std::make_unique<bool[]>(kDomain);
+    scheme.EvalAll(party, seeds[party], words, expected_all.get());
+    scheme.EvalAll(party, seeds[party], cws, tr, actual_all.get(), 0, 2);
+    for (size_t x = 0; x < kDomain; ++x) {
+      EXPECT_EQ(actual_all[x], expected_all[x]) << "EvalAll party=" << party << " x=" << x;
+    }
+  }
+}
+
+}  // namespace
+
+// in_bits 1 is the single-level tree, 2 and 5 cover the recursive expansion, and
+// 8 fills the domain. The split key is the Dpf key, so the control bits follow
+// the Dpf layout.
+TEST(GrottoDcfSplitCorrectionsTest, Depth1) { CheckGrottoSplitStrides<1, uint8_t>(1); }
+TEST(GrottoDcfSplitCorrectionsTest, Depth2) { CheckGrottoSplitStrides<2, uint8_t>(3); }
+TEST(GrottoDcfSplitCorrectionsTest, Depth5) { CheckGrottoSplitStrides<5, uint8_t>(17); }
+TEST(GrottoDcfSplitCorrectionsTest, Depth8) { CheckGrottoSplitStrides<8, uint16_t>(107); }
+TEST(GrottoDcfSplitCorrectionsTest, Depth8WideInput) {
+  CheckGrottoSplitStrides<8, uint64_t>(107);
+}
+TEST(GrottoDcfSplitCorrectionsTest, CwStorageView) {
+  CheckGrottoSplitFromCwStorage<5, uint8_t>(17);
+  CheckGrottoSplitFromCwStorage<8, uint16_t>(107);
+}
+
+#ifndef NDEBUG
+TEST(GrottoDcfSplitCorrectionsTest, RejectsInvalidInputs) {
+  using Scheme = fss::GrottoDcf<3, fss::prg::ChaCha<2>, uint8_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  const cuda::std::span<const int4, 2> seed_span(seeds, 2);
+  int4 cws[4] = {};
+  bool ys[8] = {};
+  uint8_t tr = 0;
+  const auto cws_out = cuda::std::span<int4>(cws, 4);
+  const auto cws_in = cuda::std::span<const int4>(cws, 4);
+  const int4 s0 = seeds[0];
+
+  // A zero stride is only the batch sentinel, so a non-batch method rejects it.
+  EXPECT_DEBUG_DEATH((void)scheme.Gen(cws_out, tr, seed_span, uint8_t{5}, 0),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0}, 0),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.Preprocess(false, s0, cws_in, uint8_t{0}, ys, 0, 0),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.PreprocessOwned(false, s0, cws_in, uint8_t{0}, 0, 0),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cws_in, uint8_t{0}, ys, 0, 0),
+      "Assertion.*failed");
+  // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
+  EXPECT_DEBUG_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, 3), tr, seed_span,
+                        uint8_t{5}),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, 3),
+                        uint8_t{0}, uint8_t{0}),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.Preprocess(false, s0, cuda::std::span<const int4>(cws, 3),
+                        uint8_t{0}, ys),
+      "Assertion.*failed");
+  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, 3),
+                        uint8_t{0}, ys),
+      "Assertion.*failed");
+  // A stride past the addressable guard is rejected.
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  const size_t overflowing_stride = (kMaxElements - 1) / 3 + 1;
+  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0},
+                        overflowing_stride),
+      "Assertion.*failed");
+}
+#endif  // NDEBUG
+
+// The GPU split launches are compile-verified here and executed only on a
+// machine with a free device, comparing against the host Cw-form outputs.
+namespace {
+
+void CheckGrottoSplitGpuLaunches() {
+  int devices = 0;
+  cudaError_t device_status = cudaGetDeviceCount(&devices);
+  if (device_status == cudaErrorNoDevice || device_status == cudaErrorInsufficientDriver ||
+      (device_status == cudaSuccess && devices == 0)) GTEST_SKIP() << "no CUDA device available";
+  ASSERT_EQ(device_status, cudaSuccess);
+
+  constexpr int kBits = 8;
+  constexpr size_t kDomain = size_t{1} << kBits;
+  constexpr size_t kTreeSize = 2 * kDomain - 1;
+  using Scheme = fss::GrottoDcf<kBits, fss::prg::ChaCha<2>, uint16_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
+  const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  const uint16_t alpha = 107;
+  constexpr size_t kStride = 2;
+
+  typename Scheme::Cw ref[kBits + 1];
+  scheme.Gen(ref, seeds, alpha);
+  std::vector<int4> cws((kBits + 1) * kStride + 2, kSplitSentinel);
+  uint16_t tr = 0;
+  scheme.Gen(cuda::std::span<int4>(cws.data(), cws.size()), tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha, kStride);
+
+  int4 *device_cws = nullptr;
+  bool *device_ys = nullptr;
+  bool *device_tree = nullptr;
+  cudaStream_t stream;
+  ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_cws, cws.size() * sizeof(int4)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_ys, kDomain * sizeof(bool)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_tree, kTreeSize * sizeof(bool)), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(device_cws, cws.data(), cws.size() * sizeof(int4),
+      cudaMemcpyHostToDevice, stream), cudaSuccess);
+  const auto span_cws = cuda::std::span<const int4>(device_cws, cws.size());
+
+  for (int party = 0; party < 2; ++party) {
+    SCOPED_TRACE(party);
+    const bool b = party != 0;
+    auto actual = std::make_unique<bool[]>(kDomain);
+    ASSERT_EQ((scheme.template EvalAllGpu<8, 16>(b, seeds[party], span_cws, tr,
+        cuda::std::span<bool>(device_ys, kDomain), stream, kStride)), cudaSuccess);
+    ASSERT_EQ(cudaMemcpyAsync(actual.get(), device_ys, kDomain * sizeof(bool),
+        cudaMemcpyDeviceToHost, stream), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    for (size_t x = 0; x < kDomain; ++x) {
+      const bool expected = scheme.Eval(b, seeds[party], ref, static_cast<uint16_t>(x));
+      EXPECT_EQ(actual[x], expected) << "x=" << x;
+    }
+
+    auto expected_tree = std::make_unique<bool[]>(kTreeSize);
+    scheme.Preprocess(b, seeds[party], ref, expected_tree.get());
+    auto actual_tree = std::make_unique<bool[]>(kTreeSize);
+    ASSERT_EQ((scheme.template PreprocessGpu<8, 16>(b, seeds[party], span_cws, tr,
+        cuda::std::span<bool>(device_tree, kTreeSize), stream, kStride)), cudaSuccess);
+    ASSERT_EQ(cudaMemcpyAsync(actual_tree.get(), device_tree, kTreeSize * sizeof(bool),
+        cudaMemcpyDeviceToHost, stream), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    for (size_t j = 0; j < kTreeSize; ++j) {
+      EXPECT_EQ(actual_tree[j], expected_tree[j]) << "tree j=" << j;
+    }
+  }
+
+  // A zero stride and a span that omits the terminal are rejected.
+  EXPECT_EQ((scheme.template EvalAllGpu<8, 16>(false, seeds[0], span_cws, tr,
+      cuda::std::span<bool>(device_ys, kDomain), stream, 0)), cudaErrorInvalidValue);
+  EXPECT_EQ((scheme.template PreprocessGpu<8, 16>(false, seeds[0],
+      cuda::std::span<const int4>(device_cws, kBits), tr,
+      cuda::std::span<bool>(device_tree, kTreeSize), stream)), cudaErrorInvalidValue);
+
+  EXPECT_EQ(cudaFree(device_tree), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_ys), cudaSuccess);
+  EXPECT_EQ(cudaFree(device_cws), cudaSuccess);
+  EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+}
+
+}  // namespace
+
+TEST(GrottoDcfSplitGpuTest, SplitLaunchesMatchCwHost) { CheckGrottoSplitGpuLaunches(); }

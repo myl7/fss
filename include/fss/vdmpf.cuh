@@ -86,6 +86,11 @@ class SchemeAccess;
  * Both parties must use the same accumulator, key configuration, and query sequence.
  * EvalAll() and EvalAllMerkle() use the same accumulators for the full domain
  * in increasing input order.
+ * Eval() is the split form of the per-input evaluation and returns the proof
+ * material for Prove() (chain) or ProveMerkle() (Merkle). The split methods
+ * share the fused paths' bucket-level folds; with the same key and query
+ * sequence they produce the same proofs, and the same shares for the
+ * commutative Group backends in this repository.
  *
  * @tparam in_bits Input domain bit size, in [1, 126].
  * @tparam max_points Maximum number of point functions. Must be >= 30.
@@ -114,6 +119,7 @@ class Vdmpf {
 
 public:
   static constexpr int kBucketCount = cuckoo_hash::ChBucket(max_points, ch_lambda);  ///< Allocated bucket count.
+  static constexpr int kCuckooChoices = 3;  ///< Candidate count per input, fixed by the Cuckoo-hashing construction.
   static constexpr __uint128_t kDomainSize = __uint128_t(1) << in_bits;  ///< Input domain size.
   /**
    * Smallest point count supported by this bucket_bits configuration.
@@ -249,6 +255,84 @@ public:
       cuda::std::span<int4, 4> pi);
 
   /**
+   * Per-candidate corrected per-point hashes of one input, in candidate order.
+   * Entry k belongs to candidate k of the input; it stays zero when that
+   * candidate locates outside the allocated buckets or repeats an earlier
+   * candidate. Prove() and ProveMerkle() re-locate the candidates from sigma,
+   * b_size_rt, and the input.
+   * @ingroup fss_api
+   */
+  using EvalProof = cuda::std::array<cuda::std::array<int4, 4>, kCuckooChoices>;
+
+  /**
+   * Evaluate one input and return the corrected per-point hashes for Prove() or ProveMerkle().
+   *
+   * The split counterpart of the fused evaluation: with the same key and the
+   * same query sequence, Eval() per input followed by Prove() produces the same
+   * chain proof as one BatchEval() call, and by ProveMerkle() the same Merkle
+   * proof as one BatchEvalMerkle() call. The proofs do not depend on the group
+   * order. Shares match the fused paths for the commutative Group backends in
+   * this repository: Eval() adds one input's candidate shares in candidate
+   * order, while the fused paths add them in bucket order.
+   *
+   * Routing covers every bucket below the compile-time kBucketCount. Under a
+   * key from the same successful Gen(), b_size_rt = ceil(3*kDomainSize/m_rt)
+   * keeps every candidate below m_rt, so an inactive bucket at or above m_rt
+   * cannot receive a candidate. Inactive buckets still take part in the
+   * accumulators through their check seeds: Prove() folds each bucket's cs and
+   * ProveMerkle() folds each bucket's hashed cs.
+   *
+   * @param b Party index. False for 0 and true for 1.
+   * @param sigma The effective PRP seed from Gen().
+   * @param m_rt Runtime bucket count returned by Gen(). Part of the key
+   * metadata, so the signature matches BatchEval(). Evaluation needs only sigma
+   * and b_size_rt; the bucket bound is the compile-time kBucketCount.
+   * @param b_size_rt Runtime bucket domain size returned by Gen().
+   * @param s0s This party's kBucketCount initial seeds in bucket order.
+   * @param cws At least kBucketCount*(bucket_bits+1) read-only corrections in bucket-major order, including each bucket's final output correction.
+   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param x Input point to evaluate.
+   * @param y Output share for this input.
+   * @return Corrected per-point hashes in candidate order, as described by EvalProof.
+   * @pre All key components and metadata come from the same successful Gen().
+   */
+  __host__ __device__ EvalProof Eval(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+      cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
+      cuda::std::span<const int4> cs,
+      In x, int4 &y);
+
+  /**
+   * Proof accumulation method for the split evaluation.
+   *
+   * The split counterpart of BatchEval(): accumulates the corrected per-point
+   * hashes of Eval() into the chain proof with the same per-bucket and
+   * cross-bucket folds as the fused path. With the same key and the same query
+   * sequence, Eval() per input followed by Prove() gives the same proof as one
+   * BatchEval() call, and the same shares for commutative group addition.
+   *
+   * Bucket ids and candidate indices are re-located from sigma, b_size_rt, and
+   * xs, so proof_values stores corrected hashes only. Both parties must supply
+   * the same xs order and the same accumulator. Chain and Merkle accumulators
+   * must not be mixed: Prove() and ProveMerkle() produce different proofs from
+   * the same values.
+   *
+   * @param sigma The effective PRP seed from Gen().
+   * @param m_rt Runtime bucket count returned by Gen(). See Eval().
+   * @param b_size_rt Runtime bucket domain size returned by Gen().
+   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param xs Input points evaluated by Eval() with this party's key, in the
+   * order of proof_values.
+   * @param proof_values proof_values[i] is the EvalProof returned by Eval() for
+   * xs[i]. Entries for candidates outside the allocated buckets are not read.
+   * @param pi Borrowed output storage for four proof blocks.
+   * @pre All key components and metadata come from the same successful Gen().
+   * @pre xs is nonempty and proof_values.size() >= xs.size().
+   */
+  void Prove(int4 sigma, int m_rt, __uint128_t b_size_rt,
+      cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
+      cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi);
+
+  /**
    * Evaluate the full domain on the host and produce a chain proof.
    *
    * Outputs and proof match BatchEval() with inputs 0 through
@@ -319,6 +403,38 @@ public:
       cuda::std::span<int4, 4> pi);
 
   /**
+   * Proof accumulation method for the split evaluation with the Merkle-fold proof.
+   *
+   * The split counterpart of BatchEvalMerkle(): folds the corrected per-point
+   * hashes of Eval() with the same per-bucket and cross-bucket Merkle folds as
+   * the fused path, in the order of the query sequence. With the same key and
+   * the same query sequence, Eval() per input followed by ProveMerkle() gives
+   * the same proof as one BatchEvalMerkle() call, and the same shares for
+   * commutative group addition.
+   *
+   * Bucket ids and candidate indices are re-located from sigma, b_size_rt, and
+   * xs, so proof_values stores corrected hashes only. Both parties must supply
+   * the same xs order and the same accumulator. Chain and Merkle accumulators
+   * must not be mixed: Prove() and ProveMerkle() produce different proofs from
+   * the same values.
+   *
+   * @param sigma The effective PRP seed from Gen().
+   * @param m_rt Runtime bucket count returned by Gen(). See Eval().
+   * @param b_size_rt Runtime bucket domain size returned by Gen().
+   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param xs Input points evaluated by Eval() with this party's key, in the
+   * order of proof_values.
+   * @param proof_values proof_values[i] is the EvalProof returned by Eval() for
+   * xs[i]. Entries for candidates outside the allocated buckets are not read.
+   * @param pi Borrowed output storage for four proof blocks.
+   * @pre All key components and metadata come from the same successful Gen().
+   * @pre xs is nonempty and proof_values.size() >= xs.size().
+   */
+  void ProveMerkle(int4 sigma, int m_rt, __uint128_t b_size_rt,
+      cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
+      cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi);
+
+  /**
    * Evaluate the full domain on the host and produce a Merkle proof.
    *
    * Outputs and proof match BatchEvalMerkle() with inputs 0 through
@@ -382,8 +498,6 @@ public:
 private:
   friend class detail::SchemeAccess;
 
-  static constexpr int kCuckooChoices = 3;
-
   Prg prg_;
   XorHash xor_hash_;
   Hash hash_;
@@ -394,6 +508,56 @@ private:
     size_t size() const { return count; }
     In operator[](size_t index) const { return static_cast<In>(index); }
   };
+
+  // One candidate of an input that lies inside the allocated buckets and is not
+  // a repeated location of an earlier candidate of the same input, as located by
+  // LocateCandidates().
+  struct LocatedCandidate {
+    int bucket;  ///< Bucket that the candidate located.
+    __uint128_t index;  ///< Within-bucket input.
+    int candidate;  ///< Candidate in [0, kCuckooChoices).
+  };
+
+  // One located record of the split path's query sequence: the query index and
+  // the candidate that located it. The proof values carry the corrected hashes,
+  // so the within-bucket input is not needed here. Records of one bucket stay in
+  // the canonical (query, candidate) order, as in the fused paths.
+  struct RouteRecord {
+    size_t omega;  ///< Query index in xs.
+    int candidate;  ///< Candidate in [0, kCuckooChoices).
+  };
+
+  // Locates one input's candidates in candidate order, skipping buckets outside
+  // the allocation and repeated locations of an earlier candidate. Returns the
+  // number of entries written to candidates.
+  __host__ __device__ static int LocateCandidates(cuckoo_hash::detail::PrpHash<Prp, In> &prp_hash,
+      int4 sigma, __uint128_t b_size_rt, In x,
+      cuda::std::array<LocatedCandidate, kCuckooChoices> &candidates);
+
+  // Locates every input of the split path and groups the records by bucket.
+  // Shared by Prove() and ProveMerkle() so that both accumulators consume the
+  // same routing order.
+  std::vector<std::vector<RouteRecord>> RouteInputs(int4 sigma, __uint128_t b_size_rt,
+      cuda::std::span<const In> xs);
+
+  // Folds one corrected per-point hash into a bucket's chain accumulator, the
+  // same rule as Vdpf::Prove. Shared by EvalInputs() and Prove().
+  void FoldChainNode(cuda::std::array<int4, 4> &pi_bucket, cuda::std::span<const int4, 4> pi_tilde);
+
+  // Folds one bucket's chain accumulator into the cross-bucket proof. Shared by
+  // EvalInputs() and Prove().
+  void FoldChainBucket(cuda::std::span<int4, 4> pi, cuda::std::span<const int4, 4> pi_bucket);
+
+  // Folds one bucket's leaf hashes into the bucket node: the bucket's hashed cs,
+  // bound to the tree root of the leaves when the bucket is not empty. Shared by
+  // EvalMerkleInputs() and ProveMerkle(); both hash the bucket's cs before the
+  // bucket's leaves, as the fused path did before this helper existed.
+  cuda::std::array<int4, 2> BucketMerkleNode(cuda::std::array<int4, 2> bucket_node,
+      std::vector<cuda::std::array<int4, 2>> &leaves);
+
+  // Folds the bucket nodes into the four-block Merkle proof. Shared by
+  // EvalMerkleInputs() and ProveMerkle().
+  void FoldMerkleBuckets(std::vector<cuda::std::array<int4, 2>> &bucket_nodes, cuda::std::span<int4, 4> pi);
 
   template <bool merkle>
   static size_t FullInputCount(__uint128_t bucket_size);
@@ -691,6 +855,75 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline __host__ __device__ typename Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In,
+    ch_lambda>::EvalProof
+Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::Eval(
+    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
+    cuda::std::span<const int4> cs,
+    In x, int4 &y) {
+  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
+  assert(cs.size() >= size_t{kBucketCount} * 4);
+  cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};
+  cuda::std::array<LocatedCandidate, kCuckooChoices> located;
+  int count = LocateCandidates(prp_hash, sigma, b_size_rt, x, located);
+  EvalProof proof{};
+  int4 share = {0, 0, 0, 0};
+  InnerVdpf inner_vdpf{prg_, xor_hash_, hash_};
+  for (int i = 0; i < count; ++i) {
+    const LocatedCandidate &candidate = located[i];
+    int4 value;
+    proof[candidate.candidate] = inner_vdpf.Eval(b, s0s[candidate.bucket],
+        cuda::std::span<const Cw>(cws.data() + static_cast<size_t>(candidate.bucket) * (bucket_bits + 1),
+            bucket_bits + 1),
+        cuda::std::span<const int4, 4>(cs.data() + static_cast<size_t>(candidate.bucket) * 4, 4),
+        candidate.index, value);
+    share = (Group::From(share) + Group::From(value)).Into();
+  }
+  y = share;
+  return proof;
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::Prove(
+    int4 sigma, int m_rt, __uint128_t b_size_rt,
+    cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
+    cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
+  assert(cs.size() >= size_t{kBucketCount} * 4);
+  assert(!xs.empty());
+  assert(proof_values.size() >= xs.size());
+
+  std::vector<std::vector<RouteRecord>> inputs = RouteInputs(sigma, b_size_rt, xs);
+  pi[0] = int4{0, 0, 0, 0};
+  pi[1] = int4{0, 0, 0, 0};
+  pi[2] = int4{0, 0, 0, 0};
+  pi[3] = int4{0, 0, 0, 0};
+  for (int i = 0; i < kBucketCount; ++i) {
+    const int4 *bucket_cs = cs.data() + static_cast<size_t>(i) * 4;
+    // Initialize per-bucket proof from this bucket's cs.
+    cuda::std::array<int4, 4> pi_bucket = {bucket_cs[0], bucket_cs[1], bucket_cs[2], bucket_cs[3]};
+    for (const RouteRecord &record : inputs[i]) {
+      FoldChainNode(pi_bucket, cuda::std::span<const int4, 4>(proof_values[record.omega][record.candidate]));
+    }
+    FoldChainBucket(pi, cuda::std::span<const int4, 4>(pi_bucket));
+  }
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalAll(
     bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -739,6 +972,38 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::ProveMerkle(
+    int4 sigma, int m_rt, __uint128_t b_size_rt,
+    cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
+    cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
+  assert(cs.size() >= size_t{kBucketCount} * 4);
+  assert(!xs.empty());
+  assert(proof_values.size() >= xs.size());
+
+  std::vector<std::vector<RouteRecord>> inputs = RouteInputs(sigma, b_size_rt, xs);
+  std::vector<cuda::std::array<int4, 2>> bucket_nodes(kBucketCount);
+  std::vector<cuda::std::array<int4, 2>> leaves;
+  for (int i = 0; i < kBucketCount; ++i) {
+    const int4 *bucket_cs = cs.data() + static_cast<size_t>(i) * 4;
+    cuda::std::array<int4, 2> bucket_node = hash_.Hash(cuda::std::span<const int4, 4>(bucket_cs, 4));
+    leaves.clear();
+    for (const RouteRecord &record : inputs[i]) {
+      leaves.push_back(hash_.Hash(
+          cuda::std::span<const int4, 4>(proof_values[record.omega][record.candidate])));
+    }
+    bucket_nodes[i] = BucketMerkleNode(bucket_node, leaves);
+  }
+  FoldMerkleBuckets(bucket_nodes, pi);
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalAllMerkle(
     bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -747,6 +1012,99 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
   const size_t count = FullInputCount<true>(b_size_rt);
   EvalMerkleInputs(b, sigma, m_rt, b_size_rt, s0s, cws, cs,
       FullDomainInputs{count}, ys, pi);
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline __host__ __device__ int
+Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::LocateCandidates(
+    cuckoo_hash::detail::PrpHash<Prp, In> &prp_hash, int4 sigma, __uint128_t b_size_rt, In x,
+    cuda::std::array<LocatedCandidate, kCuckooChoices> &candidates) {
+  int count = 0;
+  for (int k = 0; k < kCuckooChoices; ++k) {
+    auto [bucket, index] = prp_hash.Locate(sigma, x, k, kDomainSize, b_size_rt);
+    if (bucket >= kBucketCount) continue;
+    __uint128_t j = index;
+    assert(j < (__uint128_t{1} << bucket_bits));
+    // Deduplicate among this input's located candidates only. Permu is a
+    // permutation over [0, kDomainSize * kCuckooChoices), so distinct k never
+    // collide and the check is only a safeguard, as in the fused paths.
+    bool duplicate = false;
+    for (int i = 0; i < count; ++i) {
+      if (candidates[i].bucket == bucket && candidates[i].index == j) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (duplicate) continue;
+    candidates[count] = {bucket, j, k};
+    ++count;
+  }
+  return count;
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline std::vector<std::vector<typename Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In,
+    ch_lambda>::RouteRecord>>
+Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::RouteInputs(
+    int4 sigma, __uint128_t b_size_rt, cuda::std::span<const In> xs) {
+  cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};
+  std::vector<std::vector<RouteRecord>> inputs(kBucketCount);
+  for (size_t omega = 0; omega < xs.size(); ++omega) {
+    cuda::std::array<LocatedCandidate, kCuckooChoices> located;
+    int count = LocateCandidates(prp_hash, sigma, b_size_rt, xs[omega], located);
+    for (int i = 0; i < count; ++i) {
+      inputs[located[i].bucket].push_back({omega, located[i].candidate});
+    }
+  }
+  return inputs;
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::FoldChainNode(
+    cuda::std::array<int4, 4> &pi_bucket, cuda::std::span<const int4, 4> pi_tilde) {
+  cuda::std::array<int4, 4> h_input =
+      util::Xor(cuda::std::span<const int4, 4>(pi_bucket), cuda::std::span<const int4, 4>(pi_tilde));
+  auto h_out = hash_.Hash(cuda::std::span<const int4, 4>(h_input));
+  pi_bucket[0] = util::Xor(pi_bucket[0], h_out[0]);
+  pi_bucket[1] = util::Xor(pi_bucket[1], h_out[1]);
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::FoldChainBucket(
+    cuda::std::span<int4, 4> pi, cuda::std::span<const int4, 4> pi_bucket) {
+  cuda::std::array<int4, 4> cross_input =
+      util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_bucket));
+  auto cross_out = hash_.Hash(cuda::std::span<const int4, 4>(cross_input));
+  pi[0] = util::Xor(pi[0], cross_out[0]);
+  pi[1] = util::Xor(pi[1], cross_out[1]);
 }
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
@@ -828,19 +1186,11 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
       ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();
 
       // Accumulate per-bucket proof (same as Vdpf::Prove logic).
-      cuda::std::array<int4, 4> h_input =
-          util::Xor(cuda::std::span<const int4, 4>(pi_bucket), cuda::std::span<const int4, 4>(pi_tilde));
-      auto h_out = hash_.Hash(cuda::std::span<const int4, 4>(h_input));
-      pi_bucket[0] = util::Xor(pi_bucket[0], h_out[0]);
-      pi_bucket[1] = util::Xor(pi_bucket[1], h_out[1]);
+      FoldChainNode(pi_bucket, cuda::std::span<const int4, 4>(pi_tilde));
     }
 
     // Cross-bucket proof accumulation: pi = pi XOR H'(pi XOR pi_bucket).
-    cuda::std::array<int4, 4> cross_input =
-        util::Xor(cuda::std::span<const int4, 4>(pi), cuda::std::span<const int4, 4>(pi_bucket));
-    auto cross_out = hash_.Hash(cuda::std::span<const int4, 4>(cross_input));
-    pi[0] = util::Xor(pi[0], cross_out[0]);
-    pi[1] = util::Xor(pi[1], cross_out[1]);
+    FoldChainBucket(pi, cuda::std::span<const int4, 4>(pi_bucket));
   }
 }
 
@@ -903,19 +1253,10 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
       ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();
       nodes.push_back(hash_.Hash(cuda::std::span<const int4, 4>(pi_tilde)));
     }
-    if (!nodes.empty()) {
-      cuda::std::array<int4, 2> root = FoldNodes(nodes);
-      int4 msg[4] = {bucket_node[0], bucket_node[1], root[0], root[1]};
-      bucket_node = hash_.Hash(cuda::std::span<const int4, 4>(msg));
-    }
-    bucket_nodes[i] = bucket_node;
+    bucket_nodes[i] = BucketMerkleNode(bucket_node, nodes);
   }
 
-  cuda::std::array<int4, 2> root = FoldNodes(bucket_nodes);
-  pi[0] = root[0];
-  pi[1] = root[1];
-  pi[2] = int4{0, 0, 0, 0};
-  pi[3] = int4{0, 0, 0, 0};
+  FoldMerkleBuckets(bucket_nodes, pi);
 }
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
@@ -953,6 +1294,41 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline cuda::std::array<int4, 2> Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::BucketMerkleNode(
+    cuda::std::array<int4, 2> bucket_node, std::vector<cuda::std::array<int4, 2>> &leaves) {
+  if (!leaves.empty()) {
+    cuda::std::array<int4, 2> root = FoldNodes(leaves);
+    int4 msg[4] = {bucket_node[0], bucket_node[1], root[0], root[1]};
+    bucket_node = hash_.Hash(cuda::std::span<const int4, 4>(msg));
+  }
+  return bucket_node;
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::FoldMerkleBuckets(
+    std::vector<cuda::std::array<int4, 2>> &bucket_nodes, cuda::std::span<int4, 4> pi) {
+  cuda::std::array<int4, 2> root = FoldNodes(bucket_nodes);
+  pi[0] = root[0];
+  pi[1] = root[1];
+  pi[2] = int4{0, 0, 0, 0};
+  pi[3] = int4{0, 0, 0, 0};
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline cuda::std::array<int4, 2> Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::FoldNodes(
     std::vector<cuda::std::array<int4, 2>> &nodes) {
   size_t count = nodes.size();
@@ -960,8 +1336,7 @@ inline cuda::std::array<int4, 2> Vdmpf<in_bits, max_points, bucket_bits, Group, 
   while (count > 1) {
     size_t pairs = count / 2;
     for (size_t i = 0; i < pairs; ++i) {
-      int4 msg[4] = {nodes[2 * i][0], nodes[2 * i][1], nodes[2 * i + 1][0], nodes[2 * i + 1][1]};
-      nodes[i] = hash_.Hash(cuda::std::span<const int4, 4>(msg));
+      nodes[i] = detail::VdpfMerkleFoldNode(hash_, nodes.data(), count, i);
     }
     if (count % 2 != 0) nodes[pairs] = nodes[count - 1];
     count = pairs + count % 2;
