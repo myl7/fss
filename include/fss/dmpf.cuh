@@ -88,7 +88,7 @@ class SchemeAccess;
  */
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In = uint,
     int ch_lambda = 80>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -323,7 +323,7 @@ __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int active_buckets,
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In,
     int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -334,7 +334,7 @@ inline __host__ __device__ Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Pr
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In,
     int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -398,7 +398,7 @@ inline int Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In,
     int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -467,7 +467,7 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In,
     int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -544,7 +544,7 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In,
     int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /

@@ -108,7 +108,7 @@ class SchemeAccess;
  */
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In = uint, int ch_lambda = 80>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -759,7 +759,7 @@ static __global__ void VdmpfFullFinishKernel(const VdmpfFullNode *root, int4 *pi
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -770,7 +770,7 @@ inline __host__ __device__ Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, X
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -832,7 +832,7 @@ inline int Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Pr
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -849,7 +849,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -886,7 +886,7 @@ Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_l
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -918,7 +918,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -936,7 +936,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -949,7 +949,7 @@ inline bool Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -966,7 +966,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -998,7 +998,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1016,7 +1016,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1051,7 +1051,7 @@ Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_l
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1075,7 +1075,7 @@ Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_l
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1092,7 +1092,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1109,7 +1109,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1196,7 +1196,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1261,7 +1261,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1288,7 +1288,7 @@ inline size_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash,
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1306,7 +1306,7 @@ inline cuda::std::array<int4, 2> Vdmpf<in_bits, max_points, bucket_bits, Group, 
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1323,7 +1323,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
@@ -1346,7 +1346,7 @@ inline cuda::std::array<int4, 2> Vdmpf<in_bits, max_points, bucket_bits, Group, 
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
     typename Prp, typename In, int ch_lambda>
-  requires(ValidForInputBits<In, in_bits> && 1 <= in_bits && in_bits <= 126 &&
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
       max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
       cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
       (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
