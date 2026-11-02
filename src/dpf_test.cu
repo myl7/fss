@@ -15,6 +15,16 @@
 #include <atomic>
 #include <thread>
 
+static_assert(!fss::ValidForInputBits<bool, 1>);
+static_assert(!fss::ValidForInputBits<const bool, 1>);
+static_assert(!fss::ValidForInputBits<volatile bool, 1>);
+static_assert(!fss::ValidForInputBits<const volatile bool, 1>);
+static_assert(!fss::ValidForInputBits<bool, 8>);
+static_assert(fss::ValidForInputBits<uint8_t, 8>);
+static_assert(fss::ValidForInputBits<uint64_t, 64>);
+static_assert(fss::ValidForInputBits<__uint128_t, 128>);
+static_assert(!fss::ValidForInputBits<__uint128_t, 129>);
+
 using BytesGroup = fss::group::Bytes;
 using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
 using Uint64Group = fss::group::Uint<uint64_t>;
