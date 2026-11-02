@@ -6,6 +6,7 @@
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include <fss/group/bytes.cuh>
 
 namespace fss::python {
 inline namespace FSS_NATIVE_ABI {
@@ -100,22 +101,10 @@ public:
   }
 
   py::object Value() const {
-    using Result = decltype(std::declval<const T &>().Value());
-    if constexpr (std::is_same_v<Result, int4>) {
-      if (host_) {
-        auto output = EmptyBlocks(1, c10::TensorOptions().device(c10::kCPU));
-        Blocks(output)[0] = host_->Value();
-        return py::cast(output.view({4}));
-      }
-      c10::cuda::CUDAGuard guard(storage_.device());
-      auto stream = CurrentStream();
-      Await(stream);
-      auto output = EmptyBlocks(1, storage_.options());
-      GroupValueReadKernel<T, Result><<<1, 1, 0, stream>>>(DeviceData(), Blocks(output));
-      CheckCuda(cudaGetLastError());
-      RecordTensors({storage_, output}, stream);
-      return py::cast(output.view({4}));
+    if constexpr (std::is_same_v<T, fss::group::Bytes>) {
+      return py::cast(Into());
     } else {
+      using Result = decltype(std::declval<const T &>().Value());
       if (host_) return ToPyU128(static_cast<__uint128_t>(host_->Value()));
       c10::cuda::CUDAGuard guard(storage_.device());
       auto stream = CurrentStream();

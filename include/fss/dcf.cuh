@@ -862,8 +862,8 @@ inline Group Dcf<in_bits, Group, Prg, In, pred>::CorrectVal(
     // the cw masked by the parent control bit.
     int m = -static_cast<int>(t);
     int4 base = util::SetLsb(base_buf, false);
-    int4 value = v.Value();
-    int4 correction = v_cw.Value();
+    int4 value = v.Into();
+    int4 correction = v_cw.Into();
     int4 res;
     res.x = value.x ^ base.x ^ (correction.x & m);
     res.y = value.y ^ base.y ^ (correction.y & m);

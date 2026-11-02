@@ -72,7 +72,7 @@ class Group:
         return self._native.into()
 
     def value(self):
-        """Return the C++ convenience Value: an integer or a Bytes block."""
+        """Return the stored unsigned integer or Bytes block."""
         return self._native.value()
 
     def __int__(self):

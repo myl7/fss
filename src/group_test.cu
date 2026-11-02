@@ -79,3 +79,58 @@ TYPED_TEST(GroupAxiomTest, Inverses) {
     this->ExpectEqual((-a) + a, zero);
   }
 }
+
+// Independently encode unsigned words as a clamped int4 for boundary checks.
+static int4 BoundaryBlock(uint32_t x, uint32_t y, uint32_t z, uint32_t top) {
+  return {static_cast<int>(x), static_cast<int>(y), static_cast<int>(z),
+      static_cast<int>(top << 1)};
+}
+
+static void ExpectBoundaryBlock(const int4 &actual, const int4 &expected) {
+  EXPECT_EQ(actual.x, expected.x);
+  EXPECT_EQ(actual.y, expected.y);
+  EXPECT_EQ(actual.z, expected.z);
+  EXPECT_EQ(actual.w, expected.w);
+}
+
+template <typename Group>
+static void ExpectCanonicalBlock(const int4 &block, const int4 &expected) {
+  ExpectBoundaryBlock(Group::From(block).Into(), expected);
+}
+
+template <typename Group>
+static void ExpectOneWrapsToZero(const int4 &canonical_max_block) {
+  const Group value = Group::From(canonical_max_block);
+  const Group wrapped = value + Group::From(BoundaryBlock(1, 0, 0, 0));
+  ExpectBoundaryBlock(wrapped.Into(), BoundaryBlock(0, 0, 0, 0));
+}
+
+TEST(GroupBoundaryBehavior, UnsignedCanonicalMaxEncodesAndWraps) {
+  // Uint32 max, then the modular variant reducing the same all-ones block.
+  ExpectCanonicalBlock<Uint32Group>(BoundaryBlock(0xffffffffU, 0, 0, 0),
+      BoundaryBlock(0xffffffffU, 0, 0, 0));
+  ExpectOneWrapsToZero<Uint32Group>(BoundaryBlock(0xffffffffU, 0, 0, 0));
+  ExpectCanonicalBlock<Uint32ModGroup>(BoundaryBlock(0xffffffffU, 0, 0, 0),
+      BoundaryBlock(0x7ffffff4U, 0, 0, 0));
+  ExpectOneWrapsToZero<Uint32ModGroup>(BoundaryBlock(2147483658U, 0, 0, 0));
+
+  // Uint64 max, then the modular variant reducing the same all-ones block.
+  ExpectCanonicalBlock<Uint64Group>(BoundaryBlock(0xffffffffU, 0xffffffffU, 0, 0),
+      BoundaryBlock(0xffffffffU, 0xffffffffU, 0, 0));
+  ExpectOneWrapsToZero<Uint64Group>(BoundaryBlock(0xffffffffU, 0xffffffffU, 0, 0));
+  ExpectCanonicalBlock<Uint64ModGroup>(BoundaryBlock(0xffffffffU, 0xffffffffU, 0, 0),
+      BoundaryBlock(0xffffffe2U, 0x7fffffffU, 0, 0));
+  ExpectOneWrapsToZero<Uint64ModGroup>(BoundaryBlock(0x0000001cU, 0x80000000U, 0, 0));
+
+  // Uint127 max, then the modular variant reducing the same 127 all-ones bits.
+  ExpectCanonicalBlock<Uint127Group>(
+      BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU),
+      BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU));
+  ExpectOneWrapsToZero<Uint127Group>(
+      BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU));
+  ExpectCanonicalBlock<Uint127ModGroup>(
+      BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU),
+      BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x3fffffffU));
+  ExpectOneWrapsToZero<Uint127ModGroup>(
+      BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x3fffffffU));
+}

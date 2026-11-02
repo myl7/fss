@@ -45,12 +45,6 @@ public:
     return val_;
   }
 
-  // Additional public API.
-  // Temporary access for the host DCF full-domain fast path. Revisit after
-  // comparing it with the generic Groupable implementation.
-  /** Return a copy of the underlying block. */
-  __host__ __device__ int4 Value() const { return val_; }
-
 private:
   int4 val_;
 
