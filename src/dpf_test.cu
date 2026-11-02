@@ -721,3 +721,72 @@ TEST(DpfGpuRangeTest, ArithmeticGroupNarrowInputAndCappedFrontier) {
   fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
   fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }
+
+
+template <typename Group, bool has_half, typename Backend = fss::prg::Aes128Soft<2>>
+void CheckDpfGenHalf() {
+  constexpr int bits = 5;
+  using Prg = fss_test::CountedPrg<Backend, 2, has_half>;
+  using FullPrg = fss_test::CountedPrg<Backend, 2, false>;
+  using Scheme = fss::Dpf<bits, Group, Prg, uint8_t>;
+  using FullScheme = fss::Dpf<bits, Group, FullPrg, uint8_t>;
+  fss_test::GenHalfAesFixture<2> aes;
+  fss_test::PrgCallCounts calls, full_calls;
+  auto backend = [&] {
+    if constexpr (std::is_same_v<Backend, fss::prg::Aes128Soft<2>>) return aes.Backend();
+    else return Backend(aes.keys);
+  }();
+  Scheme scheme{Prg(backend, calls)};
+  FullScheme reference{FullPrg(backend, full_calls)};
+  int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
+  int4 beta = {42, 6, 8, 10};
+  typename Scheme::Key keys[2];
+  typename FullScheme::Key full_keys[2];
+  fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13}, beta);
+  fss_test::GenPair(reference, full_keys[0], full_keys[1], seeds, uint8_t{13}, beta);
+  EXPECT_EQ(calls.full, 2 * bits);
+  EXPECT_EQ(calls.half, 0);
+  for (uint8_t x = 0; x < 32; ++x) {
+    int4 ys[2];
+    for (int b = 0; b < 2; ++b) {
+      calls = {};
+      ys[b] = fss_test::EvalKey(scheme, b, keys[b], x);
+      int4 expected = fss_test::EvalKey(reference, b, full_keys[b], x);
+      EXPECT_EQ(memcmp(&ys[b], &expected, sizeof(int4)), 0) << "party=" << b << " x=" << +x;
+      EXPECT_EQ(calls.full, has_half ? 0 : bits);
+      EXPECT_EQ(calls.half, has_half ? bits : 0);
+      EXPECT_EQ(calls.right, has_half ? __builtin_popcount(x) : 0);
+    }
+    int4 result = (Group::From(ys[0]) + Group::From(ys[1])).Into();
+    int4 expected = x == 13 ? Group::From(beta).Into() : Group{}.Into();
+    EXPECT_EQ(memcmp(&result, &expected, GroupCompareSize<Group>()), 0);
+  }
+}
+
+TEST(DpfGenHalf, BytesSelectedAndFallback) {
+  CheckDpfGenHalf<BytesGroup, true>();
+  CheckDpfGenHalf<BytesGroup, false>();
+}
+TEST(DpfGenHalf, Uint127SelectedAndFallback) {
+  CheckDpfGenHalf<Uint127Group, true>();
+  CheckDpfGenHalf<Uint127Group, false>();
+}
+TEST(DpfGenHalf, GenericGroupSelectedAndFallback) {
+  CheckDpfGenHalf<Uint64Group, true>();
+  CheckDpfGenHalf<Uint64Group, false>();
+}
+
+
+TEST(DpfGenHalf, AesRawSelectedAndFallback) {
+  CheckDpfGenHalf<BytesGroup, true, fss::prg::Aes128MmoRaw<2>>();
+  CheckDpfGenHalf<BytesGroup, false, fss::prg::Aes128MmoRaw<2>>();
+}
+
+TEST(DpfGenHalf, GpuAesSoftSelectedRange) {
+  int devices = 0;
+  if (cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0) GTEST_SKIP() << "no CUDA device available";
+  fss_test::GenHalfDeviceAesFixture<2> aes;
+  ASSERT_EQ(aes.Allocate(), cudaSuccess);
+  fss::Dpf<16, Uint64Group, fss::prg::Aes128Soft<2>, uint16_t> scheme{aes.Backend()};
+  fss_test::CheckGpuRange<16, uint16_t, 8, 64>(scheme, 33, 47);
+}

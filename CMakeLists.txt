@@ -109,7 +109,7 @@ if(BUILD_TESTING)
     gtest_discover_tests(packed_half_tree_dpf_test)
 
     add_executable(aes128_mmo_raw_test src/aes128_mmo_raw_test.cu)
-    target_link_libraries(aes128_mmo_raw_test GTest::gtest_main fss)
+    target_link_libraries(aes128_mmo_raw_test GTest::gtest_main fss OpenSSL::Crypto)
     target_compile_options(aes128_mmo_raw_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-maes,-msse4.2>)
     gtest_discover_tests(aes128_mmo_raw_test)
 

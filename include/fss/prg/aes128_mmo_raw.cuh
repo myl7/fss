@@ -50,6 +50,14 @@ public:
   __host__ cuda::std::array<int4, mul> Gen(int4 seed);
 
   /**
+   * Return the selected half of Gen() with the same call requirements.
+   *
+   * @param right false selects the first half, true selects the second half.
+   */
+  __host__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
+    requires(mul > 0 && mul % 2 == 0);
+
+  /**
      * Batched 8-seed version of Gen().
      *
      * Applies the same MMO construction to 8 independent seeds under the same key schedules,
@@ -122,6 +130,36 @@ __host__ inline cuda::std::array<int4, mul> Aes128MmoRaw<mul>::Gen(int4 seed) {
   __m128i s = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seed));
   for (int i = 0; i < mul; ++i) {
     const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i]);
+    __m128i b = _mm_xor_si128(s, _mm_load_si128(rk));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 1));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 2));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 3));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 4));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 5));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 6));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 7));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 8));
+    b = _mm_aesenc_si128(b, _mm_load_si128(rk + 9));
+    b = _mm_aesenclast_si128(b, _mm_load_si128(rk + 10));
+    b = _mm_xor_si128(b, s);
+    _mm_storeu_si128(reinterpret_cast<__m128i *>(&out[i]), b);
+  }
+#endif
+
+  return out;
+}
+
+template <int mul>
+__host__ inline cuda::std::array<int4, mul / 2> Aes128MmoRaw<mul>::GenHalf(int4 seed, bool right)
+  requires(mul > 0 && mul % 2 == 0)
+{
+  cuda::std::array<int4, mul / 2> out{};
+
+#ifndef __CUDA_ARCH__
+  __m128i s = _mm_set_epi32(seed.w, seed.z, seed.y, seed.x);
+  int offset = right ? mul / 2 : 0;
+  for (int i = 0; i < mul / 2; ++i) {
+    const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i + offset]);
     __m128i b = _mm_xor_si128(s, _mm_load_si128(rk));
     b = _mm_aesenc_si128(b, _mm_load_si128(rk + 1));
     b = _mm_aesenc_si128(b, _mm_load_si128(rk + 2));

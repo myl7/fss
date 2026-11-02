@@ -743,9 +743,9 @@ template <int in_bits, typename Group, typename Prg, typename In>
 __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::PathStep(
     Prg &prg, int4 state, int4 correction, bool right_control, bool take_right) {
   int control = static_cast<int>(util::GetLsb(state));
-  auto [raw_left, raw_right] = prg.Gen(util::SetLsb(state, false));
+  auto [raw_child] = detail::GenHalf<2>(prg, util::SetLsb(state, false), take_right);
   int child_control = static_cast<int>(take_right ? right_control : util::GetLsb(correction));
-  return CorrectChild(take_right ? raw_right : raw_left, util::SetLsb(correction, false),
+  return CorrectChild(raw_child, util::SetLsb(correction, false),
       -control, control & child_control);
 }
 

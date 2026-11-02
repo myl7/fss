@@ -663,29 +663,16 @@ inline __host__ __device__ cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, X
     s_cw = util::SetLsb(s_cw, false);
     bool tr_cw = cw.tr;
 
-    auto [sl, sr] = prg_.Gen(s);
-
-    bool tl = util::GetLsb(sl);
-    sl = util::SetLsb(sl, false);
-    bool tr = util::GetLsb(sr);
-    sr = util::SetLsb(sr, false);
-
-    if (t) {
-      sl = util::Xor(sl, s_cw);
-      sr = util::Xor(sr, s_cw);
-      tl = tl ^ tl_cw;
-      tr = tr ^ tr_cw;
-    }
-
     bool x_bit = (x >> (in_bits - 1 - i)) & 1;
-
-    if (!x_bit) {
-      s = sl;
-      t = tl;
-    } else {
-      s = sr;
-      t = tr;
+    auto [child] = detail::GenHalf<2>(prg_, s, x_bit);
+    bool child_t = util::GetLsb(child);
+    child = util::SetLsb(child, false);
+    if (t) {
+      child = util::Xor(child, s_cw);
+      child_t = child_t ^ (x_bit ? tr_cw : tl_cw);
     }
+    s = child;
+    t = child_t;
   }
 
   // Output share

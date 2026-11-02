@@ -634,44 +634,26 @@ inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::Eval(
     v_cw_buf = util::SetLsb(v_cw_buf, false);
     auto v_cw = Group::From(v_cw_buf);
 
-    auto [sl, vl_buf, sr, vr_buf] = prg_.Gen(s);
-
-    bool tl = util::GetLsb(sl);
-    sl = util::SetLsb(sl, false);
-    vl_buf = util::SetLsb(vl_buf, false);
-    auto vl = Group::From(vl_buf);
-
-    bool tr = util::GetLsb(sr);
-    sr = util::SetLsb(sr, false);
-    vr_buf = util::SetLsb(vr_buf, false);
-    auto vr = Group::From(vr_buf);
-
+    bool x_bit = (x >> (in_bits - 1 - i)) & 1;
+    auto [child, value_buf] = detail::GenHalf<4>(prg_, s, x_bit);
+    bool child_t = util::GetLsb(child);
+    child = util::SetLsb(child, false);
+    auto value = Group::From(util::SetLsb(value_buf, false));
     if (t) {
-      sl = util::Xor(sl, s_cw);
-      sr = util::Xor(sr, s_cw);
-      tl = tl ^ tl_cw;
-      tr = tr ^ tr_cw;
+      child = util::Xor(child, s_cw);
+      child_t = child_t ^ (x_bit ? tr_cw : tl_cw);
     }
 
-    bool x_bit = (x >> (in_bits - 1 - i)) & 1;
-
     if (b) {
-      if (!x_bit) v = v + (-vl);
-      else v = v + (-vr);
+      v = v + (-value);
       if (t) v = v + (-v_cw);
     } else {
-      if (!x_bit) v = v + vl;
-      else v = v + vr;
+      v = v + value;
       if (t) v = v + v_cw;
     }
 
-    if (!x_bit) {
-      s = sl;
-      t = tl;
-    } else {
-      s = sr;
-      t = tr;
-    }
+    s = child;
+    t = child_t;
   }
 
   int4 v_cw_np1_buf = cws[in_bits].v;
@@ -1072,19 +1054,23 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
 __host__ __device__ inline void Dcf<in_bits, Group, Prg, In, pred>::PathStep(
     Prg &prg, int4 st, Group v, bool b, const Cw &cw, bool take_right,
     int4 &next_st, Group &next_v) {
-  int4 left, right;
-  Group v_left, v_right;
+  cuda::std::array<int4, 2> raw;
   {
     auto node_prg = prg;
-    ExpandNode(node_prg, st, v, b, cw, left, v_left, right, v_right);
+    raw = detail::GenHalf<4>(node_prg, util::SetLsb(st, false), take_right);
   }
-  if (take_right) {
-    next_st = right;
-    next_v = v_right;
-  } else {
-    next_st = left;
-    next_v = v_left;
+  bool t = util::GetLsb(st);
+  int4 child = util::SetLsb(raw[0], false);
+  bool child_t = util::GetLsb(raw[0]);
+  auto value = Group::From(util::SetLsb(raw[1], false));
+  if (t) {
+    child = util::Xor(child, util::SetLsb(cw.s, false));
+    child_t = child_t ^ util::GetLsb(take_right ? cw.v : cw.s);
+    value = value + Group::From(util::SetLsb(cw.v, false));
   }
+  if (b) value = -value;
+  next_st = util::SetLsb(child, child_t);
+  next_v = value + v;
 }
 
 namespace gpu::detail {

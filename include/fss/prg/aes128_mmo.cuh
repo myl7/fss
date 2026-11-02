@@ -54,6 +54,14 @@ public:
 
   __host__ cuda::std::array<int4, mul> Gen(int4 seed);
 
+  /**
+   * Return the selected half of Gen() with the same call requirements.
+   *
+   * @param right false selects the first half, true selects the second half.
+   */
+  __host__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
+    requires(mul > 0 && mul % 2 == 0);
+
 private:
   cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs_;
 };
@@ -99,6 +107,29 @@ __host__ inline cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 seed) {
     auto seed_ptr = reinterpret_cast<const unsigned char *>(&seed);
     int cipher_len = 0;
     int ret = EVP_EncryptUpdate(ctxs_[i], out_ptr, &cipher_len, seed_ptr, AES_BLOCK_SIZE);
+    assert(ret == 1);
+    assert(cipher_len == AES_BLOCK_SIZE);
+
+    out[i] = fss::util::Xor(out[i], seed);
+  }
+#endif
+
+  return out;
+}
+
+template <int mul>
+__host__ inline cuda::std::array<int4, mul / 2> Aes128Mmo<mul>::GenHalf(int4 seed, bool right)
+  requires(mul > 0 && mul % 2 == 0)
+{
+  cuda::std::array<int4, mul / 2> out{};
+
+#ifndef __CUDA_ARCH__
+  int offset = right ? mul / 2 : 0;
+  for (int i = 0; i < mul / 2; ++i) {
+    auto out_ptr = reinterpret_cast<unsigned char *>(&out[i]);
+    auto seed_ptr = reinterpret_cast<const unsigned char *>(&seed);
+    int cipher_len = 0;
+    int ret = EVP_EncryptUpdate(ctxs_[i + offset], out_ptr, &cipher_len, seed_ptr, AES_BLOCK_SIZE);
     assert(ret == 1);
     assert(cipher_len == AES_BLOCK_SIZE);
 

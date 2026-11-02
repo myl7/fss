@@ -26,6 +26,24 @@ concept Prgable = requires(Prg prg, int4 seed) {
 };
 
 /**
+ * Optional selected-half extension of Prgable for positive even mul.
+ *
+ * GenHalf(seed, false) returns the first mul / 2 outputs of Gen(seed).
+ * GenHalf(seed, true) returns the last mul / 2 outputs in the same order.
+ * Both halves must be bit-exact with Gen() under the same PRG configuration.
+ * GenHalf() has the same execution-space, lifetime, and concurrency requirements
+ * as Gen(). Custom PRGs opt in by providing the member, without registration.
+ *
+ * @tparam Prg User-provided or library-provided PRG type.
+ * @tparam mul Positive even seed expansion factor, as in Prgable.
+ * @ingroup fss_api
+ */
+template <typename Prg, int mul>
+concept HasGenHalf = mul > 0 && mul % 2 == 0 && Prgable<Prg, mul> && requires(Prg prg, int4 seed, bool right) {
+  { prg.GenHalf(seed, right) } -> std::same_as<cuda::std::array<int4, mul / 2>>;
+};
+
+/**
  * Optional eight-seed batch extension of Prgable.
  *
  * Gen8() borrows eight seeds through cuda::std::span<const int4, 8>.
@@ -50,6 +68,20 @@ concept HasGen8 = Prgable<Prg, mul> && requires(Prg prg, cuda::std::span<const i
 // -----------------------------------------------------------------------------
 
 namespace fss::detail {
+
+template <int mul, typename Prg>
+  requires(mul > 0 && mul % 2 == 0 && Prgable<Prg, mul>)
+__host__ __device__ inline cuda::std::array<int4, mul / 2> GenHalf(Prg &prg, int4 seed, bool right) {
+  if constexpr (HasGenHalf<Prg, mul>) {
+    return prg.GenHalf(seed, right);
+  } else {
+    auto full = prg.Gen(seed);
+    cuda::std::array<int4, mul / 2> out{};
+    int offset = right ? mul / 2 : 0;
+    for (int i = 0; i < mul / 2; ++i) out[i] = full[i + offset];
+    return out;
+  }
+}
 
 // Keep the optional batched entry point outside the public PRG requirement.
 template <int mul, typename Prg>

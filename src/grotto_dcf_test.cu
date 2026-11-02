@@ -206,3 +206,36 @@ TEST(GrottoDcfSinglePath, Wide64) {
 TEST(GrottoDcfSinglePath, Wide128) {
   CheckSinglePathWide<128, __uint128_t>();
 }
+
+
+template <bool has_half>
+void CheckGrottoGenHalf() {
+  constexpr int bits = 5;
+  using Backend = fss::prg::Aes128Soft<2>;
+  using Prg = fss_test::CountedPrg<Backend, 2, has_half>;
+  using Scheme = fss::GrottoDcf<bits, Prg, uint8_t>;
+  fss_test::GenHalfAesFixture<2> aes;
+  fss_test::PrgCallCounts calls;
+  Scheme scheme{Prg(aes.Backend(), calls)};
+  int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
+  typename Scheme::Key keys[2];
+  fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13});
+  EXPECT_EQ(calls.full, 2 * bits);
+  EXPECT_EQ(calls.half, 0);
+  for (uint8_t x = 0; x < 32; ++x) {
+    bool ys[2];
+    for (int b = 0; b < 2; ++b) {
+      calls = {};
+      ys[b] = fss_test::EvalKey(scheme, b, keys[b], x);
+      EXPECT_EQ(calls.full, has_half ? 0 : bits);
+      EXPECT_EQ(calls.half, has_half ? bits : 0);
+      EXPECT_EQ(calls.right, has_half ? __builtin_popcount(x) : 0);
+    }
+    EXPECT_EQ(ys[0] != ys[1], x >= 13);
+  }
+}
+
+TEST(GrottoDcfGenHalf, SelectedAndFallback) {
+  CheckGrottoGenHalf<true>();
+  CheckGrottoGenHalf<false>();
+}

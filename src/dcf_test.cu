@@ -715,3 +715,98 @@ TEST(DcfGpuRangeTest, kGtArithmeticGroupNarrowInputAndCappedFrontier) {
   fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
   fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }
+
+
+template <typename Group, fss::DcfPred pred, bool has_half, typename Backend = fss::prg::Aes128Soft<4>>
+void CheckDcfGenHalf() {
+  constexpr int bits = 5;
+  using Prg = fss_test::CountedPrg<Backend, 4, has_half>;
+  using FullPrg = fss_test::CountedPrg<Backend, 4, false>;
+  using Scheme = fss::Dcf<bits, Group, Prg, uint8_t, pred>;
+  using FullScheme = fss::Dcf<bits, Group, FullPrg, uint8_t, pred>;
+  fss_test::GenHalfAesFixture<4> aes;
+  fss_test::PrgCallCounts calls, full_calls;
+  auto backend = [&] {
+    if constexpr (std::is_same_v<Backend, fss::prg::Aes128Soft<4>>) return aes.Backend();
+    else return Backend(aes.keys);
+  }();
+  Prg prg(backend, calls);
+  FullPrg full_prg(backend, full_calls);
+  Scheme scheme{prg};
+  FullScheme reference{full_prg};
+  int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
+  int4 beta = {42, 6, 8, 10};
+  typename Scheme::Key keys[2];
+  typename FullScheme::Key full_keys[2];
+  fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13}, beta);
+  fss_test::GenPair(reference, full_keys[0], full_keys[1], seeds, uint8_t{13}, beta);
+  EXPECT_EQ(calls.full, 2 * bits);
+  EXPECT_EQ(calls.half, 0);
+  for (uint8_t x = 0; x < 32; ++x) {
+    int4 ys[2];
+    for (int b = 0; b < 2; ++b) {
+      calls = {};
+      ys[b] = fss_test::EvalKey(scheme, b, keys[b], x);
+      int4 expected = fss_test::EvalKey(reference, b, full_keys[b], x);
+      EXPECT_EQ(memcmp(&ys[b], &expected, sizeof(int4)), 0) << "party=" << b << " x=" << +x;
+      EXPECT_EQ(calls.full, has_half ? 0 : bits);
+      EXPECT_EQ(calls.half, has_half ? bits : 0);
+      EXPECT_EQ(calls.right, has_half ? __builtin_popcount(x) : 0);
+      int4 state = fss::util::SetLsb(seeds[b], b);
+      Group value;
+      for (int i = 0; i < bits; ++i) {
+        bool right = (x >> (bits - 1 - i)) & 1;
+        int4 left, right_state;
+        Group left_value, right_value;
+        fss::detail::SchemeAccess::DcfExpandNode<FullScheme>(full_prg, state, value, b,
+            full_keys[b].cws[i], left, left_value, right_state, right_value);
+        calls = {};
+        fss::detail::SchemeAccess::DcfPathStep<Scheme>(prg, state, value, b,
+            keys[b].cws[i], right, state, value);
+        int4 expected_state = right ? right_state : left;
+        int4 expected_value = (right ? right_value : left_value).Into();
+        int4 actual_value = value.Into();
+        EXPECT_EQ(memcmp(&state, &expected_state, sizeof(int4)), 0);
+        EXPECT_EQ(memcmp(&actual_value, &expected_value, GroupCompareSize<Group>()), 0);
+        EXPECT_EQ(calls.full, has_half ? 0 : 1);
+        EXPECT_EQ(calls.half, has_half ? 1 : 0);
+        EXPECT_EQ(calls.right, has_half ? static_cast<int>(right) : 0);
+      }
+    }
+    int4 result = (Group::From(ys[0]) + Group::From(ys[1])).Into();
+    bool hit = pred == fss::DcfPred::kLt ? x < 13 : x > 13;
+    int4 expected = hit ? Group::From(beta).Into() : Group{}.Into();
+    EXPECT_EQ(memcmp(&result, &expected, GroupCompareSize<Group>()), 0);
+  }
+}
+
+template <typename Group>
+void CheckDcfGenHalfPredicates() {
+  CheckDcfGenHalf<Group, fss::DcfPred::kLt, true>();
+  CheckDcfGenHalf<Group, fss::DcfPred::kLt, false>();
+  CheckDcfGenHalf<Group, fss::DcfPred::kGt, true>();
+  CheckDcfGenHalf<Group, fss::DcfPred::kGt, false>();
+}
+
+TEST(DcfGenHalf, BytesSelectedAndFallback) { CheckDcfGenHalfPredicates<BytesGroup>(); }
+TEST(DcfGenHalf, Uint127SelectedAndFallback) { CheckDcfGenHalfPredicates<Uint127Group>(); }
+TEST(DcfGenHalf, GenericGroupSelectedAndFallback) { CheckDcfGenHalfPredicates<Uint64Group>(); }
+
+
+TEST(DcfGenHalf, AesRawSelectedAndFallback) {
+  CheckDcfGenHalf<BytesGroup, fss::DcfPred::kLt, true, fss::prg::Aes128MmoRaw<4>>();
+  CheckDcfGenHalf<BytesGroup, fss::DcfPred::kLt, false, fss::prg::Aes128MmoRaw<4>>();
+  CheckDcfGenHalf<BytesGroup, fss::DcfPred::kGt, true, fss::prg::Aes128MmoRaw<4>>();
+  CheckDcfGenHalf<BytesGroup, fss::DcfPred::kGt, false, fss::prg::Aes128MmoRaw<4>>();
+}
+
+TEST(DcfGenHalf, GpuAesSoftSelectedRange) {
+  int devices = 0;
+  if (cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0) GTEST_SKIP() << "no CUDA device available";
+  fss_test::GenHalfDeviceAesFixture<4> aes;
+  ASSERT_EQ(aes.Allocate(), cudaSuccess);
+  fss::Dcf<16, Uint64Group, fss::prg::Aes128Soft<4>, uint16_t> lt{aes.Backend()};
+  fss_test::CheckGpuRange<16, uint16_t, 8, 64>(lt, 33, 47);
+  fss::Dcf<16, Uint64Group, fss::prg::Aes128Soft<4>, uint16_t, fss::DcfPred::kGt> gt{aes.Backend()};
+  fss_test::CheckGpuRange<16, uint16_t, 8, 64>(gt, 33, 47);
+}

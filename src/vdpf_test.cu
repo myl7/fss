@@ -422,9 +422,9 @@ void ExpectMerkleBlock(int4 actual, int4 expected) {
   EXPECT_EQ(actual.w, expected.w);
 }
 
-template <int bits, typename In, typename Group, int frontier = 16, int threads = 256>
-void CheckRangeMerkle(In first, In last, bool gpu) {
-  using Prg = fss::prg::ChaCha<2>;
+template <int bits, typename In, typename Group, int frontier = 16, int threads = 256,
+    typename Prg = fss::prg::ChaCha<2>>
+void CheckRangeMerkle(In first, In last, bool gpu, Prg prg = Prg{kNonce0, kNonce1}) {
   using Hash = fss::hash::Blake3;
   using Scheme = fss::Vdpf<bits, Group, Prg, Hash, Hash, In>;
   const size_t count = static_cast<size_t>(last - first) + 1;
@@ -432,7 +432,6 @@ void CheckRangeMerkle(In first, In last, bool gpu) {
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   const int4 beta = {42, 12, 24, 36};
   const int4 guard = {23, 45, 67, 88};
-  Prg prg{kNonce0, kNonce1};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{prg, hash, hash};
   typename Scheme::Key keys[2];
@@ -650,3 +649,79 @@ TEST(VdpfRangeMerkle, GpuRejectsInvalidRangeAndStorage) {
 }
 
 }  // namespace
+
+
+template <typename Group, bool has_half>
+void CheckVdpfGenHalf() {
+  constexpr int bits = 5;
+  using Backend = fss::prg::Aes128Soft<2>;
+  using Prg = fss_test::CountedPrg<Backend, 2, has_half>;
+  using FullPrg = fss_test::CountedPrg<Backend, 2, false>;
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Hash, Hash, uint8_t>;
+  using FullScheme = fss::Vdpf<bits, Group, FullPrg, Hash, Hash, uint8_t>;
+  using Proof = cuda::std::array<int4, 4>;
+  fss_test::GenHalfAesFixture<2> aes;
+  fss_test::PrgCallCounts calls, full_calls;
+  int4 iv[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+  Hash hash(cuda::std::span<const int4, 2>(iv, 2));
+  Scheme scheme{Prg(aes.Backend(), calls), hash, hash};
+  FullScheme reference{FullPrg(aes.Backend(), full_calls), hash, hash};
+  int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
+  int4 beta = {42, 6, 8, 10};
+  typename Scheme::Key keys[2];
+  typename FullScheme::Key full_keys[2];
+  ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13}, beta), 0);
+  ASSERT_EQ(fss_test::GenPair(reference, full_keys[0], full_keys[1], seeds, uint8_t{13}, beta), 0);
+  EXPECT_EQ(calls.full, 2 * bits);
+  EXPECT_EQ(calls.half, 0);
+  Proof points[2][32], full_points[2][32];
+  for (uint8_t x = 0; x < 32; ++x) {
+    int4 ys[2];
+    for (int b = 0; b < 2; ++b) {
+      calls = {};
+      auto result = fss_test::EvalKey(scheme, b, keys[b], x);
+      auto expected = fss_test::EvalKey(reference, b, full_keys[b], x);
+      ys[b] = result.y;
+      points[b][x] = result.pi_tilde;
+      full_points[b][x] = expected.pi_tilde;
+      EXPECT_EQ(memcmp(&result.y, &expected.y, sizeof(int4)), 0) << "party=" << b << " x=" << +x;
+      EXPECT_EQ(memcmp(result.pi_tilde.data(), expected.pi_tilde.data(), sizeof(Proof)), 0);
+      EXPECT_EQ(calls.full, has_half ? 0 : bits);
+      EXPECT_EQ(calls.half, has_half ? bits : 0);
+      EXPECT_EQ(calls.right, has_half ? __builtin_popcount(x) : 0);
+    }
+    int4 result = (Group::From(ys[0]) + Group::From(ys[1])).Into();
+    int4 expected = x == 13 ? Group::From(beta).Into() : Group{}.Into();
+    EXPECT_EQ(memcmp(&result, &expected, sizeof(int4)), 0);
+  }
+  Proof proofs[2], full_proofs[2];
+  for (int b = 0; b < 2; ++b) {
+    scheme.Prove(cuda::std::span<const Proof>(points[b], 32), keys[b].cs, proofs[b]);
+    reference.Prove(cuda::std::span<const Proof>(full_points[b], 32), full_keys[b].cs, full_proofs[b]);
+    EXPECT_EQ(memcmp(proofs[b].data(), full_proofs[b].data(), sizeof(Proof)), 0);
+  }
+  EXPECT_TRUE(Scheme::Verify(proofs[0], proofs[1]));
+}
+
+TEST(VdpfGenHalf, BytesSelectedAndFallbackProofs) {
+  CheckVdpfGenHalf<BytesGroup, true>();
+  CheckVdpfGenHalf<BytesGroup, false>();
+}
+TEST(VdpfGenHalf, Uint127SelectedAndFallbackProofs) {
+  CheckVdpfGenHalf<Uint127Group, true>();
+  CheckVdpfGenHalf<Uint127Group, false>();
+}
+TEST(VdpfGenHalf, GenericGroupSelectedAndFallbackProofs) {
+  using Group = fss::group::Uint<uint64_t>;
+  CheckVdpfGenHalf<Group, true>();
+  CheckVdpfGenHalf<Group, false>();
+}
+
+
+TEST(VdpfGenHalf, GpuAesSoftSelectedRangeProof) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  fss_test::GenHalfDeviceAesFixture<2> aes;
+  ASSERT_EQ(aes.Allocate(), cudaSuccess);
+  CheckRangeMerkle<16, uint16_t, BytesGroup, 8, 64>(3, 17, true, aes.Backend());
+}

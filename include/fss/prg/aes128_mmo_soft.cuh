@@ -56,8 +56,19 @@ public:
 
   __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed);
 
+  /**
+   * Return the selected half of Gen() with the same call requirements.
+   *
+   * @param right false selects the first half, true selects the second half.
+   */
+  __host__ __device__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
+    requires(mul > 0 && mul % 2 == 0);
+
 private:
-  uint8_t round_keys_[mul][aes_detail::kRoundKeySize];
+  __host__ __device__ static void EncryptWords(
+      uint8_t *buf, const uint32_t *round_key, const uint32_t *te0, const uint8_t *sbox);
+
+  uint32_t round_keys_[mul][aes_detail::kRoundKeySize / 4];
   const uint32_t *te0_;
   const uint8_t *sbox_;
 };
@@ -157,29 +168,32 @@ __host__ __device__ inline void StoreBE32(uint8_t *p, uint32_t v) {
   p[3] = uint8_t(v);
 }
 
-__host__ __device__ inline void Encrypt(
-    uint8_t *buf, const uint8_t *round_key, const uint32_t *te0, const uint8_t *sbox) {
-  uint32_t s0 = LoadBE32(buf) ^ LoadBE32(round_key);
-  uint32_t s1 = LoadBE32(buf + 4) ^ LoadBE32(round_key + 4);
-  uint32_t s2 = LoadBE32(buf + 8) ^ LoadBE32(round_key + 8);
-  uint32_t s3 = LoadBE32(buf + 12) ^ LoadBE32(round_key + 12);
+}  // namespace aes_detail
+
+template <int mul>
+__host__ __device__ inline void Aes128Soft<mul>::EncryptWords(
+    uint8_t *buf, const uint32_t *round_key, const uint32_t *te0, const uint8_t *sbox) {
+  uint32_t s0 = aes_detail::LoadBE32(buf) ^ round_key[0];
+  uint32_t s1 = aes_detail::LoadBE32(buf + 4) ^ round_key[1];
+  uint32_t s2 = aes_detail::LoadBE32(buf + 8) ^ round_key[2];
+  uint32_t s3 = aes_detail::LoadBE32(buf + 12) ^ round_key[3];
 
 #pragma unroll 1
   for (int r = 1; r <= 9; ++r) {
-    const uint8_t *rk = round_key + r * 16;
-    uint32_t rk0 = LoadBE32(rk);
-    uint32_t rk1 = LoadBE32(rk + 4);
-    uint32_t rk2 = LoadBE32(rk + 8);
-    uint32_t rk3 = LoadBE32(rk + 12);
+    const uint32_t *rk = round_key + r * 4;
+    uint32_t rk0 = rk[0];
+    uint32_t rk1 = rk[1];
+    uint32_t rk2 = rk[2];
+    uint32_t rk3 = rk[3];
 
-    uint32_t t0 = te0[s0 >> 24] ^ RotWord8(te0[(s1 >> 16) & 0xff]) ^ RotWord16(te0[(s2 >> 8) & 0xff]) ^
-        RotWord24(te0[s3 & 0xff]) ^ rk0;
-    uint32_t t1 = te0[s1 >> 24] ^ RotWord8(te0[(s2 >> 16) & 0xff]) ^ RotWord16(te0[(s3 >> 8) & 0xff]) ^
-        RotWord24(te0[s0 & 0xff]) ^ rk1;
-    uint32_t t2 = te0[s2 >> 24] ^ RotWord8(te0[(s3 >> 16) & 0xff]) ^ RotWord16(te0[(s0 >> 8) & 0xff]) ^
-        RotWord24(te0[s1 & 0xff]) ^ rk2;
-    uint32_t t3 = te0[s3 >> 24] ^ RotWord8(te0[(s0 >> 16) & 0xff]) ^ RotWord16(te0[(s1 >> 8) & 0xff]) ^
-        RotWord24(te0[s2 & 0xff]) ^ rk3;
+    uint32_t t0 = te0[s0 >> 24] ^ aes_detail::RotWord8(te0[(s1 >> 16) & 0xff]) ^ aes_detail::RotWord16(te0[(s2 >> 8) & 0xff]) ^
+        aes_detail::RotWord24(te0[s3 & 0xff]) ^ rk0;
+    uint32_t t1 = te0[s1 >> 24] ^ aes_detail::RotWord8(te0[(s2 >> 16) & 0xff]) ^ aes_detail::RotWord16(te0[(s3 >> 8) & 0xff]) ^
+        aes_detail::RotWord24(te0[s0 & 0xff]) ^ rk1;
+    uint32_t t2 = te0[s2 >> 24] ^ aes_detail::RotWord8(te0[(s3 >> 16) & 0xff]) ^ aes_detail::RotWord16(te0[(s0 >> 8) & 0xff]) ^
+        aes_detail::RotWord24(te0[s1 & 0xff]) ^ rk2;
+    uint32_t t3 = te0[s3 >> 24] ^ aes_detail::RotWord8(te0[(s0 >> 16) & 0xff]) ^ aes_detail::RotWord16(te0[(s1 >> 8) & 0xff]) ^
+        aes_detail::RotWord24(te0[s2 & 0xff]) ^ rk3;
 
     s0 = t0;
     s1 = t1;
@@ -188,11 +202,11 @@ __host__ __device__ inline void Encrypt(
   }
 
   // Last round: SubBytes + ShiftRows + AddRoundKey (no MixColumns)
-  const uint8_t *rk = round_key + 160;
-  uint32_t rk0 = LoadBE32(rk);
-  uint32_t rk1 = LoadBE32(rk + 4);
-  uint32_t rk2 = LoadBE32(rk + 8);
-  uint32_t rk3 = LoadBE32(rk + 12);
+  const uint32_t *rk = round_key + 40;
+  uint32_t rk0 = rk[0];
+  uint32_t rk1 = rk[1];
+  uint32_t rk2 = rk[2];
+  uint32_t rk3 = rk[3];
 
   uint32_t o0 = (uint32_t(sbox[s0 >> 24]) << 24) | (uint32_t(sbox[(s1 >> 16) & 0xff]) << 16) |
       (uint32_t(sbox[(s2 >> 8) & 0xff]) << 8) | uint32_t(sbox[s3 & 0xff]);
@@ -203,18 +217,22 @@ __host__ __device__ inline void Encrypt(
   uint32_t o3 = (uint32_t(sbox[s3 >> 24]) << 24) | (uint32_t(sbox[(s0 >> 16) & 0xff]) << 16) |
       (uint32_t(sbox[(s1 >> 8) & 0xff]) << 8) | uint32_t(sbox[s2 & 0xff]);
 
-  StoreBE32(buf, o0 ^ rk0);
-  StoreBE32(buf + 4, o1 ^ rk1);
-  StoreBE32(buf + 8, o2 ^ rk2);
-  StoreBE32(buf + 12, o3 ^ rk3);
+  aes_detail::StoreBE32(buf, o0 ^ rk0);
+  aes_detail::StoreBE32(buf + 4, o1 ^ rk1);
+  aes_detail::StoreBE32(buf + 8, o2 ^ rk2);
+  aes_detail::StoreBE32(buf + 12, o3 ^ rk3);
 }
-
-}  // namespace aes_detail
 
 template <int mul>
 __host__ __device__ inline Aes128Soft<mul>::Aes128Soft(const uint8_t keys[][16], const uint32_t *te0, const uint8_t *sbox)
     : te0_(te0), sbox_(sbox) {
-  for (int i = 0; i < mul; ++i) aes_detail::KeyExpansion(round_keys_[i], keys[i], sbox);
+  for (int i = 0; i < mul; ++i) {
+    uint8_t expanded[aes_detail::kRoundKeySize];
+    aes_detail::KeyExpansion(expanded, keys[i], sbox);
+    for (int j = 0; j < aes_detail::kRoundKeySize / 4; ++j) {
+      round_keys_[i][j] = aes_detail::LoadBE32(expanded + 4 * j);
+    }
+  }
 }
 
 template <int mul>
@@ -222,8 +240,41 @@ __host__ __device__ inline cuda::std::array<int4, mul> Aes128Soft<mul>::Gen(int4
   cuda::std::array<int4, mul> out{};
   for (int i = 0; i < mul; ++i) {
     out[i] = seed;
-    aes_detail::Encrypt(reinterpret_cast<uint8_t *>(&out[i]), round_keys_[i], te0_, sbox_);
+    EncryptWords(reinterpret_cast<uint8_t *>(&out[i]), round_keys_[i], te0_, sbox_);
     out[i] = fss::util::Xor(out[i], seed);
+  }
+  return out;
+}
+
+template <int mul>
+__host__ __device__ inline cuda::std::array<int4, mul / 2> Aes128Soft<mul>::GenHalf(int4 seed, bool right)
+  requires(mul > 0 && mul % 2 == 0)
+{
+  cuda::std::array<int4, mul / 2> out{};
+  int offset = right ? mul / 2 : 0;
+  for (int i = 0; i < mul / 2; ++i) {
+    uint32_t words[4] = {static_cast<uint32_t>(seed.x), static_cast<uint32_t>(seed.y),
+        static_cast<uint32_t>(seed.z), static_cast<uint32_t>(seed.w)};
+    uint8_t block[16];
+    for (int j = 0; j < 16; ++j) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ && !defined(__CUDA_ARCH__)
+      int shift = 8 * (3 - j % 4);
+#else
+      int shift = 8 * (j % 4);
+#endif
+      block[j] = static_cast<uint8_t>(words[j / 4] >> shift);
+    }
+    EncryptWords(block, round_keys_[i + offset], te0_, sbox_);
+    for (int j = 0; j < 4; ++j) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ && !defined(__CUDA_ARCH__)
+      words[j] = aes_detail::LoadBE32(block + 4 * j);
+#else
+      words[j] = uint32_t(block[4 * j]) | (uint32_t(block[4 * j + 1]) << 8) |
+          (uint32_t(block[4 * j + 2]) << 16) | (uint32_t(block[4 * j + 3]) << 24);
+#endif
+    }
+    out[i] = fss::util::Xor({static_cast<int>(words[0]), static_cast<int>(words[1]),
+        static_cast<int>(words[2]), static_cast<int>(words[3])}, seed);
   }
   return out;
 }

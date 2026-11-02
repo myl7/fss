@@ -6,6 +6,80 @@
 
 namespace fss_test {
 
+struct PrgCallCounts {
+  int full = 0;
+  int half = 0;
+  int right = 0;
+};
+
+template <typename Backend, int mul, bool has_half>
+class CountedPrg {
+public:
+  __host__ __device__ CountedPrg(Backend backend, PrgCallCounts &counts)
+      : backend_(backend), counts_(&counts) {}
+
+  __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed) {
+    ++counts_->full;
+    return backend_.Gen(seed);
+  }
+
+  __host__ __device__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
+    requires(has_half) {
+    ++counts_->half;
+    counts_->right += static_cast<int>(right);
+    return backend_.GenHalf(seed, right);
+  }
+
+private:
+  Backend backend_;
+  PrgCallCounts *counts_;
+};
+
+template <int mul>
+struct GenHalfAesFixture {
+  uint8_t keys[mul][16] = {};
+  uint32_t te0[256];
+  uint8_t sbox[256];
+
+  GenHalfAesFixture() {
+    for (int j = 0; j < mul; ++j) {
+      for (int i = 0; i < 16; ++i) keys[j][i] = static_cast<uint8_t>(17 * j + i);
+    }
+    fss::prg::aes_detail::InitTe0(te0);
+    fss::prg::aes_detail::InitSbox(sbox);
+  }
+
+  fss::prg::Aes128Soft<mul> Backend() {
+    return fss::prg::Aes128Soft<mul>(keys, te0, sbox);
+  }
+};
+
+template <int mul>
+struct GenHalfDeviceAesFixture {
+  GenHalfAesFixture<mul> host;
+  uint32_t *te0 = nullptr;
+  uint8_t *sbox = nullptr;
+
+  ~GenHalfDeviceAesFixture() {
+    if (sbox) cudaFree(sbox);
+    if (te0) cudaFree(te0);
+  }
+
+  cudaError_t Allocate() {
+    auto status = cudaMallocManaged(&te0, 256 * sizeof(uint32_t));
+    if (status != cudaSuccess) return status;
+    status = cudaMallocManaged(&sbox, 256);
+    if (status != cudaSuccess) return status;
+    fss::prg::aes_detail::InitTe0(te0);
+    fss::prg::aes_detail::InitSbox(sbox);
+    return cudaSuccess;
+  }
+
+  fss::prg::Aes128Soft<mul> Backend() {
+    return fss::prg::Aes128Soft<mul>(host.keys, te0, sbox);
+  }
+};
+
 struct EvalResult {
   int4 y;
   cuda::std::array<int4, 4> pi_tilde;
