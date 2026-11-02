@@ -129,6 +129,33 @@ public:
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf);
 
   /**
+   * Generate component corrections in a caller-strided layout and packed control bits.
+   *
+   * Layer i is stored at cws[i*stride] and the terminal at cws[in_bits*stride].
+   * tr receives root-order packed right-control bits: bit 0 is the root layer,
+   * bit i belongs to layer i, and bits at or above in_bits are zero.
+   * The terminal is stored unchanged as a plain int4.
+   * The default stride of 1 stores the components contiguously.
+   *
+   * @param cws Output storage; its capacity includes in_bits*stride+1 elements.
+   * @param tr Output packed right-control bits, with unused bits zero.
+   * @param s0s Two initial seeds, retained by the caller.
+   * @param a The secret point.
+   * @param b_buf Output value, clamped before conversion to Group.
+   * @param stride Positive element stride between component entries.
+   * @pre a is in [0, 2^in_bits).
+   * @pre stride > 0.
+   * @pre For in_bits == 0, cws has at least one element.
+   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
+   * @pre Inputs and outputs do not overlap.
+   * @pre All accessed storage is accessible from the calling execution space.
+   * @post Only the described prefix is written, and storage beyond it is untouched.
+   */
+  __host__ __device__ void Gen(cuda::std::span<int4> cws, In &tr,
+      cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride = 1);
+
+  /**
    * Evaluate one point using a seed and shared corrections.
    *
    * @param b Party index, false for party 0 and true for party 1.
@@ -139,6 +166,34 @@ public:
    * @pre x is in [0, 2^in_bits).
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
+
+  /**
+   * Evaluate one point using separate correction components.
+   *
+   * Root-order packed bit i is the right-control correction at layer i.
+   * The correction s LSB is the left-control correction.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride],
+   * which Gen() writes as a plain int4 with its LSB zero.
+   * Packed bits at and above in_bits are ignored.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's seed from generation.
+   * @param cws Correction components, with layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control corrections, bit i for layer i.
+   * @param x Query point.
+   * @param stride Positive stride between correction entries.
+   * @return This party's output share.
+   * @pre x is in [0, 2^in_bits).
+   * @pre stride > 0.
+   * @pre For in_bits == 0, cws has at least one element.
+   * For in_bits >= 1, with M = numeric_limits<size_t>::max()/sizeof(int4),
+   * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
+   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre All accessed storage is accessible from the calling execution space.
+   */
+  __host__ __device__ int4 Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
+      In tr, In x, size_t stride = 1);
 
   /**
    * Evaluate the closed input interval [first, last] on the host.
@@ -288,10 +343,65 @@ private:
   template <typename Correction>
   __host__ __device__ static int4 ConvertLeaf(bool party, int4 state, Correction &correction);
 
+  // Component view of corrections without ownership or allocation. The s
+  // pointer is indexed with the positive stride, and packed_tr supplies the
+  // right-control bit for each layer.
+  struct ComponentCorrections {
+    const int4 *s;
+    In packed_tr;
+    size_t stride;
+
+    __host__ __device__ inline Cw operator[](int i) const {
+      return Cw{s[static_cast<size_t>(i) * stride], ((packed_tr >> i) & 1) != 0};
+    }
+  };
+
+  // Writes Cw slots in the legacy AoS layout, covering each full 32B slot.
+  struct AosWriter {
+    Cw *cws;
+
+    __host__ __device__ void Write(int i, int4 s_cw, bool tr_cw) const {
+      // Write both 16B halves so the full 32B slot is covered by unmasked stores.
+      // {s_cw, tr_cw} alone leaves the padding undefined: NVCC emits a masked
+      // 256-bit store, and the partial-sector write forces a write-allocate
+      // round trip per level on GPU (measured ~2x Gen time).
+      int4 *cw_slot = reinterpret_cast<int4 *>(&cws[i]);
+      cw_slot[0] = s_cw;
+      cw_slot[1] = make_int4(tr_cw, 0, 0, 0);
+    }
+
+    __host__ __device__ void Finish(int4 terminal) const {
+      cws[in_bits] = {terminal, false};
+    }
+  };
+
+  // Writes strided seed components and accumulates packed right-control bits locally.
+  struct ComponentWriter {
+    int4 *cws;
+    size_t stride;
+    In &tr;
+    In packed_tr = 0;
+
+    __host__ __device__ void Write(int i, int4 s_cw, bool tr_cw) {
+      cws[static_cast<size_t>(i) * stride] = s_cw;
+      packed_tr |= static_cast<In>(tr_cw) << i;
+    }
+
+    __host__ __device__ void Finish(int4 terminal) {
+      cws[static_cast<size_t>(in_bits) * stride] = terminal;
+      tr = packed_tr;
+    }
+  };
+
+  // Shared correction generation loop. The writer is passed by value and owns
+  // only output access, so the existing algorithm and backend use stay unchanged.
+  template <typename Writer>
+  __host__ __device__ void Generate(Writer writer, const int4 *s0s, In a, int4 b_buf);
+
   // Walks x's path from the root and returns the leaf seed with its control bit in the LSB.
   // visit(t, x_bit) sees the control bit of every expanded node and the branch x takes from it.
-  template <typename Visit>
-  __host__ __device__ int4 Walk(bool b, int4 s0, const Cw cws[], In x, Visit &&visit);
+  template <typename Corrections, typename Visit>
+  __host__ __device__ int4 Walk(bool b, int4 s0, Corrections cws, In x, Visit &&visit);
 
   // Closed node bounds avoid representing an unaddressable full-domain end.
   void EvalRangeSerial(bool b, In first, In last, int4 s0, const Cw cws[], int4 ys[]);
@@ -547,6 +657,33 @@ template <int in_bits, typename Group, typename Prg, typename In>
       Groupable<Group> && Prgable<Prg, 2>)
 __host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Gen(
     Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
+  Generate(AosWriter{cws}, s0s, a, b_buf);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+__host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Gen(
+    cuda::std::span<int4> cws, In &tr, cuda::std::span<const int4, 2> s0s,
+    In a, int4 b_buf, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if constexpr (in_bits == 0) {
+    assert(cws.size() >= 1);
+  } else {
+    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+    assert(cws.size() >= required);
+  }
+  Generate(ComponentWriter{cws.data(), stride, tr}, s0s.data(), a, b_buf);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+template <typename Writer>
+__host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Generate(
+    Writer writer, const int4 *s0s, In a, int4 b_buf) {
   int4 s0 = s0s[0];
   s0 = util::SetLsb(s0, false);
   int4 s1 = s0s[1];
@@ -600,18 +737,12 @@ __host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Gen(
     }
 
     s_cw = util::SetLsb(s_cw, tl_cw);
-    // Write both 16B halves so the full 32B slot is covered by unmasked stores.
-    // {s_cw, tr_cw} alone leaves the padding undefined: NVCC emits a masked
-    // 256-bit store, and the partial-sector write forces a write-allocate
-    // round trip per level on GPU (measured ~2x Gen time).
-    int4 *cw_slot = reinterpret_cast<int4 *>(&cws[i]);
-    cw_slot[0] = s_cw;
-    cw_slot[1] = make_int4(tr_cw, 0, 0, 0);
+    writer.Write(i, s_cw, tr_cw);
   }
 
   auto v_cw_np1 = Group::From(b_buf) + (-Group::From(s0)) + Group::From(s1);
   if (t1) v_cw_np1 = -v_cw_np1;
-  cws[in_bits] = {v_cw_np1.Into(), false};
+  writer.Finish(v_cw_np1.Into());
 }
 
 template <int in_bits, typename Group, typename Prg, typename In>
@@ -621,6 +752,28 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(bool b, int4 
   int4 state = Walk(b, s0, cws, x, [](bool, bool) {});
   assert((cws[in_bits].s.w & 1) == 0);
   return ConvertLeaf(b, state, cws[in_bits].s);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+__host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(bool b, int4 s0,
+    cuda::std::span<const int4> cws, In tr, In x, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if constexpr (in_bits == 0) {
+    // The empty path reads only the terminal.
+    assert(cws.size() >= 1);
+  } else {
+    assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+    [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+    assert(cws.size() >= required);
+  }
+  int4 state = Walk(b, s0, ComponentCorrections{cws.data(), tr, stride}, x,
+      [](bool, bool) {});
+  const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
+  assert((terminal.w & 1) == 0);
+  return ConvertLeaf(b, state, terminal);
 }
 
 template <int in_bits, typename Group, typename Prg, typename In>
@@ -767,9 +920,9 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::ConvertLeaf(
 template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
-template <typename Visit>
+template <typename Corrections, typename Visit>
 __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Walk(
-    bool b, int4 s0, const Cw cws[], In x, Visit &&visit) {
+    bool b, int4 s0, Corrections cws, In x, Visit &&visit) {
   int4 state = util::SetLsb(s0, b);
   for (int i = 0; i < in_bits; ++i) {
     bool x_bit = (x >> (in_bits - 1 - i)) & 1;
