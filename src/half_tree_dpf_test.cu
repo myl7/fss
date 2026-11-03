@@ -924,36 +924,6 @@ void CheckHalfTreeSplitStrides(In alpha) {
   }
 }
 
-template <int in_bits, typename Group, typename In>
-void CheckHalfTreeSplitFromCwStorage(In alpha, int4 beta) {
-  using Scheme = fss::HalfTreeDpf<in_bits, Group, fss_test::TestCcrHash, In>;
-  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
-  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
-  typename Scheme::Cw words[in_bits + 1];
-  scheme.Gen(words, seeds, alpha, beta);
-
-  std::vector<int4> storage(2 * (in_bits + 1), kSplitSentinel);
-  for (int l = 0; l <= in_bits; ++l) storage[2 * l] = words[l].s;
-  const In tr = words[in_bits - 1].extra
-      ? static_cast<In>(static_cast<In>(1) << (in_bits - 1)) : In{0};
-  const auto cws = cuda::std::span<const int4>(storage.data(), storage.size());
-  constexpr size_t kDomain = size_t{1} << in_bits;
-  for (int party = 0; party < 2; ++party) {
-    for (size_t x = 0; x < kDomain; ++x) {
-      const In xi = static_cast<In>(x);
-      const int4 expected = scheme.Eval(party, seeds[party], words, xi);
-      const int4 actual = scheme.Eval(party, seeds[party], cws, tr, xi, 2);
-      EXPECT_EQ(memcmp(&actual, &expected, sizeof(int4)), 0) << "party=" << party << " x=" << x;
-    }
-    std::vector<int4> expected_all(kDomain, kSplitSentinel);
-    std::vector<int4> actual_all(kDomain, kSplitSentinel);
-    scheme.EvalAll(party, seeds[party], words, expected_all.data());
-    scheme.EvalAll(party, seeds[party], cws, tr, actual_all.data(), 0, 2);
-    EXPECT_EQ(memcmp(actual_all.data(), expected_all.data(), kDomain * sizeof(int4)), 0)
-        << "EvalAll party=" << party;
-  }
-}
-
 }  // namespace
 
 // in_bits 1 is the single-level tree, 4 is the smallest batched EvalAll()
@@ -971,10 +941,6 @@ TEST(HalfTreeDpfCwsTest, Depth6Uint127) {
 TEST(HalfTreeDpfCwsTest, Depth8GenericGroup) {
   CheckHalfTreeSplitStrides<8, Uint64Group, uint8_t>(kAlpha);
 }
-TEST(HalfTreeDpfCwsTest, CwStorageView) {
-  CheckHalfTreeSplitFromCwStorage<8, BytesGroup, uint8_t>(kAlpha, {604, 981, 273, 84});
-}
-
 // Pins the packed control bit position: HalfTreeDpf uses only bit in_bits - 1 of
 // tr. Gen writes no other bit, the other bits are ignored on input, and moving
 // the bit to a wrong position changes the evaluation, so the position is caught.

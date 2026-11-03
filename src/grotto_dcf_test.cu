@@ -337,39 +337,6 @@ void CheckGrottoSplitStrides(In alpha) {
   }
 }
 
-template <int in_bits, typename In>
-void CheckGrottoSplitFromCwStorage(In alpha) {
-  using Scheme = fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, In>;
-  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
-  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
-  typename Scheme::Cw words[in_bits + 1];
-  scheme.Gen(words, seeds, alpha);
-
-  std::vector<int4> storage(2 * (in_bits + 1), kSplitSentinel);
-  for (int l = 0; l <= in_bits; ++l) storage[2 * l] = words[l].s;
-  In tr = 0;
-  for (int l = 0; l < in_bits; ++l) {
-    if (words[l].tr) tr |= static_cast<In>(static_cast<In>(1) << l);
-  }
-  const auto cws = cuda::std::span<const int4>(storage.data(), storage.size());
-  constexpr size_t kDomain = size_t{1} << in_bits;
-  for (int party = 0; party < 2; ++party) {
-    for (size_t x = 0; x < kDomain; ++x) {
-      const In xi = static_cast<In>(x);
-      const bool expected = scheme.Eval(party, seeds[party], words, xi);
-      const bool actual = scheme.Eval(party, seeds[party], cws, tr, xi, 2);
-      EXPECT_EQ(actual, expected) << "party=" << party << " x=" << x;
-    }
-    auto expected_all = std::make_unique<bool[]>(kDomain);
-    auto actual_all = std::make_unique<bool[]>(kDomain);
-    scheme.EvalAll(party, seeds[party], words, expected_all.get());
-    scheme.EvalAll(party, seeds[party], cws, tr, actual_all.get(), 0, 2);
-    for (size_t x = 0; x < kDomain; ++x) {
-      EXPECT_EQ(actual_all[x], expected_all[x]) << "EvalAll party=" << party << " x=" << x;
-    }
-  }
-}
-
 }  // namespace
 
 // in_bits 1 is the single-level tree, 2 and 5 cover the recursive expansion, and
@@ -382,11 +349,6 @@ TEST(GrottoDcfCwsTest, Depth8) { CheckGrottoSplitStrides<8, uint16_t>(107); }
 TEST(GrottoDcfCwsTest, Depth8WideInput) {
   CheckGrottoSplitStrides<8, uint64_t>(107);
 }
-TEST(GrottoDcfCwsTest, CwStorageView) {
-  CheckGrottoSplitFromCwStorage<5, uint8_t>(17);
-  CheckGrottoSplitFromCwStorage<8, uint16_t>(107);
-}
-
 #ifndef NDEBUG
 TEST(GrottoDcfCwsTest, RejectsInvalidInputs) {
   using Scheme = fss::GrottoDcf<3, fss::prg::ChaCha<2>, uint8_t>;

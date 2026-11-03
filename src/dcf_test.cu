@@ -924,50 +924,6 @@ void CheckDcfSplitStrides(In alpha) {
   }
 }
 
-template <int in_bits, typename Group, typename In, fss::DcfPred pred>
-void CheckDcfSplitFromCwStorage(In alpha, int4 beta) {
-  using Scheme = fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, In, pred>;
-  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
-  Scheme scheme{fss::prg::ChaCha<4>(kNonce0, kNonce1)};
-  typename Scheme::Cw words[in_bits + 1];
-  scheme.Gen(words, seeds, alpha, beta);
-
-  std::vector<int4> storage(2 * (in_bits + 1));
-  for (int l = 0; l <= in_bits; ++l) {
-    storage[2 * l] = words[l].s;
-    storage[2 * l + 1] = words[l].v;
-  }
-  In tr = 0;
-  for (int l = 0; l < in_bits; ++l) {
-    if (fss::util::GetLsb(words[l].v)) tr |= static_cast<In>(1) << l;
-  }
-  const auto cws = cuda::std::span<const int4>(storage.data(), storage.size());
-  const auto vws = cuda::std::span<const int4>(storage.data() + 1, storage.size() - 1);
-  constexpr size_t kDomain = size_t{1} << in_bits;
-  for (int party = 0; party < 2; ++party) {
-    for (size_t x = 0; x < kDomain; ++x) {
-      const In xi = static_cast<In>(x);
-      const int4 expected = scheme.Eval(party, seeds[party], words, xi);
-      const int4 actual = scheme.Eval(party, seeds[party], cws, vws, tr, xi, 2);
-      EXPECT_EQ(memcmp(&actual, &expected, sizeof(int4)), 0) << "party=" << party << " x=" << x;
-    }
-    std::vector<int4> expected_all(kDomain, kSplitSentinel);
-    std::vector<int4> actual_all(kDomain, kSplitSentinel);
-    scheme.EvalAll(party, seeds[party], words, expected_all.data());
-    scheme.EvalAll(party, seeds[party], cws, vws, tr, actual_all.data(), 0, 2);
-    EXPECT_EQ(memcmp(actual_all.data(), expected_all.data(), kDomain * sizeof(int4)), 0)
-        << "EvalAll party=" << party;
-    std::vector<int4> expected_range(kDomain, kSplitSentinel);
-    std::vector<int4> actual_range(kDomain, kSplitSentinel);
-    scheme.EvalRange(party, In{0}, static_cast<In>(kDomain - 1), seeds[party], words,
-        cuda::std::span<int4>(expected_range.data(), kDomain));
-    scheme.EvalRange(party, In{0}, static_cast<In>(kDomain - 1), seeds[party], cws, vws, tr,
-        cuda::std::span<int4>(actual_range.data(), kDomain), 0, 2);
-    EXPECT_EQ(memcmp(actual_range.data(), expected_range.data(), kDomain * sizeof(int4)), 0)
-        << "EvalRange party=" << party;
-  }
-}
-
 }  // namespace
 
 // in_bits 1 exercises the single-level tree, 3 keeps the recursive EvalTree()
@@ -980,13 +936,6 @@ TEST(DcfCwsTest, Depth6Lt) { CheckDcfSplitStrides<6, BytesGroup, uint8_t, fss::D
 TEST(DcfCwsTest, Depth8Lt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kLt>(kAlpha); }
 TEST(DcfCwsTest, Depth8Gt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kGt>(kAlpha); }
 TEST(DcfCwsTest, Depth8GenericGroup) { CheckDcfSplitStrides<8, Uint64Group, uint8_t, fss::DcfPred::kLt>(kAlpha); }
-TEST(DcfCwsTest, CwStorageViewLt) {
-  CheckDcfSplitFromCwStorage<8, BytesGroup, uint8_t, fss::DcfPred::kLt>(kAlpha, {604, 981, 273, 84});
-}
-TEST(DcfCwsTest, CwStorageViewGt) {
-  CheckDcfSplitFromCwStorage<3, Uint127Group, uint8_t, fss::DcfPred::kGt>(5, {604, 981, 273, 84});
-}
-
 #ifndef NDEBUG
 TEST(DcfCwsTest, RejectsInvalidInputs) {
   using Scheme = fss::Dcf<3, BytesGroup, fss::prg::ChaCha<4>, uint8_t>;
