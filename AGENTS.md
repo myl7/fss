@@ -6,6 +6,16 @@
 - In GPU device code, registers are limited and memory access is expensive.
   Avoid use of `memcpy`, `memset`, and `reinterpret_cast`.
   Prefer plain assignments. Prefer `int4` for types larger than 8B.
+- CUDA concepts are evaluated only in the host compilation pass; the device pass
+  never re-checks them, so never rely on concepts for device-callability
+  enforcement. A host-only backend instead keeps its methods
+  `__host__ __device__`, and the `__CUDA_ARCH__` branch calls a per-class
+  `__device__` function that is declared but never defined
+  (`fss_host_only_<Class>_used_in_device_code`). Real device use then fails at
+  ptxas or nvlink, and host use builds cleanly. Do not use `__trap()` guards.
+- Leave a confirmed false-alarm warning in place and explain it in a comment at
+  the site. Never silence it with a suppression that is not tied to that one
+  diagnostic, such as `#pragma nv_exec_check_disable`.
 - Write commit messages per the commit-msg skill in `.agents/skills/commit-msg`.
   Recommend a repo scope only for a recurring module with a real code boundary —
   a directory or namespace that many future commits touch — never for an

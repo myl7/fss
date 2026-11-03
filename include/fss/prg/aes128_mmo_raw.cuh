@@ -20,6 +20,7 @@
 #include <fss/prg.cuh>
 #include <cuda_runtime.h>
 #include <cuda/std/array>
+#include <cassert>
 #include <cstdint>
 
 #ifndef __CUDA_ARCH__
@@ -31,9 +32,16 @@
 namespace fss::prg {
 
 /**
+ * Declared and never defined. Device code that reaches it fails to link with an
+ * unresolved-extern error that names this symbol.
+ */
+__device__ void fss_host_only_Aes128MmoRaw_used_in_device_code();
+
+/**
  * AES-128 with Matyas-Meyer-Oseas and AES-NI intrinsics as a PRG.
  *
- * Host-only. Device calls to Gen() and Gen8() are not supported.
+ * Host-only. Device use of Gen(), GenHalf(), or Gen8() fails to build with an
+ * unresolved-extern error naming `fss_host_only_Aes128MmoRaw_used_in_device_code`.
  *
  * @tparam mul See Prgable mul.
  */
@@ -47,14 +55,14 @@ public:
      */
   Aes128MmoRaw(const uint8_t keys[][16]);
 
-  __host__ cuda::std::array<int4, mul> Gen(int4 seed);
+  __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed);
 
   /**
    * Return the selected half of Gen() with the same call requirements.
    *
    * @param right false selects the first half, true selects the second half.
    */
-  __host__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
+  __host__ __device__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
     requires(mul > 0 && mul % 2 == 0);
 
   /**
@@ -73,7 +81,7 @@ public:
      * @param seeds 8 independent 16B seeds.
      * @return For each seed j, the mul MMO output blocks out[j][i] = E_{keys[i]}(seeds[j]) ^ seeds[j].
      */
-  __host__ cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(cuda::std::span<const int4, 8> seeds);
+  __host__ __device__ cuda::std::array<cuda::std::array<int4, mul>, 8> Gen8(cuda::std::span<const int4, 8> seeds);
 
 private:
   static constexpr int kRoundKeys = 11;
@@ -126,10 +134,12 @@ inline Aes128MmoRaw<mul>::Aes128MmoRaw(const uint8_t keys[][16]) {
 }
 
 template <int mul>
-__host__ inline cuda::std::array<int4, mul> Aes128MmoRaw<mul>::Gen(int4 seed) {
+__host__ __device__ inline cuda::std::array<int4, mul> Aes128MmoRaw<mul>::Gen(int4 seed) {
   cuda::std::array<int4, mul> out{};
 
-#ifndef __CUDA_ARCH__
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128MmoRaw_used_in_device_code();
+#else
   __m128i s = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seed));
   for (int i = 0; i < mul; ++i) {
     const auto *rk = reinterpret_cast<const __m128i *>(round_keys_[i]);
@@ -153,12 +163,14 @@ __host__ inline cuda::std::array<int4, mul> Aes128MmoRaw<mul>::Gen(int4 seed) {
 }
 
 template <int mul>
-__host__ inline cuda::std::array<int4, mul / 2> Aes128MmoRaw<mul>::GenHalf(int4 seed, bool right)
+__host__ __device__ inline cuda::std::array<int4, mul / 2> Aes128MmoRaw<mul>::GenHalf(int4 seed, bool right)
   requires(mul > 0 && mul % 2 == 0)
 {
   cuda::std::array<int4, mul / 2> out{};
 
-#ifndef __CUDA_ARCH__
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128MmoRaw_used_in_device_code();
+#else
   __m128i s = _mm_set_epi32(seed.w, seed.z, seed.y, seed.x);
   int offset = right ? mul / 2 : 0;
   for (int i = 0; i < mul / 2; ++i) {
@@ -183,10 +195,12 @@ __host__ inline cuda::std::array<int4, mul / 2> Aes128MmoRaw<mul>::GenHalf(int4 
 }
 
 template <int mul>
-__host__ inline cuda::std::array<cuda::std::array<int4, mul>, 8> Aes128MmoRaw<mul>::Gen8(cuda::std::span<const int4, 8> seeds) {
+__host__ __device__ inline cuda::std::array<cuda::std::array<int4, mul>, 8> Aes128MmoRaw<mul>::Gen8(cuda::std::span<const int4, 8> seeds) {
   cuda::std::array<cuda::std::array<int4, mul>, 8> out{};
 
-#ifndef __CUDA_ARCH__
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128MmoRaw_used_in_device_code();
+#else
   __m128i s[8];
   __m128i b[8];
   for (int j = 0; j < 8; ++j) s[j] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(&seeds[j]));

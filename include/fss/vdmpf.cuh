@@ -544,7 +544,8 @@ public:
    * query runs before allocation. No backend upload, deep copy, event
    * management, or host/device synchronization is performed. The Prp backend
    * must be device-callable: ChaChaFeistel qualifies; Aes128Feistel and
-   * Aes128FeistelRaw are host-only and trap on device.
+   * Aes128FeistelRaw are host-only and fail to build with an unresolved-extern
+   * error when used on device.
    *
    * @tparam threads_per_block Power-of-two block size in [1,1024], default 256.
    * @param b Party index, false for party 0 and true for party 1.

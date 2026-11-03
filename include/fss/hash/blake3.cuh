@@ -11,6 +11,7 @@
 #include <cuda/std/array>
 #include <cuda/std/span>
 #include <cuda/std/tuple>
+#include <cassert>
 #include <fss/util.cuh>
 
 // SSE2 is used only for the optional four-message host batch path.
@@ -34,6 +35,12 @@
 #endif
 
 namespace fss::hash {
+
+/**
+ * Declared and never defined. Device code that reaches it fails to link with an
+ * unresolved-extern error that names this symbol.
+ */
+__device__ void fss_host_only_Blake3_Hash4_used_in_device_code();
 
 /**
  * BLAKE3 keyed hash (CPU+GPU).
@@ -78,11 +85,13 @@ public:
      *
      * Produces the same 32B digest as Hash for each message on this instance.
      * The input is borrowed and the output is owned.
+     * Only for host side; device use fails to build with an unresolved-extern error
+     * naming `fss_host_only_Blake3_Hash4_used_in_device_code`.
      *
      * @param msgs Four 64B messages.
      * @return Four 32B digests.
      */
-  __host__ cuda::std::array<cuda::std::array<int4, 2>, 4> Hash4(
+  __host__ __device__ cuda::std::array<cuda::std::array<int4, 2>, 4> Hash4(
       cuda::std::span<const cuda::std::array<int4, 4>, 4> msgs);
 
 private:
@@ -332,8 +341,12 @@ inline void Blake3::Batch4(const int4 iv[2], const cuda::std::array<int4, 4> *in
 
 #endif
 
-__host__ inline cuda::std::array<cuda::std::array<int4, 2>, 4> Blake3::Hash4(
+__host__ __device__ inline cuda::std::array<cuda::std::array<int4, 2>, 4> Blake3::Hash4(
     cuda::std::span<const cuda::std::array<int4, 4>, 4> msgs) {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Blake3_Hash4_used_in_device_code();
+  return {};
+#else
   cuda::std::array<cuda::std::array<int4, 2>, 4> out;
 #if FSS_BLAKE3_HAS_SSE2
   Batch4(iv_, msgs.data(), out.data());
@@ -342,7 +355,9 @@ __host__ inline cuda::std::array<cuda::std::array<int4, 2>, 4> Blake3::Hash4(
     out[i] = Hash(cuda::std::span<const int4, 4>(msgs[i].data(), 4));
   }
 #endif
+
   return out;
+#endif
 }
 
 static_assert(Hashable<Blake3> && XorHashable<Blake3>);

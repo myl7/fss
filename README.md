@@ -144,6 +144,8 @@ The caller owns randomness, attempt limits and failure handling.
 ChaCha and software AES can execute on host and device.
 OpenSSL AES-MMO, AES-NI Raw AES-MMO, OpenSSL Feistel and Raw Feistel are host-only backends.
 OpenSSL context lifetime and concurrency rules are documented on their constructors and operations.
+Device code that reaches one of those backends fails to build with an unresolved-extern error naming a symbol of the form `fss_host_only_<Class>_used_in_device_code`, e.g. `fss_host_only_Aes128Feistel_used_in_device_code`.
+The error comes from ptxas, or from nvlink with separable compilation.
 When using those backends, link OpenSSL:
 
 ```cmake

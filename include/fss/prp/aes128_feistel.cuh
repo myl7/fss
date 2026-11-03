@@ -28,32 +28,43 @@
 namespace fss::prp {
 
 /**
+ * Declared and never defined. Device code that reaches it fails to link with an
+ * unresolved-extern error that names this symbol.
+ */
+__device__ void fss_host_only_Aes128Feistel_used_in_device_code();
+
+/**
  * Small-domain AES-128 Feistel PRP for Cuckoo hashing.
  *
  * This backend is host-only because it uses OpenSSL. It satisfies Permutable
  * and is intended for VDMPF setup paths that need a permutation over a compact
- * integer domain.
+ * integer domain. All special members and Permu() are `__host__ __device__`, so
+ * pure host use of schemes that hold a Prp by value builds without
+ * execution-space warnings. Device use of any of them, e.g. calling Permu() or
+ * copying the object in a kernel, fails to build with an unresolved-extern error
+ * that names `fss_host_only_Aes128Feistel_used_in_device_code`.
  */
 class Aes128Feistel {
 public:
-  Aes128Feistel();
-  ~Aes128Feistel();
-  Aes128Feistel(const Aes128Feistel &);
-  Aes128Feistel &operator=(const Aes128Feistel &);
-  Aes128Feistel(Aes128Feistel &&o) noexcept;
-  Aes128Feistel &operator=(Aes128Feistel &&o) noexcept;
+  __host__ __device__ Aes128Feistel();
+  __host__ __device__ ~Aes128Feistel();
+  __host__ __device__ Aes128Feistel(const Aes128Feistel &);
+  __host__ __device__ Aes128Feistel &operator=(const Aes128Feistel &);
+  __host__ __device__ Aes128Feistel(Aes128Feistel &&o) noexcept;
+  __host__ __device__ Aes128Feistel &operator=(Aes128Feistel &&o) noexcept;
 
   /**
      * Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.
      *
-     * Host-only.
+     * Host-only. Device use fails to build with an unresolved-extern error naming
+     * `fss_host_only_Aes128Feistel_used_in_device_code`.
      *
      * @param seed 16-byte PRP key.
      * @param x Input in [0, domain).
      * @param domain Domain size. Must be >= 2.
      * @return Output in [0, domain).
      */
-  __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
+  __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
 
 private:
   EVP_CIPHER_CTX *ctx_;
@@ -122,36 +133,65 @@ inline int4 Aes128Feistel::Pack(__uint128_t v) {
       static_cast<int>((v >> 64) & 0xFFFFFFFF), static_cast<int>((v >> 96) & 0xFFFFFFFF)};
 }
 
-inline Aes128Feistel::Aes128Feistel() {
+__host__ __device__ inline Aes128Feistel::Aes128Feistel() {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Feistel_used_in_device_code();
+  ctx_ = nullptr;
+#else
   InitCtx();
+#endif
 }
 
-inline Aes128Feistel::~Aes128Feistel() {
+__host__ __device__ inline Aes128Feistel::~Aes128Feistel() {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Feistel_used_in_device_code();
+#else
   if (ctx_) EVP_CIPHER_CTX_free(ctx_);
+#endif
 }
 
-inline Aes128Feistel::Aes128Feistel(const Aes128Feistel &) {
+__host__ __device__ inline Aes128Feistel::Aes128Feistel(const Aes128Feistel &) {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Feistel_used_in_device_code();
+  ctx_ = nullptr;
+#else
   InitCtx();
+#endif
 }
 
-inline Aes128Feistel &Aes128Feistel::operator=(const Aes128Feistel &) {
+__host__ __device__ inline Aes128Feistel &Aes128Feistel::operator=(const Aes128Feistel &) {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Feistel_used_in_device_code();
+#endif
   return *this;
 }
 
-inline Aes128Feistel::Aes128Feistel(Aes128Feistel &&o) noexcept : ctx_(o.ctx_) {
+__host__ __device__ inline Aes128Feistel::Aes128Feistel(Aes128Feistel &&o) noexcept : ctx_(o.ctx_) {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Feistel_used_in_device_code();
+#else
   o.ctx_ = nullptr;
+#endif
 }
 
-inline Aes128Feistel &Aes128Feistel::operator=(Aes128Feistel &&o) noexcept {
+__host__ __device__ inline Aes128Feistel &Aes128Feistel::operator=(Aes128Feistel &&o) noexcept {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Feistel_used_in_device_code();
+#else
   if (this != &o) {
     EVP_CIPHER_CTX_free(ctx_);
     ctx_ = o.ctx_;
     o.ctx_ = nullptr;
   }
+#endif
   return *this;
 }
 
-inline __uint128_t Aes128Feistel::Permu(int4 seed, __uint128_t x, __uint128_t domain) {
+__host__ __device__ inline __uint128_t Aes128Feistel::Permu(int4 seed, __uint128_t x, __uint128_t domain) {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Feistel_used_in_device_code();
+  return 0;
+#else
   assert(x < domain);
   if (domain <= 1) return 0;
 
@@ -183,6 +223,7 @@ inline __uint128_t Aes128Feistel::Permu(int4 seed, __uint128_t x, __uint128_t do
   } while (val >= domain);
 
   return val;
+#endif
 }
 
 static_assert(Permutable<Aes128Feistel>);

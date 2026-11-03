@@ -18,9 +18,16 @@
 namespace fss::prg {
 
 /**
+ * Declared and never defined. Device code that reaches it fails to link with an
+ * unresolved-extern error that names this symbol.
+ */
+__device__ void fss_host_only_Aes128Mmo_used_in_device_code();
+
+/**
  * AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG.
  *
- * Host-only. Device calls to Gen() are not supported.
+ * Host-only. Device use of Gen() or GenHalf() fails to build with an
+ * unresolved-extern error naming `fss_host_only_Aes128Mmo_used_in_device_code`.
  *
  * Concurrency: Gen() runs EVP_EncryptUpdate on the ctxs, and copies of an instance
  * share the same ctxs. OpenSSL does not document one ctx as safe for concurrent
@@ -52,14 +59,14 @@ public:
 
   static void FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs);
 
-  __host__ cuda::std::array<int4, mul> Gen(int4 seed);
+  __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed);
 
   /**
    * Return the selected half of Gen() with the same call requirements.
    *
    * @param right false selects the first half, true selects the second half.
    */
-  __host__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
+  __host__ __device__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
     requires(mul > 0 && mul % 2 == 0);
 
 private:
@@ -98,10 +105,12 @@ inline void Aes128Mmo<mul>::FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs
 }
 
 template <int mul>
-__host__ inline cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 seed) {
+__host__ __device__ inline cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 seed) {
   cuda::std::array<int4, mul> out{};
 
-#ifndef __CUDA_ARCH__
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Mmo_used_in_device_code();
+#else
   for (int i = 0; i < mul; ++i) {
     auto out_ptr = reinterpret_cast<unsigned char *>(&out[i]);
     auto seed_ptr = reinterpret_cast<const unsigned char *>(&seed);
@@ -118,12 +127,14 @@ __host__ inline cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 seed) {
 }
 
 template <int mul>
-__host__ inline cuda::std::array<int4, mul / 2> Aes128Mmo<mul>::GenHalf(int4 seed, bool right)
+__host__ __device__ inline cuda::std::array<int4, mul / 2> Aes128Mmo<mul>::GenHalf(int4 seed, bool right)
   requires(mul > 0 && mul % 2 == 0)
 {
   cuda::std::array<int4, mul / 2> out{};
 
-#ifndef __CUDA_ARCH__
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128Mmo_used_in_device_code();
+#else
   int offset = right ? mul / 2 : 0;
   for (int i = 0; i < mul / 2; ++i) {
     auto out_ptr = reinterpret_cast<unsigned char *>(&out[i]);

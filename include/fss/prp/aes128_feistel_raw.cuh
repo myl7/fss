@@ -17,7 +17,9 @@
  *
  * Only for host side (x86-64 with AES-NI). Instances are trivially copyable; the
  * cache makes concurrent Permu calls with differing seeds on one instance a data
- * race, like Aes128Feistel's shared OpenSSL context.
+ * race, like Aes128Feistel's shared OpenSSL context. Device use of Permu() fails to
+ * build with an unresolved-extern error naming
+ * `fss_host_only_Aes128FeistelRaw_used_in_device_code`.
  */
 
 #pragma once
@@ -33,6 +35,12 @@
 #endif
 
 namespace fss::prp {
+
+/**
+ * Declared and never defined. Device code that reaches it fails to link with an
+ * unresolved-extern error that names this symbol.
+ */
+__device__ void fss_host_only_Aes128FeistelRaw_used_in_device_code();
 
 /**
  * Small-domain AES-128 Feistel PRP for Cuckoo hashing, computed with AES-NI
@@ -56,7 +64,9 @@ public:
   /**
      * Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.
      *
-     * Bit-exact with Aes128Feistel::Permu. Host-only.
+     * Bit-exact with Aes128Feistel::Permu. Host-only. Device use fails to build
+     * with an unresolved-extern error naming
+     * `fss_host_only_Aes128FeistelRaw_used_in_device_code`.
      *
      * @param seed 16-byte PRP key. Round keys are expanded on first use per seed
      *   and cached, so repeated calls with one seed skip the expansion.
@@ -64,7 +74,7 @@ public:
      * @param domain Domain size. Must be >= 2.
      * @return Output in [0, domain).
      */
-  __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
+  __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
 
 private:
   static constexpr int kAesRoundKeys = 11;
@@ -191,7 +201,11 @@ inline Aes128FeistelRaw::Aes128FeistelRaw(int4 seed) {
   UpdateKeys(seed);
 }
 
-inline __uint128_t Aes128FeistelRaw::Permu(int4 seed, __uint128_t x, __uint128_t domain) {
+__host__ __device__ inline __uint128_t Aes128FeistelRaw::Permu(int4 seed, __uint128_t x, __uint128_t domain) {
+#ifdef __CUDA_ARCH__
+  fss_host_only_Aes128FeistelRaw_used_in_device_code();
+  return 0;
+#else
   assert(x < domain);
   if (domain <= 1) return 0;
 
@@ -221,6 +235,7 @@ inline __uint128_t Aes128FeistelRaw::Permu(int4 seed, __uint128_t x, __uint128_t
   } while (val >= domain);
 
   return val;
+#endif
 }
 
 static_assert(Permutable<Aes128FeistelRaw>);

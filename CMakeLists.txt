@@ -147,6 +147,36 @@ if(BUILD_TESTING)
     target_link_libraries(uint127_launch_test PRIVATE fss)
     add_custom_target(uint127_launch_test_compile ALL DEPENDS uint127_launch_test)
 
+    # Host-only backends must fail to link when device code reaches them. Each test compiles
+    # one source with nvcc and passes only on the expected outcome. The control compiles the
+    # same host code with no device use and must stay free of #20011-D and #20014-D.
+    if(CMAKE_CUDA_COMPILER)
+        get_target_property(host_only_ssl_dirs OpenSSL::Crypto INTERFACE_INCLUDE_DIRECTORIES)
+        set(host_only_dirs "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        if(host_only_ssl_dirs)
+            list(APPEND host_only_dirs ${host_only_ssl_dirs})
+        endif()
+        list(GET CMAKE_CUDA_ARCHITECTURES 0 host_only_arch)
+
+        set(host_only_cases CONTROL PERMU COPY)
+        foreach(case IN LISTS host_only_cases)
+            string(TOLOWER ${case} case_lower)
+            set(host_only_args -DNVCC=${CMAKE_CUDA_COMPILER}
+                -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/src/host_only_device_use_test.cu
+                -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/host_only_${case_lower}.o
+                "-DINCLUDE_DIRS=${host_only_dirs}" -DARCH=${host_only_arch})
+            if(case STREQUAL CONTROL)
+                set(test_name host_only_device_use_control_builds)
+            else()
+                set(test_name host_only_device_${case_lower}_fails)
+                list(APPEND host_only_args -DCASE=FSS_HOST_ONLY_DEVICE_${case}
+                    "-DEXPECT=(Unresolved extern function|Undefined reference to)[^\n]*fss_host_only_Aes128Feistel_used_in_device_code")
+            endif()
+            add_test(NAME ${test_name}
+                COMMAND ${CMAKE_COMMAND} ${host_only_args} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/HostOnlyDeviceUseCheck.cmake)
+        endforeach()
+    endif()
+
 endif()
 
 option(BUILD_BENCH "Build benchmarks" OFF)

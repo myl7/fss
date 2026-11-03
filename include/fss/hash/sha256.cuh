@@ -18,9 +18,16 @@
 namespace fss::hash {
 
 /**
+ * Declared and never defined. Device code that reaches it fails to link with an
+ * unresolved-extern error that names this symbol.
+ */
+__device__ void fss_host_only_Sha256_used_in_device_code();
+
+/**
  * SHA-256 keyed hash.
  *
- * Only for host side.
+ * Only for host side. Device use fails to build with an unresolved-extern error
+ * naming `fss_host_only_Sha256_used_in_device_code`.
  */
 class Sha256 {
 public:
@@ -59,8 +66,7 @@ __host__ __device__ inline cuda::std::array<int4, 2> Sha256::Hash(cuda::std::spa
   cuda::std::array<int4, 2> out{};
 
 #ifdef __CUDA_ARCH__
-  assert(false && "Sha256 is not supported on device side");
-  __trap();
+  fss_host_only_Sha256_used_in_device_code();
 #else
   int4 buf[5] = {key_, msg[0], msg[1], msg[2], msg[3]};
   auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
@@ -76,8 +82,7 @@ __host__ __device__ inline cuda::std::array<int4, 4> Sha256::Hash(cuda::std::tup
   cuda::std::array<int4, 4> out{};
 
 #ifdef __CUDA_ARCH__
-  assert(false && "Sha256 is not supported on device side");
-  __trap();
+  fss_host_only_Sha256_used_in_device_code();
 #else
   auto [a, b] = msg;
   int4 buf[3] = {key_, fss::util::SetLsb(a, false), b};
