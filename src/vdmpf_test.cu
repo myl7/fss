@@ -470,6 +470,73 @@ protected:
     CheckSplitMatchesFused(k0, k1, xs, true);
   }
 
+  // The plain full-domain evaluation iterates the derived bucket bound, not
+  // the allocation. For this fixture's configuration with t = 30 points:
+  //   kBucketCount  = ChBucket(64, 80)       = 112,
+  //   m_rt          = ChBucket(30, 80)       = 53,
+  //   b_size_rt     = ceil(3*2^12/53)        = 232,
+  //   derived bound = ceil(3*2^12/232)       = 53 < kBucketCount.
+  // The buckets in [53, 112) carry no candidate for any input, so skipping
+  // them changes no share, and the chain and Merkle folds still cover every
+  // allocated bucket, so both proofs verify.
+  void TestEvalAllDerivedBound() {
+    constexpr int kCuckooChoices = 3;  // Fixed by the three-choice Cuckoo construction, private in the scheme.
+    static_assert(fss::cuckoo_hash::ChBucket(kT, 80) < VdmpfType::kBucketCount);
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    VdmpfType scheme{prg, xor_hash, hash_, prp_};
+
+    EXPECT_EQ(k0.m_rt, fss::cuckoo_hash::ChBucket(kT, 80));
+    EXPECT_LT(k0.m_rt, VdmpfType::kBucketCount);
+    const __uint128_t derived_bound =
+        fss::cuckoo_hash::detail::BucketIndexBound(VdmpfType::kDomainSize, kCuckooChoices, k0.b_size_rt);
+    EXPECT_LT(derived_bound, static_cast<__uint128_t>(VdmpfType::kBucketCount));
+
+    // Full-domain shares on both parties reconstruct the multi-point function,
+    // and both proofs verify, so the fold paths are unbroken.
+    constexpr size_t domain_size = size_t{1} << kInBits;
+    std::vector<int4> expected(domain_size, int4{0, 0, 0, 0});
+    for (int i = 0; i < kT; ++i) expected[alphas[i]] = betas[i];
+    fss_test::MultiRows<VdmpfType> rows0(k0), rows1(k1);
+    std::vector<int4> ys0(domain_size), ys1(domain_size), merkle0(domain_size), merkle1(domain_size);
+    cuda::std::array<int4, 4> pi0, pi1, merkle_pi0, merkle_pi1;
+    scheme.EvalAll(false, k0.sigma, k0.b_size_rt, rows0.s0s, rows0.cws, rows0.cs,
+        cuda::std::span<int4>(ys0), pi0);
+    scheme.EvalAll(true, k1.sigma, k1.b_size_rt, rows1.s0s, rows1.cws, rows1.cs,
+        cuda::std::span<int4>(ys1), pi1);
+    scheme.EvalAllMerkle(false, k0.sigma, k0.b_size_rt, rows0.s0s, rows0.cws, rows0.cs,
+        cuda::std::span<int4>(merkle0), merkle_pi0);
+    scheme.EvalAllMerkle(true, k1.sigma, k1.b_size_rt, rows1.s0s, rows1.cws, rows1.cs,
+        cuda::std::span<int4>(merkle1), merkle_pi1);
+    EXPECT_TRUE(VdmpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
+    EXPECT_TRUE(VdmpfType::Verify(
+        cuda::std::span<const int4, 4>(merkle_pi0), cuda::std::span<const int4, 4>(merkle_pi1)));
+    for (size_t i = 0; i < domain_size; ++i) {
+      int4 e = expected[i];
+      e.w &= ~1;
+      auto chain = (Group::From(ys0[i]) + Group::From(ys1[i])).Into();
+      auto merkle = (Group::From(merkle0[i]) + Group::From(merkle1[i])).Into();
+      EXPECT_EQ(memcmp(&chain, &e, sizeof(int4)), 0) << "Failed at i=" << i;
+      EXPECT_EQ(memcmp(&merkle, &e, sizeof(int4)), 0) << "Failed at i=" << i;
+    }
+
+    // A sampled subset matches the pointwise Eval() shares.
+    std::mt19937 gen(20261105);
+    std::uniform_int_distribution<uint32_t> dis(0, (uint32_t{1} << kInBits) - 1);
+    for (int trial = 0; trial < 64; ++trial) {
+      const uint16_t x = static_cast<uint16_t>(dis(gen));
+      int4 y0, y1;
+      scheme.Eval(false, k0.sigma, k0.b_size_rt, rows0.s0s, rows0.cws, rows0.cs, x, y0);
+      scheme.Eval(true, k1.sigma, k1.b_size_rt, rows1.s0s, rows1.cws, rows1.cs, x, y1);
+      EXPECT_EQ(memcmp(&y0, &ys0[x], sizeof(int4)), 0) << "x=" << x;
+      EXPECT_EQ(memcmp(&y1, &ys1[x], sizeof(int4)), 0) << "x=" << x;
+      int4 e = expected[x];
+      e.w &= ~1;
+      auto r = (Group::From(y0) + Group::From(y1)).Into();
+      EXPECT_EQ(memcmp(&r, &e, sizeof(int4)), 0) << "x=" << x;
+    }
+  }
+
 #ifndef NDEBUG
   // The split API adds an xs-nonempty precondition that the fused paths do not
   // have: BatchEval() and BatchEvalMerkle() accept an empty xs and return
@@ -594,6 +661,12 @@ TEST_F(VdmpfSplitInactiveUint128Test, SplitMatchesFusedFullDomain) {
 }
 TEST_F(VdmpfSplitInactiveUint128Test, SplitSingleInput) {
   TestSplitSingleInput();
+}
+TEST_F(VdmpfSplitInactiveBytesTest, EvalAllUsesDerivedBound) {
+  TestEvalAllDerivedBound();
+}
+TEST_F(VdmpfSplitInactiveUint128Test, EvalAllUsesDerivedBound) {
+  TestEvalAllDerivedBound();
 }
 
 // The split path carries no bucket ids. EvalProof stores exactly the three

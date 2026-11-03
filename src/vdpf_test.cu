@@ -343,6 +343,88 @@ protected:
 
     EXPECT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
   }
+
+  void CheckOrderedBatch(bool merkle) {
+    GenKey();
+    VdpfType vdpf{prg, xor_hash, hash_};
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dis(0, 0xFFFF);
+
+    // Ordered query sequences: an unsorted adversarial order with duplicates
+    // and domain extremes, a single query, then random sparse sequences of
+    // odd and even sizes (odd sizes carry a trailing node in the Merkle fold).
+    std::vector<std::vector<uint16_t>> queries;
+    queries.push_back({kAlpha, 0, 0xFFFF, kAlpha, 1, 0xFFFE, 42, kAlpha, 2});
+    queries.push_back({kAlpha});
+    for (size_t n : {2, 3, 17, 50, 51}) {
+      std::vector<uint16_t> xs;
+      xs.reserve(n);
+      for (size_t i = 0; i < n; ++i) xs.push_back(dis(gen));
+      queries.push_back(std::move(xs));
+    }
+
+    for (const auto &xs : queries) {
+      SCOPED_TRACE(::testing::Message() << "queries=" << xs.size() << " merkle=" << merkle);
+      const size_t n = xs.size();
+      std::vector<int4> ys0(n), ys1(n);
+      cuda::std::array<int4, 4> pi0, pi1;
+
+      if (merkle) {
+        vdpf.BatchEvalMerkle(false, k0.s0, k0.cws, k0.cs, cuda::std::span<const uint16_t>(xs),
+            cuda::std::span<int4>(ys0), pi0);
+        vdpf.BatchEvalMerkle(true, k1.s0, k1.cws, k1.cs, cuda::std::span<const uint16_t>(xs),
+            cuda::std::span<int4>(ys1), pi1);
+      } else {
+        vdpf.BatchEval(false, k0.s0, k0.cws, k0.cs, cuda::std::span<const uint16_t>(xs),
+            cuda::std::span<int4>(ys0), pi0);
+        vdpf.BatchEval(true, k1.s0, k1.cws, k1.cs, cuda::std::span<const uint16_t>(xs),
+            cuda::std::span<int4>(ys1), pi1);
+      }
+
+      // Pointwise reference: Eval per input, then Prove or ProveMerkle.
+      std::vector<cuda::std::array<int4, 4>> pi_tildes0(n), pi_tildes1(n);
+      std::vector<int4> ref0(n), ref1(n);
+      for (size_t i = 0; i < n; ++i) {
+        pi_tildes0[i] = vdpf.Eval(false, k0.s0, k0.cws, k0.cs, xs[i], ref0[i]);
+        pi_tildes1[i] = vdpf.Eval(true, k1.s0, k1.cws, k1.cs, xs[i], ref1[i]);
+      }
+      for (size_t i = 0; i < n; ++i) {
+        EXPECT_EQ(memcmp(&ys0[i], &ref0[i], sizeof(int4)), 0) << "party 0 share at index " << i;
+        EXPECT_EQ(memcmp(&ys1[i], &ref1[i], sizeof(int4)), 0) << "party 1 share at index " << i;
+      }
+
+      cuda::std::array<int4, 4> reference_pi0, reference_pi1;
+      if (merkle) {
+        vdpf.ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes0), k0.cs, reference_pi0);
+        vdpf.ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes1), k1.cs, reference_pi1);
+      } else {
+        vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes0), k0.cs, reference_pi0);
+        vdpf.Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes1), k1.cs, reference_pi1);
+      }
+      EXPECT_EQ(memcmp(pi0.data(), reference_pi0.data(), 4 * sizeof(int4)), 0)
+          << "party 0 proof differs from pointwise Eval + fold";
+      EXPECT_EQ(memcmp(pi1.data(), reference_pi1.data(), 4 * sizeof(int4)), 0)
+          << "party 1 proof differs from pointwise Eval + fold";
+
+      const int4 expected = Group::From(MakeBBuf()).Into();
+      const int4 zero = {0, 0, 0, 0};
+      for (size_t i = 0; i < n; ++i) {
+        int4 reconstructed = (Group::From(ys0[i]) + Group::From(ys1[i])).Into();
+        const int4 &expected_x = (xs[i] == kAlpha) ? expected : zero;
+        EXPECT_EQ(memcmp(&reconstructed, &expected_x, sizeof(int4)), 0) << "x=" << xs[i];
+      }
+
+      EXPECT_TRUE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)));
+      auto tampered = pi1;
+      tampered[0].x ^= 1;
+      EXPECT_FALSE(VdpfType::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(tampered)));
+    }
+  }
+
+  void TestBatchEval() { CheckOrderedBatch(false); }
+  void TestBatchEvalMerkle() { CheckOrderedBatch(true); }
 };
 
 using VdpfBytesChaChaTest = VdpfChaChaTest<BytesGroup>;
@@ -369,6 +451,12 @@ TEST_F(VdpfBytesChaChaTest, EvalAllMerkle) {
 TEST_F(VdpfBytesChaChaTest, ProveMerkleOdd) {
   TestProveMerkleOdd();
 }
+TEST_F(VdpfBytesChaChaTest, BatchEval) {
+  TestBatchEval();
+}
+TEST_F(VdpfBytesChaChaTest, BatchEvalMerkle) {
+  TestBatchEvalMerkle();
+}
 
 TEST_F(VdpfUint128ChaChaTest, EvalAtAlpha) {
   TestEvalAtAlpha();
@@ -390,6 +478,12 @@ TEST_F(VdpfUint128ChaChaTest, EvalAllMerkle) {
 }
 TEST_F(VdpfUint128ChaChaTest, ProveMerkleOdd) {
   TestProveMerkleOdd();
+}
+TEST_F(VdpfUint128ChaChaTest, BatchEval) {
+  TestBatchEval();
+}
+TEST_F(VdpfUint128ChaChaTest, BatchEvalMerkle) {
+  TestBatchEvalMerkle();
 }
 
 namespace {
@@ -549,6 +643,164 @@ TEST(VdpfRangeMerkle, GpuFixedFrontierAndChunkSplit) {
   CheckRangeMerkle<128, __uint128_t, BytesGroup, 128, 1024>(0, 1023, true);
   CheckRangeMerkle<16, uint16_t, BytesGroup, 0, 1>(0, 1023, true);
   CheckRangeMerkle<16, uint16_t, BytesGroup, 16, 1024>(0, 1023, true);
+}
+
+// Ordered sparse query sequences for the batch entry: duplicates, unsorted
+// order, and domain extremes, including an odd trailing fold node.
+template <typename In>
+std::vector<std::vector<In>> BatchQuerySequences(In alpha, std::mt19937 &gen) {
+  std::uniform_int_distribution<int> dis(0, 0xFFFF);
+  std::vector<std::vector<In>> queries;
+  const In maximum = static_cast<In>((In{1} << 16) - 1);
+  queries.push_back({alpha, In{0}, maximum, alpha, In{1}, static_cast<In>(maximum - 1), In{42}, alpha, In{2}});
+  queries.push_back({alpha});
+  queries.push_back({maximum, static_cast<In>(maximum - 1), static_cast<In>(maximum - 2)});
+  for (size_t n : {2, 3, 17, 50, 51, 257}) {
+    std::vector<In> xs;
+    xs.reserve(n);
+    for (size_t i = 0; i < n; ++i) xs.push_back(static_cast<In>(dis(gen)));
+    queries.push_back(std::move(xs));
+  }
+  return queries;
+}
+
+template <int bits, typename In, typename Group, int threads = 256,
+    typename Prg = fss::prg::ChaCha<2>>
+void CheckBatchMerkle(const std::vector<In> &xs, bool gpu, Prg prg = Prg{kNonce0, kNonce1}) {
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Hash, Hash, In>;
+  const size_t count = xs.size();
+  const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  const int4 beta = {42, 12, 24, 36};
+  const int4 guard = {23, 45, 67, 88};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{prg, hash, hash};
+  typename Scheme::Key keys[2];
+  ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, In{7}, beta), 0);
+  cuda::std::array<int4, 4> proofs[2];
+  for (int party = 0; party < 2; ++party) {
+    SCOPED_TRACE(::testing::Message() << "party " << party << " count " << count);
+    const auto &key = keys[party];
+    std::vector<int4> expected(count + 2, guard);
+    scheme.BatchEvalMerkle(party, key.s0, key.cws, key.cs, cuda::std::span<const In>(xs),
+        cuda::std::span<int4>(expected.data() + 1, count + 1), proofs[party]);
+    // Pointwise reference for both the shares and the proof.
+    std::vector<int4> pointwise(count);
+    std::vector<cuda::std::array<int4, 4>> material(count);
+    for (size_t j = 0; j < count; ++j)
+      material[j] = scheme.Eval(party, key.s0, key.cws, key.cs, xs[j], pointwise[j]);
+    cuda::std::array<int4, 4> reference;
+    scheme.ProveMerkle(material, key.cs, reference);
+    for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proofs[party][j], reference[j]);
+    ExpectMerkleBlock(expected.front(), guard);
+    ExpectMerkleBlock(expected.back(), guard);
+    for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(expected[j + 1], pointwise[j]);
+    if (!gpu) continue;
+    MerkleRangeDeviceBuffer<typename Scheme::Cw> device_cws;
+    MerkleRangeDeviceBuffer<int4> device_cs, device_ys, device_pi;
+    MerkleRangeDeviceBuffer<In> device_xs;
+    ASSERT_EQ(device_cws.Allocate(bits + 1), cudaSuccess);
+    ASSERT_EQ(device_cs.Allocate(4), cudaSuccess);
+    ASSERT_EQ(device_xs.Allocate(count), cudaSuccess);
+    ASSERT_EQ(device_ys.Allocate(count + 2), cudaSuccess);
+    ASSERT_EQ(device_pi.Allocate(4), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_cws.data, key.cws, sizeof(key.cws), cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_cs.data, key.cs, sizeof(key.cs), cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_xs.data, xs.data(), count * sizeof(In), cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_ys.data, expected.data(), (count + 2) * sizeof(int4), cudaMemcpyHostToDevice), cudaSuccess);
+    cudaStream_t stream;
+    ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
+    const cudaError_t launch = [&] {
+      if constexpr (threads == 256) {
+        return scheme.BatchEvalMerkleGpu(party, key.s0,
+            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
+            cuda::std::span<const In>(device_xs.data, count),
+            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+      } else {
+        return scheme.template BatchEvalMerkleGpu<threads>(party, key.s0,
+            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
+            cuda::std::span<const In>(device_xs.data, count),
+            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+      }
+    }();
+    EXPECT_EQ(launch, cudaSuccess);
+    const cudaError_t execution = cudaStreamSynchronize(stream);
+    EXPECT_EQ(execution, cudaSuccess);
+    EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+    ASSERT_EQ(launch, cudaSuccess);
+    ASSERT_EQ(execution, cudaSuccess);
+    std::vector<int4> actual(count + 2);
+    cuda::std::array<int4, 4> proof;
+    ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data, (count + 2) * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(proof.data(), device_pi.data, sizeof(proof), cudaMemcpyDeviceToHost), cudaSuccess);
+    ExpectMerkleBlock(actual.front(), guard);
+    ExpectMerkleBlock(actual.back(), guard);
+    for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(actual[j + 1], pointwise[j]);
+    for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proof[j], proofs[party][j]);
+  }
+  EXPECT_TRUE(Scheme::Verify(proofs[0], proofs[1]));
+}
+
+TEST(VdpfBatchMerkle, CpuMatchesPointwiseEvalAndProveMerkle) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  for (const auto &xs : BatchQuerySequences<uint16_t>(7, gen)) {
+    CheckBatchMerkle<16, uint16_t, BytesGroup>(xs, false);
+    CheckBatchMerkle<16, uint16_t, MerkleRangeUint127Group>(xs, false);
+  }
+}
+
+TEST(VdpfBatchMerkle, CpuWideDomainSparseQueries) {
+  const __uint128_t maximum = ~__uint128_t{0};
+  CheckBatchMerkle<128, __uint128_t, BytesGroup>({maximum, maximum - 12, maximum, maximum - 12}, false);
+  CheckBatchMerkle<128, __uint128_t, BytesGroup>({maximum}, false);
+}
+
+TEST(VdpfBatchMerkle, GpuMatchesHostBatchEvalMerkle) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  for (const auto &xs : BatchQuerySequences<uint16_t>(7, gen))
+    CheckBatchMerkle<16, uint16_t, BytesGroup>(xs, true);
+}
+
+TEST(VdpfBatchMerkle, GpuCustomThreadsMatchHost) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  const auto queries = BatchQuerySequences<uint16_t>(7, gen);
+  CheckBatchMerkle<16, uint16_t, BytesGroup, 64>(queries[0], true);
+  CheckBatchMerkle<16, uint16_t, BytesGroup, 1>(queries[1], true);
+  CheckBatchMerkle<16, uint16_t, MerkleRangeUint127Group, 1024>(queries[3], true);
+}
+
+TEST(VdpfBatchMerkle, GpuRejectsInvalidBatchArguments) {
+  using Prg = fss::prg::ChaCha<2>;
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<128, BytesGroup, Prg, Hash, Hash, __uint128_t>;
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{Prg{kNonce0, kNonce1}, hash, hash};
+  typename Scheme::Cw cws[129];
+  int4 cs[4], ys[4], pi[4];
+  const __uint128_t xs[4] = {0, 1, 2, 3};
+  // Empty query sequence.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs,
+      cuda::std::span<const __uint128_t>(), {ys, 4}, pi), cudaErrorInvalidValue);
+  // Output storage shorter than the query sequence.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs, {xs, 4},
+      cuda::std::span<int4>(ys, 3), pi), cudaErrorInvalidValue);
+  // Too few correction words.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{},
+      cuda::std::span<const typename Scheme::Cw>(cws, 128), cs, {xs, 4}, {ys, 4},
+      pi), cudaErrorInvalidValue);
+  // Null buffers.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs, {xs, 4},
+      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{4}),
+      pi), cudaErrorInvalidValue);
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs, {xs, 4}, {ys, 4},
+      cuda::std::span<int4, 4>(static_cast<int4 *>(nullptr), 4)), cudaErrorInvalidValue);
 }
 
 struct MerkleRangeExecution {

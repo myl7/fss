@@ -254,6 +254,64 @@ public:
       cuda::std::span<int4, 4> pi, int par_depth = 0);
 
   /**
+   * Evaluate an arbitrary ordered query sequence and produce a chain proof.
+   *
+   * One call over xs: Eval() for every input in the order given, then Prove()
+   * over the corrected per-point hashes in the same order. The result is
+   * bit-identical to calling Eval() per input and Prove() over the results on
+   * the same ordered xs. The order of xs is part of the contract: both parties
+   * must supply the same sequence, including duplicates.
+   *
+   * The cost is not EvalAll()'s. A query sequence that is not a tree-structured
+   * set cannot prune, so every input pays its own root-to-leaf walk, exactly as
+   * Eval() does. This call does not inherit EvalAll()'s property of visiting
+   * each internal node once.
+   *
+   * Internally buffers the corrected per-point hashes, 64 B per input.
+   *
+   * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's initial seed.
+   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cs Shared correction seed returned by Gen().
+   * @param xs Ordered input sequence; it may be sparse, unsorted, and contain duplicates.
+   * @param ys Output shares in xs order, with at least xs.size() entries.
+   * @param pi Borrowed output storage for four chain-proof blocks.
+   */
+  void BatchEval(bool b, int4 s0, cuda::std::span<const Cw> cws,
+      cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi);
+
+  /**
+   * Evaluate an arbitrary ordered query sequence and produce a Merkle proof.
+   *
+   * Same evaluation and ordering contract as BatchEval(), with the proof coming
+   * from ProveMerkle() over the corrected per-point hashes in xs order:
+   * bit-identical to calling Eval() per input and ProveMerkle() over the
+   * results on the same ordered xs. Both parties must supply the same sequence
+   * and agree on the Merkle accumulator.
+   *
+   * The cost is not EvalAll()'s. Every input pays its own root-to-leaf walk, as
+   * Eval() does; the fold over the sequence adds no tree-structured savings.
+   * This call does not inherit EvalAll()'s property of visiting each internal
+   * node once.
+   *
+   * Internally buffers the corrected per-point hashes, 64 B per input.
+   *
+   * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's initial seed.
+   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cs Shared correction seed returned by Gen().
+   * @param xs Ordered input sequence; it may be sparse, unsorted, and contain duplicates.
+   * @param ys Output shares in xs order, with at least xs.size() entries.
+   * @param pi Borrowed output storage for four Merkle-proof blocks.
+   */
+  void BatchEvalMerkle(bool b, int4 s0, cuda::std::span<const Cw> cws,
+      cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi);
+
+  /**
    * Full domain evaluation method with the Merkle-fold proof.
    *
    * Same output shares as EvalAll(); the proof comes from ProveMerkle() over the corrected
@@ -354,6 +412,52 @@ public:
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t EvalRangeMerkleGpu(bool b, In first, In last, int4 s0,
       cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
+      cudaStream_t stream = 0) const;
+
+  /**
+   * Launch batch evaluation of an arbitrary ordered query sequence with the
+   * Merkle-fold proof.
+   *
+   * The outputs and proof match host BatchEvalMerkle() bit for bit on the same
+   * ordered xs, for any query sequence: sparse, unsorted, or duplicated. The
+   * order of xs is part of the contract; both parties must pass the same
+   * sequence and agree on the Merkle accumulator. Chain accumulation over a
+   * query sequence stays on the host, in BatchEval().
+   *
+   * The cost is not EvalAll()'s: a sparse query set cannot prune the tree, so
+   * every input pays its own root-to-leaf walk and no frontier is shared.
+   * That is why this entry takes no frontier_depth. Group, Prg, XorHash, and
+   * Hash must support device execution.
+   *
+   * Takes the raw key components s0, cws, and cs as Gen() returned them; the
+   * level-major layout of RepackGpu() is neither used nor accepted. Uses
+   * caller-owned device arrays and backend resources. Temporary node buffers
+   * with 32*(M + ceil(M/2)) scratch bytes for M inputs are allocated and
+   * released on stream. No upload, deep copy, or synchronization occurs.
+   * Backend resources must support concurrent device calls and remain valid
+   * until the stream completes. The host instance supplies backend values.
+   *
+   * @tparam threads_per_block Power-of-two block size in [1, 1024]. Defaults to 256.
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's initial seed, passed by value to the kernel.
+   * @param cws Device storage with at least in_bits + 1 shared correction words.
+   * @param cs Device storage containing the four shared correction-seed blocks.
+   * @param xs Device storage of the ordered input sequence; it may be sparse,
+   * unsorted, and contain duplicates.
+   * @param ys Device output storage with at least xs.size() int4 blocks.
+   * @param pi Device output storage for the four-block Merkle proof.
+   * @param stream Stream on the device owning the referenced resources.
+   * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
+   * @return First immediate CUDA error. Invalid buffers or empty xs return
+   * cudaErrorInvalidValue. An oversized grid returns
+   * cudaErrorInvalidConfiguration. Execution errors are observed by the caller
+   * when synchronizing stream.
+   */
+  template <int threads_per_block = 256>
+  __host__ cudaError_t BatchEvalMerkleGpu(bool b, int4 s0,
+      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<const In> xs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
       cudaStream_t stream = 0) const;
 
@@ -505,6 +609,41 @@ __global__ void VdpfRangeMerkleProofKernel(const Node *root,
   pi[1] = (*root)[1];
   pi[2] = cs[2];
   pi[3] = cs[3];
+}
+
+// One thread per query: walks the raw-key path of xs[index] from the root and
+// writes the output share and the hashed corrected per-point hash as the leaf
+// of the batch Merkle fold. The same per-point math as Vdpf::Eval, fed by the
+// raw Cw layout instead of the repacked one.
+template <int in_bits, typename Descriptor>
+__global__ void VdpfBatchMerkleLeavesKernel(bool b, int4 s0, const void *cws_bytes, const int4 *cs,
+    const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
+    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
+    typename Descriptor::HashBackend hash) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
+  using MathScheme = typename Descriptor::MathScheme;
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
+  const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= count) return;
+  const In x = xs[index];
+  int4 node = util::SetLsb(s0, b);
+  for (int level = 0; level < in_bits; ++level) {
+    const bool right = (x >> (in_bits - level - 1)) & 1;
+    node = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(
+        prg, node, cws[level].s, cws[level].tr, right);
+  }
+  const bool t = util::GetLsb(node);
+  const int4 seed = util::SetLsb(node, false);
+  auto value = Group::From(seed);
+  const auto cw = Group::From(cws[in_bits].s);
+  if (t) value = value + cw;
+  if (b) value = -value;
+  ys[index] = value.Into();
+  auto corrected = xor_hash.Hash(cuda::std::tuple<int4, const int4>{fss::detail::Pack(x), seed});
+  if (t) corrected = util::Xor(cuda::std::span<const int4, 4>(corrected),
+      cuda::std::span<const int4, 4>(cs, 4));
+  leaves[index] = hash.Hash(cuda::std::span<const int4, 4>(corrected));
 }
 
 template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
@@ -965,6 +1104,40 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEval(
+    bool b, int4 s0, cuda::std::span<const Cw> cws,
+    cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
+  assert(cws.size() >= size_t{in_bits} + 1);
+  assert(!xs.empty());
+  assert(ys.size() >= xs.size());
+  std::vector<cuda::std::array<int4, 4>> pi_tildes(xs.size());
+  for (size_t i = 0; i < xs.size(); ++i) {
+    pi_tildes[i] = Eval(b, s0, cws, cs, xs[i], ys[i]);
+  }
+  Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes), cs, pi);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEvalMerkle(
+    bool b, int4 s0, cuda::std::span<const Cw> cws,
+    cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
+  assert(cws.size() >= size_t{in_bits} + 1);
+  assert(!xs.empty());
+  assert(ys.size() >= xs.size());
+  std::vector<cuda::std::array<int4, 4>> pi_tildes(xs.size());
+  for (size_t i = 0; i < xs.size(); ++i) {
+    pi_tildes[i] = Eval(b, s0, cws, cs, xs[i], ys[i]);
+  }
+  ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes), cs, pi);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen(
     Cw cws[], cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
   int4 s0 = s0s[0];
@@ -1313,6 +1486,64 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRa
     nodes = next;
     next = previous;
     count = next_count;
+  }
+  gpu::detail::VdpfRangeMerkleProofKernel<<<1, 1, 0, stream>>>(nodes, cs.data(), pi.data());
+  return gpu::detail::ReleaseScratch(cudaGetLastError(), {&first_storage, &second_storage});
+#else
+  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <int threads_per_block>
+__host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEvalMerkleGpu(
+    bool b, int4 s0, cuda::std::span<const Cw> cws,
+    cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream) const {
+  static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+#if defined(__CUDACC__)
+  using Node = cuda::std::array<int4, 2>;
+  const size_t count = xs.size();
+  if (count == 0 || ys.size() < count || cws.size() < size_t{in_bits} + 1 ||
+      cws.data() == nullptr || cs.data() == nullptr || xs.data() == nullptr ||
+      ys.data() == nullptr || pi.data() == nullptr) return cudaErrorInvalidValue;
+  const size_t second_count = count / 2 + count % 2;
+  constexpr size_t kMaxNodes = size_t(-1) / sizeof(Node);
+  if (count > kMaxNodes || second_count > kMaxNodes - count) return cudaErrorInvalidValue;
+  const size_t leaf_blocks = count / threads_per_block + (count % threads_per_block != 0);
+  if (leaf_blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+  gpu::detail::DeviceScratch first_storage(stream), second_storage(stream);
+  cudaError_t status = first_storage.Allocate<Node>(count);
+  if (status != cudaSuccess) return status;
+  status = second_storage.Allocate<Node>(second_count);
+  if (status != cudaSuccess) return status;
+  auto *nodes = first_storage.Get<Node>();
+  auto *next = second_storage.Get<Node>();
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = gpu::detail::VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
+  gpu::detail::VdpfBatchMerkleLeavesKernel<in_bits, Descriptor>
+      <<<static_cast<int>(leaf_blocks), threads_per_block, 0, stream>>>(
+          b, s0, cws.data(), cs.data(), xs.data(), ys.data(), nodes, count, prg_, xor_hash_, hash_);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  size_t folded = count;
+  while (folded > 1) {
+    const size_t next_count = folded / 2 + folded % 2;
+    const size_t blocks = next_count / threads_per_block + (next_count % threads_per_block != 0);
+    if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+    gpu::detail::VdpfRangeMerkleFoldKernel<<<static_cast<int>(blocks), threads_per_block, 0, stream>>>(
+        nodes, folded, next, hash_);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) return status;
+    auto *previous = nodes;
+    nodes = next;
+    next = previous;
+    folded = next_count;
   }
   gpu::detail::VdpfRangeMerkleProofKernel<<<1, 1, 0, stream>>>(nodes, cs.data(), pi.data());
   return gpu::detail::ReleaseScratch(cudaGetLastError(), {&first_storage, &second_storage});

@@ -82,6 +82,11 @@ class SchemeAccess;
  * bucket count m_rt and bucket-domain size b_size_rt for the actual point count.
  * These runtime values, the PRP seed, and all per-bucket arrays must come
  * from the same successful Gen() call.
+ * Evaluation derives its bucket bound from b_size_rt, so it needs b_size_rt
+ * but not m_rt; m_rt stays key metadata. kBucketCount is also the proof-fold
+ * range: the proof loops fold every allocated bucket, and the loops not
+ * involved in the fold use the bound derived from b_size_rt. No entry
+ * receives a bucket count.
  * The supported point-count interval is [kMinPoints, max_points]. Increasing
  * bucket_bits can lower kMinPoints at the cost of more correction word storage.
  * BatchEval() uses chain accumulation and BatchEvalMerkle() uses a Merkle fold.
@@ -286,10 +291,11 @@ public:
    * this repository: Eval() adds one input's candidate shares in candidate
    * order, while the fused paths add them in bucket order.
    *
-   * Routing covers every bucket below the compile-time kBucketCount. Under a
-   * key from the same successful Gen(), b_size_rt = ceil(3*kDomainSize/m_rt)
-   * keeps every candidate below the bound ceil(3*kDomainSize/b_size_rt), which
-   * is at most m_rt, so an inactive bucket cannot receive a candidate.
+   * Routing covers every bucket below the bound ceil(3*kDomainSize/b_size_rt)
+   * derived from b_size_rt. Under a key from the same successful Gen(),
+   * b_size_rt = ceil(3*kDomainSize/m_rt) keeps every candidate below that
+   * bound, which is at most m_rt, so an inactive bucket cannot receive a
+   * candidate.
    * Inactive buckets still take part in the accumulators through their check
    * seeds: Prove() folds each bucket's cs and ProveMerkle() folds each
    * bucket's hashed cs.
@@ -484,9 +490,9 @@ public:
    * @tparam threads_per_block Power-of-two block size in [1,1024], default 256.
    * @param b Party index, false for party 0 and true for party 1.
    * @param sigma Shared PRP seed from successful Gen().
-   * @param b_size_rt Runtime bucket size from that Gen(). Every located
-   * bucket then stays below kBucketCount exactly when b_size_rt is at least
-   * ceil(3*kDomainSize/kBucketCount).
+   * @param b_size_rt Runtime bucket size from that Gen(), in
+   * [kBucketSize, 2^bucket_bits]. Every located bucket then stays below
+   * kBucketCount.
    * @param s0s Device storage of kBucketCount party seeds, one per bucket.
    * @param cws Device storage of kBucketCount*(bucket_bits+1) bucket-major correction words.
    * @param cs Device storage of 4*kBucketCount bucket-major check-seed blocks.
@@ -508,6 +514,59 @@ public:
       cuda::std::span<const Cw> cws, cuda::std::span<const int4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream = 0) const
     requires(in_bits < sizeof(size_t) * 8);
+
+  /**
+   * Launch batch Merkle evaluation of an arbitrary ordered query sequence.
+   *
+   * The outputs and proof match host BatchEvalMerkle() bit for bit on the same
+   * ordered xs, for any query sequence: sparse, unsorted, or duplicated. The
+   * order of xs is part of the contract; both parties must pass the same
+   * sequence and agree on the Merkle accumulator. Chain accumulation over a
+   * query sequence stays on the host, in BatchEval(). Every input pays its own
+   * three located-bucket walks, one per Cuckoo candidate, as in the host batch
+   * path; no tree walk is shared across inputs.
+   *
+   * Takes the raw key components sigma, b_size_rt, s0s, cws, and cs as Gen()
+   * returned them and prepares what the kernels need internally; the
+   * level-major layout of RepackGpu() is neither used nor accepted. The host
+   * instance passes backend values as kernel arguments. Referenced backend
+   * resources and device buffers are prepared and retained by the caller.
+   * Temporary work arrays and CUB sorting storage are allocated and released
+   * internally using CUDA stream-ordered allocation on stream. The CUB size
+   * query runs before allocation. No backend upload, deep copy, event
+   * management, or host/device synchronization is performed. The Prp backend
+   * must be device-callable: ChaChaFeistel qualifies; Aes128Feistel and
+   * Aes128FeistelRaw are host-only and trap on device.
+   *
+   * @tparam threads_per_block Power-of-two block size in [1,1024], default 256.
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param sigma Shared PRP seed from successful Gen().
+   * @param b_size_rt Runtime bucket size from that Gen(), in
+   * [kBucketSize, 2^bucket_bits]. Every located bucket then stays below
+   * kBucketCount.
+   * @param s0s Device storage of kBucketCount party seeds, one per bucket.
+   * @param cws Device storage of kBucketCount*(bucket_bits+1) bucket-major correction words.
+   * @param cs Device storage of 4*kBucketCount bucket-major correction-seed blocks.
+   * @param xs Device storage of the ordered input sequence; it may be sparse,
+   * unsorted, and contain duplicates.
+   * @param ys Device output storage of at least xs.size() int4 blocks.
+   * @param pi Device output storage for four Merkle-proof blocks.
+   * @param stream Stream on the device owning the referenced resources.
+   * @pre xs is nonempty and xs[i] < 2^in_bits for every i. All key arrays and
+   * metadata come from the same successful Gen(). Buffers and referenced
+   * backend resources remain valid until queued work completes. CUDA
+   * stream-ordered allocation must be supported on the current device.
+   * @return The first immediate CUDA allocation, launch, or release error.
+   * Invalid sizes, metadata, or pointers return cudaErrorInvalidValue. CUB's
+   * current int record count requires 3*xs.size() <= INT_MAX. Unrepresentable
+   * grids return cudaErrorInvalidConfiguration. Completion remains
+   * asynchronous.
+   */
+  template <int threads_per_block = 256>
+  __host__ cudaError_t BatchEvalMerkleGpu(bool b, int4 sigma, __uint128_t b_size_rt,
+      cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
+      cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream = 0) const;
 
 private:
   friend class detail::SchemeAccess;
@@ -690,6 +749,42 @@ __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_siz
         cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
     // Stable sorting by bucket preserves this outer-input, candidate order.
+    size_t record = static_cast<size_t>(choices) * omega + k;
+    buckets[record] = static_cast<uint32_t>(bucket);
+    nodes[record] = hash.Hash(cuda::std::span<const int4, 4>(corrected));
+    atomicAdd(counts + bucket, uint32_t{1});
+    sum = sum + Group::From(value);
+  }
+  ys[omega] = sum.Into();
+}
+
+// Sparse-query variant of VdmpfFullLeavesKernel: the query comes from xs
+// instead of the thread index. Records keep the (query, candidate) order of
+// the stable sort, matching the canonical order the host BatchEvalMerkle
+// folds its per-bucket leaves in.
+template <int in_bits, int bucket_bits, typename Descriptor, typename In, typename Prp>
+__global__ void VdmpfBatchLeavesKernel(bool b, int4 sigma, __uint128_t bucket_size,
+    int choices, const In *xs, const int4 *s0s, const void *cws_bytes, const int4 *cs, int4 *ys,
+    uint32_t *buckets, VdmpfFullNode *nodes, uint32_t *counts, size_t count,
+    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
+    typename Descriptor::HashBackend hash, Prp prp) {
+  using Group = typename Descriptor::Group;
+  using Inner = typename Descriptor::Scheme;
+  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
+  size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (omega >= count) return;
+  Inner inner{prg, xor_hash, hash};
+  cuckoo_hash::detail::PrpHash<Prp, In> hasher{prp};
+  auto sum = Group::From(int4{0, 0, 0, 0});
+  for (int k = 0; k < choices; ++k) {
+    auto location = hasher.Locate(sigma, xs[omega], k,
+        __uint128_t{1} << in_bits, bucket_size, choices);
+    size_t bucket = static_cast<size_t>(location.bucket);
+    int4 value;
+    auto corrected = inner.Eval(b, s0s[bucket],
+        cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
+        cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
+    // Stable sorting by bucket preserves this outer-query, candidate order.
     size_t record = static_cast<size_t>(choices) * omega + k;
     buckets[record] = static_cast<uint32_t>(bucket);
     nodes[record] = hash.Hash(cuda::std::span<const int4, 4>(corrected));
@@ -1058,9 +1153,13 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
 inline __host__ __device__ int
 Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::LocateCandidates(
     cuckoo_hash::detail::PrpHash<Prp, In> &prp_hash, int4 sigma, __uint128_t b_size_rt, In x,
-    cuda::std::array<LocatedCandidate, kCuckooChoices> &candidates) {  int count = 0;
+    cuda::std::array<LocatedCandidate, kCuckooChoices> &candidates) {
+  int count = 0;
   for (int k = 0; k < kCuckooChoices; ++k) {
     auto [bucket, index] = prp_hash.Locate(sigma, x, k, kDomainSize, b_size_rt, kCuckooChoices);
+    // The allocation is the bound here, not the derived one: this filter is the
+    // last guard before RouteInputs indexes by bucket, and it is dead code for
+    // any b_size_rt that passed validation.
     if (bucket >= kBucketCount) continue;
     __uint128_t j = index;
     assert(j < (__uint128_t{1} << bucket_bits));
@@ -1159,12 +1258,17 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
   size_t eta = xs.size();
   assert(ys.size() >= eta);
   __uint128_t b_rt = b_size_rt;
+  // Exclusive upper bound on the bucket index of any candidate. The entry check
+  // b_size_rt >= kBucketSize guarantees it does not exceed kBucketCount.
+  const __uint128_t derived_bound = cuckoo_hash::detail::BucketIndexBound(kDomainSize, kCuckooChoices, b_rt);
+  assert(derived_bound <= kBucketCount);
+  const int bucket_count = static_cast<int>(derived_bound);
 
   cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};
 
   // Build per-bucket input lists.
   // inputs[i] = vector of (within_bucket_index, original_input_index).
-  std::vector<std::vector<std::pair<__uint128_t, size_t>>> inputs(kBucketCount);
+  std::vector<std::vector<std::pair<__uint128_t, size_t>>> inputs(bucket_count);
   for (size_t omega = 0; omega < eta; ++omega) {
     // store for easier deduplication for this omega
     cuda::std::array<std::pair<int, __uint128_t>, kCuckooChoices> seen{};
@@ -1172,7 +1276,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
     for (int k = 0; k < kCuckooChoices; ++k) {
       auto [bucket, index] = prp_hash.Locate(sigma, xs[omega], k, kDomainSize, b_rt, kCuckooChoices);
-      if (bucket >= kBucketCount) continue;
+      if (bucket >= bucket_count) continue;
       __uint128_t j = index;
       assert(j < (__uint128_t{1} << bucket_bits));
       // Deduplicate among this omega's located records only. Permu is a permutation over
@@ -1200,9 +1304,11 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
   pi[2] = int4{0, 0, 0, 0};
   pi[3] = int4{0, 0, 0, 0};
 
-  // Evaluate per bucket.
+  // Evaluate per bucket. Buckets at or above the derived bound carry no
+  // located candidate for any query, so the evaluation iterates the derived
+  // bound only.
   InnerVdpf inner_vdpf{prg_, xor_hash_, hash_};
-  for (int i = 0; i < kBucketCount; ++i) {
+  for (int i = 0; i < bucket_count; ++i) {
     const Cw *bucket_cws = cws.data() + static_cast<size_t>(i) * (bucket_bits + 1);
     const int4 *bucket_cs = cs.data() + static_cast<size_t>(i) * 4;
     // Initialize per-bucket proof from this bucket's cs.
@@ -1219,6 +1325,18 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
       // Accumulate per-bucket proof (same as Vdpf::Prove logic).
       FoldChainNode(pi_bucket, cuda::std::span<const int4, 4>(pi_tilde));
     }
+
+    // Cross-bucket proof accumulation: pi = pi XOR H'(pi XOR pi_bucket).
+    FoldChainBucket(pi, cuda::std::span<const int4, 4>(pi_bucket));
+  }
+
+  // The chain fold is part of the proof definition, so it still visits every
+  // allocated bucket in bucket order: the buckets at or above the derived
+  // bound carry no candidates and contribute only their cs.
+  for (int i = bucket_count; i < kBucketCount; ++i) {
+    const int4 *bucket_cs = cs.data() + static_cast<size_t>(i) * 4;
+    // Initialize per-bucket proof from this bucket's cs.
+    cuda::std::array<int4, 4> pi_bucket = {bucket_cs[0], bucket_cs[1], bucket_cs[2], bucket_cs[3]};
 
     // Cross-bucket proof accumulation: pi = pi XOR H'(pi XOR pi_bucket).
     FoldChainBucket(pi, cuda::std::span<const int4, 4>(pi_bucket));
@@ -1493,6 +1611,126 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
     gpu::detail::VdmpfFullFinishKernel<<<1, 1, 0, stream>>>(final_nodes, pi.data());
     return gpu::detail::ReleaseScratch(cudaGetLastError(), {&arena});
   }
+#else
+  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
+  return cudaErrorNotSupported;
+#endif
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+template <int threads_per_block>
+__host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::BatchEvalMerkleGpu(
+    bool b, int4 sigma, __uint128_t b_size_rt,
+    cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
+    cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream) const {
+#if defined(__CUDACC__)
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor =
+      gpu::detail::VdpfGpuKernelDescriptor<bucket_bits, GroupTag, Prg, XorHash, Hash, __uint128_t>;
+  constexpr size_t kBuckets = kBucketCount;
+  constexpr size_t kCwStride = bucket_bits + 1;
+  constexpr size_t kMax = std::numeric_limits<size_t>::max();
+  const size_t count = xs.size();
+  if (count == 0 || count > static_cast<size_t>(std::numeric_limits<int>::max() / 3) ||
+      count > kMax / sizeof(int4) || ys.size() < count)
+    return cudaErrorInvalidValue;
+  if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits)) return cudaErrorInvalidValue;
+  if (kBuckets > kMax / sizeof(Cw) / kCwStride ||
+      kBuckets > kMax / sizeof(int4) / 4 ||
+      cws.size() < kBuckets * kCwStride || cs.size() < kBuckets * 4 ||
+      xs.data() == nullptr || ys.data() == nullptr || pi.data() == nullptr ||
+      s0s.data() == nullptr || cws.data() == nullptr || cs.data() == nullptr)
+    return cudaErrorInvalidValue;
+  const size_t records = count * kCuckooChoices;
+  size_t cub_bytes = 0;
+  cudaError_t status = cub::DeviceRadixSort::SortPairs(nullptr, cub_bytes,
+      static_cast<uint32_t *>(nullptr), static_cast<uint32_t *>(nullptr),
+      static_cast<gpu::detail::VdmpfFullNode *>(nullptr),
+      static_cast<gpu::detail::VdmpfFullNode *>(nullptr), static_cast<int>(records), 0, 32, stream);
+  if (status != cudaSuccess) return status;
+  gpu::detail::VdmpfFullStorage layout;
+  if (!gpu::detail::VdmpfPlanFullStorage(records, kBuckets, cub_bytes, layout))
+    return cudaErrorInvalidValue;
+  int query_grid, record_grid, bucket_grid;
+  status = gpu::detail::VdmpfFullLaunchBlocks(count, threads_per_block, query_grid);
+  if (status != cudaSuccess) return status;
+  status = gpu::detail::VdmpfFullLaunchBlocks(records, threads_per_block, record_grid);
+  if (status != cudaSuccess) return status;
+  status = gpu::detail::VdmpfFullLaunchBlocks(kBuckets, threads_per_block, bucket_grid);
+  if (status != cudaSuccess) return status;
+  gpu::detail::DeviceScratch arena(stream);
+  status = arena.Allocate<unsigned char>(layout.bytes);
+  if (status != cudaSuccess) return status;
+  void *temp_storage = arena.Get<unsigned char>();
+  auto *keys = gpu::detail::VdmpfFullStorageAt<uint32_t>(temp_storage, layout.keys);
+  auto *sorted_keys = gpu::detail::VdmpfFullStorageAt<uint32_t>(temp_storage, layout.sorted_keys);
+  auto *nodes = gpu::detail::VdmpfFullStorageAt<gpu::detail::VdmpfFullNode>(temp_storage, layout.nodes);
+  auto *sorted_nodes = gpu::detail::VdmpfFullStorageAt<gpu::detail::VdmpfFullNode>(temp_storage, layout.sorted_nodes);
+  auto *counts = gpu::detail::VdmpfFullStorageAt<uint32_t>(temp_storage, layout.counts);
+  auto *offsets = gpu::detail::VdmpfFullStorageAt<uint32_t>(temp_storage, layout.offsets);
+  auto *bucket_nodes = gpu::detail::VdmpfFullStorageAt<gpu::detail::VdmpfFullNode>(temp_storage, layout.bucket_nodes);
+  auto *bucket_scratch = gpu::detail::VdmpfFullStorageAt<gpu::detail::VdmpfFullNode>(temp_storage, layout.bucket_scratch);
+  auto *cub_storage = gpu::detail::VdmpfFullStorageAt<unsigned char>(temp_storage, layout.cub);
+  gpu::detail::VdmpfFullClearCountsKernel<<<bucket_grid, threads_per_block, 0, stream>>>(counts, kBuckets);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  gpu::detail::VdmpfBatchLeavesKernel<in_bits, bucket_bits, Descriptor, In, Prp>
+      <<<query_grid, threads_per_block, 0, stream>>>(b, sigma, b_size_rt,
+          kCuckooChoices, xs.data(), s0s.data(), cws.data(), cs.data(), ys.data(), keys, nodes,
+          counts, count, prg_, xor_hash_, hash_, prp_);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  status = cub::DeviceRadixSort::SortPairs(cub_storage, cub_bytes,
+      keys, sorted_keys, nodes, sorted_nodes, static_cast<int>(records), 0, 32, stream);
+  if (status != cudaSuccess) return status;
+  gpu::detail::VdmpfFullOffsetsKernel<<<1, 1, 0, stream>>>(counts, offsets, kBuckets);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  auto *roots = sorted_nodes;
+  auto *root_scratch = nodes;
+  size_t max_count = records;
+  for (uint32_t stride = 1; max_count > 1; stride *= 2) {
+    gpu::detail::VdmpfFullBucketPairsKernel<<<record_grid, threads_per_block, 0, stream>>>(
+        roots, root_scratch, counts, offsets, kBuckets, stride, records, hash_);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) return status;
+    auto *swap = roots;
+    roots = root_scratch;
+    root_scratch = swap;
+    max_count = (max_count + 1) / 2;
+  }
+  gpu::detail::VdmpfFullBindRootsKernel<<<bucket_grid, threads_per_block, 0, stream>>>(
+      cs.data(), roots, counts, offsets, bucket_nodes, kBuckets, hash_);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  auto *final_nodes = bucket_nodes;
+  auto *final_scratch = bucket_scratch;
+  size_t fold_count = kBuckets;
+  while (fold_count > 1) {
+    int grid;
+    status = gpu::detail::VdmpfFullLaunchBlocks((fold_count + 1) / 2, threads_per_block, grid);
+    if (status != cudaSuccess) return status;
+    gpu::detail::VdmpfFullPairsKernel<<<grid, threads_per_block, 0, stream>>>(final_nodes, final_scratch, fold_count, hash_);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) return status;
+    auto *swap = final_nodes;
+    final_nodes = final_scratch;
+    final_scratch = swap;
+    fold_count = (fold_count + 1) / 2;
+  }
+  gpu::detail::VdmpfFullFinishKernel<<<1, 1, 0, stream>>>(final_nodes, pi.data());
+  return gpu::detail::ReleaseScratch(cudaGetLastError(), {&arena});
 #else
   static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
   return cudaErrorNotSupported;

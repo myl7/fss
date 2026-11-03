@@ -322,6 +322,140 @@ protected:
     }
 
   }
+
+  void TestPublicBatchEvalMerkleGpu() {
+    int devices = 0;
+    const cudaError_t status = cudaGetDeviceCount(&devices);
+    if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver ||
+        (status == cudaSuccess && devices == 0)) {
+      GTEST_SKIP() << "no CUDA device available";
+    }
+    ASSERT_EQ(status, cudaSuccess);
+    typename VdmpfT::Key k0, k1;
+    int4 sigma;
+    GenKeys(k0, k1, sigma);
+    VdmpfT vdmpf{prg, xor_hash, hash, prp_};
+
+    // Sparse ordered queries: the alphas, random non-alphas, an unsorted tail
+    // of domain extremes, and duplicates.
+    std::vector<uint16_t> xs(alphas, alphas + kT);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dis(0, 0xFFFF);
+    constexpr int kRandoms = 100;
+    while (static_cast<int>(xs.size()) < kT + kRandoms) {
+      uint16_t x = dis(gen);
+      bool is_alpha = std::any_of(alphas, alphas + kT, [x](uint16_t a) { return x == a; });
+      if (!is_alpha) xs.push_back(x);
+    }
+    xs.push_back(0);
+    xs.push_back(0xFFFF);
+    xs.push_back(alphas[0]);
+    xs.push_back(alphas[kT - 1]);
+    const int n = static_cast<int>(xs.size());
+
+    cuda::std::array<int4, m> h_s0s[2];
+    std::vector<Cw> h_cws(size_t{m} * (kBucketBits + 1));
+    std::vector<int4> h_cs(size_t{m} * 4);
+    for (int i = 0; i < m; ++i) {
+      h_s0s[0][i] = k0.bks[i].s0;
+      h_s0s[1][i] = k1.bks[i].s0;
+      for (int j = 0; j <= kBucketBits; ++j)
+        h_cws[static_cast<size_t>(i) * (kBucketBits + 1) + j] = k0.bks[i].cws[j];
+      for (int j = 0; j < 4; ++j) h_cs[static_cast<size_t>(i) * 4 + j] = k0.bks[i].cs[j];
+    }
+
+    // Host reference from the raw key components.
+    std::vector<int4> host_ys[2];
+    cuda::std::array<int4, 4> host_pi[2];
+    for (int p = 0; p < 2; ++p) {
+      host_ys[p].resize(n);
+      vdmpf.BatchEvalMerkle(p != 0, sigma, k0.b_size_rt, h_s0s[p],
+          cuda::std::span<const Cw>(h_cws), cuda::std::span<const int4>(h_cs),
+          cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(host_ys[p]), host_pi[p]);
+    }
+    EXPECT_TRUE(VdmpfT::Verify(cuda::std::span<const int4, 4>(host_pi[0]),
+        cuda::std::span<const int4, 4>(host_pi[1])));
+
+    DeviceBuffer<uint16_t> d_xs;
+    DeviceBuffer<int4> d_ys[2], d_s0s[2], d_pi[2];
+    DeviceBuffer<Cw> d_cws;
+    DeviceBuffer<int4> d_cs;
+    ASSERT_EQ(d_xs.Allocate(n), cudaSuccess);
+    ASSERT_EQ(d_xs.Upload(xs.data(), n), cudaSuccess);
+    for (int p = 0; p < 2; ++p) {
+      ASSERT_EQ(d_ys[p].Allocate(n), cudaSuccess);
+      ASSERT_EQ(d_pi[p].Allocate(4), cudaSuccess);
+      ASSERT_EQ(d_s0s[p].Allocate(m), cudaSuccess);
+      ASSERT_EQ(d_s0s[p].Upload(h_s0s[p].data(), m), cudaSuccess);
+    }
+    ASSERT_EQ(d_cws.Allocate(h_cws.size()), cudaSuccess);
+    ASSERT_EQ(d_cws.Upload(h_cws.data(), h_cws.size()), cudaSuccess);
+    ASSERT_EQ(d_cs.Allocate(h_cs.size()), cudaSuccess);
+    ASSERT_EQ(d_cs.Upload(h_cs.data(), h_cs.size()), cudaSuccess);
+
+    for (int p = 0; p < 2; ++p) {
+      SCOPED_TRACE(::testing::Message() << "party " << p);
+      const cudaError_t launch = vdmpf.BatchEvalMerkleGpu(p != 0, sigma, k0.b_size_rt,
+          cuda::std::span<const int4, m>(d_s0s[p].data(), m),
+          cuda::std::span<const Cw>(d_cws.data(), h_cws.size()),
+          cuda::std::span<const int4>(d_cs.data(), h_cs.size()),
+          cuda::std::span<const uint16_t>(d_xs.data(), n),
+          cuda::std::span<int4>(d_ys[p].data(), n),
+          cuda::std::span<int4, 4>(d_pi[p].data(), 4));
+      ASSERT_EQ(launch, cudaSuccess);
+    }
+    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+    ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+
+    std::vector<int4> ys[2];
+    std::vector<int4> pi[2];
+    ys[0].resize(n);
+    ys[1].resize(n);
+    pi[0].resize(4);
+    pi[1].resize(4);
+    ASSERT_EQ(d_ys[0].Download(ys[0].data(), n), cudaSuccess);
+    ASSERT_EQ(d_ys[1].Download(ys[1].data(), n), cudaSuccess);
+    ASSERT_EQ(d_pi[0].Download(pi[0].data(), 4), cudaSuccess);
+    ASSERT_EQ(d_pi[1].Download(pi[1].data(), 4), cudaSuccess);
+
+    for (int p = 0; p < 2; ++p) {
+      for (int i = 0; i < n; ++i) ExpectOutput(ys[p][i], host_ys[p][i], xs[i]);
+      for (int w = 0; w < 4; ++w) ExpectOutput(pi[p][w], host_pi[p][w], w);
+    }
+    EXPECT_TRUE(VdmpfT::Verify(cuda::std::span<const int4, 4>(pi[0].data(), 4),
+        cuda::std::span<const int4, 4>(pi[1].data(), 4)));
+
+    // Non-default block size over a short odd prefix, still bit-exact.
+    constexpr int kShort = 37;
+    std::vector<uint16_t> short_xs(xs.begin(), xs.begin() + kShort);
+    std::vector<int4> short_host(kShort);
+    cuda::std::array<int4, 4> short_pi;
+    vdmpf.BatchEvalMerkle(false, sigma, k0.b_size_rt, h_s0s[0],
+        cuda::std::span<const Cw>(h_cws), cuda::std::span<const int4>(h_cs),
+        cuda::std::span<const uint16_t>(short_xs), cuda::std::span<int4>(short_host), short_pi);
+    DeviceBuffer<uint16_t> d_short_xs;
+    DeviceBuffer<int4> d_short_ys, d_short_pi;
+    ASSERT_EQ(d_short_xs.Allocate(kShort), cudaSuccess);
+    ASSERT_EQ(d_short_xs.Upload(short_xs.data(), kShort), cudaSuccess);
+    ASSERT_EQ(d_short_ys.Allocate(kShort), cudaSuccess);
+    ASSERT_EQ(d_short_pi.Allocate(4), cudaSuccess);
+    const cudaError_t launch = vdmpf.template BatchEvalMerkleGpu<64>(false, sigma, k0.b_size_rt,
+        cuda::std::span<const int4, m>(d_s0s[0].data(), m),
+        cuda::std::span<const Cw>(d_cws.data(), h_cws.size()),
+        cuda::std::span<const int4>(d_cs.data(), h_cs.size()),
+        cuda::std::span<const uint16_t>(d_short_xs.data(), kShort),
+        cuda::std::span<int4>(d_short_ys.data(), kShort),
+        cuda::std::span<int4, 4>(d_short_pi.data(), 4));
+    ASSERT_EQ(launch, cudaSuccess);
+    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+    std::vector<int4> short_actual(kShort);
+    std::vector<int4> short_actual_pi(4);
+    ASSERT_EQ(d_short_ys.Download(short_actual.data(), kShort), cudaSuccess);
+    ASSERT_EQ(d_short_pi.Download(short_actual_pi.data(), 4), cudaSuccess);
+    for (int i = 0; i < kShort; ++i) ExpectOutput(short_actual[i], short_host[i], short_xs[i]);
+    for (int w = 0; w < 4; ++w) ExpectOutput(short_actual_pi[w], short_pi[w], w);
+  }
 };
 
 using VdmpfBytesGpuTest = VdmpfGpuTest<fss::group::Bytes>;
@@ -333,6 +467,14 @@ TEST_F(VdmpfBytesGpuTest, BatchEval) {
 
 TEST_F(VdmpfUint128GpuTest, BatchEval) {
   TestBatchEval();
+}
+
+TEST_F(VdmpfBytesGpuTest, PublicBatchEvalMerkle) {
+  TestPublicBatchEvalMerkleGpu();
+}
+
+TEST_F(VdmpfUint128GpuTest, PublicBatchEvalMerkle) {
+  TestPublicBatchEvalMerkleGpu();
 }
 
 using VdmpfCustomSecurityGpuTest = VdmpfGpuTest<fss::group::Bytes, 60>;
@@ -362,6 +504,40 @@ TEST(VdmpfGpuArguments, RejectsOversizedQueryCount) {
         nullptr, nullptr, nullptr, nullptr, nullptr, scheme);
   };
   EXPECT_THROW(evaluate(std::numeric_limits<int>::max() / 3 + 1), std::invalid_argument);
+}
+
+// Validation-only paths of the public entry; they run without a device.
+TEST(VdmpfGpuArguments, PublicBatchRejectsInvalidInputs) {
+  using Vdmpf = fss::Vdmpf<8, 30, 4, Group, Prg, ProofHash, ProofHash, Prp, uint8_t>;
+  Vdmpf scheme{Prg{23, 47}, MakeProofHash(), MakeProofHash(), Prp{}};
+  constexpr int kBuckets = Vdmpf::kBucketCount;
+  cuda::std::array<int4, kBuckets> s0s{};
+  std::vector<Vdmpf::Cw> cws(size_t{kBuckets} * 5);
+  std::vector<int4> cs(size_t{kBuckets} * 4);
+  uint8_t xs[1] = {0};
+  int4 ys[1], pi[4];
+  // Empty query sequence.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, Vdmpf::kBucketSize, s0s,
+      {cws.data(), cws.size()}, {cs.data(), cs.size()}, cuda::std::span<const uint8_t>(),
+      {ys, 1}, pi), cudaErrorInvalidValue);
+  // Output storage shorter than the query sequence.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, Vdmpf::kBucketSize, s0s,
+      {cws.data(), cws.size()}, {cs.data(), cs.size()}, {xs, 1},
+      cuda::std::span<int4>(), pi), cudaErrorInvalidValue);
+  // Too few correction words.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, Vdmpf::kBucketSize, s0s,
+      cuda::std::span<const Vdmpf::Cw>(cws.data(), cws.size() - 1), {cs.data(), cs.size()},
+      {xs, 1}, {ys, 1}, pi), cudaErrorInvalidValue);
+  // Too few check-seed blocks.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, Vdmpf::kBucketSize, s0s,
+      {cws.data(), cws.size()},
+      cuda::std::span<const int4>(cs.data(), size_t{kBuckets} * 4 - 1),
+      {xs, 1}, {ys, 1}, pi), cudaErrorInvalidValue);
+  // Null query buffer.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, Vdmpf::kBucketSize, s0s,
+      {cws.data(), cws.size()}, {cs.data(), cs.size()},
+      cuda::std::span<const uint8_t>(static_cast<const uint8_t *>(nullptr), size_t{1}),
+      {ys, 1}, pi), cudaErrorInvalidValue);
 }
 }  // namespace query_bounds
 }  // namespace
