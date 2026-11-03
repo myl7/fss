@@ -1656,7 +1656,7 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
     return cudaErrorInvalidValue;
   if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits)) return cudaErrorInvalidValue;
   if (kBuckets > kMax / sizeof(Cw) / kCwStride ||
-      kBuckets > kMax / sizeof(int4) / 4 ||
+      kBuckets > kMax / sizeof(int4) / 4 || s0s.size() < kBuckets ||
       cws.size() < kBuckets * kCwStride || cs.size() < kBuckets * 4 ||
       xs.data() == nullptr || ys.data() == nullptr || pi.data() == nullptr ||
       s0s.data() == nullptr || cws.data() == nullptr || cs.data() == nullptr)
