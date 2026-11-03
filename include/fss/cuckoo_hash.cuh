@@ -20,6 +20,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cmath>
+#include <limits>
 #include <span>
 #include <utility>
 #include <random>
@@ -44,10 +45,20 @@ constexpr int ChBucket(int t, int lambda);
 
 namespace detail {
 
+/**
+ * Bucket identifier of a rejected candidate.
+ *
+ * PrpHash::Locate() returns it when the exact bucket index does not fit int,
+ * or when the bucket domain size is zero. It equals INT_MAX, so every caller
+ * filter of the form `bucket >= bound`, whose bound is an int, rejects the
+ * candidate.
+ */
+constexpr int kRejectedBucket = std::numeric_limits<int>::max();
+
 /** Bucket identifier and 128-bit position returned by PrpHash::Locate(). */
 struct LocateResult {
-  int bucket;  ///< Bucket index.
-  __uint128_t index;  ///< Position within a bucket.
+  int bucket;  ///< Bucket index, or kRejectedBucket for a rejected candidate.
+  __uint128_t index;  ///< Position within a bucket, 0 for a rejected candidate.
 };
 
 /**
@@ -65,13 +76,19 @@ struct PrpHash {
    * Locate x using choice k, where y = PRP(sigma, x + n * k, 3 * n).
    * The bucket is y / b_size and the local position is y % b_size.
    *
+   * Evaluation must not trust b_size, because it is key metadata: a candidate
+   * whose exact bucket index does not fit int, and every candidate of a zero
+   * b_size, is rejected with kRejectedBucket and index 0 instead of wrapping
+   * negative. A negative bucket would pass the callers' `bucket >= bound`
+   * filters and then index the per-bucket key arrays out of bounds.
+   *
    * @param sigma Public permutation seed.
    * @param x Input in [0, n).
    * @param k Hash-function index, 0, 1, or 2.
    * @param n Original input domain size.
-   * @param b_size Positive bucket domain size.
-   * @return Bucket identifier and local position.
-   * @pre 3 * n fits __uint128_t and the bucket identifier fits int.
+   * @param b_size Bucket domain size, positive for a locateable bucket.
+   * @return Bucket identifier and local position, or kRejectedBucket and 0.
+   * @pre 3 * n fits __uint128_t.
    * Calls support host and device execution when Prp does.
    */
   __host__ __device__ LocateResult Locate(int4 sigma, In x, int k, __uint128_t n, __uint128_t b_size);
@@ -139,6 +156,29 @@ constexpr double Ceil(double x) {
   return (x > static_cast<double>(i)) ? static_cast<double>(i + 1) : static_cast<double>(i);
 }
 
+/**
+ * Exclusive upper bound on the bucket index of a located candidate.
+ *
+ * PrpHash::Locate() maps every candidate with a positive b_size and an
+ * int-representable bucket index into [0, choices * n / b_size), so the largest
+ * such bucket is ceil(choices * n / b_size) - 1, and this is the smallest
+ * bucket count that covers every located bucket. A candidate outside that
+ * interval locates kRejectedBucket instead.
+ *
+ * Written as (choices * n - 1) / b_size + 1, the equal wrap-free form of the
+ * ceiling division: (choices * n + b_size - 1) / b_size gives the same value
+ * for every in-range input, but wraps in __uint128_t once b_size exceeds
+ * 2^126 with choices * n = 3 * 2^126.
+ *
+ * @param n Original input domain size, at least 1.
+ * @param choices Candidate count per input, at least 1.
+ * @param b_size Positive bucket domain size.
+ * @return ceil(choices * n / b_size).
+ */
+constexpr __uint128_t BucketBound(__uint128_t n, int choices, __uint128_t b_size) {
+  return (n * choices - 1) / b_size + 1;
+}
+
 }  // namespace detail
 
 constexpr int ChBucket(int t, int lambda) {
@@ -161,9 +201,18 @@ inline __host__ __device__ LocateResult PrpHash<Prp, In>::Locate(
   __uint128_t domain_size = n * 3;
   __uint128_t y = prp.Permu(sigma, val, domain_size);
 
-  int bucket = static_cast<int>(y / b_size);
-  __uint128_t index = y % b_size;
-  return {bucket, index};
+  // Compare the quotient in __uint128_t: a zero b_size has no bucket at all,
+  // and an over-int quotient must saturate rather than wrap negative through
+  // the cast, because the callers filter buckets with `bucket >= bound` and
+  // would accept a negative value before indexing the per-bucket key arrays.
+  if (b_size == 0) {
+    return {kRejectedBucket, 0};
+  }
+  __uint128_t bucket = y / b_size;
+  if (bucket > static_cast<__uint128_t>(kRejectedBucket)) {
+    return {kRejectedBucket, 0};
+  }
+  return {static_cast<int>(bucket), y % b_size};
 }
 
 template <typename Prp, typename In>

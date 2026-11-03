@@ -75,7 +75,6 @@ template <typename Scheme>
   requires(detail::ProofGpuTraits<Scheme>::kKind == detail::ProofGpuKind::kDmpf)
 struct MultiComponents {
   int4 sigma;
-  int m_rt;
   __uint128_t b_size_rt;
   cuda::std::span<const int4> s0s;
   cuda::std::span<const typename Scheme::Cw> cws;
@@ -91,7 +90,6 @@ template <typename Scheme>
   requires(detail::ProofGpuTraits<Scheme>::kKind == detail::ProofGpuKind::kVdmpf)
 struct VerifiableMultiComponents {
   int4 sigma;
-  int m_rt;
   __uint128_t b_size_rt;
   cuda::std::span<const int4> s0s;
   cuda::std::span<const typename Scheme::Cw> cws;
@@ -217,7 +215,6 @@ inline bool HasRows(size_t size, size_t rows, size_t width) {
 template <typename Descriptor>
 struct MultiLaunchComponents {
   int4 sigma;
-  int m_rt;
   __uint128_t b_size_rt;
   const int4 *s0s;
   const void *cws;
@@ -226,7 +223,6 @@ struct MultiLaunchComponents {
 template <typename Descriptor>
 struct VerifiableLaunchComponents {
   int4 sigma;
-  int m_rt;
   __uint128_t b_size_rt;
   const int4 *s0s;
   const void *cws;
@@ -234,12 +230,17 @@ struct VerifiableLaunchComponents {
 };
 
 template <typename Descriptor>
-inline bool ValidMultiKey(int m_rt, __uint128_t b_size_rt, size_t s0s_size, size_t cws_size,
+inline bool ValidMultiKey(__uint128_t b_size_rt, size_t s0s_size, size_t cws_size,
     const void *s0s, const void *cws) {
   constexpr size_t rows = Descriptor::kBucketCount;
-  if (m_rt < 1 || m_rt > Descriptor::kBucketCount || b_size_rt == 0 ||
-      b_size_rt > (__uint128_t{1} << Descriptor::kBucketBits) ||
-      b_size_rt < (((__uint128_t{3} << Descriptor::kInputBits) + m_rt - 1) / m_rt)) return false;
+  if (b_size_rt == 0 || b_size_rt > (__uint128_t{1} << Descriptor::kBucketBits)) return false;
+  // Exclusive bound on the bucket index a candidate can locate into. Keeping
+  // it inside the allocation is the condition on b_size_rt alone that the
+  // removed runtime bucket count check enforced: s0s[bucket], cws +
+  // bucket*(bucket_bits+1), and counts + bucket stay in range exactly then.
+  const __uint128_t bucket_bound = fss::cuckoo_hash::detail::BucketBound(
+      __uint128_t{1} << Descriptor::kInputBits, Descriptor::Scheme::kCuckooChoices, b_size_rt);
+  if (bucket_bound > rows) return false;
   if (!HasRows(s0s_size, rows, 1) ||
       !HasRows(cws_size, rows, Descriptor::kBucketBits + 1)) return false;
   return s0s != nullptr && cws != nullptr;
@@ -431,10 +432,10 @@ inline cudaError_t BatchEvalGpuWithDescriptor(typename Descriptor::Scheme *schem
   cudaError_t status = CoreLaunchBlocks(xs.size(), threads, blocks);
   if (status != cudaSuccess || blocks == 0) return status;
   if (scheme == nullptr || xs.data() == nullptr || ys.data() == nullptr ||
-      !ValidMultiKey<Descriptor>(key.m_rt, key.b_size_rt, key.s0s.size(), key.cws.size(),
+      !ValidMultiKey<Descriptor>(key.b_size_rt, key.s0s.size(), key.cws.size(),
           key.s0s.data(), key.cws.data()))
     return cudaErrorInvalidValue;
-  MultiLaunchComponents<Descriptor> view{key.sigma, key.m_rt, key.b_size_rt,
+  MultiLaunchComponents<Descriptor> view{key.sigma, key.b_size_rt,
       key.s0s.data(), key.cws.data()};
   DmpfBatchKernel<Descriptor><<<blocks, threads, 0, stream>>>(
       scheme, b, view, xs.data(), ys.data(), xs.size());
@@ -473,7 +474,7 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
   if (xs.size() != ys.size() || xs.size() > static_cast<size_t>(std::numeric_limits<int>::max() / 3) ||
       scheme == nullptr || pi.data() == nullptr || key.cs.data() == nullptr ||
       !HasRows(key.cs.size(), buckets, 4)) return cudaErrorInvalidValue;
-  if (!xs.empty() && !ValidMultiKey<Descriptor>(key.m_rt, key.b_size_rt, key.s0s.size(),
+  if (!xs.empty() && !ValidMultiKey<Descriptor>(key.b_size_rt, key.s0s.size(),
           key.cws.size(), key.s0s.data(), key.cws.data())) return cudaErrorInvalidValue;
   int grid;
   cudaError_t status = CoreLaunchBlocks(xs.size(), threads, grid);
@@ -514,7 +515,7 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
     ClearCountsKernel<<<bucket_grid, threads, 0, stream>>>(counts, buckets);
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
-    VerifiableLaunchComponents<Descriptor> view{key.sigma, key.m_rt, key.b_size_rt,
+    VerifiableLaunchComponents<Descriptor> view{key.sigma, key.b_size_rt,
         key.s0s.data(), key.cws.data(), key.cs.data()};
     VdmpfBatchLeavesKernel<Descriptor><<<grid, threads, 0, stream>>>(
         scheme, b, view, xs.data(), ys.data(), keys, nodes, counts, xs.size());

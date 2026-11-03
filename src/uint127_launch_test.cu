@@ -172,7 +172,7 @@ void ProbeRepackGpuVdpf(const probe::VdpfScheme::Cw *words, int4 *cw_s, uint32_t
 
 void ProbeDmpfEvalAllGpu(const probe::DmpfScheme &scheme, const int4 *s0s, const probe::DmpfScheme::Cw *cws,
     int4 *ys) {
-  (void)scheme.template EvalAllGpu<8, 256>(false, int4{0, 0, 0, 0}, 1, __uint128_t{1},
+  (void)scheme.template EvalAllGpu<8, 256>(false, int4{0, 0, 0, 0}, __uint128_t{1},
       cuda::std::span<const int4>(s0s, 1), cuda::std::span<const probe::DmpfScheme::Cw>(cws, 5),
       cuda::std::span<int4>(ys, 256));
 }
@@ -185,7 +185,7 @@ void ProbeDmpfBatchEvalGpu(const probe::DmpfScheme &scheme, const uint32_t *xs, 
 
 void ProbeVdmpfEvalAllMerkleGpu(const probe::VdmpfScheme &scheme, const int4 *s0s, const probe::VdmpfScheme::Cw *cws,
     const int4 *cs, int4 *ys, int4 *pi) {
-  (void)scheme.template EvalAllMerkleGpu<256>(false, int4{0, 0, 0, 0}, 1, __uint128_t{1},
+  (void)scheme.template EvalAllMerkleGpu<256>(false, int4{0, 0, 0, 0}, __uint128_t{1},
       cuda::std::span<const int4>(s0s, 1), cuda::std::span<const probe::VdmpfScheme::Cw>(cws, 5),
       cuda::std::span<const int4>(cs, 4), cuda::std::span<int4>(ys, 256),
       cuda::std::span<int4, 4>(pi, 4));

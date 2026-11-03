@@ -239,7 +239,6 @@ public:
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
-   * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
@@ -248,7 +247,7 @@ public:
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
    */
-  void BatchEval(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void BatchEval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs,
       cuda::std::span<const In> xs, cuda::std::span<int4> ys,
@@ -277,16 +276,14 @@ public:
    *
    * Routing covers every bucket below the compile-time kBucketCount. Under a
    * key from the same successful Gen(), b_size_rt = ceil(3*kDomainSize/m_rt)
-   * keeps every candidate below m_rt, so an inactive bucket at or above m_rt
-   * cannot receive a candidate. Inactive buckets still take part in the
-   * accumulators through their check seeds: Prove() folds each bucket's cs and
-   * ProveMerkle() folds each bucket's hashed cs.
+   * keeps every candidate below the bound ceil(3*kDomainSize/b_size_rt), which
+   * is at most m_rt, so an inactive bucket cannot receive a candidate.
+   * Inactive buckets still take part in the accumulators through their check
+   * seeds: Prove() folds each bucket's cs and ProveMerkle() folds each
+   * bucket's hashed cs.
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
-   * @param m_rt Runtime bucket count returned by Gen(). Part of the key
-   * metadata, so the signature matches BatchEval(). Evaluation needs only sigma
-   * and b_size_rt; the bucket bound is the compile-time kBucketCount.
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
@@ -296,7 +293,7 @@ public:
    * @return Corrected per-point hashes in candidate order, as described by EvalProof.
    * @pre All key arrays and metadata come from the same successful Gen().
    */
-  __host__ __device__ EvalProof Eval(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  __host__ __device__ EvalProof Eval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs,
       In x, int4 &y);
@@ -317,7 +314,6 @@ public:
    * the same values.
    *
    * @param sigma The effective PRP seed from Gen().
-   * @param m_rt Runtime bucket count returned by Gen(). See Eval().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param xs Input points evaluated by Eval() with this party's key, in the
@@ -328,7 +324,7 @@ public:
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
    */
-  void Prove(int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void Prove(int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
       cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi);
 
@@ -339,7 +335,6 @@ public:
    * kDomainSize - 1 in increasing order. No input array is required.
    * @param b Party index, false for party 0 and true for party 1.
    * @param sigma Shared PRP seed from successful Gen().
-   * @param m_rt Runtime bucket count returned by that Gen().
    * @param b_size_rt Runtime bucket domain size returned by that Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
@@ -349,7 +344,7 @@ public:
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
    */
-  void EvalAll(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void EvalAll(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs, cuda::std::span<int4> ys,
       cuda::std::span<int4, 4> pi);
@@ -387,7 +382,6 @@ public:
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
-   * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
@@ -396,7 +390,7 @@ public:
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
    */
-  void BatchEvalMerkle(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void BatchEvalMerkle(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs,
       cuda::std::span<const In> xs, cuda::std::span<int4> ys,
@@ -419,7 +413,6 @@ public:
    * the same values.
    *
    * @param sigma The effective PRP seed from Gen().
-   * @param m_rt Runtime bucket count returned by Gen(). See Eval().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
    * @param xs Input points evaluated by Eval() with this party's key, in the
@@ -430,7 +423,7 @@ public:
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
    */
-  void ProveMerkle(int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void ProveMerkle(int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
       cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi);
 
@@ -441,7 +434,6 @@ public:
    * kDomainSize - 1 in increasing order. No input array is required.
    * @param b Party index, false for party 0 and true for party 1.
    * @param sigma Shared PRP seed from successful Gen().
-   * @param m_rt Runtime bucket count returned by that Gen().
    * @param b_size_rt Runtime bucket domain size returned by that Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
@@ -451,7 +443,7 @@ public:
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
    */
-  void EvalAllMerkle(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void EvalAllMerkle(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs, cuda::std::span<int4> ys,
       cuda::std::span<int4, 4> pi);
@@ -471,8 +463,9 @@ public:
    * @tparam threads_per_block Power-of-two block size in [1,1024], default 256.
    * @param b Party index, false for party 0 and true for party 1.
    * @param sigma Shared PRP seed from successful Gen().
-   * @param active_buckets Runtime bucket count from that Gen(), in [1,kBucketCount].
-   * @param bucket_size Runtime bucket size from that Gen(), equal to ceil(3*kDomainSize/active_buckets).
+   * @param bucket_size Runtime bucket size from that Gen(). Every located
+   * bucket then stays below kBucketCount exactly when bucket_size is at least
+   * ceil(3*kDomainSize/kBucketCount).
    * @param s0s Device storage of kBucketCount party seeds, one per bucket.
    * @param cws Device storage of kBucketCount*(bucket_bits+1) bucket-major correction words.
    * @param cs Device storage of 4*kBucketCount bucket-major check-seed blocks.
@@ -489,7 +482,7 @@ public:
    * Completion remains asynchronous. Chain evaluation has no GPU counterpart.
    */
   template <int threads_per_block = 256>
-  __host__ cudaError_t EvalAllMerkleGpu(bool b, int4 sigma, int active_buckets,
+  __host__ cudaError_t EvalAllMerkleGpu(bool b, int4 sigma,
       __uint128_t bucket_size, cuda::std::span<const int4> s0s,
       cuda::std::span<const Cw> cws, cuda::std::span<const int4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream = 0) const
@@ -563,14 +556,14 @@ private:
   static size_t FullInputCount(__uint128_t bucket_size);
 
   template <typename Inputs>
-  void EvalInputs(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void EvalInputs(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs,
       Inputs xs, cuda::std::span<int4> ys,
       cuda::std::span<int4, 4> pi);
 
   template <typename Inputs>
-  void EvalMerkleInputs(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void EvalMerkleInputs(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs,
       Inputs xs, cuda::std::span<int4> ys,
@@ -839,12 +832,12 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::BatchEval(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     cuda::std::span<const In> xs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
-  EvalInputs(b, sigma, m_rt, b_size_rt, s0s, cws, cs, xs, ys, pi);
+  EvalInputs(b, sigma, b_size_rt, s0s, cws, cs, xs, ys, pi);
 }
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
@@ -858,7 +851,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
 inline __host__ __device__ typename Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In,
     ch_lambda>::EvalProof
 Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::Eval(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     In x, int4 &y) {
@@ -893,7 +886,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::Prove(
-    int4 sigma, int m_rt, __uint128_t b_size_rt,
+    int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
     cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
   assert(cs.size() >= size_t{kBucketCount} * 4);
@@ -925,12 +918,12 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalAll(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
   const size_t count = FullInputCount<false>(b_size_rt);
-  EvalInputs(b, sigma, m_rt, b_size_rt, s0s, cws, cs,
+  EvalInputs(b, sigma, b_size_rt, s0s, cws, cs,
       FullDomainInputs{count}, ys, pi);
 }
 
@@ -956,12 +949,12 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::BatchEvalMerkle(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     cuda::std::span<const In> xs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi) {
-  EvalMerkleInputs(b, sigma, m_rt, b_size_rt, s0s, cws, cs, xs, ys, pi);
+  EvalMerkleInputs(b, sigma, b_size_rt, s0s, cws, cs, xs, ys, pi);
 }
 
 template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
@@ -973,7 +966,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::ProveMerkle(
-    int4 sigma, int m_rt, __uint128_t b_size_rt,
+    int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
     cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
   assert(cs.size() >= size_t{kBucketCount} * 4);
@@ -1005,12 +998,12 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalAllMerkle(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi) {
   const size_t count = FullInputCount<true>(b_size_rt);
-  EvalMerkleInputs(b, sigma, m_rt, b_size_rt, s0s, cws, cs,
+  EvalMerkleInputs(b, sigma, b_size_rt, s0s, cws, cs,
       FullDomainInputs{count}, ys, pi);
 }
 
@@ -1117,7 +1110,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 template <typename Inputs>
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalInputs(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     Inputs xs,
@@ -1204,7 +1197,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 template <typename Inputs>
 inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalMerkleInputs(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     Inputs xs, cuda::std::span<int4> ys,
@@ -1354,7 +1347,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 template <int threads_per_block>
 __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalAllMerkleGpu(
-    bool b, int4 sigma, int active_buckets, __uint128_t bucket_size,
+    bool b, int4 sigma, __uint128_t bucket_size,
     cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi, cudaStream_t stream) const
@@ -1374,6 +1367,9 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
       kOutputs > kMax / sizeof(int4)) {
     return cudaErrorInvalidValue;
   } else {
+    if (bucket_size == 0 || bucket_size > (__uint128_t{1} << bucket_bits) ||
+        cuckoo_hash::detail::BucketBound(kDomainSize, kCuckooChoices, bucket_size) > kBucketCount)
+      return cudaErrorInvalidValue;
     constexpr size_t kRecords = kOutputs * 3;
     size_t cub_bytes = 0;
     cudaError_t status = cub::DeviceRadixSort::SortPairs(nullptr, cub_bytes,
@@ -1384,9 +1380,6 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
     gpu::detail::VdmpfFullStorage layout;
     if (!gpu::detail::VdmpfPlanFullStorage(kRecords, kBuckets, cub_bytes, layout))
       return cudaErrorInvalidValue;
-    if (active_buckets < 1 || active_buckets > kBucketCount ||
-        bucket_size != (kCuckooChoices * kDomainSize + active_buckets - 1) / active_buckets ||
-        bucket_size > (__uint128_t{1} << bucket_bits)) return cudaErrorInvalidValue;
     if (kBuckets > kMax / sizeof(Cw) / kCwStride ||
         kBuckets > kMax / sizeof(int4) / 4 || s0s.size() < kBuckets ||
         cws.size() < kBuckets * kCwStride || cs.size() < kBuckets * 4 ||

@@ -3,15 +3,20 @@
 #include "binding_gpu_eval.cuh"
 #include <cuda/std/span>
 #include <fss/util.cuh>
+#include <fss/cuckoo_hash.cuh>
 
 namespace fss::python {
 namespace {
 constexpr int kRows = SchemeType::kBucketCount;
 constexpr int kWords = kBucketBits + 1;
 
-void CheckRuntime(int rows, __uint128_t size) {
-  TORCH_CHECK(rows > 0 && rows <= kRows, "m_rt is outside the allocated bucket count");
+// The evaluation entries take no runtime bucket count, so b_size_rt alone
+// must keep every located bucket inside the allocation: the largest located
+// bucket is ceil(3*2^in_bits/b_size_rt)-1.
+void CheckRuntime(__uint128_t size) {
   TORCH_CHECK(size > 0 && size <= (__uint128_t(1) << kBucketBits), "b_size_rt is outside the bucket domain");
+  TORCH_CHECK(size >= fss::cuckoo_hash::detail::BucketBound(__uint128_t{1} << kInBits, SchemeType::kCuckooChoices, kRows),
+      "b_size_rt is too small for the allocated bucket count");
 }
 
 py::tuple Gen(NativeState &state, Tensor cws, Tensor sigma, Tensor seeds,
@@ -47,24 +52,24 @@ py::tuple Gen(NativeState &state, Tensor cws, Tensor sigma, Tensor seeds,
 }
 
 template <typename S=SchemeType>
-void Batch(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
+void Batch(NativeState &state,bool b,Tensor sigma,py::int_ size,
     Tensor seeds,Tensor cws, Tensor xs,Tensor ys) {
   CheckSameDevice({sigma,seeds,cws, xs,ys});
   CheckBlocks(sigma,1); CheckBlocks(seeds,kRows);
   int64_t count=InputCount<InType>(xs); CheckBlocks(ys,count);
-  auto domain=ReadU128(size); CheckRuntime(m_rt,domain);
+  auto domain=ReadU128(size); CheckRuntime(domain);
   auto *words=ConstCwPtr(cws,kRows*kWords);
 
   if (ys.is_cpu()) {
     CheckCpuInputsInDomain<InType>(xs, kInBits);
-    state.Cpu().BatchEval(b,*ConstBlocks(sigma),m_rt,domain,
+    state.Cpu().BatchEval(b,*ConstBlocks(sigma),domain,
         cuda::std::span<const int4,kRows>(ConstBlocks(seeds),kRows),
         cuda::std::span<const Cw>(words,size_t(kRows)*kWords),
         {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)});
   } else if constexpr (kGpuSupported) {
 
     c10::cuda::CUDAGuard guard(ys.device()); auto stream=CurrentStream();
-    fss::gpu::MultiComponents<S> key{FetchBlock(sigma),m_rt,domain,
+    fss::gpu::MultiComponents<S> key{FetchBlock(sigma),domain,
         {ConstBlocks(seeds),kRows},{words,kRows*kWords}};
     CheckCuda(fss::gpu::BatchEvalGpu<S>(state.template Device<kGpuSupported, S>(stream),b,key,
         {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)},stream));
@@ -72,18 +77,18 @@ void Batch(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
   } else TORCH_CHECK(false,"configured backends do not support CUDA evaluation");
 }
 template <typename S=SchemeType>
-void Full(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
+void Full(NativeState &state,bool b,Tensor sigma,py::int_ size,
     Tensor seeds,Tensor cws,Tensor ys,int par_depth) {
   TORCH_CHECK(ys.is_cuda() || par_depth >= 0,"par_depth must be nonnegative");
   CheckSameDevice({sigma,seeds,cws,ys}); CheckBlocks(sigma,1); CheckBlocks(seeds,kRows);
   CheckBlocks(ys,AddressableCount(kInBits));
-  auto domain=ReadU128(size); CheckRuntime(m_rt,domain);
+  auto domain=ReadU128(size); CheckRuntime(domain);
   auto *words=ConstCwPtr(cws,kRows*kWords);
   if (ys.is_cpu()) {
     if constexpr (fss::detail::FitsFullDomain<int4, kInBits>() &&
         fss::detail::FitsFullDomain<int4, kBucketBits>()) {
       state.CheckCpuParallel(par_depth, NativeState::kPrgRole);
-      static_cast<S &>(state.Cpu()).EvalAll(b,*ConstBlocks(sigma),m_rt,domain,
+      static_cast<S &>(state.Cpu()).EvalAll(b,*ConstBlocks(sigma),domain,
           cuda::std::span<const int4,kRows>(ConstBlocks(seeds),kRows),
           cuda::std::span<const Cw>(words,size_t(kRows)*kWords),
           {Blocks(ys),size_t(ys.numel()/4)},par_depth);
@@ -95,7 +100,7 @@ void Full(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
     auto stream=CurrentStream();
     auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
     CheckCuda(core.template EvalAllGpu<kFrontierDepth, kThreadsPerBlock>(b,
-        FetchBlock(sigma), m_rt, domain, {ConstBlocks(seeds), kRows},
+        FetchBlock(sigma), domain, {ConstBlocks(seeds), kRows},
         {words, kRows * kWords}, {Blocks(ys), size_t(ys.numel() / 4)}, stream));
     state.RecordUse(stream);
     RecordTensors({sigma,seeds,cws,ys},stream);

@@ -140,7 +140,7 @@ class TestVdmpfValidation:
 
     def test_rejects_bad_check_buffer(self, vdmpf, material, alphas):
         with pytest.raises(RuntimeError):
-            vdmpf.batch_eval(False, material.sigma, material.m_rt,
+            vdmpf.batch_eval(False, material.sigma,
                              material.b_size_rt, material.seeds[0], material.cws,
                              torch.zeros((vdmpf.kBucketCount, 4), dtype=torch.int32),
                              alphas, torch.empty((T, 4), dtype=torch.int32),
@@ -155,7 +155,7 @@ class TestVdmpfValidation:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_rejects_mixed_devices(self, vdmpf, material, alphas):
         with pytest.raises(RuntimeError, match="same device"):
-            vdmpf.batch_eval(False, material.sigma, material.m_rt,
+            vdmpf.batch_eval(False, material.sigma,
                              material.b_size_rt, material.seeds[0], material.cws,
                              material.cs, alphas.cuda(),
                              torch.empty((T, 4), dtype=torch.int32),

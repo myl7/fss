@@ -40,7 +40,7 @@ def test_scalar_copy_follows_current_stream(component):
         output = torch.empty_like(expected[0], device="cuda")
 
         def evaluate():
-            scheme.eval_all(False, delayed, material.m_rt, material.b_size_rt,
+            scheme.eval_all(False, delayed, material.b_size_rt,
                             seeds_gpu, cws_gpu, output)
             return (output,)
     else:

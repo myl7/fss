@@ -93,14 +93,15 @@ int main() {
   }
   auto seeds0 = cuda::std::span<const int4, m>(s0s.data(), m);
   auto seeds1 = cuda::std::span<const int4, m>(s0s.data() + m, m);
-  printf("  Gen done, table size m=%d\n", m);
+  printf("  Gen done, table size m=%d, runtime bucket count m_rt=%d\n", m, m_rt);
+  // Evaluation takes only b_size_rt: it bounds the bucket index of every candidate.
 
   // Batch evaluation at the points: y0+y1 == beta_i.
   std::vector<In> xs(alphas, alphas + kT);
   std::vector<int4> ys0(kT), ys1(kT);
 
-  dmpf.BatchEval(false, sigma, m_rt, b_size_rt, seeds0, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys0));
-  dmpf.BatchEval(true, sigma, m_rt, b_size_rt, seeds1, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys1));
+  dmpf.BatchEval(false, sigma, b_size_rt, seeds0, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys0));
+  dmpf.BatchEval(true, sigma, b_size_rt, seeds1, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys1));
 
   int mismatches = 0;
   for (int i = 0; i < kT; ++i) {
@@ -115,8 +116,8 @@ int main() {
   In non_alphas[kT] = {11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57,
       59, 61, 63, 65, 67, 69};
   xs.assign(non_alphas, non_alphas + kT);
-  dmpf.BatchEval(false, sigma, m_rt, b_size_rt, seeds0, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys0));
-  dmpf.BatchEval(true, sigma, m_rt, b_size_rt, seeds1, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys1));
+  dmpf.BatchEval(false, sigma, b_size_rt, seeds0, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys0));
+  dmpf.BatchEval(true, sigma, b_size_rt, seeds1, cws, cuda::std::span<const In>(xs), cuda::std::span<int4>(ys1));
 
   int4 zero = {0, 0, 0, 0};
   mismatches = 0;

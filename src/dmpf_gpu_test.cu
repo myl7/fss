@@ -265,7 +265,7 @@ protected:
 
     for (int p = 0; p < 2; ++p) {
       ASSERT_EQ(dmpf.EvalAllGpu(
-          p != 0, sigma, m_rt, b_rt, {d_s0s[p].data(), static_cast<size_t>(m_rt)},
+          p != 0, sigma, b_rt, {d_s0s[p].data(), static_cast<size_t>(m_rt)},
           {d_cws.data(), h_cws.size()},
           {d_ys[p].data(), kDomain}), cudaSuccess);
     }

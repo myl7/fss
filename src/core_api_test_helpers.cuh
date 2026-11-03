@@ -256,7 +256,7 @@ template <int par_depth = 0, typename Scheme, typename Key, typename Output, typ
 void EvalAllKey(Scheme &scheme, bool party, const Key &key, Output &&output, Proof &...proof) {
   if constexpr (requires { key.bks; }) {
     MultiRows<Scheme> parts(key);
-    scheme.EvalAll(party, key.sigma, key.m_rt, key.b_size_rt, parts.s0s, parts.cws, output, par_depth);
+    scheme.EvalAll(party, key.sigma, key.b_size_rt, parts.s0s, parts.cws, output, par_depth);
   } else if constexpr (requires { key.cs; }) {
     scheme.EvalAll(party, key.s0, key.cws, key.cs, output, proof..., par_depth);
   } else {
@@ -279,17 +279,17 @@ template <typename Scheme, typename Key, typename Xs, typename Ys, typename... P
 void BatchEvalKey(Scheme &scheme, bool party, const Key &key, Xs &&xs, Ys &&ys, Proof &...proof) {
   MultiRows<Scheme> parts(key);
   if constexpr (requires { key.bks[0].cs; }) {
-    scheme.BatchEval(party, key.sigma, key.m_rt, key.b_size_rt,
+    scheme.BatchEval(party, key.sigma, key.b_size_rt,
         parts.s0s, parts.cws, parts.cs, xs, ys, proof...);
   } else {
-    scheme.BatchEval(party, key.sigma, key.m_rt, key.b_size_rt, parts.s0s, parts.cws, xs, ys);
+    scheme.BatchEval(party, key.sigma, key.b_size_rt, parts.s0s, parts.cws, xs, ys);
   }
 }
 
 template <typename Scheme, typename Key, typename Xs, typename Ys, typename Proof>
 void BatchEvalMerkleKey(Scheme &scheme, bool party, const Key &key, Xs &&xs, Ys &&ys, Proof &proof) {
   MultiRows<Scheme> parts(key);
-  scheme.BatchEvalMerkle(party, key.sigma, key.m_rt, key.b_size_rt,
+  scheme.BatchEvalMerkle(party, key.sigma, key.b_size_rt,
       parts.s0s, parts.cws, parts.cs, xs, ys, proof);
 }
 

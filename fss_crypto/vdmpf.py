@@ -10,6 +10,7 @@ class Vdmpf(_Scheme):
     M is kBucketCount. All native block buffers are contiguous int32 tensors.
     cs has shape [M, 4, 4], and each proof has shape [4, 4].
     Runtime bucket sizes are Python integers, including 128-bit values.
+    Evaluation takes only the runtime bucket size; the runtime bucket count from gen is key metadata.
     Output group width and modulus come from group, independently of in_bits.
     """
 
@@ -74,12 +75,12 @@ class Vdmpf(_Scheme):
         return self._native.gen(self._cws(cws), cs, sigma, s0s, as_, b_bufs,
                                 t, max_evictions)
 
-    def batch_eval(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, xs, ys, pi):
+    def batch_eval(self, b, sigma, b_size_rt, s0s, cws, cs, xs, ys, pi):
         """Write output shares and a CPU chain proof, rejecting CUDA buffers."""
-        self._native.batch_eval(b, sigma, m_rt, b_size_rt, s0s,
+        self._native.batch_eval(b, sigma, b_size_rt, s0s,
                                 self._cws(cws), cs, xs, ys, pi)
 
-    def batch_eval_merkle(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs,
+    def batch_eval_merkle(self, b, sigma, b_size_rt, s0s, cws, cs,
                           xs, ys, pi):
         """Write shares and the canonical Core Merkle proof on CPU or CUDA.
 
@@ -87,10 +88,10 @@ class Vdmpf(_Scheme):
         Adjacent pairs fold with odd-node carry, then bucket roots fold in
         bucket order. Both parties must use the same ordered xs and protocol.
         """
-        self._native.batch_eval_merkle(b, sigma, m_rt, b_size_rt, s0s,
+        self._native.batch_eval_merkle(b, sigma, b_size_rt, s0s,
                                        self._cws(cws), cs, xs, ys, pi)
 
-    def eval_all(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, ys, pi):
+    def eval_all(self, b, sigma, b_size_rt, s0s, cws, cs, ys, pi):
         """Write the full CPU output domain and its Core chain proof.
 
         All buffers must use CPU storage. CUDA buffers are rejected.
@@ -98,10 +99,10 @@ class Vdmpf(_Scheme):
         ``batch_eval`` over all domain inputs in increasing order.
         The caller allocates ``ys`` and ``pi``.
         """
-        self._native.eval_all(b, sigma, m_rt, b_size_rt, s0s,
+        self._native.eval_all(b, sigma, b_size_rt, s0s,
                               self._cws(cws), cs, ys, pi)
 
-    def eval_all_merkle(self, b, sigma, m_rt, b_size_rt, s0s, cws, cs, ys, pi, *,
+    def eval_all_merkle(self, b, sigma, b_size_rt, s0s, cws, cs, ys, pi, *,
                         threads_per_block: int = 256):
         """Write the full output domain and its Core Merkle proof on CPU or CUDA.
 
@@ -110,7 +111,7 @@ class Vdmpf(_Scheme):
         ``batch_eval_merkle`` over all domain inputs in increasing order.
         The caller allocates ``ys`` and ``pi``.
         """
-        self._execution_native(ys, threads_per_block=threads_per_block).eval_all_merkle(b, sigma, m_rt, b_size_rt, s0s,
+        self._execution_native(ys, threads_per_block=threads_per_block).eval_all_merkle(b, sigma, b_size_rt, s0s,
                                      self._cws(cws), cs, ys, pi)
 
     def verify(self, pi0, pi1):

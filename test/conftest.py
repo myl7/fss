@@ -128,7 +128,7 @@ def generate_multi(scheme, points, payloads):
 def evaluate_multi(scheme, state, party, xs, *, merkle=False, device="cpu"):
     device = torch.device(device)
     output = torch.empty((xs.shape[0], 4), dtype=torch.int32, device=device)
-    args = (bool(party), state.sigma.to(device), state.m_rt, state.b_size_rt,
+    args = (bool(party), state.sigma.to(device), state.b_size_rt,
             state.seeds[int(party)].to(device), state.cws.to(device))
     if isinstance(scheme, fss_crypto.Vdmpf):
         proof = torch.empty((4, 4), dtype=torch.int32, device=device)
@@ -142,7 +142,7 @@ def evaluate_multi(scheme, state, party, xs, *, merkle=False, device="cpu"):
 def evaluate_multi_all(scheme, state, party, *, merkle=False, device="cpu", **kwargs):
     device = torch.device(device)
     output = torch.empty((1 << scheme.in_bits, 4), dtype=torch.int32, device=device)
-    args = (bool(party), state.sigma.to(device), state.m_rt, state.b_size_rt,
+    args = (bool(party), state.sigma.to(device), state.b_size_rt,
             state.seeds[int(party)].to(device), state.cws.to(device))
     if isinstance(scheme, fss_crypto.Vdmpf):
         proof = torch.empty((4, 4), dtype=torch.int32, device=device)

@@ -71,6 +71,8 @@ class SchemeAccess;
  * bucket count m_rt and bucket-domain size b_size_rt for the actual point count.
  * These runtime values, the PRP seed, and all per-bucket arrays must come
  * from the same successful Gen() call.
+ * Evaluation derives its bucket bound from b_size_rt, so it needs b_size_rt
+ * but not m_rt; m_rt stays key metadata.
  * The supported point-count interval is [kMinPoints, max_points]. Increasing
  * bucket_bits can lower kMinPoints at the cost of more correction word storage.
  *
@@ -204,25 +206,28 @@ public:
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
-   * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    */
-  void BatchEval(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void BatchEval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const In> xs, cuda::std::span<int4> ys);
 
   /**
    * Evaluate the DMPF on all input points.
    *
+   * Candidates are routed by the exclusive bucket bound derived from b_size_rt:
+   * ceil(3*kDomainSize/b_size_rt), clamped to kBucketCount. Gen() sizes
+   * b_size_rt = ceil(3*kDomainSize/m_rt), so the bound is at most m_rt and is
+   * exactly one past the largest bucket index a candidate can reach.
+   *
    * @pre The full output and each inner bucket output have element counts and byte sizes that fit size_t.
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
-   * @param m_rt Runtime bucket count returned by Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
@@ -230,7 +235,7 @@ public:
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    */
-  void EvalAll(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+  void EvalAll(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<int4> ys, int par_depth = 0)
     requires(in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8);
@@ -243,7 +248,7 @@ public:
    * Temporary bucket outputs are allocated and released in the supplied
    * stream. No backend upload, deep copy, or synchronization is performed.
    * Prg, Prp, and Group must support the device execution and concurrency used.
-   * This is one multipoint key with active_buckets inner DPF keys, not a batch
+   * This is one multipoint key with ceil(3*kDomainSize/bucket_size) inner DPF keys, not a batch
    * of independent multipoint keys.
    *
    * @tparam frontier_depth Inner DPF frontier depth, capped at bucket_bits. Defaults to 16.
@@ -253,10 +258,11 @@ public:
    * signed-int block indices, exactly as Dpf::EvalAllGpuBatch().
    * @param b Party index, false for party 0 and true for party 1.
    * @param sigma Shared PRP seed from successful Gen().
-   * @param active_buckets Runtime bucket count from that Gen(), in [1,kBucketCount].
-   * @param bucket_size Runtime bucket size from that Gen(), equal to ceil(3*kDomainSize/active_buckets).
-   * @param s0s Device storage with this party's seed for each active bucket.
-   * @param cws Device storage of at least active_buckets*(bucket_bits+1) correction words, in bucket-major order.
+   * @param bucket_size Runtime bucket size from that Gen(). Every located
+   * bucket then stays below kBucketCount exactly when bucket_size is at least
+   * ceil(3*kDomainSize/kBucketCount).
+   * @param s0s Device storage with this party's seed for each bucket below ceil(3*kDomainSize/bucket_size).
+   * @param cws Device storage of at least ceil(3*kDomainSize/bucket_size)*(bucket_bits+1) correction words, in bucket-major order.
    * @param ys Device output storage of at least 2^in_bits int4 blocks, in input order.
    * @param stream Stream on the device owning the referenced resources.
    * @pre this is accessible on the host. Buffers and backend resources remain valid until work completes.
@@ -266,7 +272,7 @@ public:
    * cudaErrorInvalidConfiguration. Execution completion is asynchronous.
    */
   template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t EvalAllGpu(bool b, int4 sigma, int active_buckets,
+  __host__ cudaError_t EvalAllGpu(bool b, int4 sigma,
       __uint128_t bucket_size, cuda::std::span<const int4> s0s,
       cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
       cudaStream_t stream = 0) const
@@ -296,7 +302,7 @@ struct DmpfMergeGpuKernelDescriptor {
 
 // Each domain input gathers the three PRP-selected inner DPF outputs.
 template <int in_bits, int bucket_bits, typename Descriptor>
-__global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int active_buckets,
+__global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int bucket_count,
     __uint128_t bucket_size, const int4 *bucket_ys, typename Descriptor::PrpBackend prp) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
@@ -311,7 +317,7 @@ __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int active_buckets,
   auto acc = Group::From(zero);
   for (int k = 0; k < 3; ++k) {
     auto [bucket, j] = prp_hash.Locate(sigma, x, k, kInputDomain, bucket_size);
-    if (bucket >= active_buckets) continue;
+    if (bucket >= bucket_count) continue;
     acc = acc + Group::From(bucket_ys[static_cast<size_t>(bucket) * (size_t{1} << bucket_bits) + static_cast<size_t>(j)]);
   }
   ys[input_index] = acc.Into();
@@ -405,7 +411,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && Permutable<Prp>)
 inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::BatchEval(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const In> xs, cuda::std::span<int4> ys) {
   assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
@@ -474,7 +480,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
           cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
       Groupable<Group> && Prgable<Prg, 2> && Permutable<Prp>)
 inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::EvalAll(
-    bool b, int4 sigma, int m_rt, __uint128_t b_size_rt,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<int4> ys, int par_depth)
   requires(in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
@@ -485,8 +491,15 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
   constexpr size_t bucket_size = detail::FullDomainSize<int4, bucket_bits>();
   assert(ys.size() == kDomainSize);
 
-  int bucket_count = m_rt;
   __uint128_t b_rt = b_size_rt;
+  // Exclusive upper bound on the bucket index of any candidate: Locate() maps
+  // every candidate into [0, derived_bound), and Gen() sizes b_size_rt so that
+  // derived_bound never exceeds the realised bucket count m_rt. The clamp
+  // against kBucketCount only takes effect for an inconsistent b_size_rt and
+  // keeps the routing size and the inputs array inside the allocation for every
+  // non-negative bucket index.
+  const __uint128_t derived_bound = cuckoo_hash::detail::BucketBound(kDomainSize, kCuckooChoices, b_rt);
+  const int bucket_count = static_cast<int>(derived_bound < kBucketCount ? derived_bound : kBucketCount);
 
   // build per-bucket input lists.
   // inputs[i] = vector of (within_bucket_index, original_input_index).
@@ -553,7 +566,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
 
 template <int frontier_depth, int threads_per_block>
 __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::EvalAllGpu(
-    bool b, int4 sigma, int active_buckets, __uint128_t bucket_size,
+    bool b, int4 sigma, __uint128_t bucket_size,
     cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<int4> ys, cudaStream_t stream) const
   requires(in_bits <= 38 && in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
@@ -568,12 +581,13 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   constexpr int kMergeThreads = 256;
   constexpr size_t kMergeBlocks = (kOutputs + kMergeThreads - 1) / kMergeThreads;
 
-  if (active_buckets <= 0 || active_buckets > kBucketCount) return cudaErrorInvalidValue;
-  const __uint128_t expected_bucket_size =
-      (kCuckooChoices * kDomainSize + active_buckets - 1) / active_buckets;
-  if (bucket_size != expected_bucket_size || bucket_size > (__uint128_t{1} << bucket_bits))
-    return cudaErrorInvalidValue;
-  const size_t bucket_count = static_cast<size_t>(active_buckets);
+  if (bucket_size == 0 || bucket_size > (__uint128_t{1} << bucket_bits)) return cudaErrorInvalidValue;
+  // Exclusive bound on the bucket index of any candidate. Requiring it to fit
+  // the allocation is the condition on bucket_size alone that the removed
+  // active-bucket count check guaranteed.
+  const __uint128_t derived_bound = cuckoo_hash::detail::BucketBound(kDomainSize, kCuckooChoices, bucket_size);
+  if (derived_bound > kBucketCount) return cudaErrorInvalidValue;
+  const size_t bucket_count = static_cast<size_t>(derived_bound);
   if (kOutputs > kMaxAddressableSize / sizeof(int4) ||
       bucket_count > kMaxAddressableSize / sizeof(Cw) / kCwPerBucket ||
       bucket_count > kMaxAddressableSize / sizeof(int4) / kBucketOutputs ||
@@ -593,7 +607,7 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
       cuda::std::span<int4>(bucket_ys, bucket_count * kBucketOutputs), stream);
   if (status != cudaSuccess) return status;
   gpu::detail::DmpfMergeKernel<in_bits, bucket_bits, Descriptor>
-      <<<kMergeBlocks, kMergeThreads, 0, stream>>>(ys.data(), sigma, active_buckets,
+      <<<kMergeBlocks, kMergeThreads, 0, stream>>>(ys.data(), sigma, static_cast<int>(bucket_count),
           bucket_size, bucket_ys, prp_);
   return gpu::detail::ReleaseScratch(cudaGetLastError(), {&bucket_storage});
 #else

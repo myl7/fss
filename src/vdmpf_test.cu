@@ -338,12 +338,12 @@ protected:
       split_ys[party].assign(xs.size(), int4{0, 0, 0, 0});
       proofs[party].resize(xs.size());
       for (size_t i = 0; i < xs.size(); ++i) {
-        proofs[party][i] = scheme.Eval(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+        proofs[party][i] = scheme.Eval(b, key.sigma, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
             xs[i], split_ys[party][i]);
       }
-      scheme.Prove(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+      scheme.Prove(key.sigma, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
           cuda::std::span<const EvalProof>(proofs[party]), split_chain[party]);
-      scheme.ProveMerkle(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+      scheme.ProveMerkle(key.sigma, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
           cuda::std::span<const EvalProof>(proofs[party]), split_merkle[party]);
       for (size_t i = 0; i < xs.size(); ++i) {
         EXPECT_EQ(memcmp(&split_ys[party][i], &fused_chain_ys[party][i], sizeof(int4)), 0) << "query=" << i;
@@ -406,18 +406,18 @@ protected:
       fss_test::MultiRows<VdmpfType> rows(key);
       std::vector<int4> all_ys(xs.size()), all_merkle_ys(xs.size()), split_ys(xs.size());
       cuda::std::array<int4, 4> all_pi, all_merkle_pi, split_chain, split_merkle;
-      scheme.EvalAll(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+      scheme.EvalAll(b, key.sigma, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
           cuda::std::span<int4>(all_ys), all_pi);
-      scheme.EvalAllMerkle(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+      scheme.EvalAllMerkle(b, key.sigma, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
           cuda::std::span<int4>(all_merkle_ys), all_merkle_pi);
       std::vector<typename VdmpfType::EvalProof> proofs(xs.size());
       for (size_t i = 0; i < xs.size(); ++i) {
-        proofs[i] = scheme.Eval(b, key.sigma, key.m_rt, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
+        proofs[i] = scheme.Eval(b, key.sigma, key.b_size_rt, rows.s0s, rows.cws, rows.cs,
             xs[i], split_ys[i]);
       }
-      scheme.Prove(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+      scheme.Prove(key.sigma, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
           cuda::std::span<const typename VdmpfType::EvalProof>(proofs), split_chain);
-      scheme.ProveMerkle(key.sigma, key.m_rt, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
+      scheme.ProveMerkle(key.sigma, key.b_size_rt, rows.cs, cuda::std::span<const uint16_t>(xs),
           cuda::std::span<const typename VdmpfType::EvalProof>(proofs), split_merkle);
       for (size_t i = 0; i < xs.size(); ++i) {
         EXPECT_EQ(memcmp(&split_ys[i], &all_ys[i], sizeof(int4)), 0) << "query=" << i;
@@ -476,20 +476,20 @@ protected:
     std::vector<typename VdmpfType::EvalProof> proofs(kT);
     for (int i = 0; i < kT; ++i) {
       int4 y;
-      proofs[i] = scheme.Eval(false, k0.sigma, k0.m_rt, k0.b_size_rt, rows.s0s, rows.cws, rows.cs, xs[i], y);
+      proofs[i] = scheme.Eval(false, k0.sigma, k0.b_size_rt, rows.s0s, rows.cws, rows.cs, xs[i], y);
     }
     cuda::std::array<int4, 4> pi;
     cuda::std::span<const uint16_t> empty_xs;
     cuda::std::span<const typename VdmpfType::EvalProof> empty_proofs;
-    EXPECT_DEATH((void)scheme.Prove(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs, empty_xs, empty_proofs, pi),
+    EXPECT_DEATH((void)scheme.Prove(k0.sigma, k0.b_size_rt, rows.cs, empty_xs, empty_proofs, pi),
         "Assertion.*failed");
     EXPECT_DEATH(
-        (void)scheme.ProveMerkle(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs, empty_xs, empty_proofs, pi),
+        (void)scheme.ProveMerkle(k0.sigma, k0.b_size_rt, rows.cs, empty_xs, empty_proofs, pi),
         "Assertion.*failed");
-    EXPECT_DEATH((void)scheme.Prove(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs,
+    EXPECT_DEATH((void)scheme.Prove(k0.sigma, k0.b_size_rt, rows.cs,
                      cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
         "Assertion.*failed");
-    EXPECT_DEATH((void)scheme.ProveMerkle(k0.sigma, k0.m_rt, k0.b_size_rt, rows.cs,
+    EXPECT_DEATH((void)scheme.ProveMerkle(k0.sigma, k0.b_size_rt, rows.cs,
                      cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
         "Assertion.*failed");
   }
@@ -602,8 +602,8 @@ TEST(VdmpfSplitProof, CarriesNoBucketIds) {
   static_assert(sizeof(typename Scheme::EvalProof) == 3 * sizeof(cuda::std::array<int4, 4>));
   static_assert(requires(Scheme &scheme, cuda::std::span<const int4> cs, cuda::std::span<const uint16_t> xs,
                      cuda::std::span<const typename Scheme::EvalProof> proofs, cuda::std::span<int4, 4> pi) {
-    scheme.Prove(int4{0, 0, 0, 0}, 1, 1, cs, xs, proofs, pi);
-    scheme.ProveMerkle(int4{0, 0, 0, 0}, 1, 1, cs, xs, proofs, pi);
+    scheme.Prove(int4{0, 0, 0, 0}, 1, cs, xs, proofs, pi);
+    scheme.ProveMerkle(int4{0, 0, 0, 0}, 1, cs, xs, proofs, pi);
   });
 }
 
@@ -629,12 +629,12 @@ constexpr size_t kCsCount = size_t{Scheme::kBucketCount} * 4;
 const int4 kIv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
     {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)}};
 
-__global__ void SplitEvalKernel(bool b, int4 sigma, int m_rt, __uint128_t b_size_rt, const int4 *s0s,
+__global__ void SplitEvalKernel(bool b, int4 sigma, __uint128_t b_size_rt, const int4 *s0s,
     const typename Scheme::Cw *cws, const int4 *cs, uint16_t x, int4 iv0, int4 iv1, int4 *y, EvalProof *proof) {
   const int4 iv[2] = {iv0, iv1};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{Prg(kNonce0, kNonce1), hash, hash, Prp{}};
-  *proof = scheme.Eval(b, sigma, m_rt, b_size_rt,
+  *proof = scheme.Eval(b, sigma, b_size_rt,
       cuda::std::span<const int4, Scheme::kBucketCount>(s0s, Scheme::kBucketCount),
       cuda::std::span<const typename Scheme::Cw>(cws, kCwCount), cuda::std::span<const int4>(cs, kCsCount), x, *y);
 }
@@ -673,7 +673,7 @@ TEST(VdmpfSplitDevice, EvalMatchesHostOnDevice) {
     for (int j = 0; j < 4; ++j) host_cs[static_cast<size_t>(i) * 4 + j] = k0.bks[i].cs[j];
   }
   int4 host_y;
-  EvalProof host_proof = scheme.Eval(false, sigma, k0.m_rt, k0.b_size_rt,
+  EvalProof host_proof = scheme.Eval(false, sigma, k0.b_size_rt,
       cuda::std::span<const int4, Scheme::kBucketCount>(host_s0s, Scheme::kBucketCount),
       cuda::std::span<const typename Scheme::Cw>(host_cws), cuda::std::span<const int4>(host_cs), alphas[0], host_y);
 
@@ -690,7 +690,7 @@ TEST(VdmpfSplitDevice, EvalMatchesHostOnDevice) {
   ASSERT_EQ(cudaMemcpy(device_cws, host_cws.data(), sizeof(typename Scheme::Cw) * kCwCount, cudaMemcpyHostToDevice),
       cudaSuccess);
   ASSERT_EQ(cudaMemcpy(device_cs, host_cs.data(), sizeof(int4) * kCsCount, cudaMemcpyHostToDevice), cudaSuccess);
-  SplitEvalKernel<<<1, 1>>>(false, sigma, k0.m_rt, k0.b_size_rt, device_s0s, device_cws, device_cs, alphas[0],
+  SplitEvalKernel<<<1, 1>>>(false, sigma, k0.b_size_rt, device_s0s, device_cws, device_cs, alphas[0],
       kIv[0], kIv[1], device_y, device_proof);
   ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
   int4 device_y_value;

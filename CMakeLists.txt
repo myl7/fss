@@ -44,6 +44,10 @@ endif()
 if(BUILD_TESTING)
     find_package(OpenSSL REQUIRED)
 
+    add_executable(cuckoo_hash_test src/cuckoo_hash_test.cu)
+    target_link_libraries(cuckoo_hash_test GTest::gtest_main fss OpenSSL::Crypto)
+    gtest_discover_tests(cuckoo_hash_test)
+
     add_executable(group_test src/group_test.cu)
     target_link_libraries(group_test GTest::gtest_main fss)
     gtest_discover_tests(group_test)

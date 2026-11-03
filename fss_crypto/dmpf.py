@@ -9,6 +9,7 @@ class Dmpf(_Scheme):
     have party-first shape [2, M, 4], party seeds [M, 4], and sigma [4].
     M is kBucketCount. All native block buffers are contiguous int32 tensors.
     Runtime bucket sizes are Python integers, including 128-bit values.
+    Evaluation takes only the runtime bucket size; the runtime bucket count from gen is key metadata.
     Output group width and modulus come from group, independently of in_bits.
     """
 
@@ -69,12 +70,12 @@ class Dmpf(_Scheme):
         return self._native.gen(self._cws(cws), sigma, s0s, as_, b_bufs,
                                 t, max_evictions)
 
-    def batch_eval(self, b, sigma, m_rt, b_size_rt, s0s, cws, xs, ys):
+    def batch_eval(self, b, sigma, b_size_rt, s0s, cws, xs, ys):
         """Write caller-owned output shares."""
-        self._native.batch_eval(b, sigma, m_rt, b_size_rt, s0s,
+        self._native.batch_eval(b, sigma, b_size_rt, s0s,
                                 self._cws(cws), xs, ys)
 
-    def eval_all(self, b, sigma, m_rt, b_size_rt, s0s, cws, ys, *, par_depth: int = 0,
+    def eval_all(self, b, sigma, b_size_rt, s0s, cws, ys, *, par_depth: int = 0,
                  frontier_depth: int = 16, threads_per_block: int = 256):
         """Write all domain shares to caller-owned storage.
 
@@ -83,7 +84,7 @@ class Dmpf(_Scheme):
         CUDA calls ignore par_depth and use frontier_depth/threads_per_block.
         CPU calls ignore frontier_depth/threads_per_block.
         """
-        self._execution_native(ys, frontier_depth, threads_per_block).eval_all(b, sigma, m_rt, b_size_rt, s0s,
+        self._execution_native(ys, frontier_depth, threads_per_block).eval_all(b, sigma, b_size_rt, s0s,
                               self._cws(cws), ys, _parallel_depth(par_depth, ys))
 
 

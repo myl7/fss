@@ -192,7 +192,7 @@ payloads = random_blocks((30, 4))
 payloads[:, 3] &= -2
 material = generate_multi(scheme, points, payloads)
 for value in (-1, 256):
-    args = (False, material.sigma, material.m_rt, material.b_size_rt,
+    args = (False, material.sigma, material.b_size_rt,
             material.seeds[0], material.cws)
     if {verifiable!r}:
         args += (material.cs,)
@@ -240,7 +240,7 @@ def test_tensor_device_guard_restores_caller_device():
     assert all(torch.equal(left, right.cpu()) for left, right in zip(cpu, gpu))
     with pytest.raises(RuntimeError, match="same device"):
         scheme._native.batch_eval_merkle(
-            False, material.sigma.to("cuda:1"), material.m_rt, material.b_size_rt,
+            False, material.sigma.to("cuda:1"), material.b_size_rt,
             material.seeds[0].to("cuda:1"), material.cws.to("cuda:1"),
             material.cs.to("cuda:1"), points.to("cuda:0"),
             torch.empty((30, 4), dtype=torch.int32, device="cuda:1"),

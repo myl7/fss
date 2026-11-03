@@ -224,6 +224,105 @@ TEST_F(DmpfUint128ChaChaTest, EvalAll) {
   TestEvalAll();
 }
 
+// The fixtures above generate at t = max_points, so Gen() returns
+// m_rt = kBucketCount and the bound derived from b_size_rt equals m_rt.
+// This case generates at t < max_points, where the derived bound is strictly
+// tighter than m_rt:
+//   kBucketCount = ChBucket(4096, 80) = 7363,
+//   m_rt         = ChBucket(3000, 80) = 5382,
+//   b_size_rt    = ceil(3*2^12/5382)  = 3,
+//   bound        = ceil(3*2^12/3)     = 4096 < m_rt.
+// The full domain reaches bucket bound - 1 = 4095, one below the last bucket
+// m_rt - 1 = 5381, so the tighter bound skips only buckets no candidate can use.
+template <typename Group>
+class DmpfTightBoundTest : public ::testing::Test {
+protected:
+  static constexpr int kInBits = 12;
+  static constexpr int kMaxPoints = 4096;
+  static constexpr int kBucketBits = 2;
+  static constexpr int kT = 3000;
+
+  using Prg = fss::prg::ChaCha<2>;
+  using Prp = fss::prp::Aes128Feistel;
+  using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t>;
+
+  static constexpr int m = DmpfType::kBucketCount;
+
+  uint16_t alphas[kT];
+  int4 betas[kT];
+  Prg prg{kNonce0, kNonce1};
+  Prp prp_;
+
+  void TestTighterBound() {
+    for (int i = 0; i < kT; ++i) {
+      alphas[i] = static_cast<uint16_t>(i);
+      betas[i] = {(i + 1) * 11, 0, 0, 0};
+    }
+
+    DmpfType dmpf{prg, prp_};
+    std::mt19937 gen(20261103);
+    std::uniform_int_distribution<int> dis;
+    auto RandomSeed = [&dis, &gen] { return int4{dis(gen), dis(gen), dis(gen), dis(gen) & ~1}; };
+
+    int4 sigma = RandomSeed();
+    cuda::std::array<int4, size_t{m} * 2> s0s;
+    for (int i = 0; i < m; ++i) {
+      s0s[i] = RandomSeed();
+      s0s[size_t{m} + i] = RandomSeed();
+    }
+    typename DmpfType::Key k0, k1;
+    ASSERT_EQ(fss_test::GenMulti(dmpf, k0, k1, sigma, cuda::std::span<const int4>(s0s),
+                  cuda::std::span<const uint16_t>(alphas, kT), cuda::std::span<const int4>(betas, kT), kT),
+        0);
+
+    // The key metadata reproduces the arithmetic above.
+    EXPECT_EQ(k0.m_rt, fss::cuckoo_hash::ChBucket(kT, 80));
+    EXPECT_LT(k0.m_rt, m);
+    EXPECT_EQ(static_cast<unsigned long long>(k0.b_size_rt), 3ULL);
+    const __uint128_t bound = (DmpfType::kDomainSize * DmpfType::kCuckooChoices + k0.b_size_rt - 1) / k0.b_size_rt;
+    EXPECT_EQ(static_cast<unsigned long long>(bound), 4096ULL);
+    EXPECT_LT(bound, static_cast<__uint128_t>(k0.m_rt));
+
+    // Every candidate of the whole domain stays below the bound, and the
+    // domain reaches bucket bound - 1, so the bound is tight.
+    fss::cuckoo_hash::detail::PrpHash<Prp, uint16_t> locate{prp_};
+    int max_bucket = -1;
+    for (int x = 0; x < (1 << kInBits); ++x) {
+      for (int k = 0; k < DmpfType::kCuckooChoices; ++k) {
+        auto location = locate.Locate(sigma, static_cast<uint16_t>(x), k, DmpfType::kDomainSize, k0.b_size_rt);
+        EXPECT_LT(location.bucket, static_cast<int>(bound));
+        if (location.bucket > max_bucket) max_bucket = location.bucket;
+      }
+    }
+    EXPECT_EQ(max_bucket, static_cast<int>(bound) - 1);
+
+    // Both parties' full-domain shares reconstruct the multi-point function.
+    constexpr size_t domain_size = 1ULL << kInBits;
+    std::vector<int4> expected_results(domain_size, int4{0, 0, 0, 0});
+    for (int i = 0; i < kT; ++i) expected_results[alphas[i]] = betas[i];
+    std::vector<int4> ys0(domain_size), ys1(domain_size);
+    fss_test::EvalAllKey(dmpf, false, k0, ys0);
+    fss_test::EvalAllKey(dmpf, true, k1, ys1);
+    for (size_t i = 0; i < domain_size; ++i) {
+      auto result = Group::From(ys0[i]) + Group::From(ys1[i]);
+      int4 r = result.Into();
+      int4 e = expected_results[i];
+      e.w &= ~1;
+      EXPECT_EQ(memcmp(&r, &e, sizeof(int4)), 0) << "Failed at i=" << i;
+    }
+  }
+};
+
+using DmpfBytesTightBoundTest = DmpfTightBoundTest<BytesGroup>;
+using DmpfUint128TightBoundTest = DmpfTightBoundTest<Uint127Group>;
+
+TEST_F(DmpfBytesTightBoundTest, EvalAllTighterBound) {
+  TestTighterBound();
+}
+TEST_F(DmpfUint128TightBoundTest, EvalAllTighterBound) {
+  TestTighterBound();
+}
+
 TEST(CuckooHashTest, Compact) {
   fss::prp::Aes128Feistel prp;
   constexpr int t = 30;

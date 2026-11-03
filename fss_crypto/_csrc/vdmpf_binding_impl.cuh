@@ -4,6 +4,7 @@
 #include <cuda/std/array>
 #include <cuda/std/span>
 #include <utility>
+#include <fss/cuckoo_hash.cuh>
 
 namespace fss::python {
 namespace {
@@ -11,9 +12,13 @@ constexpr int kRows = SchemeType::kBucketCount;
 constexpr int kWords = kBucketBits + 1;
 using Proof = cuda::std::array<int4, 4>;
 
-void CheckRuntime(int rows, __uint128_t size) {
-  TORCH_CHECK(rows > 0 && rows <= kRows, "m_rt is outside the allocated bucket count");
+// The evaluation entries take no runtime bucket count, so b_size_rt alone
+// must keep every located bucket inside the allocation: the largest located
+// bucket is ceil(3*2^in_bits/b_size_rt)-1.
+void CheckRuntime(__uint128_t size) {
   TORCH_CHECK(size > 0 && size <= (__uint128_t(1) << kBucketBits), "b_size_rt is outside the bucket domain");
+  TORCH_CHECK(size >= fss::cuckoo_hash::detail::BucketBound(__uint128_t{1} << kInBits, SchemeType::kCuckooChoices, kRows),
+      "b_size_rt is too small for the allocated bucket count");
 }
 
 py::tuple Gen(NativeState &state, Tensor cws, Tensor cs, Tensor sigma, Tensor seeds,
@@ -51,12 +56,12 @@ py::tuple Gen(NativeState &state, Tensor cws, Tensor cs, Tensor sigma, Tensor se
 }
 
 template <typename S=SchemeType>
-void Batch(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
+void Batch(NativeState &state,bool b,Tensor sigma,py::int_ size,
     Tensor seeds,Tensor cws,Tensor cs, Tensor xs,Tensor ys,Tensor pi,bool merkle) {
   CheckSameDevice({sigma,seeds,cws,cs, xs,ys,pi});
   CheckBlocks(sigma,1); CheckBlocks(seeds,kRows);
   int64_t count=InputCount<InType>(xs); CheckBlocks(ys,count);
-  auto domain=ReadU128(size); CheckRuntime(m_rt,domain);
+  auto domain=ReadU128(size); CheckRuntime(domain);
   auto *words=ConstCwPtr(cws,kRows*kWords);
   CheckBlocks(cs,kRows*4);
   CheckBlocks(pi,4);
@@ -65,16 +70,16 @@ void Batch(NativeState &state,bool b,Tensor sigma,int m_rt,py::int_ size,
     const auto seed_view=cuda::std::span<const int4,kRows>(ConstBlocks(seeds),kRows);
     const auto cws=cuda::std::span<const Cw>(words,size_t(kRows)*kWords);
     const auto checks=cuda::std::span<const int4>(ConstBlocks(cs),size_t(kRows)*4);
-    if (merkle) state.Cpu().BatchEvalMerkle(b,*ConstBlocks(sigma),m_rt,domain,
+    if (merkle) state.Cpu().BatchEvalMerkle(b,*ConstBlocks(sigma),domain,
         seed_view,cws,checks,
         {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)},cuda::std::span<int4,4>(Blocks(pi),4));
-    else state.Cpu().BatchEval(b,*ConstBlocks(sigma),m_rt,domain,
+    else state.Cpu().BatchEval(b,*ConstBlocks(sigma),domain,
         seed_view,cws,checks,
         {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)},cuda::std::span<int4,4>(Blocks(pi),4));
   } else if constexpr (kGpuSupported) {
     TORCH_CHECK(merkle,"chain batch evaluation is a CPU operation; use batch_eval_merkle for CUDA");
     c10::cuda::CUDAGuard guard(ys.device()); auto stream=CurrentStream();
-    fss::gpu::VerifiableMultiComponents<S> key{FetchBlock(sigma),m_rt,domain,
+    fss::gpu::VerifiableMultiComponents<S> key{FetchBlock(sigma),domain,
         {ConstBlocks(seeds),kRows},{words,kRows*kWords},{ConstBlocks(cs),kRows*4}};
     CheckCuda(fss::gpu::BatchEvalMerkleGpu<S>(state.template Device<kGpuSupported, S>(stream),b,key,
         {ConstInPtr(xs),size_t(count)},{Blocks(ys),size_t(count)},
@@ -97,7 +102,7 @@ bool Verify(NativeState &,Tensor p0,Tensor p1) {
 }
 
 template <typename S = SchemeType>
-void Full(NativeState &state, bool b, Tensor sigma, int m_rt, py::int_ size,
+void Full(NativeState &state, bool b, Tensor sigma, py::int_ size,
     Tensor seeds, Tensor cws, Tensor cs, Tensor ys, Tensor pi, bool merkle) {
   CheckSameDevice({sigma, seeds, cws, cs, ys, pi});
   if constexpr (fss::detail::FitsFullDomain<int4, kInBits>()) {
@@ -108,7 +113,7 @@ void Full(NativeState &state, bool b, Tensor sigma, int m_rt, py::int_ size,
     CheckBlocks(ys, count);
     CheckBlocks(pi, 4);
     const __uint128_t domain = ReadU128(size);
-    CheckRuntime(m_rt, domain);
+    CheckRuntime(domain);
     if (ys.is_cuda()) {
       TORCH_CHECK(merkle, "chain full evaluation is a CPU operation; use eval_all_merkle for CUDA");
       if constexpr (kGpuSupported) {
@@ -117,7 +122,7 @@ void Full(NativeState &state, bool b, Tensor sigma, int m_rt, py::int_ size,
         auto stream = CurrentStream();
         auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
         CheckCuda(core.template EvalAllMerkleGpu<kThreadsPerBlock>(b,
-            FetchBlock(sigma), m_rt, domain, {ConstBlocks(seeds), kRows},
+            FetchBlock(sigma), domain, {ConstBlocks(seeds), kRows},
             {words, kRows * kWords}, {ConstBlocks(cs), kRows * 4},
             {Blocks(ys), size_t(count)}, cuda::std::span<int4, 4>(Blocks(pi), 4), stream));
         state.RecordUse(stream);
@@ -144,10 +149,10 @@ void Full(NativeState &state, bool b, Tensor sigma, int m_rt, py::int_ size,
     const auto proof = cuda::std::span<int4, 4>(Blocks(pi), 4);
     const int4 permutation_seed = *ConstBlocks(sigma);
     if (merkle) {
-      static_cast<S &>(state.Cpu()).EvalAllMerkle(b, permutation_seed, m_rt, domain,
+      static_cast<S &>(state.Cpu()).EvalAllMerkle(b, permutation_seed, domain,
           seed_view, cw_view, check_view, output, proof);
     } else {
-      static_cast<S &>(state.Cpu()).EvalAll(b, permutation_seed, m_rt, domain,
+      static_cast<S &>(state.Cpu()).EvalAll(b, permutation_seed, domain,
           seed_view, cw_view, check_view, output, proof);
     }
   } else {
@@ -161,15 +166,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
   using namespace fss::python;
   auto cls=BindNative(m);
   cls.def("gen",[](NativeState &s,Tensor c,Tensor cs, Tensor sigma,Tensor seeds,Tensor as,Tensor bs,int t,int e) { return Gen(s,c,cs, sigma,seeds,as,bs,t,e); });
-  cls.def("batch_eval",[](NativeState &s,bool b,Tensor sigma,int m,py::int_ size,Tensor seeds,Tensor c,Tensor cs,Tensor xs,Tensor ys,Tensor pi) { Batch(s,b,sigma,m,size,seeds,c,cs,xs,ys,pi,false); });
-  cls.def("batch_eval_merkle",[](NativeState &s,bool b,Tensor sigma,int m,py::int_ size,Tensor seeds,Tensor c,Tensor cs,Tensor xs,Tensor ys,Tensor pi) { Batch(s,b,sigma,m,size,seeds,c,cs,xs,ys,pi,true); });
-  cls.def("eval_all", [](NativeState &s, bool b, Tensor sigma, int m, py::int_ size,
+  cls.def("batch_eval",[](NativeState &s,bool b,Tensor sigma,py::int_ size,Tensor seeds,Tensor c,Tensor cs,Tensor xs,Tensor ys,Tensor pi) { Batch(s,b,sigma,size,seeds,c,cs,xs,ys,pi,false); });
+  cls.def("batch_eval_merkle",[](NativeState &s,bool b,Tensor sigma,py::int_ size,Tensor seeds,Tensor c,Tensor cs,Tensor xs,Tensor ys,Tensor pi) { Batch(s,b,sigma,size,seeds,c,cs,xs,ys,pi,true); });
+  cls.def("eval_all", [](NativeState &s, bool b, Tensor sigma, py::int_ size,
       Tensor seeds, Tensor c, Tensor cs, Tensor ys, Tensor pi) {
-    Full(s, b, sigma, m, size, seeds, c, cs, ys, pi, false);
+    Full(s, b, sigma, size, seeds, c, cs, ys, pi, false);
   });
-  cls.def("eval_all_merkle", [](NativeState &s, bool b, Tensor sigma, int m, py::int_ size,
+  cls.def("eval_all_merkle", [](NativeState &s, bool b, Tensor sigma, py::int_ size,
       Tensor seeds, Tensor c, Tensor cs, Tensor ys, Tensor pi) {
-    Full(s, b, sigma, m, size, seeds, c, cs, ys, pi, true);
+    Full(s, b, sigma, size, seeds, c, cs, ys, pi, true);
   });
   cls.def("verify",&Verify);
 }

@@ -46,10 +46,10 @@ def run(verifiable, cuda):
     sigma = random_blocks(1)[0]
     for _ in range(128):
         if verifiable:
-            status, active_buckets, bucket_size = scheme.gen(
+            status, m_rt, bucket_size = scheme.gen(
                 cws, cs, sigma, seed_pairs, points, payloads, len(points))
         else:
-            status, active_buckets, bucket_size = scheme.gen(
+            status, m_rt, bucket_size = scheme.gen(
                 cws, sigma, seed_pairs, points, payloads, len(points))
         if status == 0:
             break
@@ -63,6 +63,8 @@ def run(verifiable, cuda):
     else:
         raise RuntimeError("generation exhausted the sample retry budget")
 
+    # m_rt is key metadata: repacking and other bucket-indexed paths use it.
+    # Evaluation takes only bucket_size and derives its bucket bound from it.
     # Party-first storage makes each party's seed matrix a contiguous view.
     party_seeds = [seed_pairs[party] for party in range(2)]
     queries = torch.tensor([0, 42, 255], dtype=torch.uint8)
@@ -86,13 +88,13 @@ def run(verifiable, cuda):
                       for _ in range(2)]
             for party in (False, True):
                 scheme.batch_eval_merkle(
-                    party, device_sigma, active_buckets, bucket_size,
+                    party, device_sigma, bucket_size,
                     device_seeds[int(party)], device_cws, device_cs,
                     device_queries, shares[int(party)], proofs[int(party)])
             assert scheme.verify(*proofs)
             for party in (False, True):
                 scheme.eval_all_merkle(
-                    party, device_sigma, active_buckets, bucket_size,
+                    party, device_sigma, bucket_size,
                     device_seeds[int(party)], device_cws, device_cs,
                     full_shares[int(party)], proofs[int(party)])
             assert scheme.verify(*proofs)
@@ -100,22 +102,22 @@ def run(verifiable, cuda):
                 # Chain proofs are CPU-only and must not be mixed with Merkle proofs.
                 for party in (False, True):
                     scheme.batch_eval(
-                        party, device_sigma, active_buckets, bucket_size,
+                        party, device_sigma, bucket_size,
                         device_seeds[int(party)], device_cws, device_cs,
                         device_queries, shares[int(party)], proofs[int(party)])
                 assert scheme.verify(*proofs)
                 for party in (False, True):
                     scheme.eval_all(
-                        party, device_sigma, active_buckets, bucket_size,
+                        party, device_sigma, bucket_size,
                         device_seeds[int(party)], device_cws, device_cs,
                         full_shares[int(party)], proofs[int(party)])
                 assert scheme.verify(*proofs)
         else:
             for party in (False, True):
-                scheme.batch_eval(party, device_sigma, active_buckets, bucket_size,
+                scheme.batch_eval(party, device_sigma, bucket_size,
                                   device_seeds[int(party)], device_cws, device_queries,
                                   shares[int(party)])
-                scheme.eval_all(party, device_sigma, active_buckets, bucket_size,
+                scheme.eval_all(party, device_sigma, bucket_size,
                                 device_seeds[int(party)], device_cws,
                                 full_shares[int(party)])
         assert torch.equal((shares[0] ^ shares[1]).cpu(), query_expected)

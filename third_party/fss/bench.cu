@@ -886,8 +886,8 @@ template <typename Scheme>
 static void CheckCpuDmpfFull(Scheme &scheme, const MultiPointKey<Scheme> &k0, const MultiPointKey<Scheme> &k1) {
   constexpr size_t n = size_t{1} << kInBits;
   std::vector<int4> first(n), second(n);
-  scheme.EvalAll(false, k0.sigma, k0.m_rt, k0.b_size_rt, k0.seeds, k0.cws, cuda::std::span<int4>(first));
-  scheme.EvalAll(true, k1.sigma, k1.m_rt, k1.b_size_rt, k1.seeds, k1.cws, cuda::std::span<int4>(second));
+  scheme.EvalAll(false, k0.sigma, k0.b_size_rt, k0.seeds, k0.cws, cuda::std::span<int4>(first));
+  scheme.EvalAll(true, k1.sigma, k1.b_size_rt, k1.seeds, k1.cws, cuda::std::span<int4>(second));
   for (size_t x = 0; x < n; ++x) {
     int4 actual = (BytesGroup::From(first[x]) + BytesGroup::From(second[x])).Into();
     int j;
@@ -922,7 +922,7 @@ static void BM_CpuDmpfEval(benchmark::State &state) {
   for (auto _ : state) {
     uint32_t xs[1] = {x};
     int4 y;
-    dmpf.BatchEval(false, k0.sigma, k0.m_rt, k0.b_size_rt, k0.seeds, k0.cws, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(&y, 1));
+    dmpf.BatchEval(false, k0.sigma, k0.b_size_rt, k0.seeds, k0.cws, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(&y, 1));
     benchmark::DoNotOptimize(y);
     x = (x + 1) & ((1u << kInBits) - 1);
   }
@@ -938,7 +938,7 @@ static void BM_CpuDmpfEvalAll(benchmark::State &state) {
   CheckCpuDmpfFull(dmpf, k0, k1);
   std::vector<int4> ys(n);
   for (auto _ : state) {
-    dmpf.EvalAll(false, k0.sigma, k0.m_rt, k0.b_size_rt, k0.seeds, k0.cws, cuda::std::span<int4>(ys));
+    dmpf.EvalAll(false, k0.sigma, k0.b_size_rt, k0.seeds, k0.cws, cuda::std::span<int4>(ys));
     benchmark::DoNotOptimize(ys.data());
   }
   state.SetItemsProcessed(state.iterations() * n);
@@ -957,8 +957,8 @@ static void CheckCpuVdmpfBatch(SchemeT &vdmpf, const MultiPointKey<SchemeT> &k0,
   xs.push_back((1u << kInBits) - 1);
   std::vector<int4> ys0(xs.size()), ys1(xs.size());
   cuda::std::array<int4, 4> pi0, pi1;
-  vdmpf.BatchEval(false, k0.sigma, k0.m_rt, k0.b_size_rt, k0.seeds, k0.cws, k0.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys0), pi0);
-  vdmpf.BatchEval(true, k1.sigma, k1.m_rt, k1.b_size_rt, k1.seeds, k1.cws, k1.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys1), pi1);
+  vdmpf.BatchEval(false, k0.sigma, k0.b_size_rt, k0.seeds, k0.cws, k0.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys0), pi0);
+  vdmpf.BatchEval(true, k1.sigma, k1.b_size_rt, k1.seeds, k1.cws, k1.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys1), pi1);
   if (!VdmpfT::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1))) {
     fprintf(stderr, "vdmpf proof rejected on honest shares\n");
     exit(EXIT_FAILURE);
@@ -1003,7 +1003,7 @@ static void BM_CpuVdmpfEval(benchmark::State &state) {
     uint32_t xs[1] = {x};
     int4 y;
     cuda::std::array<int4, 4> pi;
-    vdmpf.BatchEval(false, k0.sigma, k0.m_rt, k0.b_size_rt, k0.seeds, k0.cws, k0.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(&y, 1), pi);
+    vdmpf.BatchEval(false, k0.sigma, k0.b_size_rt, k0.seeds, k0.cws, k0.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(&y, 1), pi);
     benchmark::DoNotOptimize(y);
     benchmark::DoNotOptimize(pi);
     x = (x + 1) & ((1u << kInBits) - 1);
@@ -1027,7 +1027,7 @@ static void BM_CpuVdmpfEvalAll(benchmark::State &state) {
   std::vector<int4> ys(n);
   cuda::std::array<int4, 4> pi;
   for (auto _ : state) {
-    vdmpf.BatchEval(false, k0.sigma, k0.m_rt, k0.b_size_rt, k0.seeds, k0.cws, k0.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys), pi);
+    vdmpf.BatchEval(false, k0.sigma, k0.b_size_rt, k0.seeds, k0.cws, k0.cs, cuda::std::span<const uint32_t>(xs), cuda::std::span<int4>(ys), pi);
     benchmark::DoNotOptimize(ys.data());
     benchmark::DoNotOptimize(pi);
   }
@@ -2158,7 +2158,7 @@ static void BM_GpuDmpfEvalAll(benchmark::State &state) {
 
   // Validate: both parties reconstruct the sparse multi-point function.
   for (int party = 0; party < 2; ++party) {
-    CUDA_CHECK(keys.dmpf.EvalAllGpu(party != 0, keys.k0.sigma, keys.m_rt, keys.b_rt,
+    CUDA_CHECK(keys.dmpf.EvalAllGpu(party != 0, keys.k0.sigma, keys.b_rt,
         {keys.d_s0s[party], static_cast<size_t>(keys.m_rt)},
         {keys.d_cws, static_cast<size_t>(keys.m_rt) * (kDmpfBucketBits + 1)}, {d_ys[party], n}));
     CUDA_CHECK(cudaGetLastError());
@@ -2182,7 +2182,7 @@ static void BM_GpuDmpfEvalAll(benchmark::State &state) {
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
     CUDA_CHECK(cudaEventRecord(start));
-    CUDA_CHECK(keys.dmpf.EvalAllGpu(false, keys.k0.sigma, keys.m_rt, keys.b_rt,
+    CUDA_CHECK(keys.dmpf.EvalAllGpu(false, keys.k0.sigma, keys.b_rt,
         {keys.d_s0s[0], static_cast<size_t>(keys.m_rt)},
         {keys.d_cws, static_cast<size_t>(keys.m_rt) * (kDmpfBucketBits + 1)}, {d_ys[0], n}));
     CUDA_CHECK(cudaGetLastError());
