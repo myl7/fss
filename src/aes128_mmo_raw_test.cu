@@ -29,6 +29,32 @@ void RandomKeys(std::mt19937 &gen, uint8_t (&keys)[mul][16]) {
   }
 }
 
+// The Gen8()/Gen() bit-exactness contract from the HasGen8 concept, checked as
+// far as a test can: the seeds must be random, since the comparison only
+// covers the seeds it is given. Splits the seeds into consecutive groups of 8
+// and compares Gen8(group)[j] element-wise against Gen(group[j]); on the first
+// mismatch returns false and, when first_bad is not null, stores the index of
+// the diverging seed.
+template <int mul, typename Prg>
+bool CheckGen8(Prg &prg, cuda::std::span<const int4> seeds, int *first_bad = nullptr) {
+  const int batch_count = static_cast<int>(seeds.size() / 8);
+  for (int b = 0; b < batch_count; ++b) {
+    cuda::std::span<const int4, 8> batch(seeds.data() + b * 8, 8);
+    auto batched = prg.Gen8(batch);
+    for (int j = 0; j < 8; ++j) {
+      auto scalar = prg.Gen(batch[j]);
+      for (int i = 0; i < mul; ++i) {
+        const int4 got = batched[j][i];
+        const int4 want = scalar[i];
+        if (got.x == want.x && got.y == want.y && got.z == want.z && got.w == want.w) continue;
+        if (first_bad != nullptr) *first_bad = b * 8 + j;
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // Gen8(seeds)[j] must be bit-exact with the scalar Gen(seeds[j]).
 template <int mul>
 void TestGen8MatchesGen(uint64_t seed) {
@@ -42,13 +68,8 @@ void TestGen8MatchesGen(uint64_t seed) {
     cuda::std::array<int4, 8> seeds;
     for (auto &seed : seeds) seed = RandomInt4(gen);
 
-    auto batched = prg.Gen8(seeds);
-    for (int j = 0; j < 8; ++j) {
-      auto scalar = prg.Gen(seeds[j]);
-      for (int i = 0; i < mul; ++i) {
-        EXPECT_EQ(memcmp(&batched[j][i], &scalar[i], sizeof(int4)), 0);
-      }
-    }
+    int first_bad = -1;
+    EXPECT_TRUE(CheckGen8<mul>(prg, seeds, &first_bad)) << "first divergent seed: " << first_bad;
   }
 }
 
@@ -405,3 +426,56 @@ TEST(GenHalfTest, OptionalMemberAvoidsGen) {
 }
 
 }  // namespace
+
+namespace {
+
+// A backend whose Gen8() is not bit-exact with its Gen(): one output block is
+// flipped for every seed marked with kBadSeedX. CheckGen8() must catch the
+// split instead of silently passing.
+struct InconsistentGen8Prg {
+  static constexpr int kBadSeedX = 0x1a2b3c4d;
+  cuda::std::array<int4, 4> Gen(int4 seed) {
+    return {seed, int4{1, 2, 3, 4}, int4{5, 6, 7, 8}, int4{9, 10, 11, 12}};
+  }
+  cuda::std::array<cuda::std::array<int4, 4>, 8> Gen8(cuda::std::span<const int4, 8> seeds) {
+    cuda::std::array<cuda::std::array<int4, 4>, 8> out{};
+    for (int j = 0; j < 8; ++j) {
+      out[j] = Gen(seeds[j]);
+      if (seeds[j].x == kBadSeedX) out[j][2].x = ~out[j][2].x;
+    }
+    return out;
+  }
+};
+
+static_assert(HasGen8<InconsistentGen8Prg, 4>);
+
+constexpr int kCheckNumSeeds = 1024;
+
+}  // namespace
+
+// The built-in backend passes the conformance check on 1024 random seeds.
+TEST(Gen8CheckTest, Aes128MmoRawPasses) {
+  std::mt19937 gen(0x911);
+  uint8_t keys[4][16];
+  RandomKeys(gen, keys);
+  Aes128MmoRaw<4> prg(keys);
+
+  cuda::std::array<int4, kCheckNumSeeds> seeds;
+  for (auto &seed : seeds) seed = RandomInt4(gen);
+  EXPECT_TRUE(CheckGen8<4>(prg, seeds));
+}
+
+// An inconsistent Gen8() is caught, and the first bad seed index is reported.
+TEST(Gen8CheckTest, CatchesInconsistentGen8) {
+  std::mt19937 gen(0x912);
+  InconsistentGen8Prg prg;
+
+  cuda::std::array<int4, kCheckNumSeeds> seeds;
+  for (auto &seed : seeds) seed = RandomInt4(gen);
+  seeds[0].x = InconsistentGen8Prg::kBadSeedX;
+  seeds[733].x = InconsistentGen8Prg::kBadSeedX;
+
+  int first_bad = -1;
+  EXPECT_FALSE(CheckGen8<4>(prg, seeds, &first_bad));
+  EXPECT_EQ(first_bad, 0);
+}
