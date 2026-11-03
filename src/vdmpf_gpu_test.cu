@@ -528,7 +528,7 @@ TEST(VdmpfGpuArguments, PublicBatchRejectsInvalidInputs) {
   EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, Vdmpf::kBucketSize, s0s,
       cuda::std::span<const Vdmpf::Cw>(cws.data(), cws.size() - 1), {cs.data(), cs.size()},
       {xs, 1}, {ys, 1}, pi), cudaErrorInvalidValue);
-  // Too few check-seed blocks.
+  // Too few correction-seed blocks.
   EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, Vdmpf::kBucketSize, s0s,
       {cws.data(), cws.size()},
       cuda::std::span<const int4>(cs.data(), size_t{kBuckets} * 4 - 1),

@@ -448,7 +448,7 @@ protected:
 
   // Configuration check for fixtures whose point count makes Gen() allocate
   // fewer active buckets than kBucketCount: the inactive buckets still
-  // contribute their check seeds to both accumulators.
+  // contribute their correction seeds to both accumulators.
   void TestSplitInactiveBuckets() {
     typename VdmpfType::Key k0, k1;
     GenKeys(k0, k1);

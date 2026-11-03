@@ -104,14 +104,14 @@ public:
   static_assert(sizeof(Cw) == 32);
 
   /**
-   * A party's key: combined tree and output correction words, verification seeds, and its initial seed.
+   * A party's key: combined tree and output correction words, correction seeds, and its initial seed.
    * Both parties share the same cws and cs and differ in the seed.
    *
    * @ingroup fss_api
    */
   struct Key {
     Cw cws[in_bits + 1];  ///< Tree correction words followed by the output correction word in the final s field.
-    int4 cs[4];  ///< Shared verification seed for verifiable evaluation.
+    int4 cs[4];  ///< Shared correction seed for verifiable evaluation.
     int4 s0;  ///< This party's initial seed.
   };
 
@@ -128,7 +128,7 @@ public:
    * Generate shared correction words in one attempt without modifying the seeds.
    *
    * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits + 1, including the output correction word.
-   * @param cs Verification seed output ($4\lambda$ bits).
+   * @param cs Correction seed output ($4\lambda$ bits).
    * @param s0s Two independent uniformly random initial seed blocks from a
    * cryptographically secure random generator. Gen clears their control bits
    * internally without modifying this input storage.
@@ -159,7 +159,7 @@ public:
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
    * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
-   * @param cs Shared verification seed returned by Gen().
+   * @param cs Shared correction seed returned by Gen().
    * @param x Input in the scheme's domain.
    * @param y Output share for this input.
    * @return Corrected per-point hash for Prove() or ProveMerkle().
@@ -199,7 +199,7 @@ public:
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
    * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
-   * @param cs Shared verification seed returned by Gen().
+   * @param cs Shared correction seed returned by Gen().
    * @param ys Output shares in input order, with at least 2^in_bits entries.
    * @param pi Borrowed output storage for four chain-proof blocks.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
@@ -221,7 +221,7 @@ public:
    * @param last Last input, included in evaluation.
    * @param s0 This party's initial seed.
    * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
-   * @param cs Shared verification seed returned by Gen().
+   * @param cs Shared correction seed returned by Gen().
    * @param ys Output shares in input order, with at least last - first + 1 entries.
    * @param pi Borrowed output storage for four chain-proof blocks for this range.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
@@ -321,7 +321,7 @@ public:
    * @param b Party index. False for 0 and true for 1. $i$.
    * @param s0 This party's initial seed.
    * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
-   * @param cs Shared verification seed returned by Gen().
+   * @param cs Shared correction seed returned by Gen().
    * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
    * @param pi Borrowed output storage for four proof blocks.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
@@ -350,7 +350,7 @@ public:
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed, passed by value to the kernel.
    * @param cws Device storage with at least in_bits + 1 shared correction words.
-   * @param cs Device storage containing the four shared check-seed blocks.
+   * @param cs Device storage containing the four shared correction-seed blocks.
    * @param ys Device output storage with at least 2^in_bits int4 blocks.
    * @param pi Device output storage for the four-block Merkle proof.
    * @param stream Stream on the device owning the referenced resources.

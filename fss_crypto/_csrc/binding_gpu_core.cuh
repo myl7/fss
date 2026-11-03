@@ -76,7 +76,7 @@ cudaError_t GenGpu(Scheme *scheme,
  *
  * @param scheme Initialized device Vdpf scheme.
  * @param cws Correction word output on the device, including the terminal correction word.
- * @param cs Device four-block verification seed output.
+ * @param cs Device four-block correction seed output.
  * @param s0s Device initial seeds. They are not modified.
  * @param a Secret point, with the Core domain precondition.
  * @param b_buf Core payload block.

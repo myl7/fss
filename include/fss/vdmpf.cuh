@@ -175,7 +175,7 @@ public:
    */
   struct BucketKey {
     Cw cws[bucket_bits + 1];  ///< Tree correction words and the bucket's final output correction word.
-    int4 cs[4];  ///< Shared check seed for verifiable evaluation.
+    int4 cs[4];  ///< Shared correction seed for verifiable evaluation.
     int4 s0;  ///< This party's initial seed.
   };
 
@@ -222,7 +222,8 @@ public:
    * Only outputs and input seeds from a successful call form a usable key.
    *
    * @param cws At least kBucketCount*(bucket_bits+1) writable correction words in bucket-major order, including each bucket's final output correction word.
-   * @param cs At least 4*kBucketCount writable check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount writable blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param m_rt Returned runtime bucket count.
    * @param b_size_rt Returned runtime bucket domain size.
    * @param sigma Uniformly random PRP seed from a cryptographically secure random generator.
@@ -258,7 +259,8 @@ public:
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
-   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
@@ -296,16 +298,17 @@ public:
    * b_size_rt = ceil(3*kDomainSize/m_rt) keeps every candidate below that
    * bound, which is at most m_rt, so an inactive bucket cannot receive a
    * candidate.
-   * Inactive buckets still take part in the accumulators through their check
-   * seeds: Prove() folds each bucket's cs and ProveMerkle() folds each
-   * bucket's hashed cs.
+   * Inactive buckets still take part in the accumulators through their
+   * correction seeds: Prove() folds each bucket's cs and ProveMerkle() folds
+   * each bucket's hashed cs.
    *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
-   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param x Input point to evaluate.
    * @param y Output share for this input.
    * @return Corrected per-point hashes in candidate order, as described by EvalProof.
@@ -337,7 +340,8 @@ public:
    *
    * @param sigma The effective PRP seed from Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
-   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param xs Input points evaluated by Eval() with this party's key, in the
    * order of proof_values.
    * @param proof_values proof_values[i] is the EvalProof returned by Eval() for
@@ -361,7 +365,8 @@ public:
    * @param b_size_rt Runtime bucket domain size returned by that Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
-   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four chain-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
@@ -409,7 +414,8 @@ public:
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order, including each bucket's final output correction word.
-   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
@@ -439,7 +445,8 @@ public:
    *
    * @param sigma The effective PRP seed from Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
-   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param xs Input points evaluated by Eval() with this party's key, in the
    * order of proof_values.
    * @param proof_values proof_values[i] is the EvalProof returned by Eval() for
@@ -463,7 +470,8 @@ public:
    * @param b_size_rt Runtime bucket domain size returned by that Gen().
    * @param s0s This party's kBucketCount initial seeds in bucket order.
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
-   * @param cs At least 4*kBucketCount read-only check-seed blocks in bucket-major order.
+   * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
+   * correction seed, one seed per bucket, in bucket-major order.
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four Merkle-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
@@ -495,7 +503,8 @@ public:
    * kBucketCount.
    * @param s0s Device storage of kBucketCount party seeds, one per bucket.
    * @param cws Device storage of kBucketCount*(bucket_bits+1) bucket-major correction words.
-   * @param cs Device storage of 4*kBucketCount bucket-major check-seed blocks.
+   * @param cs Device storage of 4*kBucketCount bucket-major blocks of the
+   * inner VerDPF's correction seed, one seed per bucket.
    * @param ys Device output storage of at least 2^in_bits int4 blocks.
    * @param pi Device output storage for four Merkle-proof blocks.
    * @param stream Stream on the device owning the referenced resources.
