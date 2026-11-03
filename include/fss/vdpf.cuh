@@ -909,12 +909,14 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
   }
   assert(first <= last && last <= max_input);
   const __uint128_t distance = static_cast<__uint128_t>(last) - first;
-  constexpr size_t kMaxBytes = size_t(-1);
+  // The bounds below share one named size_t limit across three assertions, so
+  // the names stay out of Release builds where the assertions are gone.
+  [[maybe_unused]] constexpr size_t kMaxBytes = size_t(-1);
   assert(distance < kMaxBytes / sizeof(cuda::std::array<int4, 4>));
   const size_t kOutputCount = static_cast<size_t>(distance) + 1;
-  const size_t next_count = kOutputCount / 2 + kOutputCount % 2;
+  [[maybe_unused]] const size_t next_count = kOutputCount / 2 + kOutputCount % 2;
   assert(kOutputCount <= kMaxBytes / (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>)));
-  const size_t initial_bytes = kOutputCount *
+  [[maybe_unused]] const size_t initial_bytes = kOutputCount *
       (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>));
   assert(next_count <= (kMaxBytes - initial_bytes) / sizeof(cuda::std::array<int4, 2>));
   const int4 st = util::SetLsb(s0, b);

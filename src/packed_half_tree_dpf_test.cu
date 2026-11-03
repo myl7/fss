@@ -1077,7 +1077,6 @@ void CheckPackedHalfTreeSplitGpuLaunches() {
   ASSERT_EQ(device_status, cudaSuccess);
 
   constexpr int kBits = 8;
-  constexpr size_t kDomain = size_t{1} << kBits;
   using Scheme = fss::PackedHalfTreeDpf<kBits, 1, fss_test::TestCcrHash, uint16_t>;
   constexpr int kDepth = Scheme::kDepth;
   constexpr size_t kBlocks = size_t{1} << kDepth;

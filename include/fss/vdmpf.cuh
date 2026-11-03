@@ -1305,7 +1305,9 @@ inline size_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash,
   static_assert(detail::FitsElementCount<std::vector<Record>>(kBucketCount),
       "bucket-record array count and byte size must fit in size_t");
   const __uint128_t total_records = kDomainSize * kCuckooChoices;
-  const __uint128_t max_bucket_records = bucket_size < total_records ? bucket_size : total_records;
+  // The clamped record count feeds two assertions only, so the name stays out
+  // of Release builds where the assertions are gone.
+  [[maybe_unused]] const __uint128_t max_bucket_records = bucket_size < total_records ? bucket_size : total_records;
   assert(max_bucket_records <= size_t(-1) / sizeof(Record));
   if constexpr (merkle) {
     using Node = cuda::std::array<int4, 2>;
