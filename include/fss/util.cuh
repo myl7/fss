@@ -21,6 +21,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 namespace fss::util {
 
@@ -275,9 +276,35 @@ __device__ __host__ inline bool GetBit(T x, int i) {
   return ((x >> i) & 1) != 0;
 }
 
+// Constrains a GPU query element type to an unsigned integer wide enough for
+// the scheme's input domain.
+template <typename Query, int bits>
+concept QueryFor = !std::is_same_v<Query, bool> &&
+    (std::is_unsigned_v<Query> || std::is_same_v<Query, __uint128_t>) && sizeof(Query) * 8 >= bits;
+
 }  // namespace fss::gpu::detail
 
 namespace fss::detail {
+
+// State of the prefix-parity algorithm (Section 4 of the paper) on x's path. Called with the
+// control bit t of every expanded node and the branch x_bit taken from it, share accumulates
+// the control bits of the nodes where the path turns, taking the edge into the root as a left
+// edge. GrottoDcf and HalfTreeGrottoDcf share it and differ only in the leaf step.
+struct GrottoTurns {
+  bool share = false;
+  bool prev_bit = false;
+
+  __host__ __device__ void operator()(bool t, bool x_bit) {
+    if (x_bit != prev_bit) share ^= t;
+    prev_bit = x_bit;
+  }
+
+  // Leaf step when each leaf is a single input: XOR the leaf's control bit if the path ends
+  // with a left edge.
+  __host__ __device__ bool PointLeaf(bool t) const {
+    return share != (!prev_bit && t);
+  }
+};
 
 // Temporary access for existing CUDA helpers; retire entries with their consumers.
 struct SchemeAccess {

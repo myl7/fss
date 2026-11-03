@@ -1620,6 +1620,126 @@ struct DcfGpuSchemeTraits<Dcf<in_bits, Group, Prg, In, pred>> {
   static constexpr int kInputBits = in_bits;
 };
 
+#if defined(__CUDACC__)
+
+// Point-evaluate in_bits-level DCF keys, one thread per key. ys[k] is the
+// party's share of the selected predicate at xs[k]. cws and vws hold dense
+// level-major rows, the layout the split form of Gen() writes: layer i of key k
+// is cws[i * nkeys + k] and vws[i * nkeys + k]. tr[k] carries key k's packed
+// right-control bits, bit i for layer i, and the terminal correction word is
+// vws's tail row. Group default construction provides the additive identity.
+template <int in_bits, int unroll, bool b, typename Descriptor, typename In, typename Query = In>
+__global__ void DcfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cws, const int4 *vws, const In *tr,
+    const Query *xs, int nkeys, typename Descriptor::Backend prg) {
+  using Scheme = typename Descriptor::Scheme;
+  using Group = typename DcfGpuSchemeTraits<Scheme>::GroupType;
+  static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= nkeys) return;
+  int4 s = fss::util::SetLsb(seeds[tid], false);
+  Group v = Group::From(Zero4());
+  bool t = b;
+  In x = static_cast<In>(xs[tid]);
+  In tr_k = tr[tid];
+
+#pragma unroll unroll
+  for (int i = 0; i < in_bits; ++i) {
+    int4 s_cw = cws[(size_t)i * nkeys + tid];
+    bool tl_cw = fss::util::GetLsb(s_cw);
+    s_cw = fss::util::SetLsb(s_cw, false);
+    int4 v_cw_buf = vws[(size_t)i * nkeys + tid];
+    bool tr_cw = GetBit(tr_k, i);
+    v_cw_buf = fss::util::SetLsb(v_cw_buf, false);
+    auto v_cw = Group::From(v_cw_buf);
+
+    auto g = prg.Gen(s);
+    int4 sl = g[0], vl_buf = g[1], sr = g[2], vr_buf = g[3];
+
+    bool tl = fss::util::GetLsb(sl);
+    sl = fss::util::SetLsb(sl, false);
+    vl_buf = fss::util::SetLsb(vl_buf, false);
+    auto vl = Group::From(vl_buf);
+    bool tr = fss::util::GetLsb(sr);
+    sr = fss::util::SetLsb(sr, false);
+    vr_buf = fss::util::SetLsb(vr_buf, false);
+    auto vr = Group::From(vr_buf);
+
+    if (t) {
+      sl = fss::util::Xor(sl, s_cw);
+      sr = fss::util::Xor(sr, s_cw);
+      tl = tl ^ tl_cw;
+      tr = tr ^ tr_cw;
+    }
+
+    bool x_bit = GetBit(x, in_bits - 1 - i);
+    if constexpr (b) {
+      v = v + (x_bit ? (-vr) : (-vl));
+      if (t) v = v + (-v_cw);
+    } else {
+      v = v + (x_bit ? vr : vl);
+      if (t) v = v + v_cw;
+    }
+    if (x_bit) {
+      s = sr;
+      t = tr;
+    } else {
+      s = sl;
+      t = tl;
+    }
+  }
+
+  auto v_out_cw = Group::From(vws[static_cast<size_t>(in_bits) * nkeys + tid]);
+  if constexpr (b) {
+    v = v + (-Group::From(s));
+    if (t) v = v + (-v_out_cw);
+  } else {
+    v = v + Group::From(s);
+    if (t) v = v + v_out_cw;
+  }
+  ys[tid] = v.Into();
+}
+
+/**
+ * GPU point evaluation of nkeys DCF keys: ys[k] = Eval(b, seeds[k], cws, vws,
+ * tr[k], xs[k]). One thread per key. The inputs are split-form key components:
+ * dense level-major correction words, packed right-control bits, and the
+ * terminal correction word in the group-value array's tail row.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds (device memory), one per key.
+ * @param cws Level-major seed components (device memory), (in_bits + 1) * nkeys entries.
+ * @param vws Level-major group-value components (device memory), (in_bits + 1) * nkeys entries.
+ * @param tr Packed right-control bits (device memory), one per key.
+ * @param xs Evaluation points (device memory), one per key.
+ * @param ys Output array (device memory), one int4 per key.
+ * @param nkeys Number of keys.
+ * @param dcf A Dcf instance (holds the PRG).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, DcfPred pred, typename Query = In>
+  requires QueryFor<Query, in_bits>
+void DcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
+    cuda::std::span<const int4> vws, cuda::std::span<const In> tr, cuda::std::span<const Query> xs, int4 *ys,
+    int nkeys, const Dcf<in_bits, Group, Prg, In, pred> &dcf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  if (b) {
+    DcfEvalPointKernel<in_bits, unroll, true, Descriptor, In, Query><<<blocks, kBs, 0, stream>>>(
+        ys, seeds.data(), cws.data(), vws.data(), tr.data(), xs.data(), nkeys,
+        fss::detail::SchemeAccess::GetPrg(dcf));
+  } else {
+    DcfEvalPointKernel<in_bits, unroll, false, Descriptor, In, Query>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds.data(), cws.data(), vws.data(), tr.data(), xs.data(), nkeys,
+        fss::detail::SchemeAccess::GetPrg(dcf));
+  }
+}
+
+#endif  // defined(__CUDACC__)
+
 }  // namespace gpu::detail
 
 template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>

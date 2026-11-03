@@ -430,9 +430,8 @@ public:
    * That is why this entry takes no frontier_depth. Group, Prg, XorHash, and
    * Hash must support device execution.
    *
-   * Takes the raw key components s0, cws, and cs as Gen() returned them; the
-   * level-major layout of RepackGpu() is neither used nor accepted. Uses
-   * caller-owned device arrays and backend resources. Temporary node buffers
+   * Takes the raw key components s0, cws, and cs as Gen() returned them.
+   * Uses caller-owned device arrays and backend resources. Temporary node buffers
    * with 32*(M + ceil(M/2)) scratch bytes for M inputs are allocated and
    * released on stream. No upload, deep copy, or synchronization occurs.
    * Backend resources must support concurrent device calls and remain valid
@@ -614,7 +613,7 @@ __global__ void VdpfRangeMerkleProofKernel(const Node *root,
 // One thread per query: walks the raw-key path of xs[index] from the root and
 // writes the output share and the hashed corrected per-point hash as the leaf
 // of the batch Merkle fold. The same per-point math as Vdpf::Eval, fed by the
-// raw Cw layout instead of the repacked one.
+// raw Cw layout.
 template <int in_bits, typename Descriptor>
 __global__ void VdpfBatchMerkleLeavesKernel(bool b, int4 s0, const void *cws_bytes, const int4 *cs,
     const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
@@ -795,6 +794,115 @@ __global__ void VdpfMerkleFinalizeKernel(const cuda::std::array<int4, 2> *roots,
     pi[1] = s_node[0][1];
     pi[2] = cs[2];
     pi[3] = cs[3];
+  }
+}
+
+// Point-evaluate in_bits-level VDPF keys, one thread per key. Same seed walk as
+// the DPF kernel plus the per-point verification hash; the walk carries no hash
+// cost, and the tail applies the verification hash and, when t, folds in cs. cws
+// holds the key's own rows, one row of in_bits + 1 correction words per key: the
+// walk reads row i of key k and takes the right-control bit from that word's tr
+// field. cs and ocws stay per-key: each is read once per evaluation, not once
+// per level.
+template <int in_bits, int unroll, bool b, typename Descriptor, typename Query>
+__global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, const int4 *seeds,
+    const typename Descriptor::Cw *cws, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs,
+    int nkeys, typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
+  static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= nkeys) return;
+  int4 s = fss::util::SetLsb(seeds[tid], false);
+  bool t = b;
+  In x = static_cast<In>(xs[tid]);
+  const typename Descriptor::Cw *rows = cws + static_cast<size_t>(tid) * (in_bits + 1);
+
+#pragma unroll unroll
+  for (int i = 0; i < in_bits; ++i) {
+    int4 s_cw = rows[i].s;
+    bool tr_cw = rows[i].tr;
+    bool tl_cw = fss::util::GetLsb(s_cw);
+    s_cw = fss::util::SetLsb(s_cw, false);
+
+    auto g = prg.Gen(s);
+    int4 sl = g[0], sr = g[1];
+    bool tl = fss::util::GetLsb(sl);
+    sl = fss::util::SetLsb(sl, false);
+    bool tr = fss::util::GetLsb(sr);
+    sr = fss::util::SetLsb(sr, false);
+
+    if (t) {
+      sl = fss::util::Xor(sl, s_cw);
+      sr = fss::util::Xor(sr, s_cw);
+      tl = tl ^ tl_cw;
+      tr = tr ^ tr_cw;
+    }
+
+    bool x_bit = GetBit(x, in_bits - 1 - i);
+    if (x_bit) {
+      s = sr;
+      t = tr;
+    } else {
+      s = sl;
+      t = tl;
+    }
+  }
+
+  auto y = Group::From(s);
+  if (t) y = y + Group::From(ocws[tid]);
+  if constexpr (b) y = -y;
+  ys[tid] = y.Into();
+
+  int4 x_buf = fss::detail::Pack(x);
+  auto pi_tilde = xor_hash.Hash(cuda::std::tuple<int4, const int4>{x_buf, s});
+  if (t) {
+    pi_tilde = util::Xor(cuda::std::span<const int4, 4>(pi_tilde), cuda::std::span<const int4, 4>(cs[tid]));
+  }
+#pragma unroll
+  for (int j = 0; j < 4; ++j) pi[tid][j] = pi_tilde[j];
+}
+
+/**
+ * GPU point evaluation of nkeys VDPF keys: ys[k] = Eval(b, seeds[k], cws, cs[k],
+ * ocws[k], xs[k])[0] and pi[k] = its corrected verification hash. One thread per
+ * key. cws holds the key's own correction words, in_bits + 1 per key, which is
+ * the layout Gen() writes and the layout the host Eval reads.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds (device memory), one per key.
+ * @param cws Correction words (device memory), one key row of in_bits + 1 words per key.
+ * @param cs Check seeds (device memory), one per key.
+ * @param ocws Output correction words (device memory), one per key.
+ * @param xs Evaluation points (device memory), one per key.
+ * @param ys Output array (device memory), one int4 per key.
+ * @param pi Output corrected per-point hashes (device memory), four int4s per key.
+ * @param nkeys Number of keys.
+ * @param vdpf A Vdpf instance (holds the PRG and hashes).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In,
+    typename Query = In>
+  requires QueryFor<Query, in_bits>
+void VdpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds,
+    cuda::std::span<const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw> cws,
+    cuda::std::span<const cuda::std::array<int4, 4>> cs, cuda::std::span<const int4> ocws,
+    cuda::std::span<const Query> xs, int4 *ys, cuda::std::span<cuda::std::array<int4, 4>> pi, int nkeys,
+    const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  if (b) {
+    VdpfEvalPointKernel<in_bits, unroll, true, Descriptor, Query><<<blocks, kBs, 0, stream>>>(
+        ys, pi.data(), seeds.data(), cws.data(), cs.data(), ocws.data(), xs.data(), nkeys,
+        fss::detail::SchemeAccess::GetPrg(vdpf), fss::detail::SchemeAccess::GetXorHash(vdpf));
+  } else {
+    VdpfEvalPointKernel<in_bits, unroll, false, Descriptor, Query><<<blocks, kBs, 0, stream>>>(
+        ys, pi.data(), seeds.data(), cws.data(), cs.data(), ocws.data(), xs.data(), nkeys,
+        fss::detail::SchemeAccess::GetPrg(vdpf), fss::detail::SchemeAccess::GetXorHash(vdpf));
   }
 }
 

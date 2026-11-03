@@ -63,8 +63,7 @@
 namespace fss::detail::cpu {
 
 // The narrowest unsigned primitive holding one tr bit per level, in_bits bits
-// in total. Mirrors fss::gpu::detail::ExtBits so common in_bits <= 32 keys keep the
-// uint32_t layout.
+// in total, so common in_bits <= 32 keys keep the uint32_t layout.
 template <int bits>
 using ExtBits = std::conditional_t<bits <= 32, uint32_t,
     std::conditional_t<bits <= 64, uint64_t, __uint128_t>>;

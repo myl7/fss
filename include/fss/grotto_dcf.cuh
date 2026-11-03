@@ -789,30 +789,6 @@ template <int in_bits, typename Prg, typename In>
 __host__ __device__ inline GrottoDcf<in_bits, Prg, In>::GrottoDcf(Prg prg)
     : prg_(prg) {}
 
-namespace detail {
-
-// State of the prefix-parity algorithm (Section 4 of the paper) on x's path. Called with the
-// control bit t of every expanded node and the branch x_bit taken from it, share accumulates
-// the control bits of the nodes where the path turns, taking the edge into the root as a left
-// edge. GrottoDcf and HalfTreeGrottoDcf share it and differ only in the leaf step.
-struct GrottoTurns {
-  bool share = false;
-  bool prev_bit = false;
-
-  __host__ __device__ void operator()(bool t, bool x_bit) {
-    if (x_bit != prev_bit) share ^= t;
-    prev_bit = x_bit;
-  }
-
-  // Leaf step when each leaf is a single input: XOR the leaf's control bit if the path ends
-  // with a left edge.
-  __host__ __device__ bool PointLeaf(bool t) const {
-    return share != (!prev_bit && t);
-  }
-};
-
-}  // namespace detail
-
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 __host__ __device__ inline void GrottoDcf<in_bits, Prg, In>::Gen(Cw cws[], const int4 s0s[2], In a) {
@@ -1252,5 +1228,109 @@ GrottoDcf<in_bits, Prg, In>::PreprocessOwnedCws(
   PreprocessCws(b, s0, cws, p.get(), par_depth);
   return OwnedParityTree<GrottoDcf<in_bits, Prg, In>>(std::move(p));
 }
+
+namespace gpu::detail {
+
+#if defined(__CUDACC__)
+
+// Point-evaluate in_bits-level Grotto DCF keys: one thread per key, one
+// single-path walk with in_bits PRG calls and no preprocessing. ys[k] is the
+// party's share of 1[alpha <= xs[k]]. cws holds dense level-major correction
+// words, the layout the split form of Gen() writes: layer i of key k is
+// cws[i * nkeys + k]. tr[k] carries key k's packed right-control bits, bit i
+// for layer i.
+template <int in_bits, int unroll, bool b, typename Prg, typename In, typename Query>
+__global__ void GrottoDcfEvalPointKernel(bool *ys, const int4 *seeds, const int4 *cws, const In *tr,
+    const Query *xs, int nkeys, Prg prg) {
+  static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= nkeys) return;
+  int4 s = fss::util::SetLsb(seeds[tid], false);
+  bool t = b;
+  In x = static_cast<In>(xs[tid]);
+  In tr_k = tr[tid];
+  fss::detail::GrottoTurns turns;
+
+#pragma unroll unroll
+  for (int i = 0; i < in_bits; ++i) {
+    bool x_bit = GetBit(x, in_bits - 1 - i);
+    turns(t, x_bit);
+
+    int4 s_cw = cws[(size_t)i * nkeys + tid];
+    bool tr_cw = GetBit(tr_k, i);
+    bool tl_cw = fss::util::GetLsb(s_cw);
+    s_cw = fss::util::SetLsb(s_cw, false);
+
+    auto g = prg.Gen(s);
+    int4 sl = g[0], sr = g[1];
+    bool tl = fss::util::GetLsb(sl);
+    sl = fss::util::SetLsb(sl, false);
+    bool tr = fss::util::GetLsb(sr);
+    sr = fss::util::SetLsb(sr, false);
+
+    if (t) {
+      sl = fss::util::Xor(sl, s_cw);
+      sr = fss::util::Xor(sr, s_cw);
+      tl = tl ^ tl_cw;
+      tr = tr ^ tr_cw;
+    }
+
+    if (x_bit) {
+      s = sr;
+      t = tr;
+    } else {
+      s = sl;
+      t = tl;
+    }
+  }
+
+  ys[tid] = turns.PointLeaf(t);
+}
+
+template <int unroll, int in_bits, typename Prg, typename In, typename Query>
+void GrottoDcfEvalPointLaunch(bool b, const int4 *seeds, const int4 *cws, const In *tr, const Query *xs,
+    bool *ys, int nkeys, Prg prg, cudaStream_t stream) {
+  if (nkeys == 0) return;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  if (b) {
+    GrottoDcfEvalPointKernel<in_bits, unroll, true, Prg, In, Query>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cws, tr, xs, nkeys, prg);
+  } else {
+    GrottoDcfEvalPointKernel<in_bits, unroll, false, Prg, In, Query>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cws, tr, xs, nkeys, prg);
+  }
+}
+
+/**
+ * GPU single-path evaluation of nkeys Grotto DCF keys: ys[k] = Eval(b, seeds[k],
+ * cws, tr[k], xs[k]), the party's share of 1[alpha <= xs[k]]. One thread per
+ * key, with in_bits PRG calls and no preprocessing. The inputs are split-form
+ * key components: dense level-major correction words and packed right-control
+ * bits.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds (device memory), one per key.
+ * @param cws Level-major correction words (device memory), (in_bits + 1) * nkeys entries.
+ * @param tr Packed right-control bits (device memory), one per key.
+ * @param xs Evaluation points (device memory), one per key.
+ * @param ys Output array (device memory), one share bit per key.
+ * @param nkeys Number of keys.
+ * @param dcf A GrottoDcf instance (holds the PRG).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, typename Prg, typename In, typename Query = In>
+  requires QueryFor<Query, in_bits>
+void GrottoDcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
+    cuda::std::span<const In> tr, cuda::std::span<const Query> xs, bool *ys, int nkeys,
+    const GrottoDcf<in_bits, Prg, In> &dcf, cudaStream_t stream = 0) {
+  GrottoDcfEvalPointLaunch<unroll, in_bits, Prg, In, Query>(b, seeds.data(), cws.data(), tr.data(), xs.data(), ys,
+      nkeys, fss::detail::SchemeAccess::GetPrg(dcf), stream);
+}
+
+#endif  // defined(__CUDACC__)
+
+}  // namespace gpu::detail
 
 }  // namespace fss

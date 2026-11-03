@@ -915,6 +915,35 @@ void DpfCoreEvalPointLaunch(bool b, const int4 *seeds, const int4 *cw_s, const C
       b, seeds, cw_s, extra, out_cw, xs, ys, key_count, prg, stream);
 }
 
+/**
+ * GPU point evaluation of nkeys DPF keys: ys[k] = Eval(b, seeds[k], cws, xs[k]).
+ * One thread per key. cws holds dense level-major correction words, the layout
+ * the split form of Gen() writes: layer i of key k is cws[i * nkeys + k] and
+ * the terminal layer is cws[in_bits * nkeys + k]. tr[k] carries key k's packed
+ * right-control bits, bit i for layer i.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds (device memory), one per key.
+ * @param cws Level-major correction words (device memory), (in_bits + 1) * nkeys entries.
+ * @param tr Packed right-control bits (device memory), one per key.
+ * @param xs Evaluation points (device memory), one per key.
+ * @param ys Output array (device memory), one int4 per key.
+ * @param nkeys Number of keys.
+ * @param dpf A Dpf instance (holds the PRG).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In, typename Query = In>
+  requires QueryFor<Query, in_bits>
+void DpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
+    cuda::std::span<const In> tr, cuda::std::span<const Query> xs, int4 *ys, int nkeys,
+    const Dpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+  if (nkeys == 0) return;
+  const int4 *out_cw = cws.data() + static_cast<size_t>(in_bits) * static_cast<size_t>(nkeys);
+  DpfCoreEvalPointLaunch<unroll, Dpf<in_bits, Group, Prg, In>, In, Query>(b, seeds.data(), cws.data(), tr.data(),
+      out_cw, xs.data(), ys, nkeys, fss::detail::SchemeAccess::GetPrg(dpf), stream);
+}
+
 #endif  // defined(__CUDACC__)
 
 }  // namespace gpu::detail

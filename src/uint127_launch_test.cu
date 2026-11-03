@@ -43,7 +43,6 @@ using DmpfScheme = fss::Dmpf<8, 30, 4, Uint127, DpfPrg, Prp, uint32_t>;
 using VdmpfScheme = fss::Vdmpf<8, 30, 4, Uint127, DpfPrg, Hash, Hash, Prp, uint16_t>;
 
 }  // namespace probe
-#include <fss/repack_gpu.cuh>
 
 namespace {
 
@@ -63,18 +62,11 @@ void ProbeDpfEvalRangeGpu(const probe::DpfScheme &scheme, const probe::DpfScheme
       cuda::std::span<const probe::DpfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
 }
 
-void ProbeDpfEvalPointGpu(const probe::DpfScheme &scheme, const int4 *seeds, const int4 *cw_s, const uint32_t *extra,
-    const int4 *out_cw, const uint32_t *xs, int4 *ys) {
-  fss::gpu::detail::DpfEvalPointGpu<4>(false, seeds, cw_s, extra, out_cw, xs, ys, 1, scheme);
-}
-
-void ProbeDpfRepackFamily(const probe::DpfScheme::Cw *cws, int4 *cw_s, uint32_t *extra, int4 *out_cw) {
-  fss::gpu::detail::DpfRepackGpu<8, probe::Uint127, probe::DpfPrg, uint32_t>(cws, 1, cw_s, extra, out_cw);
-}
-
-void ProbeRepackGpuDpf(const probe::DpfScheme::Cw *words, int4 *cw_s, uint32_t *control, int4 *terminal) {
-  fss::gpu::RepackGpu<probe::DpfScheme>(cuda::std::span<const probe::DpfScheme::Cw>(words, 9), 1,
-      cuda::std::span<int4>(cw_s, 8), cuda::std::span<uint32_t>(control, 1), cuda::std::span<int4>(terminal, 1));
+void ProbeDpfEvalPointGpu(const probe::DpfScheme &scheme, const int4 *seeds, const int4 *cws, const uint32_t *tr,
+    const uint32_t *xs, int4 *ys) {
+  fss::gpu::detail::DpfEvalPointGpu<4>(false, cuda::std::span<const int4>(seeds, 1),
+      cuda::std::span<const int4>(cws, 9), cuda::std::span<const uint32_t>(tr, 1),
+      cuda::std::span<const uint32_t>(xs, 1), ys, 1, scheme);
 }
 
 void ProbeDcfEvalAllGpu(const probe::DcfScheme &scheme, const probe::DcfScheme::Cw *cws, int4 *ys) {
@@ -93,18 +85,11 @@ void ProbeDcfEvalRangeGpu(const probe::DcfScheme &scheme, const probe::DcfScheme
       cuda::std::span<const probe::DcfScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
 }
 
-void ProbeDcfEvalPointGpu(const probe::DcfScheme &scheme, const int4 *seeds, const int4 *cw_s, const int4 *cw_v,
-    const int4 *out_cw, const uint32_t *xs, int4 *ys) {
-  fss::gpu::detail::DcfEvalPointGpu<4>(false, seeds, cw_s, cw_v, out_cw, xs, ys, 1, scheme);
-}
-
-void ProbeDcfRepackFamily(const probe::DcfScheme::Cw *cws, int4 *cw_s, int4 *cw_v, int4 *out_cw) {
-  fss::gpu::detail::DcfRepackGpu<8, probe::Uint127, probe::DcfPrg, uint32_t>(cws, 1, cw_s, cw_v, out_cw);
-}
-
-void ProbeRepackGpuDcf(const probe::DcfScheme::Cw *words, int4 *cw_s, int4 *cw_v, int4 *terminal) {
-  fss::gpu::RepackGpu<probe::DcfScheme>(cuda::std::span<const probe::DcfScheme::Cw>(words, 9), 1,
-      cuda::std::span<int4>(cw_s, 8), cuda::std::span<int4>(cw_v, 8), cuda::std::span<int4>(terminal, 1));
+void ProbeDcfEvalPointGpu(const probe::DcfScheme &scheme, const int4 *seeds, const int4 *cws, const int4 *vws,
+    const uint32_t *tr, const uint32_t *xs, int4 *ys) {
+  fss::gpu::detail::DcfEvalPointGpu<4>(false, cuda::std::span<const int4>(seeds, 1),
+      cuda::std::span<const int4>(cws, 9), cuda::std::span<const int4>(vws, 9),
+      cuda::std::span<const uint32_t>(tr, 1), cuda::std::span<const uint32_t>(xs, 1), ys, 1, scheme);
 }
 
 void ProbeHalfTreeEvalAllGpu(const probe::HalfTreeScheme &scheme, const probe::HalfTreeScheme::Cw *cws, int4 *ys) {
@@ -123,18 +108,11 @@ void ProbeHalfTreeEvalRangeGpu(const probe::HalfTreeScheme &scheme, const probe:
       cuda::std::span<const probe::HalfTreeScheme::Cw>(cws, 9), cuda::std::span<int4>(ys, 256));
 }
 
-void ProbeHalfTreeEvalPointGpu(const probe::HalfTreeScheme &scheme, const int4 *seeds, const int4 *cw_s,
-    const uint32_t *extra, const int4 *ocws, const uint32_t *xs, int4 *ys) {
-  fss::gpu::detail::HalfTreeDpfEvalPointGpu<4>(false, seeds, cw_s, extra, ocws, xs, ys, 1, scheme);
-}
-
-void ProbeHalfTreeRepackFamily(const probe::HalfTreeScheme::Cw *cws, int4 *cw_s, uint32_t *extra, int4 *terminal) {
-  fss::gpu::detail::HalfTreeDpfRepackGpu<8, probe::Uint127, probe::CcrHash, uint32_t>(cws, 1, cw_s, extra, terminal);
-}
-
-void ProbeRepackGpuHalfTree(const probe::HalfTreeScheme::Cw *words, int4 *cw_s, uint32_t *control, int4 *terminal) {
-  fss::gpu::RepackGpu<probe::HalfTreeScheme>(cuda::std::span<const probe::HalfTreeScheme::Cw>(words, 9), 1,
-      cuda::std::span<int4>(cw_s, 8), cuda::std::span<uint32_t>(control, 1), cuda::std::span<int4>(terminal, 1));
+void ProbeHalfTreeEvalPointGpu(const probe::HalfTreeScheme &scheme, const int4 *seeds, const int4 *cws,
+    const uint32_t *tr, const uint32_t *xs, int4 *ys) {
+  fss::gpu::detail::HalfTreeDpfEvalPointGpu<4>(false, cuda::std::span<const int4>(seeds, 1),
+      cuda::std::span<const int4>(cws, 9), cuda::std::span<const uint32_t>(tr, 1),
+      cuda::std::span<const uint32_t>(xs, 1), ys, 1, scheme);
 }
 
 void ProbeVdpfEvalAllMerkleGpu(const probe::VdpfScheme &scheme, const probe::VdpfScheme::Cw *cws, const int4 *cs,
@@ -151,23 +129,13 @@ void ProbeVdpfEvalRangeMerkleGpu(const probe::VdpfScheme &scheme, const probe::V
       cuda::std::span<int4>(ys, 256), cuda::std::span<int4, 4>(pi, 4));
 }
 
-void ProbeVdpfEvalPointGpu(const probe::VdpfScheme &scheme, const int4 *seeds, const int4 *cw_s,
-    const uint32_t *extra, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const uint32_t *xs, int4 *ys,
+void ProbeVdpfEvalPointGpu(const probe::VdpfScheme &scheme, const int4 *seeds, const probe::VdpfScheme::Cw *cws,
+    const cuda::std::array<int4, 4> *cs, const int4 *ocws, const uint32_t *xs, int4 *ys,
     cuda::std::array<int4, 4> *pi) {
-  fss::gpu::detail::VdpfEvalPointGpu<4>(false, seeds, cw_s, extra, cs, ocws, xs, ys, pi, 1, scheme);
-}
-
-void ProbeVdpfRepackFamily(const probe::VdpfScheme::Cw *cws, int4 *cw_s, uint32_t *extra, int4 *terminal) {
-  fss::gpu::detail::VdpfRepackGpu<8, probe::Uint127, probe::DpfPrg, probe::Hash, probe::Hash, uint32_t>(
-      cws, 1, cw_s, extra, terminal);
-}
-
-void ProbeRepackGpuVdpf(const probe::VdpfScheme::Cw *words, int4 *cw_s, uint32_t *control, int4 *terminal,
-    cuda::std::array<int4, 4> *output_cs, const cuda::std::array<int4, 4> *input_cs) {
-  fss::gpu::RepackGpu<probe::VdpfScheme>(cuda::std::span<const probe::VdpfScheme::Cw>(words, 9), 1,
-      cuda::std::span<int4>(cw_s, 8), cuda::std::span<uint32_t>(control, 1), cuda::std::span<int4>(terminal, 1),
-      cuda::std::span<cuda::std::array<int4, 4>>(output_cs, 1),
-      cuda::std::span<const cuda::std::array<int4, 4>>(input_cs, 1));
+  fss::gpu::detail::VdpfEvalPointGpu<4>(false, cuda::std::span<const int4>(seeds, 1),
+      cuda::std::span<const probe::VdpfScheme::Cw>(cws, 9),
+      cuda::std::span<const cuda::std::array<int4, 4>>(cs, 1), cuda::std::span<const int4>(ocws, 1),
+      cuda::std::span<const uint32_t>(xs, 1), ys, cuda::std::span<cuda::std::array<int4, 4>>(pi, 1), 1, scheme);
 }
 
 void ProbeDmpfEvalAllGpu(const probe::DmpfScheme &scheme, const int4 *s0s, const probe::DmpfScheme::Cw *cws,

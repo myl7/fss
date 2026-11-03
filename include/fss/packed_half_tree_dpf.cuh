@@ -1129,6 +1129,86 @@ __global__ void PackedHalfTreeSplitEvalAllBatchKernel(bool b, const int4 *s0s,
 
 #endif  // defined(__CUDACC__)
 
+#if defined(__CUDACC__)
+
+// Point-evaluate packed HalfTree keys, one thread per key: ys[tid] is x's output
+// block, or with cmp the 1[alpha <= x] share of HalfTreeGrottoDcf::Eval(). cws
+// holds dense level-major correction words, the layout the split form of Gen()
+// writes: layer i of key k is cws[i * nkeys + k] and the final correction word
+// is the tail row, cws[kDepth * nkeys + k].
+template <int in_bits, int unroll, bool b, bool cmp, typename Descriptor, typename In, typename Query, typename Y>
+__global__ void PackedHalfTreeDpfEvalPointKernel(Y *ys, const int4 *seeds, const int4 *cws, const Query *xs,
+    int nkeys, typename Descriptor::Backend hash, int4 instance_seed) {
+  using Scheme = typename Descriptor::Scheme;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= nkeys) return;
+  int4 node = fss::util::SetLsb(seeds[tid], b);
+  In x = static_cast<In>(xs[tid]);
+  fss::detail::GrottoTurns turns;
+
+#pragma unroll unroll
+  for (int i = 0; i < Scheme::kDepth; ++i) {
+    bool x_bit = GetBit(x, in_bits - 1 - i);
+    bool t = fss::util::GetLsb(node);
+    if constexpr (cmp) turns(t, x_bit);
+    int4 h = hash.Hash(fss::util::Xor(instance_seed, node));
+    int4 cw = cws[(size_t)i * nkeys + tid];
+    node = fss::util::Xor(fss::util::Xor(h, x_bit ? node : Zero4()), t ? cw : Zero4());
+  }
+
+  int4 leaf = hash.Hash(fss::util::Xor(instance_seed, node));
+  if (fss::util::GetLsb(node)) leaf = fss::util::Xor(leaf, cws[(size_t)Scheme::kDepth * nkeys + tid]);
+  if constexpr (cmp) {
+    ys[tid] = turns.share ^ fss::detail::SchemeAccess::HalfTreeGrottoLeafParity<Scheme>(leaf, x);
+  } else {
+    ys[tid] = leaf;
+  }
+}
+
+template <int unroll, bool cmp, int in_bits, typename Descriptor, typename In, typename Query, typename Y>
+void PackedHalfTreeDpfEvalPointLaunch(bool b, const int4 *seeds, const int4 *cws, const Query *xs, Y *ys,
+    int nkeys, typename Descriptor::Backend hash, int4 instance_seed, cudaStream_t stream) {
+  if (nkeys == 0) return;
+  constexpr int kBs = 256;
+  int blocks = (nkeys + kBs - 1) / kBs;
+  if (b) {
+    PackedHalfTreeDpfEvalPointKernel<in_bits, unroll, true, cmp, Descriptor, In, Query, Y>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cws, xs, nkeys, hash, instance_seed);
+  } else {
+    PackedHalfTreeDpfEvalPointKernel<in_bits, unroll, false, cmp, Descriptor, In, Query, Y>
+        <<<blocks, kBs, 0, stream>>>(ys, seeds, cws, xs, nkeys, hash, instance_seed);
+  }
+}
+
+/**
+ * GPU point evaluation of nkeys Packed HalfTree DPF keys: ys[k] = Eval(b,
+ * seeds[k], cws, xs[k]), the output block containing xs[k]. Extract() reads the
+ * lane. One thread per key. cws holds dense level-major correction words, as the
+ * split form of Gen() writes them, including the final correction word row.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds (device memory), one per key.
+ * @param cws Level-major correction words (device memory), (kDepth + 1) * nkeys entries.
+ * @param xs Evaluation points (device memory), one per key.
+ * @param ys Output array (device memory), one int4 per key.
+ * @param nkeys Number of keys.
+ * @param dpf A PackedHalfTreeDpf instance (holds the CCR hash and instance seed).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, int out_bits, typename Hash, typename In, typename Query = In>
+  requires QueryFor<Query, in_bits>
+void PackedHalfTreeDpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
+    cuda::std::span<const Query> xs, int4 *ys, int nkeys, const PackedHalfTreeDpf<in_bits, out_bits, Hash, In> &dpf,
+    cudaStream_t stream = 0) {
+  using Descriptor = PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
+  PackedHalfTreeDpfEvalPointLaunch<unroll, false, in_bits, Descriptor, In, Query, int4>(b, seeds.data(), cws.data(),
+      xs.data(), ys, nkeys, fss::detail::SchemeAccess::GetHash(dpf),
+      fss::detail::SchemeAccess::GetInstanceSeed(dpf), stream);
+}
+
+#endif  // defined(__CUDACC__)
+
 }  // namespace gpu::detail
 
 template <int in_bits, int out_bits, typename Hash, typename In>

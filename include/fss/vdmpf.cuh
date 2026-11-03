@@ -536,8 +536,7 @@ public:
    * path; no tree walk is shared across inputs.
    *
    * Takes the raw key components sigma, b_size_rt, s0s, cws, and cs as Gen()
-   * returned them and prepares what the kernels need internally; the
-   * level-major layout of RepackGpu() is neither used nor accepted. The host
+   * returned them and prepares what the kernels need internally. The host
    * instance passes backend values as kernel arguments. Referenced backend
    * resources and device buffers are prepared and retained by the caller.
    * Temporary work arrays and CUB sorting storage are allocated and released

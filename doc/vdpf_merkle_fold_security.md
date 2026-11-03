@@ -365,8 +365,8 @@ chunks.
 
 ## 8. The VDMPF Merkle-fold accumulation
 
-The VDMPF alternative is implemented by `BatchEvalMerkle` in `include/fss/vdmpf.cuh` and an internal GPU launcher in `include/fss/repack_gpu.cuh`.
-The repack launcher is in `fss::gpu::detail` and is not a supported public API.
+The VDMPF alternative is implemented by `BatchEvalMerkle` in `include/fss/vdmpf.cuh` and an internal GPU launcher in the same header.
+The launcher is in `fss::gpu::detail` and is not a supported public API.
 It replaces proof accumulation within and across Cuckoo buckets.
 `Gen`, `Verify`, and the output shares are unchanged.
 The sequential-chain `BatchEval` remains the paper-faithful reference.

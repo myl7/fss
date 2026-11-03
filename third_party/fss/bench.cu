@@ -14,7 +14,6 @@
 #include <memory>
 #include <span>
 #include "point_eval_cpu.cuh"
-#include <fss/repack_gpu.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/packed_half_tree_dpf.cuh>
 #include <fss/grotto_dcf.cuh>

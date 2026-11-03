@@ -175,16 +175,10 @@ Both methods accept optional `<frontier_depth, threads_per_block>` template argu
 Small domains only cap these dimensions to their tree width; deeper domains require an explicit frontier_depth if more than eight tail levels remain.
 Launch members require CUDA compilation, and their return status does not establish asynchronous completion.
 
-The public GPU Helpers repack correction buffers and provide prepared multipoint query operations.
+The public GPU Helpers provide multipoint query operations.
 They accept an explicit CUDA stream.
-The headers' declaration comments define the storage, execution-space and lifetime requirements:
-
-| Header | Purpose |
-| --- | --- |
-| `fss/repack_gpu.cuh` | Correction repacking |
-
-`RepackGpu<Scheme>` converts caller-owned corrections into the documented prepared layout.
-Prepared GPU evaluation implementations remain internal while the Core coalesced-access interface is reviewed.
+The headers' declaration comments define the storage, execution-space and lifetime requirements.
+GPU evaluation implementations remain internal while the Core coalesced-access interface is reviewed.
 HalfTreeDpf, PackedHalfTreeDpf and Dcf provide `EvalAllGpu` and `EvalAllGpuBatch` host members in their Core headers.
 GrottoDcf and HalfTreeGrottoDcf provide `PreprocessGpu` and raw or parity-tree `EvalAllGpu` methods.
 Vdpf provides `EvalAllMerkleGpu`, and Dmpf provides `EvalAllGpu`.

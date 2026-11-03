@@ -8,7 +8,9 @@
 #include <fss/dcf.cuh>
 #include <fss/vdpf.cuh>
 #include <fss/half_tree_dpf.cuh>
-#include <fss/repack_gpu.cuh>
+#include <fss/half_tree_grotto_dcf.cuh>
+#include <fss/grotto_dcf.cuh>
+#include <fss/packed_half_tree_dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/prg/chacha.cuh>
@@ -99,6 +101,22 @@ __global__ void DpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
   ys[tid] = fss_test::EvalKey(dpf, party, key, xs[tid]);
 }
 
+// Split-form variant for the level-major point benchmark: one Gen() call writes
+// layer i of key k at cws[i * kNumKeys + k] and the packed right-control bits in
+// trs[k], which is the layout the point launcher reads.
+template <int in_bits, typename Group>
+__global__ void DpfGenSplitKernel(int4 *cws, uint *trs, const int4 *seeds, const uint *alphas, const int4 *betas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint> dpf{prg};
+
+  int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  dpf.Gen(cuda::std::span<int4>(cws + tid, static_cast<size_t>(in_bits) * kNumKeys + 1), trs[tid],
+      cuda::std::span<const int4, 2>(s), alphas[tid], betas[tid], kNumKeys);
+}
+
 // --- DPF Kernels (Aes128Soft<2>) ---
 
 template <int in_bits, typename Group>
@@ -162,6 +180,22 @@ __global__ void DcfGenKernel(typename fss::Dcf<in_bits, Group, fss::prg::ChaCha<
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
   fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s), alphas[tid], betas[tid]);
   for (int i = 0; i <= in_bits; ++i) cws[tid * (in_bits + 1) + i] = k0.cws[i];
+}
+
+// Split-form variant for the level-major point benchmark; see DpfGenSplitKernel.
+template <int in_bits, typename Group>
+__global__ void DcfGenSplitKernel(int4 *cws, int4 *vws, uint *trs, const int4 *seeds, const uint *alphas,
+    const int4 *betas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint> dcf{prg};
+
+  int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  const size_t extent = static_cast<size_t>(in_bits) * kNumKeys + 1;
+  dcf.Gen(cuda::std::span<int4>(cws + tid, extent), cuda::std::span<int4>(vws + tid, extent), trs[tid],
+      cuda::std::span<const int4, 2>(s), alphas[tid], betas[tid], kNumKeys);
 }
 
 template <int in_bits, typename Group>
@@ -240,6 +274,21 @@ __global__ void HalfTreeDpfGenKernel(
   int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s), alphas[tid], betas[tid]);
   for (int i = 0; i <= in_bits; ++i) cws[tid * (in_bits + 1) + i] = k0.cws[i];
+}
+
+// Split-form variant for the level-major point benchmark; see DpfGenSplitKernel.
+template <int in_bits, typename Group>
+__global__ void HalfTreeDpfGenSplitKernel(int4 *cws, uint *trs, const int4 *seeds, const uint *alphas,
+    const int4 *betas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  fss_test::TestCcrHash prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  HtDpfType<in_bits, Group> dpf{fss_test::Ccr(prg), kHalfTreeHashKeyHost};
+
+  int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  dpf.Gen(cuda::std::span<int4>(cws + tid, static_cast<size_t>(in_bits) * kNumKeys + 1), trs[tid],
+      cuda::std::span<const int4, 2>(s0s), alphas[tid], betas[tid], kNumKeys);
 }
 
 template <int in_bits, typename Group>
@@ -802,36 +851,37 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
   cudaFree(d_pi);
 }
 
-// --- GPU point eval benchmarks (level-major layout) ---
+// Copies each key's final correction word into the per-key array the VDPF point
+// launcher reads; VDPF keeps the output correction words separate.
+template <int in_bits, typename Cw>
+__global__ void VdpfOcwsKernel(const Cw *cws, int4 *ocws) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+  ocws[tid] = cws[static_cast<size_t>(tid) * (in_bits + 1) + in_bits].s;
+}
+
+// --- GPU point eval benchmarks (split-form layout) ---
 //
 // Same workload as the per-key Eval benchmarks above (one output per key at
-// one random point each), but the correction words are repacked level-major
-// once after Gen: level i of every key adjacent, plus the packed control bits
-// and the output correction words. Each level load is then one coalesced 128B
-// transaction per warp instead of 32 lines of 128B each, which removes the
-// DRAM bound for DPF and DCF point evaluation. The repack is a one-time
-// preprocessing cost outside the timed loop, same as Gen.
+// one random point each), but Gen() writes the split form level-major once:
+// layer i of every key adjacent, plus the packed control bits and the output
+// correction marks. Each level load is then one coalesced 128B transaction per
+// warp instead of 32 lines of 128B each, which removes the DRAM bound for DPF
+// and DCF point evaluation. Generation is a one-time preprocessing cost outside
+// the timed loop.
 
 template <int in_bits, typename Group>
 static void BM_DpfEvalPointGpu(benchmark::State &state) {
   using DpfType = fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>;
   GpuData data;
 
-  typename DpfType::Cw *d_cws;
-  int4 *d_cw_s, *d_out_cw;
-  uint32_t *d_extra;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DpfType::Cw) * (in_bits + 1) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(uint32_t) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_out_cw, sizeof(int4) * kNumKeys));
+  int4 *d_cws;
+  uint *d_tr;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(int4) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_tr, sizeof(uint) * kNumKeys));
 
-  DpfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
-  CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::RepackGpu<fss::Dpf<in_bits, Group, fss::prg::ChaCha<2>, uint>>({d_cws, (in_bits + 1) * kNumKeys},
-        kNumKeys,
-        {d_cw_s, in_bits * kNumKeys},
-        {d_extra, kNumKeys},
-        {d_out_cw, kNumKeys});
+  DpfGenSplitKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_tr, data.d_seeds, data.d_alphas,
+      data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -839,15 +889,13 @@ static void BM_DpfEvalPointGpu(benchmark::State &state) {
 
   RunTimedKernel(state, [&] {
     fss::gpu::detail::DpfEvalPointGpu<1>(false,
-        data.d_seeds0, d_cw_s, d_extra, d_out_cw, data.d_xs, data.d_ys,
-        kNumKeys, dpf);
+        {data.d_seeds0, kNumKeys}, {d_cws, (in_bits + 1) * kNumKeys}, {d_tr, kNumKeys},
+        {data.d_xs, kNumKeys}, data.d_ys, kNumKeys, dpf);
   });
   state.SetItemsProcessed(state.iterations() * kNumKeys);
 
   cudaFree(d_cws);
-  cudaFree(d_cw_s);
-  cudaFree(d_extra);
-  cudaFree(d_out_cw);
+  cudaFree(d_tr);
 }
 
 template <int in_bits, typename Group>
@@ -855,20 +903,14 @@ static void BM_DcfEvalPointGpu(benchmark::State &state) {
   using DcfType = fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>;
   GpuData data;
 
-  typename DcfType::Cw *d_cws;
-  int4 *d_cw_s, *d_cw_v, *d_out_cw;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename DcfType::Cw) * (in_bits + 1) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_cw_v, sizeof(int4) * in_bits * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_out_cw, sizeof(int4) * kNumKeys));
+  int4 *d_cws, *d_vws;
+  uint *d_tr;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(int4) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_vws, sizeof(int4) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_tr, sizeof(uint) * kNumKeys));
 
-  DcfGenKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
-  CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::RepackGpu<fss::Dcf<in_bits, Group, fss::prg::ChaCha<4>, uint>>({d_cws, (in_bits + 1) * kNumKeys},
-        kNumKeys,
-        {d_cw_s, in_bits * kNumKeys},
-        {d_cw_v, in_bits * kNumKeys},
-        {d_out_cw, kNumKeys});
+  DcfGenSplitKernel<in_bits, Group><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_vws, d_tr, data.d_seeds,
+      data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss::prg::ChaCha<4> prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -876,15 +918,14 @@ static void BM_DcfEvalPointGpu(benchmark::State &state) {
 
   RunTimedKernel(state, [&] {
     fss::gpu::detail::DcfEvalPointGpu<4>(false,
-        data.d_seeds0, d_cw_s, d_cw_v, d_out_cw, data.d_xs, data.d_ys,
-        kNumKeys, dcf);
+        {data.d_seeds0, kNumKeys}, {d_cws, (in_bits + 1) * kNumKeys}, {d_vws, (in_bits + 1) * kNumKeys},
+        {d_tr, kNumKeys}, {data.d_xs, kNumKeys}, data.d_ys, kNumKeys, dcf);
   });
   state.SetItemsProcessed(state.iterations() * kNumKeys);
 
   cudaFree(d_cws);
-  cudaFree(d_cw_s);
-  cudaFree(d_cw_v);
-  cudaFree(d_out_cw);
+  cudaFree(d_vws);
+  cudaFree(d_tr);
 }
 
 template <int in_bits, typename Group>
@@ -892,23 +933,13 @@ static void BM_HalfTreeDpfEvalPointGpu(benchmark::State &state) {
   using HtDpf = HtDpfType<in_bits, Group>;
   GpuData data;
 
-  typename HtDpf::Cw *d_cws;
-  int4 *d_cw_s;
-  uint32_t *d_extra;
-  int4 *d_ocws;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename HtDpf::Cw) * (in_bits + 1) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(uint32_t) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kNumKeys));
+  int4 *d_cws;
+  uint *d_tr;
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(int4) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_tr, sizeof(uint) * kNumKeys));
 
-  HalfTreeDpfGenKernel<in_bits, Group>
-      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, data.d_betas);
-  CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::RepackGpu<fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<fss_test::TestCcrHash>, uint>>({d_cws, (in_bits + 1) * kNumKeys},
-        kNumKeys,
-        {d_cw_s, in_bits * kNumKeys},
-        {d_extra, kNumKeys},
-        {d_ocws, kNumKeys});
+  HalfTreeDpfGenSplitKernel<in_bits, Group>
+      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_tr, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss_test::TestCcrHash prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -916,15 +947,13 @@ static void BM_HalfTreeDpfEvalPointGpu(benchmark::State &state) {
 
   RunTimedKernel(state, [&] {
     fss::gpu::detail::HalfTreeDpfEvalPointGpu<4>(false,
-        data.d_seeds0, d_cw_s, d_extra, d_ocws, data.d_xs, data.d_ys,
-        kNumKeys, dpf);
+        {data.d_seeds0, kNumKeys}, {d_cws, (in_bits + 1) * kNumKeys}, {d_tr, kNumKeys},
+        {data.d_xs, kNumKeys}, data.d_ys, kNumKeys, dpf);
   });
   state.SetItemsProcessed(state.iterations() * kNumKeys);
 
   cudaFree(d_cws);
-  cudaFree(d_cw_s);
-  cudaFree(d_extra);
-  cudaFree(d_ocws);
+  cudaFree(d_tr);
 }
 
 template <int in_bits, typename Group>
@@ -933,14 +962,10 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
   GpuData data;
 
   typename Vdpf::Cw *d_cws;
-  int4 *d_cw_s;
   cuda::std::array<int4, 4> *d_pi;
-  uint32_t *d_extra;
   cuda::std::array<int4, 4> *d_cs;
   int4 *d_ocws;
   CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename Vdpf::Cw) * (in_bits + 1) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(uint32_t) * kNumKeys));
   CUDA_CHECK(cudaMalloc(&d_pi, sizeof(cuda::std::array<int4, 4>) * kNumKeys));
   CUDA_CHECK(cudaMalloc(&d_cs, sizeof(cuda::std::array<int4, 4>) * kNumKeys));
   CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kNumKeys));
@@ -948,13 +973,8 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
   VdpfGenKernel<in_bits, Group>
       <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_cs, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::RepackGpu<fss::Vdpf<in_bits, Group, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3, uint>>({d_cws, (in_bits + 1) * kNumKeys},
-        kNumKeys,
-        {d_cw_s, in_bits * kNumKeys},
-        {d_extra, kNumKeys},
-        {d_ocws, kNumKeys},
-        {d_cs, kNumKeys},
-        cuda::std::span<const cuda::std::array<int4, 4>>(d_cs, kNumKeys));
+  // VDPF has no split form, so the launcher reads the key's own rows.
+  VdpfOcwsKernel<in_bits, typename Vdpf::Cw><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_ocws);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -963,17 +983,33 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
 
   RunTimedKernel(state, [&] {
     fss::gpu::detail::VdpfEvalPointGpu<1>(false,
-        data.d_seeds0, d_cw_s, d_extra, d_cs, d_ocws, data.d_xs, data.d_ys, d_pi,
-        kNumKeys, vdpf);
+        {data.d_seeds0, kNumKeys}, {d_cws, (in_bits + 1) * kNumKeys}, {d_cs, kNumKeys}, {d_ocws, kNumKeys},
+        {data.d_xs, kNumKeys}, data.d_ys, {d_pi, kNumKeys}, kNumKeys, vdpf);
   });
   state.SetItemsProcessed(state.iterations() * kNumKeys);
 
   cudaFree(d_cws);
-  cudaFree(d_cw_s);
-  cudaFree(d_extra);
   cudaFree(d_pi);
   cudaFree(d_cs);
   cudaFree(d_ocws);
+}
+
+// Split-form variant for the level-major point benchmark; see DpfGenSplitKernel.
+// The packed layout has no control bits, so Gen() writes only the word rows.
+template <int in_bits, int out_bits>
+__global__ void PackedHalfTreeDpfGenSplitKernel(int4 *cws, const int4 *seeds, const uint *alphas,
+    const uint64_t *betas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  using Prg = fss_test::TestCcrHash;
+  using PackedType = fss::PackedHalfTreeDpf<in_bits, out_bits, fss_test::CcrBackend<Prg>, uint>;
+  Prg prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  PackedType dpf{fss_test::Ccr(prg), kHalfTreeHashKeyHost};
+
+  int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  dpf.Gen(cuda::std::span<int4>(cws + tid, static_cast<size_t>(PackedType::kDepth) * kNumKeys + 1),
+      cuda::std::span<const int4, 2>(s0s), alphas[tid], betas[tid], kNumKeys);
 }
 
 // --- PackedHalfTree DPF and HalfTree Grotto DCF point eval GPU benchmarks (owned-table AES CCR fixture) ---
@@ -993,21 +1029,13 @@ static void BM_PackedHalfTreePointGpu(benchmark::State &state) {
   CUDA_CHECK(cudaMalloc(&d_betas_u64, sizeof(uint64_t) * kNumKeys));
   CUDA_CHECK(cudaMemcpy(d_betas_u64, betas.data(), sizeof(uint64_t) * kNumKeys, cudaMemcpyHostToDevice));
 
-  typename PackedType::Cw *d_cws;
-  int4 *d_cw_s, *d_fcws;
+  int4 *d_cws;
   bool *d_shares;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename PackedType::Cw) * (kDepth + 1) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * kDepth * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_fcws, sizeof(int4) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(int4) * (kDepth + 1) * kNumKeys));
   CUDA_CHECK(cudaMalloc(&d_shares, sizeof(bool) * kNumKeys));
 
-  PackedHalfTreeDpfGenKernel<in_bits, 1>
+  PackedHalfTreeDpfGenSplitKernel<in_bits, 1>
       <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas, d_betas_u64);
-  CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::RepackGpu<fss::PackedHalfTreeDpf<in_bits, 1, fss_test::CcrBackend<Prg>, uint>>({d_cws, (kDepth + 1) * kNumKeys},
-        kNumKeys,
-        {d_cw_s, kDepth * kNumKeys},
-        {d_fcws, kNumKeys});
   CUDA_CHECK(cudaDeviceSynchronize());
 
   Prg prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -1017,11 +1045,11 @@ static void BM_PackedHalfTreePointGpu(benchmark::State &state) {
   RunTimedKernel(state, [&] {
     if constexpr (dcf) {
       fss::gpu::detail::HalfTreeGrottoDcfEvalPointGpu(false,
-          data.d_seeds0, d_cw_s, d_fcws, data.d_xs, d_shares, kNumKeys,
+          {data.d_seeds0, kNumKeys}, {d_cws, (kDepth + 1) * kNumKeys}, {data.d_xs, kNumKeys}, d_shares, kNumKeys,
           grotto);
     } else {
       fss::gpu::detail::PackedHalfTreeDpfEvalPointGpu(false,
-          data.d_seeds0, d_cw_s, d_fcws, data.d_xs, data.d_ys, kNumKeys,
+          {data.d_seeds0, kNumKeys}, {d_cws, (kDepth + 1) * kNumKeys}, {data.d_xs, kNumKeys}, data.d_ys, kNumKeys,
           dpf);
     }
   });
@@ -1029,8 +1057,6 @@ static void BM_PackedHalfTreePointGpu(benchmark::State &state) {
 
   cudaFree(d_betas_u64);
   cudaFree(d_cws);
-  cudaFree(d_cw_s);
-  cudaFree(d_fcws);
   cudaFree(d_shares);
 }
 
@@ -1048,42 +1074,46 @@ __global__ void GrottoDcfGenKernel(
   dcf.Gen(cws + (size_t)tid * (in_bits + 1), s0s, alphas[tid]);
 }
 
+// Split-form variant for the level-major point benchmark; see DpfGenSplitKernel.
+template <int in_bits>
+__global__ void GrottoDcfGenSplitKernel(int4 *cws, uint *trs, const int4 *seeds, const uint *alphas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, uint> dcf{prg};
+  int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  dcf.Gen(cuda::std::span<int4>(cws + tid, static_cast<size_t>(in_bits) * kNumKeys + 1), trs[tid],
+      cuda::std::span<const int4, 2>(s0s), alphas[tid], kNumKeys);
+}
+
 template <int in_bits>
 static void BM_GrottoDcfEvalPointGpu(benchmark::State &state) {
   using Prg = fss::prg::ChaCha<2>;
   using GdcfType = fss::GrottoDcf<in_bits, Prg, uint>;
   GpuData data;
 
-  typename GdcfType::Cw *d_cws;
-  int4 *d_cw_s;
-  fss::gpu::detail::ExtBits<in_bits> *d_extra;
+  int4 *d_cws;
+  uint *d_tr;
   bool *d_shares;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename GdcfType::Cw) * (in_bits + 1) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * in_bits * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_extra, sizeof(fss::gpu::detail::ExtBits<in_bits>) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(int4) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_tr, sizeof(uint) * kNumKeys));
   CUDA_CHECK(cudaMalloc(&d_shares, sizeof(bool) * kNumKeys));
 
-  GrottoDcfGenKernel<in_bits><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, data.d_seeds, data.d_alphas);
-  CUDA_CHECK(cudaDeviceSynchronize());
-  fss::gpu::RepackGpu<fss::GrottoDcf<in_bits, Prg, uint>>({d_cws, (in_bits + 1) * kNumKeys},
-        kNumKeys,
-        {d_cw_s, in_bits * kNumKeys},
-        {d_extra, kNumKeys},
-        {});
+  GrottoDcfGenSplitKernel<in_bits><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_tr, data.d_seeds, data.d_alphas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   GdcfType dcf{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
 
   RunTimedKernel(state, [&] {
     fss::gpu::detail::GrottoDcfEvalPointGpu(false,
-        data.d_seeds0, d_cw_s, d_extra, data.d_xs, d_shares,
-        kNumKeys, dcf);
+        {data.d_seeds0, kNumKeys}, {d_cws, (in_bits + 1) * kNumKeys}, {d_tr, kNumKeys},
+        {data.d_xs, kNumKeys}, d_shares, kNumKeys, dcf);
   });
   state.SetItemsProcessed(state.iterations() * kNumKeys);
 
   cudaFree(d_cws);
-  cudaFree(d_cw_s);
-  cudaFree(d_extra);
+  cudaFree(d_tr);
   cudaFree(d_shares);
 }
 

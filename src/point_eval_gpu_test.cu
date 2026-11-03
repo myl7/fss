@@ -6,8 +6,14 @@
 #include <cuda/std/span>
 #include <fss/group/bytes.cuh>
 #include <fss/hash/blake3.cuh>
-#include <fss/repack_gpu.cuh>
 #include <fss/prg/chacha.cuh>
+#include <fss/dcf.cuh>
+#include <fss/dpf.cuh>
+#include <fss/grotto_dcf.cuh>
+#include <fss/half_tree_dpf.cuh>
+#include <fss/half_tree_grotto_dcf.cuh>
+#include <fss/packed_half_tree_dpf.cuh>
+#include <fss/vdpf.cuh>
 #include "core_api_test_helpers.cuh"
 
 namespace {
@@ -75,31 +81,31 @@ void CheckDpfPoint() {
   using Prg = fss::prg::ChaCha<2>;
   using Group = fss::group::Bytes;
   using Scheme = fss::Dpf<bits, Group, Prg, In>;
-  using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
-  constexpr int kStride = bits + 1;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   const int4 beta = {7, 19, 23, 42};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakePoints<bits, In>(alphas);
-  std::vector<Cw> cws(keys * kStride);
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
+  std::vector<int4> cws(static_cast<size_t>(bits + 1) * keys);
+  std::vector<In> trs(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
-    for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
+    // Split form: layer i of key k lands at cws[i * keys + k], the terminal at
+    // cws[bits * keys + k], and the packed right-control bits in trs[k].
+    scheme.Gen(cuda::std::span<int4>(cws.data() + k, static_cast<size_t>(bits) * keys + 1), trs[k],
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta, keys);
   }
-  DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_out_cw, device_seeds, device_ys;
+  DeviceBuffer<int4> device_cws, device_seeds, device_ys;
+  DeviceBuffer<In> device_tr;
   DeviceBuffer<Query> device_xs;
-  DeviceBuffer<fss::gpu::detail::ExtBits<bits>> device_extra;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_cw_s.Allocate(bits * keys), cudaSuccess);
-  ASSERT_EQ(device_extra.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_out_cw.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Upload(trs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -107,19 +113,16 @@ void CheckDpfPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::RepackGpu<fss::Dpf<bits, Group, Prg, In>>({device_cws.data(), cws.size()},
-      keys,
-      {device_cw_s.data(), bits * keys},
-      {device_extra.data(), keys},
-      {device_out_cw.data(), keys},
-      stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::DpfEvalPointGpu(party != 0,
-        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_out_cw.data(), device_xs.data(), device_ys.data(),
+        cuda::std::span<const int4>(device_seeds.data(), keys),
+        cuda::std::span<const int4>(device_cws.data(), static_cast<size_t>(bits + 1) * keys),
+        cuda::std::span<const In>(device_tr.data(), keys),
+        cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(),
         keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -149,32 +152,32 @@ void CheckHalfTreePoint() {
   using Prg = fss_test::TestCcrHash;
   using Group = fss::group::Bytes;
   using Scheme = fss::HalfTreeDpf<bits, Group, fss_test::CcrBackend<Prg>, In>;
-  using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
-  constexpr int kStride = bits + 1;
   const int4 hash_key = {11, 22, 33, 44};
   Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), hash_key};
   const int4 beta = {7, 19, 23, 42};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakePoints<bits, In>(alphas);
-  std::vector<Cw> cws(keys * kStride);
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
+  std::vector<int4> cws(static_cast<size_t>(bits + 1) * keys);
+  std::vector<In> trs(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
-    for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
+    // Split form: layer i of key k lands at cws[i * keys + k], the terminal at
+    // cws[bits * keys + k], and the packed control bits in trs[k].
+    scheme.Gen(cuda::std::span<int4>(cws.data() + k, static_cast<size_t>(bits) * keys + 1), trs[k],
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta, keys);
   }
-  DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_ocws, device_seeds, device_ys;
-  DeviceBuffer<uint32_t> device_extra;
+  DeviceBuffer<int4> device_cws, device_seeds, device_ys;
+  DeviceBuffer<In> device_tr;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_cw_s.Allocate(bits * keys), cudaSuccess);
-  ASSERT_EQ(device_extra.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_ocws.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Upload(trs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -182,19 +185,16 @@ void CheckHalfTreePoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::RepackGpu<fss::HalfTreeDpf<bits, Group, fss_test::CcrBackend<Prg>, In>>({device_cws.data(), cws.size()},
-      keys,
-      {device_cw_s.data(), bits * keys},
-      {device_extra.data(), keys},
-      {device_ocws.data(), keys},
-      stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::HalfTreeDpfEvalPointGpu(party != 0,
-        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_ocws.data(), device_xs.data(), device_ys.data(),
+        cuda::std::span<const int4>(device_seeds.data(), keys),
+        cuda::std::span<const int4>(device_cws.data(), static_cast<size_t>(bits + 1) * keys),
+        cuda::std::span<const In>(device_tr.data(), keys),
+        cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(),
         keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -239,29 +239,28 @@ void CheckPackedPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss_test::TestCcrHash;
   using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, fss_test::CcrBackend<Prg>, In>;
-  using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kDepth = Scheme::kDepth;
   Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), {11, 22, 33, 44}};
   const uint64_t beta = out_bits == 1 ? 1 : (out_bits == 64 ? ~uint64_t{0} : (uint64_t{1} << out_bits) - 1) - 2;
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakeBoundaryPoints<bits, In, kDepth>(alphas);
-  std::vector<Cw> cws(keys * (kDepth + 1));
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
+  std::vector<int4> cws(static_cast<size_t>(kDepth + 1) * keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
-    for (int i = 0; i <= kDepth; ++i) cws[k * (kDepth + 1) + i] = keys0[k].cws[i];
+    // Split form: layer i of key k lands at cws[i * keys + k] and the final
+    // correction word at cws[kDepth * keys + k].
+    scheme.Gen(cuda::std::span<int4>(cws.data() + k, static_cast<size_t>(kDepth) * keys + 1),
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta, keys);
   }
-  DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_fcws, device_seeds, device_ys;
+  DeviceBuffer<int4> device_cws, device_seeds, device_ys;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_cw_s.Allocate(kDepth * keys), cudaSuccess);
-  ASSERT_EQ(device_fcws.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -269,19 +268,15 @@ void CheckPackedPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::RepackGpu<fss::PackedHalfTreeDpf<bits, out_bits, fss_test::CcrBackend<Prg>, In>>({device_cws.data(), cws.size()},
-        keys,
-        {device_cw_s.data(), kDepth * keys},
-        {device_fcws.data(), keys},
-        stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::PackedHalfTreeDpfEvalPointGpu(party != 0,
-        device_seeds.data(), device_cw_s.data(), device_fcws.data(),
-        device_xs.data(), device_ys.data(), keys, scheme, stream);
+        cuda::std::span<const int4>(device_seeds.data(), keys),
+        cuda::std::span<const int4>(device_cws.data(), static_cast<size_t>(kDepth + 1) * keys),
+        cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(), keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
@@ -312,7 +307,6 @@ void CheckHalfTreeGrottoPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss_test::TestCcrHash;
   using Scheme = fss::HalfTreeGrottoDcf<bits, fss_test::CcrBackend<Prg>, In>;
-  using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kDepth = Scheme::kDepth;
   Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), {11, 22, 33, 44}};
@@ -323,23 +317,23 @@ void CheckHalfTreeGrottoPoint() {
     if ((k / 6) % 2 == 1) alphas[k] = static_cast<In>(alphas[k] ^ (static_cast<In>(1) << (bits - kDepth)));
   }
   const std::vector<In> xs = MakeBoundaryPoints<bits, In, kDepth>(alphas);
-  std::vector<Cw> cws(keys * (kDepth + 1));
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
+  std::vector<int4> cws(static_cast<size_t>(kDepth + 1) * keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k]);
-    for (int i = 0; i <= kDepth; ++i) cws[k * (kDepth + 1) + i] = keys0[k].cws[i];
+    // Split form: layer i of key k lands at cws[i * keys + k] and the final
+    // correction word at cws[kDepth * keys + k].
+    scheme.Gen(cuda::std::span<int4>(cws.data() + k, static_cast<size_t>(kDepth) * keys + 1),
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], keys);
   }
-  DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_fcws, device_seeds;
+  DeviceBuffer<int4> device_cws, device_seeds;
   DeviceBuffer<bool> device_ys;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_cw_s.Allocate(kDepth * keys), cudaSuccess);
-  ASSERT_EQ(device_fcws.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -347,19 +341,15 @@ void CheckHalfTreeGrottoPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::RepackGpu<fss::HalfTreeGrottoDcf<bits, fss_test::CcrBackend<Prg>, In>>({device_cws.data(), cws.size()},
-        keys,
-        {device_cw_s.data(), kDepth * keys},
-        {device_fcws.data(), keys},
-        stream);
   std::vector<uint8_t> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::HalfTreeGrottoDcfEvalPointGpu(party != 0,
-        device_seeds.data(), device_cw_s.data(), device_fcws.data(),
-        device_xs.data(), device_ys.data(), keys, scheme, stream);
+        cuda::std::span<const int4>(device_seeds.data(), keys),
+        cuda::std::span<const int4>(device_cws.data(), static_cast<size_t>(kDepth + 1) * keys),
+        cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(), keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(bool), cudaMemcpyDeviceToHost), cudaSuccess);
@@ -388,29 +378,31 @@ void CheckGrottoPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
   using Scheme = fss::GrottoDcf<bits, Prg, In>;
-  using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakeBoundaryPoints<bits, In, bits>(alphas);
-  std::vector<Cw> cws(keys * (bits + 1));
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
+  std::vector<int4> cws(static_cast<size_t>(bits + 1) * keys);
+  std::vector<In> trs(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k]);
-    for (int i = 0; i <= bits; ++i) cws[k * (bits + 1) + i] = keys0[k].cws[i];
+    // Split form: layer i of key k lands at cws[i * keys + k], the terminal at
+    // cws[bits * keys + k], and the packed right-control bits in trs[k].
+    scheme.Gen(cuda::std::span<int4>(cws.data() + k, static_cast<size_t>(bits) * keys + 1), trs[k],
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], keys);
   }
-  DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_seeds;
-  DeviceBuffer<fss::gpu::detail::ExtBits<bits>> device_extra;
+  DeviceBuffer<int4> device_cws, device_seeds;
+  DeviceBuffer<In> device_tr;
   DeviceBuffer<bool> device_ys;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_cw_s.Allocate(bits * keys), cudaSuccess);
-  ASSERT_EQ(device_extra.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Upload(trs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -418,19 +410,16 @@ void CheckGrottoPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::RepackGpu<fss::GrottoDcf<bits, Prg, In>>({device_cws.data(), cws.size()},
-        keys,
-        {device_cw_s.data(), bits * keys},
-        {device_extra.data(), keys},
-        {},
-        stream);
   std::vector<uint8_t> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::GrottoDcfEvalPointGpu(party != 0,
-        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_xs.data(), device_ys.data(),
+        cuda::std::span<const int4>(device_seeds.data(), keys),
+        cuda::std::span<const int4>(device_cws.data(), static_cast<size_t>(bits + 1) * keys),
+        cuda::std::span<const In>(device_tr.data(), keys),
+        cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(),
         keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
@@ -460,30 +449,34 @@ void CheckDcfPoint() {
   using Prg = fss::prg::ChaCha<4>;
   using Group = fss::group::Bytes;
   using Scheme = fss::Dcf<bits, Group, Prg, In, pred>;
-  using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
-  constexpr int kStride = bits + 1;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   const int4 beta = {7, 19, 23, 42};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakePoints<bits, In>(alphas);
-  std::vector<Cw> cws(keys * kStride);
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
+  std::vector<int4> cws(static_cast<size_t>(bits + 1) * keys), vws(static_cast<size_t>(bits + 1) * keys);
+  std::vector<In> trs(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta);
-    for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
+    // Split form: layer i of key k lands at cws[i * keys + k] and vws[i * keys + k],
+    // the terminal v in vws's tail row, and the right-control bits in trs[k].
+    scheme.Gen(cuda::std::span<int4>(cws.data() + k, static_cast<size_t>(bits) * keys + 1),
+        cuda::std::span<int4>(vws.data() + k, static_cast<size_t>(bits) * keys + 1), trs[k],
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta, keys);
   }
-  DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_cw_v, device_out_cw, device_seeds, device_ys;
+  DeviceBuffer<int4> device_cws, device_vws, device_seeds, device_ys;
+  DeviceBuffer<In> device_tr;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_cw_s.Allocate(bits * keys), cudaSuccess);
-  ASSERT_EQ(device_cw_v.Allocate(bits * keys), cudaSuccess);
-  ASSERT_EQ(device_out_cw.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_vws.Allocate(vws.size()), cudaSuccess);
+  ASSERT_EQ(device_vws.Upload(vws.data(), vws.size()), cudaSuccess);
+  ASSERT_EQ(device_tr.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Upload(trs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_xs.Allocate(keys), cudaSuccess);
@@ -491,19 +484,17 @@ void CheckDcfPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::RepackGpu<fss::Dcf<bits, Group, Prg, In, pred>>({device_cws.data(), cws.size()},
-      keys,
-      {device_cw_s.data(), bits * keys},
-      {device_cw_v.data(), bits * keys},
-      {device_out_cw.data(), keys},
-      stream);
   std::vector<int4> actual(keys), first(keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::DcfEvalPointGpu(party != 0,
-        device_seeds.data(), device_cw_s.data(), device_cw_v.data(), device_out_cw.data(), device_xs.data(), device_ys.data(),
+        cuda::std::span<const int4>(device_seeds.data(), keys),
+        cuda::std::span<const int4>(device_cws.data(), static_cast<size_t>(bits + 1) * keys),
+        cuda::std::span<const int4>(device_vws.data(), static_cast<size_t>(bits + 1) * keys),
+        cuda::std::span<const In>(device_tr.data(), keys),
+        cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(),
         keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -549,26 +540,28 @@ void CheckVdpfPoint() {
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
   std::vector<cuda::std::array<int4, 4>> cs(keys);
+  std::vector<int4> h_ocws(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     ASSERT_EQ(fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta), 0);
     for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
     for (int i = 0; i < 4; ++i) cs[k][i] = keys0[k].cs[i];
+    h_ocws[k] = keys0[k].cws[bits].s;
   }
+  // VDPF has no split form, so the launcher reads the key's own rows; only the
+  // output correction words move to their own array.
   DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_cw_s, device_ocws, device_seeds, device_ys;
+  DeviceBuffer<int4> device_ocws, device_seeds, device_ys;
   DeviceBuffer<cuda::std::array<int4, 4>> device_pi;
   DeviceBuffer<cuda::std::array<int4, 4>> device_cs;
-  DeviceBuffer<fss::gpu::detail::ExtBits<bits>> device_extra;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_cw_s.Allocate(bits * keys), cudaSuccess);
-  ASSERT_EQ(device_extra.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_ocws.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_ocws.Upload(h_ocws.data(), keys), cudaSuccess);
   ASSERT_EQ(device_cs.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_cs.Upload(cs.data(), keys), cudaSuccess);
-  ASSERT_EQ(device_ocws.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_ys.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_pi.Allocate(keys), cudaSuccess);
@@ -577,22 +570,18 @@ void CheckVdpfPoint() {
   ASSERT_EQ(device_xs.Upload(query_buffer.data(), keys), cudaSuccess);
   cudaStream_t stream;
   ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
-  fss::gpu::RepackGpu<fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>>({device_cws.data(), cws.size()},
-      keys,
-      {device_cw_s.data(), bits * keys},
-      {device_extra.data(), keys},
-      {device_ocws.data(), keys},
-      {device_cs.data(), keys},
-      cuda::std::span<const cuda::std::array<int4, 4>>(device_cs.data(), keys),
-      stream);
   std::vector<int4> actual(keys), first(keys), gpu_pi(2 * 4 * keys);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
     for (int k = 0; k < keys; ++k) party_seeds[k] = seeds[2 * k + party];
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::VdpfEvalPointGpu(party != 0,
-        device_seeds.data(), device_cw_s.data(), device_extra.data(), device_cs.data(), device_ocws.data(), device_xs.data(), device_ys.data(), device_pi.data(),
-        keys, scheme, stream);
+        cuda::std::span<const int4>(device_seeds.data(), keys),
+        cuda::std::span<const Cw>(device_cws.data(), cws.size()),
+        cuda::std::span<const cuda::std::array<int4, 4>>(device_cs.data(), keys),
+        cuda::std::span<const int4>(device_ocws.data(), keys),
+        cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(),
+        cuda::std::span<cuda::std::array<int4, 4>>(device_pi.data(), keys), keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), keys * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);

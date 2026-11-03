@@ -990,4 +990,47 @@ HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessOwnedCws(
   return OwnedPackedParityTree<Scheme>(std::move(blocks), std::move(p));
 }
 
+namespace gpu::detail {
+
+#if defined(__CUDACC__)
+
+// Hold the scheme behind a tag so the shared packed point kernel does not spell
+// the scheme's hash in the host stub signature.
+template <int in_bits, typename Hash, typename In>
+struct HalfTreeGrottoGpuKernelDescriptor {
+  using Scheme = HalfTreeGrottoDcf<in_bits, Hash, In>;
+  using Backend = Hash;
+};
+
+/**
+ * GPU point evaluation of nkeys HalfTree Grotto DCF keys: ys[k] = Eval(b,
+ * seeds[k], cws, xs[k]), the party's share of 1[alpha <= xs[k]]. One thread per
+ * key. cws holds dense level-major correction words, as the split form of Gen()
+ * writes them, including the final correction word row.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param seeds Party seeds (device memory), one per key.
+ * @param cws Level-major correction words (device memory), (kDepth + 1) * nkeys entries.
+ * @param xs Evaluation points (device memory), one per key.
+ * @param ys Output array (device memory), one share bit per key.
+ * @param nkeys Number of keys.
+ * @param dcf A HalfTreeGrottoDcf instance (holds the CCR hash and instance seed).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, typename Hash, typename In, typename Query = In>
+  requires QueryFor<Query, in_bits>
+void HalfTreeGrottoDcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
+    cuda::std::span<const Query> xs, bool *ys, int nkeys, const HalfTreeGrottoDcf<in_bits, Hash, In> &dcf,
+    cudaStream_t stream = 0) {
+  using Descriptor = HalfTreeGrottoGpuKernelDescriptor<in_bits, Hash, In>;
+  PackedHalfTreeDpfEvalPointLaunch<unroll, true, in_bits, Descriptor, In, Query, bool>(b, seeds.data(), cws.data(),
+      xs.data(), ys, nkeys, fss::detail::SchemeAccess::GetHash(dcf),
+      fss::detail::SchemeAccess::GetInstanceSeed(dcf), stream);
+}
+
+#endif  // defined(__CUDACC__)
+
+}  // namespace gpu::detail
+
 }  // namespace fss
