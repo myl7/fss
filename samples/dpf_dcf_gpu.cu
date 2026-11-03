@@ -257,34 +257,34 @@ template <typename Scheme>
 static void FullDomainSample(Scheme scheme, const char *name, bool comparison) {
   constexpr int kKeys = 2;
   constexpr int kOutputs = 1 << kInBits;
-  constexpr int kCorrections = kInBits + 1;
+  constexpr int kCwPerKey = kInBits + 1;
   int4 seeds[kKeys][2];
   if (RAND_bytes(reinterpret_cast<unsigned char *>(seeds), sizeof(seeds)) != 1) {
     fprintf(stderr, "seed generation failed\n");
     exit(1);
   }
-  typename Scheme::Cw corrections[kKeys][kCorrections];
+  typename Scheme::Cw cws[kKeys][kCwPerKey];
   int4 party0[kKeys], party1[kKeys];
   const int4 beta = {7, 0, 0, 0};
   for (int i = 0; i < kKeys; ++i) {
-    scheme.Gen(corrections[i], seeds[i], static_cast<In>(42 + i), beta);
+    scheme.Gen(cws[i], seeds[i], static_cast<In>(42 + i), beta);
     party0[i] = seeds[i][0];
     party1[i] = seeds[i][1];
   }
-  auto *device_cws = ToDevice(&corrections[0][0], kKeys * kCorrections);
+  auto *device_cws = ToDevice(&cws[0][0], kKeys * kCwPerKey);
   auto *device_seeds = ToDevice(party0, kKeys);
   int4 *device_y0, *device_y1;
   CUDA_CHECK(cudaMalloc(&device_y0, kKeys * kOutputs * sizeof(int4)));
   CUDA_CHECK(cudaMalloc(&device_y1, kKeys * kOutputs * sizeof(int4)));
 
-  // Corrections and outputs are key-major; the party is shared by the batch.
+  // Cws and outputs are key-major; the party is shared by the batch.
   CUDA_CHECK(scheme.EvalAllGpuBatch(false,
       cuda::std::span<const int4>(device_seeds, kKeys),
-      cuda::std::span<const typename Scheme::Cw>(device_cws, kKeys * kCorrections),
+      cuda::std::span<const typename Scheme::Cw>(device_cws, kKeys * kCwPerKey),
       cuda::std::span<int4>(device_y0, kKeys * kOutputs)));
   for (int i = 0; i < kKeys; ++i) {
     CUDA_CHECK(scheme.EvalAllGpu(true, party1[i],
-        cuda::std::span<const typename Scheme::Cw>(device_cws + i * kCorrections, kCorrections),
+        cuda::std::span<const typename Scheme::Cw>(device_cws + i * kCwPerKey, kCwPerKey),
         cuda::std::span<int4>(device_y1 + i * kOutputs, kOutputs)));
   }
   CUDA_CHECK(cudaDeviceSynchronize());

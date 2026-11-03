@@ -63,8 +63,9 @@ def run(verifiable, cuda):
     else:
         raise RuntimeError("generation exhausted the sample retry budget")
 
-    # m_rt is key metadata: repacking and other bucket-indexed paths use it.
-    # Evaluation takes only bucket_size and derives its bucket bound from it.
+    # m_rt is the runtime bucket count of the generated key. This sample does
+    # not read it; evaluation takes only bucket_size and derives its bucket
+    # bound from it.
     # Party-first storage makes each party's seed matrix a contiguous view.
     party_seeds = [seed_pairs[party] for party in range(2)]
     queries = torch.tensor([0, 42, 255], dtype=torch.uint8)

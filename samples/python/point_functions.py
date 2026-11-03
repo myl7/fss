@@ -81,20 +81,20 @@ def run_gpu_batch(scheme, device):
     packed = isinstance(scheme, PackedHalfTreeDpf)
     points = (42, 43)
     pairs = random_blocks(4, device).reshape(2, 2, 4)
-    corrections = torch.empty((2, *scheme.cws_shape), dtype=torch.uint8, device=device)
+    cws = torch.empty((2, *scheme.cws_shape), dtype=torch.uint8, device=device)
     payload = torch.tensor([7, 0, 0, 0], dtype=torch.int32, device=device)
     for i, point in enumerate(points):
         if packed:
-            scheme.gen(corrections[i], pairs[i], point, 7)
+            scheme.gen(cws[i], pairs[i], point, 7)
         else:
-            scheme.gen(corrections[i], pairs[i], point, payload)
+            scheme.gen(cws[i], pairs[i], point, payload)
     count = 2**scheme.kDepth if packed else 2**scheme.in_bits
     outputs = [torch.empty((2, count, 4), dtype=torch.int32, device=device)
                for _ in range(2)]
     for party in (0, 1):
         # Selecting one party from [key, party, word] is a strided view.
         party_seeds = pairs[:, party].contiguous()
-        scheme.eval_all_gpu_batch(bool(party), party_seeds, corrections, outputs[party])
+        scheme.eval_all_gpu_batch(bool(party), party_seeds, cws, outputs[party])
     combined = torch.bitwise_xor(*outputs)
     for i, point in enumerate(points):
         if packed:
