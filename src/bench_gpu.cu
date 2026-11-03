@@ -1062,18 +1062,6 @@ static void BM_PackedHalfTreePointGpu(benchmark::State &state) {
 
 // --- Grotto DCF single-path point eval GPU benchmark (ChaCha<2>) ---
 
-template <int in_bits>
-__global__ void GrottoDcfGenKernel(
-    typename fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, uint>::Cw *cws, const int4 *seeds, const uint *alphas) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= kNumKeys) return;
-
-  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
-  fss::GrottoDcf<in_bits, fss::prg::ChaCha<2>, uint> dcf{prg};
-  int4 s0s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  dcf.Gen(cws + (size_t)tid * (in_bits + 1), s0s, alphas[tid]);
-}
-
 // Split-form variant for the level-major point benchmark; see DpfGenSplitKernel.
 template <int in_bits>
 __global__ void GrottoDcfGenSplitKernel(int4 *cws, uint *trs, const int4 *seeds, const uint *alphas) {
