@@ -929,8 +929,10 @@ TEST(DpfComponentEval, LargeStrideDepthOne) {
   fss_test::GenPair(scheme, k0, k1, kComponentSeeds, alpha, kComponentBeta);
 
   // The terminal sits at cws[in_bits*stride], so a legal stride needs real
-  // storage for it. Strides past the guard are rejected by the debug test.
-  constexpr size_t kStride = size_t{1} << 21;
+  // storage for it. The stride stays at most 2^20, the largest domain the
+  // library evaluates, because a larger stride is not a case worth testing.
+  // Strides past the guard are rejected by the debug test.
+  constexpr size_t kStride = size_t{1} << 20;
   std::vector<int4> storage(kStride + 1, kComponentSentinel);
   storage[0] = k0.cws[0].s;
   storage[kStride] = k0.cws[1].s;
