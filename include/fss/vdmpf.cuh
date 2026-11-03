@@ -60,6 +60,8 @@
 
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
+#include <string>
 #if defined(__CUDACC__)
 #include <cub/device/device_radix_sort.cuh>
 #endif
@@ -117,9 +119,15 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
 class Vdmpf {
   using InnerVdpf = Vdpf<bucket_bits, Group, Prg, XorHash, Hash, __uint128_t>;
 
+  // Private: the fixed candidate count never leaves this class; the bound
+  // checks in cuckoo_hash::detail are the only place that spells it out.
+  // Unlike the member function bodies, the public EvalProof alias below is not
+  // a complete-class context, so the count is declared before that first use
+  // instead of at the bottom.
+  static constexpr int kCuckooChoices = 3;  ///< Candidate count per input, fixed by the Cuckoo-hashing construction.
+
 public:
   static constexpr int kBucketCount = cuckoo_hash::ChBucket(max_points, ch_lambda);  ///< Allocated bucket count.
-  static constexpr int kCuckooChoices = 3;  ///< Candidate count per input, fixed by the Cuckoo-hashing construction.
   static constexpr __uint128_t kDomainSize = __uint128_t(1) << in_bits;  ///< Input domain size.
   /**
    * Smallest point count supported by this bucket_bits configuration.
@@ -137,18 +145,21 @@ public:
     while (lower < upper) {
       int middle = lower + (upper - lower) / 2;
       int buckets = cuckoo_hash::ChBucket(middle, ch_lambda);
-      __uint128_t bucket_size = (3 * kDomainSize + buckets - 1) / buckets;
+      __uint128_t bucket_size = cuckoo_hash::detail::MinBucketSize(kDomainSize, kCuckooChoices, buckets);
       if (bucket_size <= (__uint128_t{1} << bucket_bits)) upper = middle;
       else lower = middle + 1;
     }
     return lower;
   }();
   /**
-   * Bucket domain size when the actual point count equals max_points.
-   * A smaller runtime point count can give a larger bucket domain. Use the
+   * Bucket domain size when the actual point count equals max_points: the
+   * smallest bucket domain size that keeps every located bucket below
+   * kBucketCount, as returned by cuckoo_hash::detail::MinBucketSize(). A
+   * smaller runtime point count can give a larger bucket domain. Use the
    * b_size_rt returned by Gen() for the actual key's evaluation.
    */
-  static constexpr __uint128_t kBucketSize = (kDomainSize * 3 + kBucketCount - 1) / kBucketCount;
+  static constexpr __uint128_t kBucketSize =
+      cuckoo_hash::detail::MinBucketSize(kDomainSize, kCuckooChoices, kBucketCount);
 
   using Cw = typename InnerVdpf::Cw;  ///< Correction word of the inner VDPF.
 
@@ -246,6 +257,7 @@ public:
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   void BatchEval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -292,6 +304,10 @@ public:
    * @param y Output share for this input.
    * @return Corrected per-point hashes in candidate order, as described by EvalProof.
    * @pre All key arrays and metadata come from the same successful Gen().
+   * Device code traps instead; the trap aborts the CUDA context, so any
+   * CUDA work later in the process is affected, which is why no test traps
+   * on the device side.
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   __host__ __device__ EvalProof Eval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -323,6 +339,7 @@ public:
    * @param pi Borrowed output storage for four proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   void Prove(int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
@@ -343,6 +360,7 @@ public:
    * @param pi Caller-owned output storage for four chain-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   void EvalAll(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -389,6 +407,7 @@ public:
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   void BatchEvalMerkle(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -422,6 +441,7 @@ public:
    * @param pi Borrowed output storage for four proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   void ProveMerkle(int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
@@ -442,6 +462,7 @@ public:
    * @param pi Caller-owned output storage for four Merkle-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   void EvalAllMerkle(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -463,8 +484,8 @@ public:
    * @tparam threads_per_block Power-of-two block size in [1,1024], default 256.
    * @param b Party index, false for party 0 and true for party 1.
    * @param sigma Shared PRP seed from successful Gen().
-   * @param bucket_size Runtime bucket size from that Gen(). Every located
-   * bucket then stays below kBucketCount exactly when bucket_size is at least
+   * @param b_size_rt Runtime bucket size from that Gen(). Every located
+   * bucket then stays below kBucketCount exactly when b_size_rt is at least
    * ceil(3*kDomainSize/kBucketCount).
    * @param s0s Device storage of kBucketCount party seeds, one per bucket.
    * @param cws Device storage of kBucketCount*(bucket_bits+1) bucket-major correction words.
@@ -483,13 +504,19 @@ public:
    */
   template <int threads_per_block = 256>
   __host__ cudaError_t EvalAllMerkleGpu(bool b, int4 sigma,
-      __uint128_t bucket_size, cuda::std::span<const int4> s0s,
+      __uint128_t b_size_rt, cuda::std::span<const int4> s0s,
       cuda::std::span<const Cw> cws, cuda::std::span<const int4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream = 0) const
     requires(in_bits < sizeof(size_t) * 8);
 
 private:
   friend class detail::SchemeAccess;
+
+  // Throws if b_size_rt is not a bucket size that Gen() can return.
+  static void RequireBucketSize(__uint128_t b_size_rt, const char *entry) {
+    if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits))
+      throw std::invalid_argument(std::string(entry) + ": b_size_rt is outside [kBucketSize, 2^bucket_bits]");
+  }
 
   Prg prg_;
   XorHash xor_hash_;
@@ -642,7 +669,7 @@ inline cudaError_t VdmpfFullLaunchBlocks(size_t count, int threads, int &blocks)
 // in the device body.
 template <int in_bits, int bucket_bits, typename Descriptor, typename In, typename Prp>
 __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_size,
-    const int4 *s0s, const void *cws_bytes, const int4 *cs, int4 *ys,
+    int choices, const int4 *s0s, const void *cws_bytes, const int4 *cs, int4 *ys,
     uint32_t *buckets, VdmpfFullNode *nodes, uint32_t *counts, size_t count,
     typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
     typename Descriptor::HashBackend hash, Prp prp) {
@@ -654,16 +681,16 @@ __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_siz
   Inner inner{prg, xor_hash, hash};
   cuckoo_hash::detail::PrpHash<Prp, In> hasher{prp};
   auto sum = Group::From(int4{0, 0, 0, 0});
-  for (int k = 0; k < 3; ++k) {
+  for (int k = 0; k < choices; ++k) {
     auto location = hasher.Locate(sigma, static_cast<In>(omega), k,
-        __uint128_t{1} << in_bits, bucket_size);
+        __uint128_t{1} << in_bits, bucket_size, choices);
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
     auto corrected = inner.Eval(b, s0s[bucket],
         cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
     // Stable sorting by bucket preserves this outer-input, candidate order.
-    size_t record = 3 * omega + k;
+    size_t record = static_cast<size_t>(choices) * omega + k;
     buckets[record] = static_cast<uint32_t>(bucket);
     nodes[record] = hash.Hash(cuda::std::span<const int4, 4>(corrected));
     atomicAdd(counts + bucket, uint32_t{1});
@@ -784,7 +811,7 @@ inline int Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Pr
   int m_ = cuckoo_hash::ChBucket(t, ch_lambda);
   assert(m_ <= kBucketCount);
   __uint128_t n128 = static_cast<__uint128_t>(kDomainSize);
-  __uint128_t bucket_size = (n128 * kCuckooChoices + m_ - 1) / m_;
+  __uint128_t bucket_size = cuckoo_hash::detail::CeilDiv(n128 * kCuckooChoices, m_);
   assert(bucket_size <= (__uint128_t{1} << bucket_bits));
   __uint128_t b_rt = bucket_size;
 
@@ -807,7 +834,7 @@ inline int Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Pr
     if (i < m_ && table[i].first != -1) {
       int j = table[i].first;   // index into as
       int k = table[i].second;  // hash function that placed it
-      auto [bucket, index] = prp_hash.Locate(sigma, as[j], k, kDomainSize, b_rt);
+      auto [bucket, index] = prp_hash.Locate(sigma, as[j], k, kDomainSize, b_rt, kCuckooChoices);
       a_prime = index;
       assert(a_prime < (__uint128_t{1} << bucket_bits));
       b_buf_prime = b_bufs[j];
@@ -837,6 +864,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4> cs,
     cuda::std::span<const In> xs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
+  RequireBucketSize(b_size_rt, "Vdmpf::BatchEval");
   EvalInputs(b, sigma, b_size_rt, s0s, cws, cs, xs, ys, pi);
 }
 
@@ -855,6 +883,13 @@ Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_l
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     In x, int4 &y) {
+  if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits)) {
+#ifdef __CUDA_ARCH__
+    __trap();
+#else
+    throw std::invalid_argument("Vdmpf::Eval: b_size_rt is outside [kBucketSize, 2^bucket_bits]");
+#endif
+  }
   assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
   assert(cs.size() >= size_t{kBucketCount} * 4);
   cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};
@@ -889,6 +924,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
     cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
+  RequireBucketSize(b_size_rt, "Vdmpf::Prove");
   assert(cs.size() >= size_t{kBucketCount} * 4);
   assert(!xs.empty());
   assert(proof_values.size() >= xs.size());
@@ -922,6 +958,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
+  RequireBucketSize(b_size_rt, "Vdmpf::EvalAll");
   const size_t count = FullInputCount<false>(b_size_rt);
   EvalInputs(b, sigma, b_size_rt, s0s, cws, cs,
       FullDomainInputs{count}, ys, pi);
@@ -954,6 +991,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4> cs,
     cuda::std::span<const In> xs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi) {
+  RequireBucketSize(b_size_rt, "Vdmpf::BatchEvalMerkle");
   EvalMerkleInputs(b, sigma, b_size_rt, s0s, cws, cs, xs, ys, pi);
 }
 
@@ -969,6 +1007,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
     cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
+  RequireBucketSize(b_size_rt, "Vdmpf::ProveMerkle");
   assert(cs.size() >= size_t{kBucketCount} * 4);
   assert(!xs.empty());
   assert(proof_values.size() >= xs.size());
@@ -1002,6 +1041,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi) {
+  RequireBucketSize(b_size_rt, "Vdmpf::EvalAllMerkle");
   const size_t count = FullInputCount<true>(b_size_rt);
   EvalMerkleInputs(b, sigma, b_size_rt, s0s, cws, cs,
       FullDomainInputs{count}, ys, pi);
@@ -1018,10 +1058,9 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
 inline __host__ __device__ int
 Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::LocateCandidates(
     cuckoo_hash::detail::PrpHash<Prp, In> &prp_hash, int4 sigma, __uint128_t b_size_rt, In x,
-    cuda::std::array<LocatedCandidate, kCuckooChoices> &candidates) {
-  int count = 0;
+    cuda::std::array<LocatedCandidate, kCuckooChoices> &candidates) {  int count = 0;
   for (int k = 0; k < kCuckooChoices; ++k) {
-    auto [bucket, index] = prp_hash.Locate(sigma, x, k, kDomainSize, b_size_rt);
+    auto [bucket, index] = prp_hash.Locate(sigma, x, k, kDomainSize, b_size_rt, kCuckooChoices);
     if (bucket >= kBucketCount) continue;
     __uint128_t j = index;
     assert(j < (__uint128_t{1} << bucket_bits));
@@ -1119,7 +1158,6 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
   assert(cs.size() >= size_t{kBucketCount} * 4);
   size_t eta = xs.size();
   assert(ys.size() >= eta);
-
   __uint128_t b_rt = b_size_rt;
 
   cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};
@@ -1133,7 +1171,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     int num_seen = 0;
 
     for (int k = 0; k < kCuckooChoices; ++k) {
-      auto [bucket, index] = prp_hash.Locate(sigma, xs[omega], k, kDomainSize, b_rt);
+      auto [bucket, index] = prp_hash.Locate(sigma, xs[omega], k, kDomainSize, b_rt, kCuckooChoices);
       if (bucket >= kBucketCount) continue;
       __uint128_t j = index;
       assert(j < (__uint128_t{1} << bucket_bits));
@@ -1206,7 +1244,6 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
   assert(cs.size() >= size_t{kBucketCount} * 4);
   size_t eta = xs.size();
   assert(ys.size() >= eta);
-
   __uint128_t b_rt = b_size_rt;
 
   cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};
@@ -1218,7 +1255,7 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
   for (size_t omega = 0; omega < eta; ++omega) {
     for (int k = 0; k < kCuckooChoices; ++k) {
-      auto [bucket, index] = prp_hash.Locate(sigma, xs[omega], k, kDomainSize, b_rt);
+      auto [bucket, index] = prp_hash.Locate(sigma, xs[omega], k, kDomainSize, b_rt, kCuckooChoices);
       if (bucket >= kBucketCount) continue;
       __uint128_t j = index;
       assert(j < (__uint128_t{1} << bucket_bits));
@@ -1347,7 +1384,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
 template <int threads_per_block>
 __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::EvalAllMerkleGpu(
-    bool b, int4 sigma, __uint128_t bucket_size,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi, cudaStream_t stream) const
@@ -1367,10 +1404,8 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
       kOutputs > kMax / sizeof(int4)) {
     return cudaErrorInvalidValue;
   } else {
-    if (bucket_size == 0 || bucket_size > (__uint128_t{1} << bucket_bits) ||
-        cuckoo_hash::detail::BucketBound(kDomainSize, kCuckooChoices, bucket_size) > kBucketCount)
-      return cudaErrorInvalidValue;
-    constexpr size_t kRecords = kOutputs * 3;
+    if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits)) return cudaErrorInvalidValue;
+    constexpr size_t kRecords = kOutputs * kCuckooChoices;
     size_t cub_bytes = 0;
     cudaError_t status = cub::DeviceRadixSort::SortPairs(nullptr, cub_bytes,
         static_cast<uint32_t *>(nullptr), static_cast<uint32_t *>(nullptr),
@@ -1410,8 +1445,8 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
     gpu::detail::VdmpfFullLeavesKernel<in_bits, bucket_bits, Descriptor, In, Prp>
-        <<<query_grid, threads_per_block, 0, stream>>>(b, sigma, bucket_size,
-            s0s.data(), cws.data(), cs.data(), ys.data(), keys, nodes, counts, kOutputs,
+        <<<query_grid, threads_per_block, 0, stream>>>(b, sigma, b_size_rt,
+            kCuckooChoices, s0s.data(), cws.data(), cs.data(), ys.data(), keys, nodes, counts, kOutputs,
             prg_, xor_hash_, hash_, prp_);
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;

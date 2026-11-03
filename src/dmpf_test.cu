@@ -279,7 +279,16 @@ protected:
     EXPECT_EQ(k0.m_rt, fss::cuckoo_hash::ChBucket(kT, 80));
     EXPECT_LT(k0.m_rt, m);
     EXPECT_EQ(static_cast<unsigned long long>(k0.b_size_rt), 3ULL);
-    const __uint128_t bound = (DmpfType::kDomainSize * DmpfType::kCuckooChoices + k0.b_size_rt - 1) / k0.b_size_rt;
+    constexpr int kCuckooChoices = 3;  // Fixed by the three-choice Cuckoo construction, private in the scheme.
+    // Anchors the local count to the scheme's private one: the smallest bucket
+    // size derived from this count is exactly the scheme's acceptance boundary.
+    static_assert(
+        fss::cuckoo_hash::detail::ValidBucketSize(DmpfType::kBucketSize, DmpfType::kBucketSize, kBucketBits) &&
+        !fss::cuckoo_hash::detail::ValidBucketSize(DmpfType::kBucketSize - 1, DmpfType::kBucketSize, kBucketBits));
+    static_assert(DmpfType::kBucketSize ==
+        (DmpfType::kDomainSize * kCuckooChoices + DmpfType::kBucketCount - 1) / DmpfType::kBucketCount);
+    const __uint128_t bound =
+        fss::cuckoo_hash::detail::BucketIndexBound(DmpfType::kDomainSize, kCuckooChoices, k0.b_size_rt);
     EXPECT_EQ(static_cast<unsigned long long>(bound), 4096ULL);
     EXPECT_LT(bound, static_cast<__uint128_t>(k0.m_rt));
 
@@ -288,7 +297,7 @@ protected:
     fss::cuckoo_hash::detail::PrpHash<Prp, uint16_t> locate{prp_};
     int max_bucket = -1;
     for (int x = 0; x < (1 << kInBits); ++x) {
-      for (int k = 0; k < DmpfType::kCuckooChoices; ++k) {
+      for (int k = 0; k < kCuckooChoices; ++k) {
         auto location = locate.Locate(sigma, static_cast<uint16_t>(x), k, DmpfType::kDomainSize, k0.b_size_rt);
         EXPECT_LT(location.bucket, static_cast<int>(bound));
         if (location.bucket > max_bucket) max_bucket = location.bucket;

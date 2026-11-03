@@ -101,6 +101,8 @@ if(BUILD_TESTING)
 
     add_executable(dmpf_gpu_test src/dmpf_gpu_test.cu)
     target_link_libraries(dmpf_gpu_test GTest::gtest_main fss)
+    # The bucket-bound tests include the package-private binding validator.
+    target_include_directories(dmpf_gpu_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fss_crypto/_csrc)
     gtest_discover_tests(dmpf_gpu_test)
 
     add_executable(vdmpf_gpu_test src/vdmpf_gpu_test.cu)

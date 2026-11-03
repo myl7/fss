@@ -5,15 +5,8 @@ ceil(3*2^in_bits/b_size_rt) - 1, so a runtime bucket size is usable exactly
 when it is at least B = ceil(3*2^in_bits/kBucketCount). One below B lets the
 located bucket index leave the allocated rows.
 
-The evaluation entries take only b_size_rt. The base API generation checked
-only the ranges of the runtime bucket count and bucket size in CheckRuntime, so
-the accept case asserts the same behaviour on both generations while the reject
-case asserts rejection on the generation that carries the bound and acceptance
-on the base generation, where the missing clause is exactly what this file
-exposes.
+The evaluation entries take only b_size_rt and reject any value below B.
 """
-
-import inspect
 
 import pytest
 import torch
@@ -36,19 +29,10 @@ def bucket_bound(scheme):
     return -(-3 * scheme.kDomainSize // scheme.kBucketCount)
 
 
-def takes_m_rt(scheme):
-    """Whether the installed wrapper still passes the runtime bucket count."""
-    return "m_rt" in inspect.signature(scheme.eval_all).parameters
-
-
 def eval_all(scheme, material, party, output, proof, b_size_rt):
-    """Positional eval_all call for either wrapper generation."""
-    args = [bool(party), material.sigma]
-    if takes_m_rt(scheme):
-        args.append(material.m_rt)
-    args.append(b_size_rt)
-    args.append(material.seeds[int(party)])
-    args.append(material.cws)
+    """Positional eval_all call with the runtime bucket size."""
+    args = [bool(party), material.sigma, b_size_rt,
+            material.seeds[int(party)], material.cws]
     if proof is not None:
         args.append(material.cs)
     args.append(output)
@@ -94,14 +78,9 @@ def reject(verifiable):
     bound = bucket_bound(scheme)
     output = torch.empty((1 << BITS, 4), dtype=torch.int32)
     proof = torch.empty((4, 4), dtype=torch.int32) if verifiable else None
-    if takes_m_rt(scheme):
-        # The base CheckRuntime has no lower bound on the bucket size, so the
-        # call runs there. Only the generation with the bound must reject it.
+    with pytest.raises(RuntimeError,
+                       match=r"b_size_rt is outside \[kBucketSize, 2\^bucket_bits\]"):
         eval_all(scheme, material, False, output, proof, bound - 1)
-    else:
-        with pytest.raises(RuntimeError,
-                           match="too small for the allocated bucket count"):
-            eval_all(scheme, material, False, output, proof, bound - 1)
 
 
 def test_dmpf_accepts_bucket_size_at_bound():

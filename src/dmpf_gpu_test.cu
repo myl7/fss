@@ -12,6 +12,7 @@
 #include <fss/repack_gpu.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/chacha_feistel.cuh>
+#include "binding_gpu_eval.cuh"
 #include "core_api_test_helpers.cuh"
 
 namespace {
@@ -324,4 +325,98 @@ TEST_F(DmpfCustomSecurityGpuTest, EvalAll) {
   TestEvalAll();
 }
 
+}  // namespace
+
+namespace {
+namespace bucket_bound {
+
+// The bucket-size boundary of the GPU validation entries, at both ends.
+// B = ceil(3*2^in_bits/kBucketCount) is the smallest bucket size that keeps
+// every located bucket below the allocated bucket count, so one below B must
+// be rejected and B itself must pass validation. Symmetrically, 2^bucket_bits
+// is the largest representable bucket size: it must pass and one above it must
+// be rejected, which is the only upper defense of the C++ GPU entries. Both
+// entries validate before any CUDA call, so the reject halves run without a
+// CUDA device.
+using Group = fss::group::Bytes;
+using Prg = fss::prg::ChaCha<2>;
+using Prp = fss::prp::ChaChaFeistel;
+constexpr int kInBits = 12;
+constexpr int kMaxPoints = 30;
+constexpr int kBucketBits = 10;
+constexpr int kBuckets = 53;  // ChBucket(30, 80)
+constexpr __uint128_t kBound = 232;  // ceil(3*2^12/53)
+constexpr __uint128_t kUpper = __uint128_t{1} << kBucketBits;  // 2^bucket_bits
+constexpr size_t kRows = kBuckets + 8;  // Above ceil(3*2^12/(kBound-1)) = 54 buckets.
+using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t>;
+
+static_assert(DmpfType::kBucketCount == kBuckets);
+static_assert(kBound == (3 * (__uint128_t{1} << kInBits) + kBuckets - 1) / kBuckets);
+static_assert(kBound < kUpper);
+// The local spelling of the candidate count must match the scheme's private
+// one, or the derived bound stops being the acceptance boundary.
+static_assert(
+    fss::cuckoo_hash::detail::ValidBucketSize(kBound, DmpfType::kBucketSize, kBucketBits) &&
+    !fss::cuckoo_hash::detail::ValidBucketSize(kBound - 1, DmpfType::kBucketSize, kBucketBits));
+
+TEST(DmpfGpuBucketBound, ValidMultiKeyBoundary) {
+  using Descriptor = fss::gpu::detail::DmpfLaunchDescriptor<kInBits, kMaxPoints, kBucketBits,
+      fss::detail::GpuGroupTag<Group>::Type, Prg, Prp, uint16_t>;
+  static_assert(Descriptor::kBucketCount == kBuckets);
+  std::vector<int4> s0s(kBuckets, int4{0, 0, 0, 0});
+  std::vector<DmpfType::Cw> cws(size_t{kBuckets} * (kBucketBits + 1));
+  auto valid = [&](__uint128_t b_size_rt) {
+    return fss::gpu::detail::ValidMultiKey<Descriptor>(b_size_rt, s0s.size(), cws.size(),
+        s0s.data(), cws.data());
+  };
+  EXPECT_TRUE(valid(kBound)) << "b_size_rt = ceil(3*2^in_bits/kBucketCount)";
+  EXPECT_FALSE(valid(kBound - 1)) << "b_size_rt = ceil(3*2^in_bits/kBucketCount) - 1";
+  EXPECT_TRUE(valid(kUpper)) << "b_size_rt = 2^bucket_bits";
+  EXPECT_FALSE(valid(kUpper + 1)) << "b_size_rt = 2^bucket_bits + 1";
+}
+
+TEST(DmpfGpuBucketBound, EvalAllGpuBoundary) {
+  DmpfType dmpf{Prg{kNonce0, kNonce1}, Prp{}};
+  std::vector<int4> s0s(kRows, int4{0, 0, 0, 0});
+  std::vector<DmpfType::Cw> cws(kRows * (kBucketBits + 1));
+  std::vector<int4> ys(size_t{1} << kInBits);
+  auto run = [&](__uint128_t b_size_rt) {
+    return dmpf.EvalAllGpu(false, int4{0, 0, 0, 0}, b_size_rt,
+        cuda::std::span<const int4>(s0s.data(), kRows),
+        cuda::std::span<const DmpfType::Cw>(cws.data(), cws.size()),
+        cuda::std::span<int4>(ys.data(), ys.size()));
+  };
+  // The too-small key's derived bucket count is 54, so the kRows = 61 rows
+  // cannot mask the lower check: only the bucket-size check rejects it here.
+  EXPECT_EQ(run(kBound - 1), cudaErrorInvalidValue) << "b_size_rt = ceil(3*2^in_bits/kBucketCount) - 1";
+  EXPECT_EQ(run(kUpper + 1), cudaErrorInvalidValue) << "b_size_rt = 2^bucket_bits + 1";
+  // The accepted keys pass validation and continue into CUDA. Device buffers
+  // keep that continuation meaningful on a real device; without a device the
+  // call stops at the allocation with a device error. Either way the bucket
+  // size itself must not be rejected.
+  int devices = 0;
+  const bool have_device = cudaGetDeviceCount(&devices) == cudaSuccess && devices > 0;
+  if (have_device) {
+    DeviceBuffer<int4> device_s0s;
+    DeviceBuffer<DmpfType::Cw> device_cws;
+    DeviceBuffer<int4> device_ys;
+    ASSERT_EQ(device_s0s.Allocate(kRows), cudaSuccess);
+    ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
+    ASSERT_EQ(device_ys.Allocate(ys.size()), cudaSuccess);
+    auto run_device = [&](__uint128_t b_size_rt) {
+      return dmpf.EvalAllGpu(false, int4{0, 0, 0, 0}, b_size_rt,
+          cuda::std::span<const int4>(device_s0s.data(), kRows),
+          cuda::std::span<const DmpfType::Cw>(device_cws.data(), cws.size()),
+          cuda::std::span<int4>(device_ys.data(), ys.size()));
+    };
+    EXPECT_NE(run_device(kBound), cudaErrorInvalidValue) << "b_size_rt = ceil(3*2^in_bits/kBucketCount)";
+    EXPECT_NE(run_device(kUpper), cudaErrorInvalidValue) << "b_size_rt = 2^bucket_bits";
+    EXPECT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  } else {
+    EXPECT_NE(run(kBound), cudaErrorInvalidValue) << "b_size_rt = ceil(3*2^in_bits/kBucketCount), no device";
+    EXPECT_NE(run(kUpper), cudaErrorInvalidValue) << "b_size_rt = 2^bucket_bits, no device";
+  }
+}
+
+}  // namespace bucket_bound
 }  // namespace

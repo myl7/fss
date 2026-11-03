@@ -365,3 +365,91 @@ TEST(VdmpfGpuArguments, RejectsOversizedQueryCount) {
 }
 }  // namespace query_bounds
 }  // namespace
+
+// A named namespace: a third anonymous section makes nvcc's merged host-stub
+// references to the earlier anonymous sections ambiguous.
+namespace bucket_bound {
+
+// The bucket-size boundary of the GPU validation entry, at both ends.
+// B = ceil(3*2^in_bits/kBucketCount) is the smallest bucket size that keeps
+// every located bucket below the allocated bucket count, so one below B must
+// be rejected and B itself must pass validation. Symmetrically, 2^bucket_bits
+// is the largest representable bucket size: it must pass and one above it must
+// be rejected, which is the only upper defense of this C++ GPU entry. The
+// entry validates before any CUDA call, so the reject half runs without a CUDA
+// device.
+constexpr int kInBits = 12;
+constexpr int kMaxPoints = 30;
+constexpr int kBucketBits = 10;
+constexpr int kBuckets = 53;  // ChBucket(30, 80)
+constexpr __uint128_t kBound = 232;  // ceil(3*2^12/53)
+constexpr __uint128_t kUpper = __uint128_t{1} << kBucketBits;  // 2^bucket_bits
+// The kernels of EvalAllMerkleGpu take the backends as template parameters,
+// and nvcc host stubs cannot reference anonymous-namespace types, so the
+// backends are spelled with their named-namespace types instead of aliases.
+using Vdmpf = fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, fss::group::Bytes, fss::prg::ChaCha<2>,
+    fss::hash::Blake3, fss::hash::Blake3, fss::prp::ChaChaFeistel, uint16_t>;
+
+static_assert(Vdmpf::kBucketCount == kBuckets);
+static_assert(kBound == (3 * (__uint128_t{1} << kInBits) + kBuckets - 1) / kBuckets);
+static_assert(kBound < kUpper);
+// The local spelling of the candidate count must match the scheme's private
+// one, or the derived bound stops being the acceptance boundary.
+static_assert(
+    fss::cuckoo_hash::detail::ValidBucketSize(kBound, Vdmpf::kBucketSize, kBucketBits) &&
+    !fss::cuckoo_hash::detail::ValidBucketSize(kBound - 1, Vdmpf::kBucketSize, kBucketBits));
+
+TEST(VdmpfGpuBucketBound, EvalAllMerkleGpuBoundary) {
+  const int4 iv[2] = {{2, 3, 5, 7}, {11, 13, 17, 19}};
+  Vdmpf scheme{fss::prg::ChaCha<2>{23, 47}, fss::hash::Blake3{iv}, fss::hash::Blake3{iv},
+      fss::prp::ChaChaFeistel{}};
+  std::vector<int4> s0s(kBuckets, int4{0, 0, 0, 0});
+  std::vector<Vdmpf::Cw> cws(size_t{kBuckets} * (kBucketBits + 1));
+  std::vector<int4> cs(size_t{kBuckets} * 4);
+  std::vector<int4> ys(size_t{1} << kInBits);
+  std::vector<int4> pi(4);
+  auto run = [&](__uint128_t b_size_rt) {
+    return scheme.EvalAllMerkleGpu(false, int4{0, 0, 0, 0}, b_size_rt,
+        cuda::std::span<const int4>(s0s.data(), kBuckets),
+        cuda::std::span<const Vdmpf::Cw>(cws.data(), cws.size()),
+        cuda::std::span<const int4>(cs.data(), cs.size()),
+        cuda::std::span<int4>(ys.data(), ys.size()),
+        cuda::std::span<int4, 4>(pi.data(), 4));
+  };
+  EXPECT_EQ(run(kBound - 1), cudaErrorInvalidValue) << "b_size_rt = ceil(3*2^in_bits/kBucketCount) - 1";
+  EXPECT_EQ(run(kUpper + 1), cudaErrorInvalidValue) << "b_size_rt = 2^bucket_bits + 1";
+  // The accepted keys pass validation and continue into CUDA. Device buffers
+  // keep that continuation meaningful on a real device; without a device the
+  // call stops at the CUB size query with a device error. Either way the
+  // bucket size itself must not be rejected.
+  int devices = 0;
+  const bool have_device = cudaGetDeviceCount(&devices) == cudaSuccess && devices > 0;
+  if (have_device) {
+    DeviceBuffer<int4> device_s0s;
+    DeviceBuffer<Vdmpf::Cw> device_cws;
+    DeviceBuffer<int4> device_cs;
+    DeviceBuffer<int4> device_ys;
+    DeviceBuffer<int4> device_pi;
+    ASSERT_EQ(device_s0s.Allocate(kBuckets), cudaSuccess);
+    ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
+    ASSERT_EQ(device_cs.Allocate(cs.size()), cudaSuccess);
+    ASSERT_EQ(device_ys.Allocate(ys.size()), cudaSuccess);
+    ASSERT_EQ(device_pi.Allocate(4), cudaSuccess);
+    auto run_device = [&](__uint128_t b_size_rt) {
+      return scheme.EvalAllMerkleGpu(false, int4{0, 0, 0, 0}, b_size_rt,
+          cuda::std::span<const int4>(device_s0s.data(), kBuckets),
+          cuda::std::span<const Vdmpf::Cw>(device_cws.data(), cws.size()),
+          cuda::std::span<const int4>(device_cs.data(), cs.size()),
+          cuda::std::span<int4>(device_ys.data(), ys.size()),
+          cuda::std::span<int4, 4>(device_pi.data(), 4));
+    };
+    EXPECT_NE(run_device(kBound), cudaErrorInvalidValue) << "b_size_rt = ceil(3*2^in_bits/kBucketCount)";
+    EXPECT_NE(run_device(kUpper), cudaErrorInvalidValue) << "b_size_rt = 2^bucket_bits";
+    EXPECT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  } else {
+    EXPECT_NE(run(kBound), cudaErrorInvalidValue) << "b_size_rt = ceil(3*2^in_bits/kBucketCount), no device";
+    EXPECT_NE(run(kUpper), cudaErrorInvalidValue) << "b_size_rt = 2^bucket_bits, no device";
+  }
+}
+
+}  // namespace bucket_bound

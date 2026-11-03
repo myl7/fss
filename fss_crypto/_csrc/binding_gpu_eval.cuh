@@ -233,14 +233,14 @@ template <typename Descriptor>
 inline bool ValidMultiKey(__uint128_t b_size_rt, size_t s0s_size, size_t cws_size,
     const void *s0s, const void *cws) {
   constexpr size_t rows = Descriptor::kBucketCount;
-  if (b_size_rt == 0 || b_size_rt > (__uint128_t{1} << Descriptor::kBucketBits)) return false;
-  // Exclusive bound on the bucket index a candidate can locate into. Keeping
-  // it inside the allocation is the condition on b_size_rt alone that the
-  // removed runtime bucket count check enforced: s0s[bucket], cws +
-  // bucket*(bucket_bits+1), and counts + bucket stay in range exactly then.
-  const __uint128_t bucket_bound = fss::cuckoo_hash::detail::BucketBound(
-      __uint128_t{1} << Descriptor::kInputBits, Descriptor::Scheme::kCuckooChoices, b_size_rt);
-  if (bucket_bound > rows) return false;
+  // Keeping every located bucket inside the allocation is the condition on
+  // b_size_rt alone that the removed runtime bucket count check enforced:
+  // s0s[bucket], cws + bucket*(bucket_bits+1), and counts + bucket stay in
+  // range exactly then. The scheme owns that condition, so this file does not
+  // need the fixed candidate count.
+  if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, Descriptor::Scheme::kBucketSize,
+          Descriptor::kBucketBits))
+    return false;
   if (!HasRows(s0s_size, rows, 1) ||
       !HasRows(cws_size, rows, Descriptor::kBucketBits + 1)) return false;
   return s0s != nullptr && cws != nullptr;
@@ -261,9 +261,10 @@ __global__ void DmpfBatchKernel(void *scheme_storage, bool b,
   auto prp = fss::detail::SchemeAccess::GetPrp(*scheme);
   cuckoo_hash::detail::PrpHash<decltype(prp), typename Descriptor::Input> hasher{prp};
   auto sum = Group::From(int4{0, 0, 0, 0});
-  for (int k = 0; k < 3; ++k) {
+  constexpr int kChoices = cuckoo_hash::detail::kDefaultCuckooChoices;
+  for (int k = 0; k < kChoices; ++k) {
     auto location = hasher.Locate(key.sigma, xs[omega], k,
-        __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt);
+        __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt, kChoices);
     int4 value = inner.Eval(b, key.s0s[location.bucket],
         cws + static_cast<size_t>(location.bucket) * (Descriptor::kBucketBits + 1), location.index);
     sum = sum + Group::From(value);
@@ -286,16 +287,17 @@ __global__ void VdmpfBatchLeavesKernel(void *scheme_storage, bool b,
   auto prp = fss::detail::SchemeAccess::GetPrp(*scheme);
   cuckoo_hash::detail::PrpHash<decltype(prp), typename Descriptor::Input> hasher{prp};
   auto sum = Group::From(int4{0, 0, 0, 0});
-  for (int k = 0; k < 3; ++k) {
+  constexpr int kChoices = cuckoo_hash::detail::kDefaultCuckooChoices;
+  for (int k = 0; k < kChoices; ++k) {
     auto location = hasher.Locate(key.sigma, xs[omega], k,
-        __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt);
+        __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt, kChoices);
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
     auto corrected = inner.Eval(b, key.s0s[bucket],
         cuda::std::span<const Cw>(cws + bucket * (Descriptor::kBucketBits + 1),
             Descriptor::kBucketBits + 1),
         cuda::std::span<const int4, 4>(key.cs + bucket * 4, 4), location.index, value);
-    size_t record = 3 * omega + k;
+    size_t record = static_cast<size_t>(kChoices) * omega + k;
     buckets[record] = static_cast<uint32_t>(bucket);
     nodes[record] = fss::detail::SchemeAccess::GetHash(*scheme).Hash(
         cuda::std::span<const int4, 4>(corrected));
@@ -493,7 +495,7 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
     BindBucketRootsKernel<Descriptor><<<bucket_grid, threads, 0, stream>>>(
         scheme, key.cs.data(), nullptr, nullptr, nullptr, bucket_nodes);
   } else {
-    size_t total = xs.size() * 3;
+    size_t total = xs.size() * cuckoo_hash::detail::kDefaultCuckooChoices;
     status = keys_storage.Allocate<uint32_t>(total);
     if (status != cudaSuccess) return status;
     auto *keys = keys_storage.Get<uint32_t>();

@@ -45,6 +45,10 @@ constexpr int ChBucket(int t, int lambda);
 
 namespace detail {
 
+// Candidate count that callers without access to the schemes' private constant
+// use. The three-choice construction fixes the count; the schemes pass theirs.
+inline constexpr int kDefaultCuckooChoices = 3;
+
 /**
  * Bucket identifier of a rejected candidate.
  *
@@ -73,7 +77,7 @@ struct PrpHash {
   Prp prp;  ///< Permutation backend.
 
   /**
-   * Locate x using choice k, where y = PRP(sigma, x + n * k, 3 * n).
+   * Locate x using choice k, where y = PRP(sigma, x + n * k, choices * n).
    * The bucket is y / b_size and the local position is y % b_size.
    *
    * Evaluation must not trust b_size, because it is key metadata: a candidate
@@ -84,14 +88,18 @@ struct PrpHash {
    *
    * @param sigma Public permutation seed.
    * @param x Input in [0, n).
-   * @param k Hash-function index, 0, 1, or 2.
+   * @param k Hash-function index below choices.
    * @param n Original input domain size.
    * @param b_size Bucket domain size, positive for a locateable bucket.
+   * @param choices Candidate count per input; the schemes pass their fixed
+   * count, and the default serves callers that cannot name it. It is the last
+   * parameter so pre-existing calls keep their meaning.
    * @return Bucket identifier and local position, or kRejectedBucket and 0.
-   * @pre 3 * n fits __uint128_t.
+   * @pre choices * n fits __uint128_t.
    * Calls support host and device execution when Prp does.
    */
-  __host__ __device__ LocateResult Locate(int4 sigma, In x, int k, __uint128_t n, __uint128_t b_size);
+  __host__ __device__ LocateResult Locate(int4 sigma, In x, int k, __uint128_t n,
+      __uint128_t b_size, int choices = kDefaultCuckooChoices);
 };
 
 /**
@@ -157,26 +165,77 @@ constexpr double Ceil(double x) {
 }
 
 /**
+ * Ceiling division of two positive integers, in the wrap-free form.
+ *
+ * (num - 1) / den + 1 equals ceil(num / den) for every num at least 1 and den
+ * at least 1. The direct form (num + den - 1) / den gives the same value for
+ * every in-range input, but wraps in __uint128_t once den exceeds 2^126 with
+ * num = 3 * 2^126.
+ *
+ * @param num Positive dividend.
+ * @param den Positive divisor.
+ * @return ceil(num / den).
+ */
+__host__ __device__ constexpr __uint128_t CeilDiv(__uint128_t num, __uint128_t den) {
+  return (num - 1) / den + 1;
+}
+
+/**
  * Exclusive upper bound on the bucket index of a located candidate.
  *
- * PrpHash::Locate() maps every candidate with a positive b_size and an
- * int-representable bucket index into [0, choices * n / b_size), so the largest
- * such bucket is ceil(choices * n / b_size) - 1, and this is the smallest
- * bucket count that covers every located bucket. A candidate outside that
- * interval locates kRejectedBucket instead.
- *
- * Written as (choices * n - 1) / b_size + 1, the equal wrap-free form of the
- * ceiling division: (choices * n + b_size - 1) / b_size gives the same value
- * for every in-range input, but wraps in __uint128_t once b_size exceeds
- * 2^126 with choices * n = 3 * 2^126.
+ * PrpHash::Locate() maps every candidate with a positive bucket domain size
+ * and an int-representable bucket index into [0, choices * n / bucket_size),
+ * so the largest such bucket is ceil(choices * n / bucket_size) - 1, and this
+ * is the smallest bucket count that covers every located bucket. A candidate
+ * outside that interval locates kRejectedBucket instead.
  *
  * @param n Original input domain size, at least 1.
  * @param choices Candidate count per input, at least 1.
- * @param b_size Positive bucket domain size.
- * @return ceil(choices * n / b_size).
+ * @param bucket_size Positive bucket domain size carried by a key.
+ * @return ceil(choices * n / bucket_size).
  */
-constexpr __uint128_t BucketBound(__uint128_t n, int choices, __uint128_t b_size) {
-  return (n * choices - 1) / b_size + 1;
+__host__ __device__ constexpr __uint128_t BucketIndexBound(__uint128_t n, int choices, __uint128_t bucket_size) {
+  return CeilDiv(n * choices, bucket_size);
+}
+
+/**
+ * Smallest bucket domain size that keeps every located bucket in range.
+ *
+ * A candidate locates at bucket index ceil(choices * n / bucket_size) - 1 at
+ * most, so the smallest bucket domain size whose candidates all stay below
+ * bucket_count is ceil(choices * n / bucket_count). This is the inverse
+ * direction of BucketIndexBound(): it takes the bucket count a caller can
+ * allocate and returns the bucket domain size to require of a key.
+ *
+ * @param n Original input domain size, at least 1.
+ * @param choices Candidate count per input, at least 1.
+ * @param bucket_count Positive number of allocated buckets.
+ * @return ceil(choices * n / bucket_count).
+ */
+__host__ __device__ constexpr __uint128_t MinBucketSize(__uint128_t n, int choices, __uint128_t bucket_count) {
+  return CeilDiv(n * choices, bucket_count);
+}
+
+/**
+ * Test a key's runtime bucket domain size against a configuration.
+ *
+ * b_size_rt is exact-transport key metadata, like the correction-word arrays:
+ * no entry trusts the caller to pre-validate it, and the entries that do check
+ * it deduplicate the bound through this function. A candidate locates at bucket
+ * index ceil(choices*n/b_size_rt) - 1 at most, so every located bucket stays
+ * below the allocated bucket count exactly when b_size_rt is at least
+ * MinBucketSize(n, choices, bucket_count), and a within-bucket input is an
+ * index into a bucket of bucket_bits width, so b_size_rt must also fit
+ * bucket_bits.
+ *
+ * @param b_size_rt Bucket domain size carried by a key.
+ * @param bucket_size_min Smallest usable bucket domain size, e.g. a scheme's kBucketSize.
+ * @param bucket_bits Bucket domain bit width.
+ * @return True when b_size_rt is at least bucket_size_min and is at most 2^bucket_bits.
+ */
+__host__ __device__ constexpr bool ValidBucketSize(__uint128_t b_size_rt,
+    __uint128_t bucket_size_min, int bucket_bits) {
+  return b_size_rt >= bucket_size_min && b_size_rt <= (__uint128_t{1} << bucket_bits);
 }
 
 }  // namespace detail
@@ -196,9 +255,9 @@ namespace detail {
 template <typename Prp, typename In>
   requires Permutable<Prp>
 inline __host__ __device__ LocateResult PrpHash<Prp, In>::Locate(
-    int4 sigma, In x, int k, __uint128_t n, __uint128_t b_size) {
+    int4 sigma, In x, int k, __uint128_t n, __uint128_t b_size, int choices) {
   __uint128_t val = static_cast<__uint128_t>(x) + n * k;
-  __uint128_t domain_size = n * 3;
+  __uint128_t domain_size = n * static_cast<__uint128_t>(choices);
   __uint128_t y = prp.Permu(sigma, val, domain_size);
 
   // Compare the quotient in __uint128_t: a zero b_size has no bucket at all,

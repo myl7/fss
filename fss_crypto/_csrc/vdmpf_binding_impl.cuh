@@ -13,12 +13,12 @@ constexpr int kWords = kBucketBits + 1;
 using Proof = cuda::std::array<int4, 4>;
 
 // The evaluation entries take no runtime bucket count, so b_size_rt alone
-// must keep every located bucket inside the allocation: the largest located
-// bucket is ceil(3*2^in_bits/b_size_rt)-1.
+// must keep every located bucket inside the allocation. The scheme states
+// that condition; this file does not know the fixed candidate count.
 void CheckRuntime(__uint128_t size) {
   TORCH_CHECK(size > 0 && size <= (__uint128_t(1) << kBucketBits), "b_size_rt is outside the bucket domain");
-  TORCH_CHECK(size >= fss::cuckoo_hash::detail::BucketBound(__uint128_t{1} << kInBits, SchemeType::kCuckooChoices, kRows),
-      "b_size_rt is too small for the allocated bucket count");
+  TORCH_CHECK(cuckoo_hash::detail::ValidBucketSize(size, SchemeType::kBucketSize, kBucketBits),
+      "b_size_rt is outside [kBucketSize, 2^bucket_bits]");
 }
 
 py::tuple Gen(NativeState &state, Tensor cws, Tensor cs, Tensor sigma, Tensor seeds,

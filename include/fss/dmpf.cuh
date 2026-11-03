@@ -54,6 +54,8 @@
 #include <fss/cuckoo_hash.cuh>
 #include <fss/constraints.cuh>
 #include <limits>
+#include <stdexcept>
+#include <string>
 
 namespace fss {
 
@@ -99,9 +101,15 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
 class Dmpf {
   using InnerDpf = Dpf<bucket_bits, Group, Prg, __uint128_t>;
 
+  // Private: the fixed candidate count never leaves this class; the bound
+  // checks in cuckoo_hash::detail are the only place that spells it out.
+  // Unlike the member function bodies, the public constants below are not
+  // complete-class contexts, so the count is declared before its first use
+  // instead of at the bottom.
+  static constexpr int kCuckooChoices = 3;  ///< Candidate count per input, fixed by the Cuckoo-hashing construction.
+
 public:
   static constexpr int kBucketCount = cuckoo_hash::ChBucket(max_points, ch_lambda);  ///< Allocated bucket count.
-  static constexpr int kCuckooChoices = 3;  ///< Candidate count per input, fixed by the Cuckoo-hashing construction.
   static constexpr __uint128_t kDomainSize = __uint128_t(1) << in_bits;  ///< Input domain size.
   /**
    * Smallest point count supported by this bucket_bits configuration.
@@ -119,18 +127,21 @@ public:
     while (lower < upper) {
       int middle = lower + (upper - lower) / 2;
       int buckets = cuckoo_hash::ChBucket(middle, ch_lambda);
-      __uint128_t bucket_size = (3 * kDomainSize + buckets - 1) / buckets;
+      __uint128_t bucket_size = cuckoo_hash::detail::MinBucketSize(kDomainSize, kCuckooChoices, buckets);
       if (bucket_size <= (__uint128_t{1} << bucket_bits)) upper = middle;
       else lower = middle + 1;
     }
     return lower;
   }();
   /**
-   * Bucket domain size when the actual point count equals max_points.
-   * A smaller runtime point count can give a larger bucket domain. Use the
+   * Bucket domain size when the actual point count equals max_points: the
+   * smallest bucket domain size that keeps every located bucket below
+   * kBucketCount, as returned by cuckoo_hash::detail::MinBucketSize(). A
+   * smaller runtime point count can give a larger bucket domain. Use the
    * b_size_rt returned by Gen() for the actual key's evaluation.
    */
-  static constexpr __uint128_t kBucketSize = (kDomainSize * 3 + kBucketCount - 1) / kBucketCount;
+  static constexpr __uint128_t kBucketSize =
+      cuckoo_hash::detail::MinBucketSize(kDomainSize, kCuckooChoices, kBucketCount);
 
   using Cw = typename InnerDpf::Cw;  ///< Correction word of the inner DPF.
   using BucketKey = typename InnerDpf::Key;  ///< One party's inner DPF key for a bucket.
@@ -211,6 +222,7 @@ public:
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    */
   void BatchEval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -220,9 +232,10 @@ public:
    * Evaluate the DMPF on all input points.
    *
    * Candidates are routed by the exclusive bucket bound derived from b_size_rt:
-   * ceil(3*kDomainSize/b_size_rt), clamped to kBucketCount. Gen() sizes
-   * b_size_rt = ceil(3*kDomainSize/m_rt), so the bound is at most m_rt and is
-   * exactly one past the largest bucket index a candidate can reach.
+   * ceil(3*kDomainSize/b_size_rt). Gen() sizes b_size_rt =
+   * ceil(3*kDomainSize/m_rt), so the bound is at most m_rt and is exactly one
+   * past the largest bucket index a candidate can reach.
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
    *
    * @pre The full output and each inner bucket output have element counts and byte sizes that fit size_t.
    *
@@ -248,7 +261,7 @@ public:
    * Temporary bucket outputs are allocated and released in the supplied
    * stream. No backend upload, deep copy, or synchronization is performed.
    * Prg, Prp, and Group must support the device execution and concurrency used.
-   * This is one multipoint key with ceil(3*kDomainSize/bucket_size) inner DPF keys, not a batch
+   * This is one multipoint key with ceil(3*kDomainSize/b_size_rt) inner DPF keys, not a batch
    * of independent multipoint keys.
    *
    * @tparam frontier_depth Inner DPF frontier depth, capped at bucket_bits. Defaults to 16.
@@ -258,11 +271,11 @@ public:
    * signed-int block indices, exactly as Dpf::EvalAllGpuBatch().
    * @param b Party index, false for party 0 and true for party 1.
    * @param sigma Shared PRP seed from successful Gen().
-   * @param bucket_size Runtime bucket size from that Gen(). Every located
-   * bucket then stays below kBucketCount exactly when bucket_size is at least
+   * @param b_size_rt Runtime bucket size from that Gen(). Every located
+   * bucket then stays below kBucketCount exactly when b_size_rt is at least
    * ceil(3*kDomainSize/kBucketCount).
-   * @param s0s Device storage with this party's seed for each bucket below ceil(3*kDomainSize/bucket_size).
-   * @param cws Device storage of at least ceil(3*kDomainSize/bucket_size)*(bucket_bits+1) correction words, in bucket-major order.
+   * @param s0s Device storage with this party's seed for each bucket below ceil(3*kDomainSize/b_size_rt).
+   * @param cws Device storage of at least ceil(3*kDomainSize/b_size_rt)*(bucket_bits+1) correction words, in bucket-major order.
    * @param ys Device output storage of at least 2^in_bits int4 blocks, in input order.
    * @param stream Stream on the device owning the referenced resources.
    * @pre this is accessible on the host. Buffers and backend resources remain valid until work completes.
@@ -273,13 +286,19 @@ public:
    */
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t EvalAllGpu(bool b, int4 sigma,
-      __uint128_t bucket_size, cuda::std::span<const int4> s0s,
+      __uint128_t b_size_rt, cuda::std::span<const int4> s0s,
       cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
       cudaStream_t stream = 0) const
     requires(in_bits <= 38 && in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8);
 
 private:
   friend class detail::SchemeAccess;
+
+  // Throws if b_size_rt is not a bucket size that Gen() can return.
+  static void RequireBucketSize(__uint128_t b_size_rt, const char *entry) {
+    if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits))
+      throw std::invalid_argument(std::string(entry) + ": b_size_rt is outside [kBucketSize, 2^bucket_bits]");
+  }
 
   Prg prg_;
   Prp prp_;
@@ -303,7 +322,7 @@ struct DmpfMergeGpuKernelDescriptor {
 // Each domain input gathers the three PRP-selected inner DPF outputs.
 template <int in_bits, int bucket_bits, typename Descriptor>
 __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int bucket_count,
-    __uint128_t bucket_size, const int4 *bucket_ys, typename Descriptor::PrpBackend prp) {
+    __uint128_t bucket_size, int choices, const int4 *bucket_ys, typename Descriptor::PrpBackend prp) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
   using Prp = typename Descriptor::PrpBackend;
@@ -315,8 +334,8 @@ __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int bucket_count,
   cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp};
   int4 zero = {0, 0, 0, 0};
   auto acc = Group::From(zero);
-  for (int k = 0; k < 3; ++k) {
-    auto [bucket, j] = prp_hash.Locate(sigma, x, k, kInputDomain, bucket_size);
+  for (int k = 0; k < choices; ++k) {
+    auto [bucket, j] = prp_hash.Locate(sigma, x, k, kInputDomain, bucket_size, choices);
     if (bucket >= bucket_count) continue;
     acc = acc + Group::From(bucket_ys[static_cast<size_t>(bucket) * (size_t{1} << bucket_bits) + static_cast<size_t>(j)]);
   }
@@ -359,7 +378,7 @@ inline int Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda
   int m_ = cuckoo_hash::ChBucket(t, ch_lambda);
   assert(m_ <= kBucketCount);
   __uint128_t n128 = static_cast<__uint128_t>(kDomainSize);
-  __uint128_t bucket_size = (n128 * kCuckooChoices + m_ - 1) / m_;
+  __uint128_t bucket_size = cuckoo_hash::detail::CeilDiv(n128 * kCuckooChoices, m_);
   assert(bucket_size <= (__uint128_t{1} << bucket_bits));
   __uint128_t b_rt = bucket_size;
 
@@ -385,7 +404,7 @@ inline int Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda
       if (i < m_ && table[i].first != -1) {
         int j = table[i].first;   // index into as
         int k = table[i].second;  // hash function that placed it
-        auto [bucket, index] = prp_hash.Locate(sigma, as[j], k, kDomainSize, b_rt);
+        auto [bucket, index] = prp_hash.Locate(sigma, as[j], k, kDomainSize, b_rt, kCuckooChoices);
         a_prime = index;
         assert(a_prime < (__uint128_t{1} << bucket_bits));
         b_buf_prime = b_bufs[j];
@@ -414,6 +433,7 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
     bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const In> xs, cuda::std::span<int4> ys) {
+  RequireBucketSize(b_size_rt, "Dmpf::BatchEval");
   assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
   size_t eta = xs.size();
   assert(ys.size() >= eta);
@@ -432,7 +452,7 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
     int num_seen = 0;
 
     for (int k = 0; k < kCuckooChoices; ++k) {
-      auto [bucket, index] = prp_hash.Locate(sigma, xs[omega], k, kDomainSize, b_rt);
+      auto [bucket, index] = prp_hash.Locate(sigma, xs[omega], k, kDomainSize, b_rt, kCuckooChoices);
       if (bucket >= kBucketCount) continue;
 
       __uint128_t j = index;
@@ -484,6 +504,7 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<int4> ys, int par_depth)
   requires(in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
+  RequireBucketSize(b_size_rt, "Dmpf::EvalAll");
   assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
   assert(par_depth >= 0);
   static_assert(detail::FitsFullDomain<int4, in_bits>(),
@@ -492,14 +513,11 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
   assert(ys.size() == kDomainSize);
 
   __uint128_t b_rt = b_size_rt;
-  // Exclusive upper bound on the bucket index of any candidate: Locate() maps
-  // every candidate into [0, derived_bound), and Gen() sizes b_size_rt so that
-  // derived_bound never exceeds the realised bucket count m_rt. The clamp
-  // against kBucketCount only takes effect for an inconsistent b_size_rt and
-  // keeps the routing size and the inputs array inside the allocation for every
-  // non-negative bucket index.
-  const __uint128_t derived_bound = cuckoo_hash::detail::BucketBound(kDomainSize, kCuckooChoices, b_rt);
-  const int bucket_count = static_cast<int>(derived_bound < kBucketCount ? derived_bound : kBucketCount);
+  // Exclusive upper bound on the bucket index of any candidate. The entry check
+  // b_size_rt >= kBucketSize guarantees it does not exceed kBucketCount.
+  const __uint128_t derived_bound = cuckoo_hash::detail::BucketIndexBound(kDomainSize, kCuckooChoices, b_rt);
+  assert(derived_bound <= kBucketCount);
+  const int bucket_count = static_cast<int>(derived_bound);
 
   // build per-bucket input lists.
   // inputs[i] = vector of (within_bucket_index, original_input_index).
@@ -514,7 +532,7 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
     int num_seen = 0;
 
     for (int k = 0; k < kCuckooChoices; ++k) {
-      auto [bucket, index] = prp_hash.Locate(sigma, x, k, kDomainSize, b_rt);
+      auto [bucket, index] = prp_hash.Locate(sigma, x, k, kDomainSize, b_rt, kCuckooChoices);
       if (bucket >= bucket_count) continue;
 
       __uint128_t j = index;
@@ -566,7 +584,7 @@ template <int in_bits, int max_points, int bucket_bits, typename Group, typename
 
 template <int frontier_depth, int threads_per_block>
 __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::EvalAllGpu(
-    bool b, int4 sigma, __uint128_t bucket_size,
+    bool b, int4 sigma, __uint128_t b_size_rt,
     cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<int4> ys, cudaStream_t stream) const
   requires(in_bits <= 38 && in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
@@ -581,13 +599,11 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   constexpr int kMergeThreads = 256;
   constexpr size_t kMergeBlocks = (kOutputs + kMergeThreads - 1) / kMergeThreads;
 
-  if (bucket_size == 0 || bucket_size > (__uint128_t{1} << bucket_bits)) return cudaErrorInvalidValue;
-  // Exclusive bound on the bucket index of any candidate. Requiring it to fit
-  // the allocation is the condition on bucket_size alone that the removed
-  // active-bucket count check guaranteed.
-  const __uint128_t derived_bound = cuckoo_hash::detail::BucketBound(kDomainSize, kCuckooChoices, bucket_size);
-  if (derived_bound > kBucketCount) return cudaErrorInvalidValue;
-  const size_t bucket_count = static_cast<size_t>(derived_bound);
+  if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits)) return cudaErrorInvalidValue;
+  // Exclusive bound on the bucket index of any candidate; the check above has
+  // already verified that it fits the allocation.
+  const size_t bucket_count =
+      static_cast<size_t>(cuckoo_hash::detail::BucketIndexBound(kDomainSize, kCuckooChoices, b_size_rt));
   if (kOutputs > kMaxAddressableSize / sizeof(int4) ||
       bucket_count > kMaxAddressableSize / sizeof(Cw) / kCwPerBucket ||
       bucket_count > kMaxAddressableSize / sizeof(int4) / kBucketOutputs ||
@@ -608,7 +624,7 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   if (status != cudaSuccess) return status;
   gpu::detail::DmpfMergeKernel<in_bits, bucket_bits, Descriptor>
       <<<kMergeBlocks, kMergeThreads, 0, stream>>>(ys.data(), sigma, static_cast<int>(bucket_count),
-          bucket_size, bucket_ys, prp_);
+          b_size_rt, kCuckooChoices, bucket_ys, prp_);
   return gpu::detail::ReleaseScratch(cudaGetLastError(), {&bucket_storage});
 #else
   static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");

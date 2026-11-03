@@ -296,15 +296,23 @@ protected:
   // so a test can confirm that the interesting routing case is exercised.
   int CountDistinctCandidateBucketInputs(const typename VdmpfType::Key &key,
       const std::vector<uint16_t> &xs) {
+    // Fixed by the three-choice Cuckoo construction, private in the scheme.
+    // The static_asserts anchor this local count to the scheme's private one.
+    constexpr int kCuckooChoices = 3;
+    static_assert(
+        fss::cuckoo_hash::detail::ValidBucketSize(VdmpfType::kBucketSize, VdmpfType::kBucketSize, kBucketBits) &&
+        !fss::cuckoo_hash::detail::ValidBucketSize(VdmpfType::kBucketSize - 1, VdmpfType::kBucketSize, kBucketBits));
+    static_assert(VdmpfType::kBucketSize ==
+        (VdmpfType::kDomainSize * kCuckooChoices + VdmpfType::kBucketCount - 1) / VdmpfType::kBucketCount);
     fss::cuckoo_hash::detail::PrpHash<Prp, uint16_t> hasher{prp_};
     int count = 0;
     for (uint16_t x : xs) {
-      cuda::std::array<int, VdmpfType::kCuckooChoices> buckets{};
-      for (int k = 0; k < VdmpfType::kCuckooChoices; ++k) {
+      cuda::std::array<int, kCuckooChoices> buckets{};
+      for (int k = 0; k < kCuckooChoices; ++k) {
         buckets[k] = hasher.Locate(key.sigma, x, k, VdmpfType::kDomainSize, key.b_size_rt).bucket;
       }
       bool distinct = buckets[0] < m && buckets[1] < m && buckets[2] < m;
-      for (int k = 0; k < VdmpfType::kCuckooChoices && distinct; ++k) {
+      for (int k = 0; k < kCuckooChoices && distinct; ++k) {
         for (int j = 0; j < k; ++j) distinct = distinct && buckets[j] != buckets[k];
       }
       if (distinct) ++count;
