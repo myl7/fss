@@ -447,8 +447,9 @@ public:
    * The batch uses the level-major layout: key k layer l is read from
    * cws[l*stride + k] and key k's packed-output correction word from
    * cws[kDepth*stride + k]. The construction carries no control bits, so there is
-   * no packed-control parameter. stride is kDenseStride (dense level-major,
-   * resolved to the key count) or a positive stride of at least s0s.size().
+   * no packed-control parameter. stride selects the layout. 0 selects the dense
+   * level-major layout, in which the stride is the key count of this call. Any
+   * other value is a positive stride of at least s0s.size().
    * Resource and tuning rules match EvalAllGpu(). The batch shares one party index
    * and hash configuration. Every key produces the complete packed domain.
    *
@@ -457,19 +458,21 @@ public:
    * @param cws Device level-major correction words.
    * @param ys Device key-major rows of 2^kDepth packed output blocks per key.
    * @param stream Stream on the device owning the referenced resources.
-   * @param stride kDenseStride or a positive element stride >= s0s.size().
+   * @param stride 0 for the dense level-major layout, where the stride is the
+   * key count of this call, or a positive element stride >= s0s.size().
    * @return Immediate CUDA status. Empty batches succeed without reading buffers.
    * Invalid dimensions, null used buffers, strides, or unaddressable counts and
    * bytes return cudaErrorInvalidValue. Oversized grids return
    * cudaErrorInvalidConfiguration.
-   * @pre stride is kDenseStride or at least s0s.size().
-   * @pre cws holds at least kDepth*stride + s0s.size() elements.
+   * @pre stride is 0 or at least s0s.size().
+   * @pre cws holds at least kDepth*stride + s0s.size() elements, where a
+   * stride of 0 counts as s0s.size().
    * @pre All referenced storage remains alive until the stream work completes.
    */
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t EvalAllGpuBatch(bool b, cuda::std::span<const int4> s0s,
       cuda::std::span<const int4> cws, cuda::std::span<int4> ys,
-      cudaStream_t stream = 0, size_t stride = kDenseStride) const
+      cudaStream_t stream = 0, size_t stride = 0) const
     requires(kDepth < sizeof(size_t) * 8);
 
 private:
@@ -1263,10 +1266,10 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
   // product in the size check below cannot wrap.
   if (key_count > kMaxElements ||
       key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
-      (stride != kDenseStride && (stride < key_count || stride > kMaxElements)))
+      (stride != 0 && (stride < key_count || stride > kMaxElements)))
     return cudaErrorInvalidValue;
-  // kDenseStride resolves to the key count, which is the dense level-major layout.
-  const size_t resolved_stride = stride == kDenseStride ? key_count : stride;
+  // A stride of 0 resolves to the key count, which is the dense level-major layout.
+  const size_t resolved_stride = stride == 0 ? key_count : stride;
   if (resolved_stride > (kMaxElements - key_count) / static_cast<size_t>(kDepth))
     return cudaErrorInvalidValue;
   const size_t required = static_cast<size_t>(kDepth) * resolved_stride + key_count;

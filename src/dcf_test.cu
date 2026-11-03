@@ -1004,7 +1004,7 @@ TEST(DcfCwsTest, RejectsInvalidInputs) {
   const auto vws_in = cuda::std::span<const int4>(vws, 4);
   const int4 s0 = seeds[0];
 
-  // A zero stride is only the batch sentinel, so a non-batch method rejects it.
+  // A zero stride is valid only in a batch method, so a non-batch method rejects it.
   EXPECT_DEBUG_DEATH((void)scheme.Gen(cws_out, vws_out, tr, seed_span, uint8_t{5}, beta, 0),
       "Assertion.*failed");
   EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, vws_in, uint8_t{0}, uint8_t{0}, 0),
@@ -1150,7 +1150,7 @@ void CheckSplitGpuLaunches() {
     const auto span_vws = cuda::std::span<const int4>(device_vws, vws.size());
     std::vector<int4> actual(kDomain, kSplitSentinel);
     ASSERT_EQ((scheme.template EvalAllGpu<8, 16>(b, seeds[party], span_cws, span_vws, tr,
-        cuda::std::span<int4>(device_ys, kDomain), stream)), cudaSuccess);
+        cuda::std::span<int4>(device_ys, kDomain), stream, kStride)), cudaSuccess);
     ASSERT_EQ(cudaMemcpyAsync(actual.data(), device_ys, kDomain * sizeof(int4),
         cudaMemcpyDeviceToHost, stream), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
@@ -1217,9 +1217,9 @@ void CheckSplitGpuLaunches() {
   const auto span_batch_vws = cuda::std::span<const int4>(device_vws, batch_vws.size());
   const auto span_batch_tr = cuda::std::span<const uint16_t>(device_tr, kKeys);
   const auto span_batch_ys = cuda::std::span<int4>(device_batch_ys, kKeys * kDomain);
-  for (int use_sentinel = 0; use_sentinel < 2; ++use_sentinel) {
-    SCOPED_TRACE(use_sentinel);
-    const size_t stride = use_sentinel == 0 ? fss::kDenseStride : kKeys;
+  for (int use_default = 0; use_default < 2; ++use_default) {
+    SCOPED_TRACE(use_default);
+    const size_t stride = use_default == 0 ? 0 : kKeys;
     ASSERT_EQ((scheme.template EvalAllGpuBatch<8, 16>(false, cuda::std::span<const int4>(device_s0s, kKeys),
         span_batch_cws, span_batch_vws, span_batch_tr, span_batch_ys, stream, stride)), cudaSuccess);
     std::vector<int4> actual(kKeys * kDomain, kSplitSentinel);

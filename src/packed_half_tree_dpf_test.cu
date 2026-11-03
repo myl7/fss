@@ -982,7 +982,7 @@ TEST(PackedHalfTreeDpfCwsTest, RejectsInvalidInputs) {
   const auto cws_in = cuda::std::span<const int4>(cws, kDepth + 1);
   const int4 s0 = seeds[0];
 
-  // A zero stride is only the batch sentinel, so a non-batch method rejects it.
+  // A zero stride is valid only in a batch method, so a non-batch method rejects it.
   EXPECT_DEBUG_DEATH((void)scheme.Gen(cws_out, seed_span, uint16_t{5}, 1, 0),
       "Assertion.*failed");
   EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint16_t{0}, 0), "Assertion.*failed");
@@ -1144,9 +1144,9 @@ void CheckPackedHalfTreeSplitGpuLaunches() {
   ASSERT_EQ(cudaMalloc(&device_batch_ys, kKeys * kBlocks * sizeof(int4)), cudaSuccess);
   const auto span_batch_cws = cuda::std::span<const int4>(device_cws, batch_cws.size());
   const auto span_batch_ys = cuda::std::span<int4>(device_batch_ys, kKeys * kBlocks);
-  for (int use_sentinel = 0; use_sentinel < 2; ++use_sentinel) {
-    SCOPED_TRACE(use_sentinel);
-    const size_t stride = use_sentinel == 0 ? fss::kDenseStride : kKeys;
+  for (int use_default = 0; use_default < 2; ++use_default) {
+    SCOPED_TRACE(use_default);
+    const size_t stride = use_default == 0 ? 0 : kKeys;
     ASSERT_EQ((scheme.template EvalAllGpuBatch<8, 16>(false,
         cuda::std::span<const int4>(device_s0s, kKeys), span_batch_cws, span_batch_ys,
         stream, stride)), cudaSuccess);
