@@ -434,6 +434,7 @@ void CheckGrottoSplitGpuLaunches() {
       cudaMemcpyHostToDevice, stream), cudaSuccess);
   const auto span_cws = cuda::std::span<const int4>(device_cws, cws.size());
 
+  auto first = std::make_unique<bool[]>(kDomain);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(party);
     const bool b = party != 0;
@@ -443,9 +444,17 @@ void CheckGrottoSplitGpuLaunches() {
     ASSERT_EQ(cudaMemcpyAsync(actual.get(), device_ys, kDomain * sizeof(bool),
         cudaMemcpyDeviceToHost, stream), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    // EvalAllGpu() and EvalAll() take the same leaf-prefix route, so their shares
+    // are comparable. Scalar Eval() takes the other route and its shares are not.
+    auto expected_all = std::make_unique<bool[]>(kDomain);
+    scheme.EvalAll(b, seeds[party], ref, expected_all.get());
     for (size_t x = 0; x < kDomain; ++x) {
-      const bool expected = scheme.Eval(b, seeds[party], ref, static_cast<uint16_t>(x));
-      EXPECT_EQ(actual[x], expected) << "x=" << x;
+      EXPECT_EQ(actual[x], expected_all[x]) << "x=" << x;
+      if (party == 0) {
+        first[x] = actual[x];
+      } else {
+        EXPECT_EQ(static_cast<bool>(first[x] ^ actual[x]), x >= alpha) << "x=" << x;
+      }
     }
 
     auto expected_tree = std::make_unique<bool[]>(kTreeSize);

@@ -421,6 +421,9 @@ public:
   /**
    * Evaluate all comparison shares on the GPU without building a parity tree.
    *
+   * Follows the leaf-prefix route, the same route as EvalAll(). Per-party shares
+   * are not comparable across routes.
+   *
    * The host instance passes its PRG value to the expansion kernel. Referenced
    * backend resources must already be device-accessible and permit concurrent use.
    * Temporary scan storage is queried, allocated, and released on stream.
@@ -445,6 +448,9 @@ public:
 
   /**
    * Evaluate all comparison shares on the GPU from split device correction words.
+   *
+   * Follows the leaf-prefix route, as in the Cw form. Per-party shares are not
+   * comparable across routes.
    *
    * Layer l is read from cws[l*stride] and tr carries the right-control
    * bits, bit l for layer l, as in the Cw form. The host instance passes

@@ -402,6 +402,9 @@ public:
   /**
    * Evaluate all comparison shares on the GPU without building a parity tree.
    *
+   * Follows the leaf-prefix route, the same route as EvalAll(). Per-party shares
+   * are not comparable across routes.
+   *
    * Expands packed blocks, unpacks their bits, and scans their prefix XOR.
    * The host instance passes its hash value and instance seed to the packed
    * evaluator. Referenced backend resources must already be device-accessible.
@@ -427,6 +430,9 @@ public:
 
   /**
    * Evaluate all comparison shares on the GPU from split Cws.
+   *
+   * Follows the leaf-prefix route, as in the Cw form. Per-party shares are not
+   * comparable across routes.
    *
    * Expands packed blocks, unpacks their bits, and scans their prefix XOR.
    * Layer l is read from cws[l*stride] and the packed-output correction word from
