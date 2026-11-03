@@ -9,7 +9,6 @@
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
 #include <fss/hash/blake3.cuh>
-#include <fss/repack_gpu.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/chacha_feistel.cuh>
 #include <fss/vdmpf.cuh>
@@ -156,12 +155,15 @@ protected:
 
     std::vector<int4> h_s0s[2];
     std::vector<Cw> h_cws;
+    std::vector<int4> h_ocws;
     std::vector<cuda::std::array<int4, 4>> h_cs(m);
     h_cws.resize(static_cast<size_t>(m_rt) * (kBucketBits + 1));
+    h_ocws.resize(m_rt);
     for (int i = 0; i < m_rt; ++i) {
       for (int j = 0; j <= kBucketBits; ++j) {
         h_cws[static_cast<size_t>(i) * (kBucketBits + 1) + j] = k0.bks[i].cws[j];
       }
+      h_ocws[i] = k0.bks[i].cws[kBucketBits].s;
     }
     for (int i = 0; i < 2; ++i) {
       h_s0s[i].resize(m_rt);
@@ -178,9 +180,8 @@ protected:
     DeviceBuffer<cuda::std::array<int4, 4>> d_pi[2];
     DeviceBuffer<int4> d_s0s[2];
     DeviceBuffer<Cw> d_cws;
-    DeviceBuffer<int4> d_cw_s, d_ocws;
+    DeviceBuffer<int4> d_ocws;
     DeviceBuffer<cuda::std::array<int4, 4>> d_cs;
-    DeviceBuffer<fss::gpu::detail::ExtBits<kBucketBits>> d_extra;
     ASSERT_EQ(d_xs.Allocate(n), cudaSuccess);
     ASSERT_EQ(d_xs.Upload(xs.data(), n), cudaSuccess);
     for (int p = 0; p < 2; ++p) {
@@ -192,28 +193,18 @@ protected:
     ASSERT_EQ(d_cws.Allocate(h_cws.size()), cudaSuccess);
     ASSERT_EQ(d_cws.Upload(h_cws.data(), h_cws.size()), cudaSuccess);
     ASSERT_EQ(d_ocws.Allocate(m_rt), cudaSuccess);
+    ASSERT_EQ(d_ocws.Upload(h_ocws.data(), m_rt), cudaSuccess);
     ASSERT_EQ(d_cs.Allocate(m), cudaSuccess);
     ASSERT_EQ(d_cs.Upload(h_cs.data(), m), cudaSuccess);
-    ASSERT_EQ(d_cw_s.Allocate(static_cast<size_t>(kBucketBits) * m_rt), cudaSuccess);
-    ASSERT_EQ(d_extra.Allocate(m_rt), cudaSuccess);
 
-    // Both parties share the correction words, so one repack serves both.
-    fss::gpu::RepackGpu<fss::Vdpf<kBucketBits, Group, Prg, Blake3, Blake3, __uint128_t>>({d_cws.data(), h_cws.size()},
-        m_rt,
-        {d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt},
-        {d_extra.data(), static_cast<size_t>(m_rt)},
-        {d_ocws.data(), static_cast<size_t>(m_rt)},
-        {d_cs.data(), static_cast<size_t>(m)},
-        {d_cs.data(), static_cast<size_t>(m)});
-
-    const cuda::std::span<const int4> cws(d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt);
-    const cuda::std::span<const fss::gpu::detail::ExtBits<kBucketBits>> controls(d_extra.data(), m_rt);
+    // Both parties share the correction words, so one upload serves both.
+    const cuda::std::span<const Cw> cws(d_cws.data(), h_cws.size());
     const cuda::std::span<const int4> terminals(d_ocws.data(), m_rt);
     const cuda::std::span<const cuda::std::array<int4, 4>> checks(d_cs.data(), m);
     // Empty batches use every bucket's cs and require no query or key buffers.
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::detail::VdmpfBatchEvalMerkleGpu(p != 0, static_cast<const uint16_t *>(nullptr),
-          nullptr, d_pi[p].data(), 0, {}, 0, 0, nullptr, nullptr, nullptr, checks.data(), nullptr, vdmpf);
+      fss::gpu::detail::VdmpfBatchEvalMerkleGpu(p != 0, cuda::std::span<const uint16_t>(),
+          nullptr, d_pi[p].data(), 0, {}, 0, 0, {}, {}, checks, {}, vdmpf);
       ASSERT_EQ(cudaGetLastError(), cudaSuccess);
       ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
       cuda::std::array<int4, 4> expected, actual;
@@ -224,9 +215,9 @@ protected:
     }
 
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::detail::VdmpfBatchEvalMerkleGpu(p != 0, d_xs.data(), d_ys[p].data(), d_pi[p].data(), n,
-          sigma, m_rt, b_rt, d_s0s[p].data(), cws.data(), controls.data(), checks.data(),
-          terminals.data(), vdmpf);
+      fss::gpu::detail::VdmpfBatchEvalMerkleGpu(p != 0, {d_xs.data(), static_cast<size_t>(n)}, d_ys[p].data(),
+          d_pi[p].data(), n, sigma, m_rt, b_rt, {d_s0s[p].data(), static_cast<size_t>(m_rt)}, cws, checks,
+          terminals, vdmpf);
     }
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
@@ -294,13 +285,15 @@ protected:
           for (int party = 0; party < 2; ++party) {
             SCOPED_TRACE(::testing::Message() << "party=" << party);
             fss::gpu::detail::VdmpfBatchEvalMerkleGpu<4, chunk_size, threads>(party != 0,
-                tuning_xs.data(), tuning_ys.data(), tuning_pi.data(), count,
+                count == 0 ? cuda::std::span<const uint16_t>()
+                           : cuda::std::span<const uint16_t>(tuning_xs.data(), count),
+                tuning_ys.data(), tuning_pi.data(), count,
                 count == 0 ? int4{} : sigma, count == 0 ? 0 : m_rt,
                 count == 0 ? __uint128_t{} : b_rt,
-                count == 0 ? nullptr : d_s0s[party].data(),
-                count == 0 ? nullptr : cws.data(),
-                count == 0 ? nullptr : controls.data(), checks.data(),
-                count == 0 ? nullptr : terminals.data(), vdmpf);
+                count == 0 ? cuda::std::span<const int4>()
+                           : cuda::std::span<const int4>(d_s0s[party].data(), m_rt),
+                count == 0 ? cuda::std::span<const Cw>() : cws, checks,
+                count == 0 ? cuda::std::span<const int4>() : terminals, vdmpf);
             ASSERT_EQ(cudaGetLastError(), cudaSuccess);
             ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
             cuda::std::array<int4, 4> actual_pi;
@@ -499,9 +492,9 @@ TEST(VdmpfGpuArguments, RejectsOversizedQueryCount) {
   Vdmpf scheme{Prg{23, 47}, MakeProofHash(), MakeProofHash(), Prp{}};
 
   auto evaluate = [&](int count) {
-    fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, static_cast<const uint8_t *>(nullptr),
+    fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, cuda::std::span<const uint8_t>(),
         nullptr, nullptr, count, {}, Vdmpf::kBucketCount, Vdmpf::kBucketSize,
-        nullptr, nullptr, nullptr, nullptr, nullptr, scheme);
+        {}, {}, {}, {}, scheme);
   };
   EXPECT_THROW(evaluate(std::numeric_limits<int>::max() / 3 + 1), std::invalid_argument);
 }

@@ -2024,9 +2024,9 @@ static void BM_GpuGrottoDcfEvalAll(benchmark::State &state) {
 // GPU DMPF benchmarks (ChaChaFeistel PRP for the device Cuckoo Locate)
 // ============================================================
 
-// Generates the GPU DMPF keys once, uploads the active bucket keys, and repacks
-// them into the level-major layout the kernels read. Both parties share the
-// correction words, so one repack serves both.
+// Generates the GPU DMPF keys once and uploads the active bucket keys in the
+// bucket-major rows the batch kernel reads. Both parties share the correction
+// words, so one upload serves both.
 struct GpuDmpfKeys {
   using Cw = typename GpuDmpfT::Cw;
 
@@ -2036,9 +2036,6 @@ struct GpuDmpfKeys {
   __uint128_t b_rt;
   int4 *d_s0s[2] = {nullptr, nullptr};
   Cw *d_cws = nullptr;
-  int4 *d_cw_s = nullptr;
-  int4 *d_out_cw = nullptr;
-  fss::gpu::detail::ExtBits<kDmpfBucketBits> *d_extra = nullptr;
 
   GpuDmpfKeys()
       : dmpf{fss::prg::ChaCha<2>(0x12345678, static_cast<int>(0x9abcdef0u)), fss::prp::ChaChaFeistel()} {
@@ -2063,15 +2060,9 @@ struct GpuDmpfKeys {
     CUDA_CHECK(cudaMalloc(&d_s0s[0], sizeof(int4) * m_rt));
     CUDA_CHECK(cudaMalloc(&d_s0s[1], sizeof(int4) * m_rt));
     CUDA_CHECK(cudaMalloc(&d_cws, h_cws.size() * sizeof(Cw)));
-    CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * static_cast<size_t>(kDmpfBucketBits) * m_rt));
-    CUDA_CHECK(cudaMalloc(&d_out_cw, sizeof(int4) * m_rt));
-    CUDA_CHECK(cudaMalloc(&d_extra, sizeof(*d_extra) * m_rt));
     CUDA_CHECK(cudaMemcpy(d_s0s[0], h_s0s[0].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_s0s[1], h_s0s[1].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_cws, h_cws.data(), h_cws.size() * sizeof(Cw), cudaMemcpyHostToDevice));
-
-    fss::gpu::detail::DpfRepackGpu<kDmpfBucketBits, BytesGroup, fss::prg::ChaCha<2>, __uint128_t>(
-        d_cws, m_rt, d_cw_s, d_extra, d_out_cw);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
   }
@@ -2080,9 +2071,6 @@ struct GpuDmpfKeys {
     CUDA_CHECK(cudaFree(d_s0s[0]));
     CUDA_CHECK(cudaFree(d_s0s[1]));
     CUDA_CHECK(cudaFree(d_cws));
-    CUDA_CHECK(cudaFree(d_cw_s));
-    CUDA_CHECK(cudaFree(d_out_cw));
-    CUDA_CHECK(cudaFree(d_extra));
   }
 
   GpuDmpfKeys(const GpuDmpfKeys &) = delete;
@@ -2106,8 +2094,9 @@ static void BM_GpuDmpfEval(benchmark::State &state) {
 
   // Validate: both parties reconstruct the sparse multi-point function.
   for (int party = 0; party < 2; ++party) {
-    fss::gpu::detail::DmpfBatchEvalGpu(party != 0, d_xs, party ? d_ys1 : data.d_ys, kN, keys.k0.sigma, keys.m_rt, keys.b_rt,
-        keys.d_s0s[party], keys.d_cw_s, keys.d_extra, keys.d_out_cw, keys.dmpf);
+    fss::gpu::detail::DmpfBatchEvalGpu(party != 0, {d_xs, kN}, party ? d_ys1 : data.d_ys, kN, keys.k0.sigma, keys.m_rt,
+        keys.b_rt, {keys.d_s0s[party], static_cast<size_t>(keys.m_rt)},
+        {keys.d_cws, static_cast<size_t>(keys.m_rt) * (kDmpfBucketBits + 1)}, keys.dmpf);
     CUDA_CHECK(cudaGetLastError());
   }
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -2129,8 +2118,9 @@ static void BM_GpuDmpfEval(benchmark::State &state) {
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
     CUDA_CHECK(cudaEventRecord(start));
-    fss::gpu::detail::DmpfBatchEvalGpu(false, d_xs, data.d_ys, kN, keys.k0.sigma, keys.m_rt, keys.b_rt, keys.d_s0s[0],
-        keys.d_cw_s, keys.d_extra, keys.d_out_cw, keys.dmpf);
+    fss::gpu::detail::DmpfBatchEvalGpu(false, {d_xs, kN}, data.d_ys, kN, keys.k0.sigma, keys.m_rt, keys.b_rt,
+        {keys.d_s0s[0], static_cast<size_t>(keys.m_rt)},
+        {keys.d_cws, static_cast<size_t>(keys.m_rt) * (kDmpfBucketBits + 1)}, keys.dmpf);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
@@ -2209,8 +2199,8 @@ static void BM_GpuDmpfEvalAll(benchmark::State &state) {
 // ============================================================
 
 // Generates the GPU VDMPF keys once and uploads the per-bucket inner VDPF key
-// material. Both parties share cws, cs, and ocw, so the repack and the cs and
-// ocw buffers serve both; only the seeds differ.
+// material in the bucket-major rows the batch kernel reads. Both parties share
+// cws, cs, and ocw, so the uploads serve both; only the seeds differ.
 struct GpuVdmpfKeys {
   using Cw = typename GpuVdmpfT::Cw;
 
@@ -2222,9 +2212,7 @@ struct GpuVdmpfKeys {
   __uint128_t b_rt;
   int4 *d_s0s[2] = {nullptr, nullptr};
   Cw *d_cws = nullptr;
-  int4 *d_cw_s = nullptr;
   int4 *d_ocws = nullptr;
-  fss::gpu::detail::ExtBits<kDmpfBucketBits> *d_extra = nullptr;
   cuda::std::array<int4, 4> *d_cs = nullptr;
 
   GpuVdmpfKeys()
@@ -2260,16 +2248,11 @@ struct GpuVdmpfKeys {
     CUDA_CHECK(cudaMalloc(&d_cws, h_cws.size() * sizeof(Cw)));
     CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * m_rt));
     CUDA_CHECK(cudaMalloc(&d_cs, sizeof(*d_cs) * GpuVdmpfT::kBucketCount));
-    CUDA_CHECK(cudaMalloc(&d_cw_s, sizeof(int4) * static_cast<size_t>(kDmpfBucketBits) * m_rt));
-    CUDA_CHECK(cudaMalloc(&d_extra, sizeof(*d_extra) * m_rt));
     CUDA_CHECK(cudaMemcpy(d_s0s[0], h_s0s[0].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_s0s[1], h_s0s[1].data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_cws, h_cws.data(), h_cws.size() * sizeof(Cw), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_ocws, h_ocws.data(), sizeof(int4) * m_rt, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_cs, h_cs.data(), sizeof(*d_cs) * GpuVdmpfT::kBucketCount, cudaMemcpyHostToDevice));
-
-    fss::gpu::detail::VdpfRepackGpu<kDmpfBucketBits, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3, fss::hash::Blake3,
-        __uint128_t>(d_cws, m_rt, d_cw_s, d_extra, d_ocws);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
   }
@@ -2280,8 +2263,6 @@ struct GpuVdmpfKeys {
     CUDA_CHECK(cudaFree(d_cws));
     CUDA_CHECK(cudaFree(d_ocws));
     CUDA_CHECK(cudaFree(d_cs));
-    CUDA_CHECK(cudaFree(d_cw_s));
-    CUDA_CHECK(cudaFree(d_extra));
   }
 
   GpuVdmpfKeys(const GpuVdmpfKeys &) = delete;
@@ -2305,8 +2286,10 @@ static void RunGpuVdmpfBatch(benchmark::State &state, const uint32_t *h_xs, int 
   // Validate: both parties reconstruct the sparse multi-point function and
   // their honest proofs match.
   for (int party = 0; party < 2; ++party) {
-    fss::gpu::detail::VdmpfBatchEvalMerkleGpu(party != 0, d_xs, d_ys[party], d_pi[party], n, keys.k0.sigma, keys.m_rt, keys.b_rt,
-        keys.d_s0s[party], keys.d_cw_s, keys.d_extra, keys.d_cs, keys.d_ocws, keys.vdmpf);
+    fss::gpu::detail::VdmpfBatchEvalMerkleGpu(party != 0, {d_xs, static_cast<size_t>(n)}, d_ys[party], d_pi[party], n,
+        keys.k0.sigma, keys.m_rt, keys.b_rt, {keys.d_s0s[party], static_cast<size_t>(keys.m_rt)},
+        {keys.d_cws, static_cast<size_t>(keys.m_rt) * (kDmpfBucketBits + 1)},
+        {keys.d_cs, GpuVdmpfT::kBucketCount}, {keys.d_ocws, static_cast<size_t>(keys.m_rt)}, keys.vdmpf);
     CUDA_CHECK(cudaGetLastError());
   }
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -2335,8 +2318,10 @@ static void RunGpuVdmpfBatch(benchmark::State &state, const uint32_t *h_xs, int 
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
     CUDA_CHECK(cudaEventRecord(start));
-    fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, d_xs, d_ys[0], d_pi[0], n, keys.k0.sigma, keys.m_rt, keys.b_rt, keys.d_s0s[0],
-        keys.d_cw_s, keys.d_extra, keys.d_cs, keys.d_ocws, keys.vdmpf);
+    fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, {d_xs, static_cast<size_t>(n)}, d_ys[0], d_pi[0], n, keys.k0.sigma,
+        keys.m_rt, keys.b_rt, {keys.d_s0s[0], static_cast<size_t>(keys.m_rt)},
+        {keys.d_cws, static_cast<size_t>(keys.m_rt) * (kDmpfBucketBits + 1)},
+        {keys.d_cs, GpuVdmpfT::kBucketCount}, {keys.d_ocws, static_cast<size_t>(keys.m_rt)}, keys.vdmpf);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));

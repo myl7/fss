@@ -266,6 +266,15 @@ inline void CheckCudaStatus(cudaError_t status) {
     throw std::runtime_error(std::string("cuda operation failed: ") + cudaGetErrorString(status));
 }
 
+__device__ __host__ inline int4 Zero4() {
+  return {0, 0, 0, 0};
+}
+
+template <typename T>
+__device__ __host__ inline bool GetBit(T x, int i) {
+  return ((x >> i) & 1) != 0;
+}
+
 }  // namespace fss::gpu::detail
 
 namespace fss::detail {

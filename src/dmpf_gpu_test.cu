@@ -9,7 +9,6 @@
 #include <fss/dmpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
-#include <fss/repack_gpu.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/chacha_feistel.cuh>
 #include "binding_gpu_eval.cuh"
@@ -171,8 +170,6 @@ protected:
     DeviceBuffer<int4> d_ys[2];
     DeviceBuffer<int4> d_s0s[2];
     DeviceBuffer<Cw> d_cws;
-    DeviceBuffer<int4> d_cw_s, d_out_cw;
-    DeviceBuffer<fss::gpu::detail::ExtBits<kBucketBits>> d_extra;
     ASSERT_EQ(d_xs.Allocate(n), cudaSuccess);
     ASSERT_EQ(d_xs.Upload(xs.data(), n), cudaSuccess);
     for (int p = 0; p < 2; ++p) {
@@ -182,26 +179,15 @@ protected:
     }
     ASSERT_EQ(d_cws.Allocate(h_cws.size()), cudaSuccess);
     ASSERT_EQ(d_cws.Upload(h_cws.data(), h_cws.size()), cudaSuccess);
-    ASSERT_EQ(d_cw_s.Allocate(static_cast<size_t>(kBucketBits) * m_rt), cudaSuccess);
-    ASSERT_EQ(d_out_cw.Allocate(m_rt), cudaSuccess);
-    ASSERT_EQ(d_extra.Allocate(m_rt), cudaSuccess);
 
-    // Both parties share the correction words, so one repack serves both.
-    fss::gpu::RepackGpu<fss::Dpf<kBucketBits, Group, Prg, __uint128_t>>({d_cws.data(), h_cws.size()},
-        m_rt,
-        {d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt},
-        {d_extra.data(), static_cast<size_t>(m_rt)},
-        {d_out_cw.data(), static_cast<size_t>(m_rt)});
-
-    const cuda::std::span<const int4> cws(d_cw_s.data(), static_cast<size_t>(kBucketBits) * m_rt);
-    const cuda::std::span<const fss::gpu::detail::ExtBits<kBucketBits>> controls(d_extra.data(), m_rt);
-    const cuda::std::span<const int4> terminals(d_out_cw.data(), m_rt);
-    fss::gpu::detail::DmpfBatchEvalGpu(false, static_cast<const uint16_t *>(nullptr), nullptr, 0,
-        {}, 0, 0, nullptr, nullptr, nullptr, nullptr, dmpf);
+    // Both parties share the correction words, so one upload serves both.
+    const cuda::std::span<const Cw> cws(d_cws.data(), h_cws.size());
+    fss::gpu::detail::DmpfBatchEvalGpu(false, cuda::std::span<const uint16_t>(), nullptr, 0,
+        {}, 0, 0, {}, {}, dmpf);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     for (int p = 0; p < 2; ++p) {
-      fss::gpu::detail::DmpfBatchEvalGpu(p != 0, d_xs.data(), d_ys[p].data(), n,
-          sigma, m_rt, b_rt, d_s0s[p].data(), cws.data(), controls.data(), terminals.data(), dmpf);
+      fss::gpu::detail::DmpfBatchEvalGpu(p != 0, {d_xs.data(), static_cast<size_t>(n)}, d_ys[p].data(), n,
+          sigma, m_rt, b_rt, {d_s0s[p].data(), static_cast<size_t>(m_rt)}, cws, dmpf);
     }
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);

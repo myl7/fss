@@ -178,9 +178,10 @@ void ProbeDmpfEvalAllGpu(const probe::DmpfScheme &scheme, const int4 *s0s, const
 }
 
 void ProbeDmpfBatchEvalGpu(const probe::DmpfScheme &scheme, const uint32_t *xs, int4 *ys, const int4 *s0s,
-    const int4 *cw_s, const uint32_t *extra, const int4 *out_cw) {
-  fss::gpu::detail::DmpfBatchEvalGpu<4>(false, xs, ys, 1, int4{0, 0, 0, 0}, 1, __uint128_t{1}, s0s, cw_s, extra,
-      out_cw, scheme);
+    const probe::DmpfScheme::Cw *cws) {
+  fss::gpu::detail::DmpfBatchEvalGpu<4>(false, cuda::std::span<const uint32_t>(xs, 1), ys, 1,
+      int4{0, 0, 0, 0}, 1, __uint128_t{1}, cuda::std::span<const int4>(s0s, 1),
+      cuda::std::span<const probe::DmpfScheme::Cw>(cws, 5), scheme);
 }
 
 void ProbeVdmpfEvalAllMerkleGpu(const probe::VdmpfScheme &scheme, const int4 *s0s, const probe::VdmpfScheme::Cw *cws,
@@ -192,10 +193,12 @@ void ProbeVdmpfEvalAllMerkleGpu(const probe::VdmpfScheme &scheme, const int4 *s0
 }
 
 void ProbeVdmpfBatchEvalMerkleGpu(const probe::VdmpfScheme &scheme, const uint16_t *xs, int4 *ys,
-    cuda::std::array<int4, 4> *pi, const int4 *s0s, const int4 *cw_s, const uint32_t *extra,
+    cuda::std::array<int4, 4> *pi, const int4 *s0s, const probe::VdmpfScheme::Cw *cws,
     const cuda::std::array<int4, 4> *cs, const int4 *ocws) {
-  fss::gpu::detail::VdmpfBatchEvalMerkleGpu<4>(false, xs, ys, pi, 1, int4{0, 0, 0, 0}, 1, __uint128_t{1}, s0s,
-      cw_s, extra, cs, ocws, scheme);
+  fss::gpu::detail::VdmpfBatchEvalMerkleGpu<4>(false, cuda::std::span<const uint16_t>(xs, 1), ys, pi, 1,
+      int4{0, 0, 0, 0}, 1, __uint128_t{1}, cuda::std::span<const int4>(s0s, 1),
+      cuda::std::span<const probe::VdmpfScheme::Cw>(cws, 5),
+      cuda::std::span<const cuda::std::array<int4, 4>>(cs, 1), cuda::std::span<const int4>(ocws, 1), scheme);
 }
 
 }  // namespace

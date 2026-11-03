@@ -317,6 +317,17 @@ struct DmpfMergeGpuKernelDescriptor {
   using InputType = In;
 };
 
+// Holds the batch group and backends plus the inner DPF correction word, so
+// the batch kernel reads the key's own bucket-major rows.
+template <int in_bits, int bucket_bits, typename GroupTag, typename Prg, typename Prp, typename In>
+struct DmpfBatchGpuKernelDescriptor {
+  using Group = typename GroupTag::type;
+  using Cw = typename Dpf<bucket_bits, typename GroupTag::type, Prg, __uint128_t>::Cw;
+  using PrgBackend = Prg;
+  using PrpBackend = Prp;
+  using InputType = In;
+};
+
 #if defined(__CUDACC__)
 
 // Each domain input gathers the three PRP-selected inner DPF outputs.
@@ -340,6 +351,120 @@ __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int bucket_count,
     acc = acc + Group::From(bucket_ys[static_cast<size_t>(bucket) * (size_t{1} << bucket_bits) + static_cast<size_t>(j)]);
   }
   ys[input_index] = acc.Into();
+}
+
+// Batch-evaluate a DMPF key: one thread per input point. Each thread runs the
+// kappa Cuckoo Locate calls on its own point and descends the located bucket
+// keys itself, so the outputs need no atomics and no cross-thread
+// synchronization. cws holds the key's own bucket-major rows of inner DPF
+// correction words, one row of bucket_bits + 1 entries per active bucket; a
+// warp's bucket indices are pseudorandom, so per-level loads scatter inside the
+// row set instead of following a shared level layout.
+template <int in_bits, int bucket_bits, int unroll, bool b, typename Descriptor>
+__global__ void DmpfBatchEvalKernel(int4 *ys, const typename Descriptor::InputType *xs, int n, int4 sigma,
+    int m_rt, __uint128_t b_rt, const int4 *s0s, const typename Descriptor::Cw *cws,
+    typename Descriptor::PrgBackend prg, typename Descriptor::PrpBackend prp) {
+  using Group = typename Descriptor::Group;
+  using In = typename Descriptor::InputType;
+  static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= n) return;
+  In x = xs[tid];
+  constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
+  cuckoo_hash::detail::PrpHash<typename Descriptor::PrpBackend, In> prp_hash{prp};
+  auto acc = Group::From(Zero4());
+  for (int k = 0; k < 3; ++k) {
+    auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
+    if (bucket >= m_rt) continue;
+
+    int4 s = fss::util::SetLsb(s0s[bucket], false);
+    bool t = b;
+
+#pragma unroll unroll
+    for (int i = 0; i < bucket_bits; ++i) {
+      const typename Descriptor::Cw &cw = cws[static_cast<size_t>(bucket) * (bucket_bits + 1) + i];
+      int4 s_cw = cw.s;
+      bool tr_cw = cw.tr;
+      bool tl_cw = fss::util::GetLsb(s_cw);
+      s_cw = fss::util::SetLsb(s_cw, false);
+
+      auto g = prg.Gen(s);
+      int4 sl = g[0], sr = g[1];
+      bool tl = fss::util::GetLsb(sl);
+      sl = fss::util::SetLsb(sl, false);
+      bool tr = fss::util::GetLsb(sr);
+      sr = fss::util::SetLsb(sr, false);
+
+      if (t) {
+        sl = fss::util::Xor(sl, s_cw);
+        sr = fss::util::Xor(sr, s_cw);
+        tl = tl ^ tl_cw;
+        tr = tr ^ tr_cw;
+      }
+
+      bool x_bit = GetBit(j, bucket_bits - 1 - i);
+      if (x_bit) {
+        s = sr;
+        t = tr;
+      } else {
+        s = sl;
+        t = tl;
+      }
+    }
+
+    auto y = Group::From(s);
+    if (t) y = y + Group::From(cws[static_cast<size_t>(bucket) * (bucket_bits + 1) + bucket_bits].s);
+    if constexpr (b) y = -y;
+    acc = acc + y;
+  }
+  ys[tid] = acc.Into();
+}
+
+/**
+ * GPU batch evaluation of a DMPF key: ys[i] = BatchEval(b, key, xs)[i]. One
+ * thread per input point; each thread runs its kappa Cuckoo Locate calls and
+ * the located bucket descents itself, so no atomics and no synchronization.
+ *
+ * @tparam unroll Unroll factor of the level loop.
+ * @param b Party index. False for 0 and true for 1.
+ * @param xs Evaluation points (device memory), n entries.
+ * @param ys Output array (device memory), one int4 per point.
+ * @param n Number of points.
+ * @param sigma PRP seed from the key.
+ * @param m_rt Runtime bucket count stored in the key.
+ * @param b_rt Runtime bucket size stored in the key.
+ * @param s0s Per-bucket party seeds (device memory), m_rt entries.
+ * @param cws Inner DPF correction words in bucket-major rows of bucket_bits + 1
+ *   entries (device memory), as Gen() writes them; the final entry of each row
+ *   is the output correction word.
+ * @param dmpf A Dmpf instance (holds the PRG and PRP, passed to the kernel by
+ *   value on the host side).
+ * @param stream CUDA stream to launch on.
+ */
+template <int unroll = 4, int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp,
+    typename In, int ch_lambda>
+void DmpfBatchEvalGpu(bool b, cuda::std::span<const In> xs, int4 *ys, int n, int4 sigma, int m_rt,
+    __uint128_t b_rt, cuda::std::span<const int4> s0s, cuda::std::span<const typename Dmpf<
+        in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::Cw> cws,
+    const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda> &dmpf,
+    cudaStream_t stream = 0) {
+  if (n == 0) return;
+  static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = DmpfBatchGpuKernelDescriptor<in_bits, bucket_bits, GroupTag, Prg, Prp, In>;
+  constexpr int kBs = 256;
+  int blocks = (n + kBs - 1) / kBs;
+  if (b) {
+    DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Descriptor>
+        <<<blocks, kBs, 0, stream>>>(ys, xs.data(), n, sigma, m_rt, b_rt, s0s.data(), cws.data(),
+        fss::detail::SchemeAccess::GetPrg(dmpf),
+        fss::detail::SchemeAccess::GetPrp(dmpf));
+  } else {
+    DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Descriptor>
+        <<<blocks, kBs, 0, stream>>>(ys, xs.data(), n, sigma, m_rt, b_rt, s0s.data(), cws.data(),
+        fss::detail::SchemeAccess::GetPrg(dmpf),
+        fss::detail::SchemeAccess::GetPrp(dmpf));
+  }
 }
 
 #endif
