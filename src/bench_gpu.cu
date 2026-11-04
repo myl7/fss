@@ -237,6 +237,25 @@ __global__ void VdpfGenKernel(typename VdpfType<in_bits, Group>::Cw *cws, cuda::
   for (int i = 0; i < 4; ++i) cs[tid][i] = k0.cs[i];
 }
 
+// Split-form variant for the level-major point benchmark; see DpfGenSplitKernel.
+template <int in_bits, typename Group>
+__global__ void VdpfGenSplitKernel(int4 *cws, uint *trs, cuda::std::array<int4, 4> *cs, const int4 *seeds,
+    const uint *alphas, const int4 *betas) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= kNumKeys) return;
+
+  fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
+  fss::hash::Blake3 xor_hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
+  fss::hash::Blake3 hash{cuda::std::span<const int4, 2>(kBlake3Iv)};
+  VdpfType<in_bits, Group> vdpf{prg, xor_hash, hash};
+
+  int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
+  const size_t extent = static_cast<size_t>(in_bits) * kNumKeys + 1;
+  (void)vdpf.Gen(cuda::std::span<int4>(cws + tid, extent), trs[tid],
+      cuda::std::span<int4, 4>(cs[tid].data(), 4), cuda::std::span<const int4, 2>(s), alphas[tid], betas[tid],
+      kNumKeys);
+}
+
 template <int in_bits, typename Group>
 __global__ void VdpfEvalKernel(int4 *ys, bool party, const int4 *seeds,
     const typename VdpfType<in_bits, Group>::Cw *cws, const cuda::std::array<int4, 4> *cs,
@@ -851,15 +870,6 @@ static void BM_VdpfEvalAllMerkleGpu(benchmark::State &state) {
   cudaFree(d_pi);
 }
 
-// Copies each key's final correction word into the per-key array the VDPF point
-// launcher reads; VDPF keeps the output correction words separate.
-template <int in_bits, typename Cw>
-__global__ void VdpfOcwsKernel(const Cw *cws, int4 *ocws) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= kNumKeys) return;
-  ocws[tid] = cws[static_cast<size_t>(tid) * (in_bits + 1) + in_bits].s;
-}
-
 // --- GPU point eval benchmarks (split-form layout) ---
 //
 // Same workload as the per-key Eval benchmarks above (one output per key at
@@ -961,20 +971,17 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
   using Vdpf = VdpfType<in_bits, Group>;
   GpuData data;
 
-  typename Vdpf::Cw *d_cws;
+  int4 *d_cws;
+  uint *d_tr;
   cuda::std::array<int4, 4> *d_pi;
   cuda::std::array<int4, 4> *d_cs;
-  int4 *d_ocws;
-  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(typename Vdpf::Cw) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_cws, sizeof(int4) * (in_bits + 1) * kNumKeys));
+  CUDA_CHECK(cudaMalloc(&d_tr, sizeof(uint) * kNumKeys));
   CUDA_CHECK(cudaMalloc(&d_pi, sizeof(cuda::std::array<int4, 4>) * kNumKeys));
   CUDA_CHECK(cudaMalloc(&d_cs, sizeof(cuda::std::array<int4, 4>) * kNumKeys));
-  CUDA_CHECK(cudaMalloc(&d_ocws, sizeof(int4) * kNumKeys));
 
-  VdpfGenKernel<in_bits, Group>
-      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_cs, data.d_seeds, data.d_alphas, data.d_betas);
-  CUDA_CHECK(cudaDeviceSynchronize());
-  // VDPF has no split form, so the launcher reads the key's own rows.
-  VdpfOcwsKernel<in_bits, typename Vdpf::Cw><<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_ocws);
+  VdpfGenSplitKernel<in_bits, Group>
+      <<<kNumBlocks, kThreadsPerBlock>>>(d_cws, d_tr, d_cs, data.d_seeds, data.d_alphas, data.d_betas);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   fss::prg::ChaCha<2> prg(0x12345678, static_cast<int>(0x9abcdef0u));
@@ -983,15 +990,15 @@ static void BM_VdpfEvalPointGpu(benchmark::State &state) {
 
   RunTimedKernel(state, [&] {
     fss::gpu::detail::VdpfEvalPointGpu<1>(false,
-        {data.d_seeds0, kNumKeys}, {d_cws, (in_bits + 1) * kNumKeys}, {d_cs, kNumKeys}, {d_ocws, kNumKeys},
+        {data.d_seeds0, kNumKeys}, {d_cws, (in_bits + 1) * kNumKeys}, {d_tr, kNumKeys}, {d_cs, kNumKeys},
         {data.d_xs, kNumKeys}, data.d_ys, {d_pi, kNumKeys}, kNumKeys, vdpf);
   });
   state.SetItemsProcessed(state.iterations() * kNumKeys);
 
   cudaFree(d_cws);
+  cudaFree(d_tr);
   cudaFree(d_pi);
   cudaFree(d_cs);
-  cudaFree(d_ocws);
 }
 
 // Split-form variant for the level-major point benchmark; see DpfGenSplitKernel.

@@ -855,10 +855,13 @@ __global__ void DpfSplitEvalAllBatchKernel(bool b, const int4 *s0s, const void *
       subtree_block_index, thread_index, shared_frontier);
 }
 
-// Control is inferred from the prepared SoA layout, independently of its public alias.
+// Correction words arrive in the dense level-major split layout: layer i of
+// key k is cws[i * key_count + k], the terminal layer is
+// cws[in_bits * key_count + k], and tr[k] holds key k's packed right-control
+// bits, bit i for layer i.
 template <typename Descriptor, int unroll, bool b>
-__global__ void DpfCoreEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cw_s,
-    const typename Descriptor::Control *extra, const int4 *out_cw,
+__global__ void DpfCoreEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cws,
+    const typename Descriptor::Control *tr, const int4 *out_cw,
     const typename Descriptor::Query *xs, int key_count,
     typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
@@ -870,13 +873,13 @@ __global__ void DpfCoreEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *
   if (thread_index >= key_count) return;
   int4 state = util::SetLsb(seeds[thread_index], b);
   In x = static_cast<In>(xs[thread_index]);
-  Control ex = extra[thread_index];
+  Control ex = tr[thread_index];
 #pragma unroll unroll
   for (int i = 0; i < kInputBits; ++i) {
     bool take_right = ((x >> (kInputBits - 1 - i)) & 1) != 0;
     bool right_control = ((ex >> i) & 1) != 0;
     state = fss::detail::SchemeAccess::DpfPathStep<Scheme>(
-        prg, state, cw_s[static_cast<size_t>(i) * key_count + thread_index], right_control, take_right);
+        prg, state, cws[static_cast<size_t>(i) * key_count + thread_index], right_control, take_right);
   }
   ys[thread_index] = fss::detail::SchemeAccess::DpfConvertLeaf<Scheme>(b, state, out_cw[thread_index]);
 }
@@ -889,7 +892,7 @@ struct DpfPointGpuLauncher;
 template <int n, typename Group, typename Prg, typename In, typename Control, typename Query>
 struct DpfPointGpuLauncher<Dpf<n, Group, Prg, In>, Control, Query> {
   template <int unroll>
-  static void Launch(bool b, const int4 *seeds, const int4 *cw_s, const Control *extra,
+  static void Launch(bool b, const int4 *seeds, const int4 *cws, const Control *tr,
       const int4 *out_cw, const Query *xs, int4 *ys, int key_count, Prg prg,
       cudaStream_t stream) {
     using Descriptor = DpfPointGpuKernelDescriptor<n,
@@ -898,21 +901,21 @@ struct DpfPointGpuLauncher<Dpf<n, Group, Prg, In>, Control, Query> {
     int block_count = (key_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
     if (b) {
       DpfCoreEvalPointKernel<Descriptor, unroll, true>
-          <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, key_count, prg);
+          <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cws, tr, out_cw, xs, key_count, prg);
     } else {
       DpfCoreEvalPointKernel<Descriptor, unroll, false>
-          <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cw_s, extra, out_cw, xs, key_count, prg);
+          <<<block_count, kThreadsPerBlock, 0, stream>>>(ys, seeds, cws, tr, out_cw, xs, key_count, prg);
     }
   }
 };
 
 template <int unroll, typename Scheme, typename Control, typename Query>
-void DpfCoreEvalPointLaunch(bool b, const int4 *seeds, const int4 *cw_s, const Control *extra,
+void DpfCoreEvalPointLaunch(bool b, const int4 *seeds, const int4 *cws, const Control *tr,
     const int4 *out_cw, const Query *xs, int4 *ys, int key_count,
     typename DpfGpuSchemeTraits<Scheme>::Backend prg, cudaStream_t stream) {
   if (key_count == 0) return;
   DpfPointGpuLauncher<Scheme, Control, Query>::template Launch<unroll>(
-      b, seeds, cw_s, extra, out_cw, xs, ys, key_count, prg, stream);
+      b, seeds, cws, tr, out_cw, xs, ys, key_count, prg, stream);
 }
 
 /**

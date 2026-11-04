@@ -59,6 +59,29 @@ namespace detail {
 class SchemeAccess;
 }  // namespace detail
 
+namespace detail {
+
+// Split correction-word view over the caller's arrays. Layer i is read from
+// cws[i*stride] and the right-control correction is bit i of packed_tr. The
+// terminal is rebuilt as a plain Cw with no control bit, so bits of packed_tr at
+// or above in_bits are never read. The layer LSB keeps the left-control
+// correction exactly as the Cw layout does. operator[] recovers the Cw the shared
+// evaluation consumes, so its body stays identical on the Cw and split paths.
+template <typename Cw, typename In, int in_bits>
+struct VdpfCwsView {
+  const int4 *s;
+  In packed_tr;
+  size_t stride;
+
+  __host__ __device__ inline Cw operator[](int i) const {
+    const int4 s_cw = s[static_cast<size_t>(i) * stride];
+    if (i >= in_bits) return Cw{s_cw, false};
+    return Cw{s_cw, ((packed_tr >> i) & 1) != 0};
+  }
+};
+
+}  // namespace detail
+
 /**
  * 2-party VDPF scheme.
  *
@@ -154,6 +177,43 @@ public:
       Cw cws[], cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf);
 
   /**
+   * Generate correction words in a caller-strided layout and packed control bits.
+   *
+   * Layer i is stored at cws[i*stride] and the terminal at cws[in_bits*stride].
+   * tr receives root-order packed right-control bits: bit 0 is the root layer,
+   * bit i belongs to layer i, and bits at or above in_bits are zero.
+   * The layer LSB keeps the left-control correction exactly as the Cw form does.
+   * The terminal is stored unchanged as a plain int4.
+   * The default stride of 1 stores the correction words contiguously.
+   *
+   * @par Retrying a failed attempt
+   * See Gen(Cw[], ...).
+   *
+   * @param cws Output storage; its capacity includes in_bits*stride+1 elements.
+   * @param tr Output packed right-control bits, with unused bits zero.
+   * @param cs Correction seed output ($4\lambda$ bits).
+   * @param s0s Two independent uniformly random initial seed blocks from a
+   * cryptographically secure random generator. Gen clears their control bits
+   * internally without modifying this input storage.
+   * @param a Secret point in [0, 2^in_bits).
+   * @param b_buf Payload, clamped and converted to the group element.
+   * @param stride Positive element stride between correction-word entries.
+   * @return 0 on success, 1 if cs is all zeros or $t_0 = t_1$ at the end (caller should resample seeds and retry).
+   * @pre a is in [0, 2^in_bits).
+   * @pre stride > 0.
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
+   * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
+   * @pre The input seeds are unchanged.
+   * @pre Inputs and outputs do not overlap.
+   * @pre All accessed storage is accessible from the calling execution space.
+   * @post Only the described prefix is written, and storage beyond it is untouched.
+   * @post On success, the terminal at index in_bits*stride has its LSB zero.
+   * Correction-word, control-bit, and cs outputs are unspecified on failure.
+   */
+  __host__ __device__ int Gen(cuda::std::span<int4> cws, In &tr, cuda::std::span<int4, 4> cs,
+      cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride = 1);
+
+  /**
    * Evaluate one input from a caller-owned key.
    *
    * @param b Party index, false for party 0 and true for party 1.
@@ -166,6 +226,35 @@ public:
    */
   __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4, 4> cs, In x, int4 &y);
+
+  /**
+   * Evaluate one input from separate correction components.
+   *
+   * Root-order packed bit i is the right-control correction at layer i.
+   * The correction s LSB is the left-control correction.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride],
+   * which Gen() writes as a plain int4 with its LSB zero.
+   * Packed bits at and above in_bits are ignored.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param s0 This party's initial seed.
+   * @param cws Correction words, layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
+   * @param cs Shared correction seed returned by Gen().
+   * @param x Input in the scheme's domain.
+   * @param y Output share for this input.
+   * @param stride Positive stride between correction entries.
+   * @return Corrected per-point hash for Prove() or ProveMerkle().
+   * @pre x is in [0, 2^in_bits).
+   * @pre stride > 0.
+   * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
+   * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
+   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre All accessed storage is accessible from the calling execution space.
+   */
+  __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
+      In tr, cuda::std::span<const int4, 4> cs, In x, int4 &y, size_t stride = 1);
 
   /**
    * Proof accumulation method.
@@ -469,6 +558,58 @@ private:
 
   template <int frontier_depth, int threads_per_block>
   struct GpuLaunchShape;
+
+  // Split correction-word view over the caller's arrays; see detail::VdpfCwsView.
+  using CwsView = detail::VdpfCwsView<Cw, In, in_bits>;
+
+  // Writes Cw slots in the legacy AoS layout, covering each full 32B slot.
+  struct AosWriter {
+    Cw *cws;
+
+    __host__ __device__ void Write(int i, int4 s_cw, bool tr_cw) const {
+      // Both 16B halves written so the full 32B slot gets unmasked stores.
+      // {s_cw, tr_cw} alone leaves padding undefined: NVCC emits a masked
+      // 256-bit store, and the partial-sector write forces a write-allocate
+      // round trip per level on GPU (measured ~2x Gen time).
+      int4 *cw_slot = reinterpret_cast<int4 *>(&cws[i]);
+      cw_slot[0] = s_cw;
+      cw_slot[1] = make_int4(tr_cw, 0, 0, 0);
+    }
+
+    __host__ __device__ void Finish(int4 terminal) const {
+      cws[in_bits].s = terminal;
+      cws[in_bits].tr = false;
+    }
+  };
+
+  // Writes strided seed components and accumulates packed right-control bits locally.
+  struct CwsWriter {
+    int4 *cws;
+    size_t stride;
+    In &tr;
+    In packed_tr = 0;
+
+    __host__ __device__ void Write(int i, int4 s_cw, bool tr_cw) {
+      cws[static_cast<size_t>(i) * stride] = s_cw;
+      packed_tr |= static_cast<In>(tr_cw) << i;
+    }
+
+    __host__ __device__ void Finish(int4 terminal) {
+      cws[static_cast<size_t>(in_bits) * stride] = terminal;
+      tr = packed_tr;
+    }
+  };
+
+  // Shared correction generation and verification-hash computation. The writer
+  // is passed by value and owns only output access, so the existing algorithm
+  // and backend use stay unchanged.
+  template <typename Writer>
+  __host__ __device__ int Generate(Writer writer, cuda::std::span<int4, 4> cs, const int4 *s0s, In a, int4 b_buf);
+
+  // Shared scalar evaluation over the Cw array or the split view.
+  template <typename Cws>
+  __host__ __device__ cuda::std::array<int4, 4> EvalCws(
+      bool b, int4 s0, Cws cws, cuda::std::span<const int4, 4> cs, In x, int4 &y);
 
   void EvalTree(
       int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_);
@@ -800,13 +941,13 @@ __global__ void VdpfMerkleFinalizeKernel(const cuda::std::array<int4, 2> *roots,
 // Point-evaluate in_bits-level VDPF keys, one thread per key. Same seed walk as
 // the DPF kernel plus the per-point verification hash; the walk carries no hash
 // cost, and the tail applies the verification hash and, when t, folds in cs. cws
-// holds the key's own rows, one row of in_bits + 1 correction words per key: the
-// walk reads row i of key k and takes the right-control bit from that word's tr
-// field. cs and ocws stay per-key: each is read once per evaluation, not once
-// per level.
+// holds dense level-major correction words, the layout the split form of Gen()
+// writes: layer i of key k is cws[i*nkeys + k] and the terminal is
+// cws[in_bits*nkeys + k]. tr[k] carries key k's packed right-control bits, bit i
+// for layer i. cs stays per-key: it is read once per evaluation, not once per level.
 template <int in_bits, int unroll, bool b, typename Descriptor, typename Query>
 __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, const int4 *seeds,
-    const typename Descriptor::Cw *cws, const cuda::std::array<int4, 4> *cs, const int4 *ocws, const Query *xs,
+    const int4 *cws, const typename Descriptor::InputType *tr, const cuda::std::array<int4, 4> *cs, const Query *xs,
     int nkeys, typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
@@ -816,14 +957,14 @@ __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, con
   int4 s = fss::util::SetLsb(seeds[tid], false);
   bool t = b;
   In x = static_cast<In>(xs[tid]);
-  const typename Descriptor::Cw *rows = cws + static_cast<size_t>(tid) * (in_bits + 1);
+  const In packed_tr = tr[tid];
 
 #pragma unroll unroll
   for (int i = 0; i < in_bits; ++i) {
-    int4 s_cw = rows[i].s;
-    bool tr_cw = rows[i].tr;
+    int4 s_cw = cws[static_cast<size_t>(i) * nkeys + tid];
     bool tl_cw = fss::util::GetLsb(s_cw);
     s_cw = fss::util::SetLsb(s_cw, false);
+    bool tr_cw = ((packed_tr >> i) & 1) != 0;
 
     auto g = prg.Gen(s);
     int4 sl = g[0], sr = g[1];
@@ -850,7 +991,7 @@ __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, con
   }
 
   auto y = Group::From(s);
-  if (t) y = y + Group::From(ocws[tid]);
+  if (t) y = y + Group::From(cws[static_cast<size_t>(in_bits) * nkeys + tid]);
   if constexpr (b) y = -y;
   ys[tid] = y.Into();
 
@@ -864,17 +1005,19 @@ __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, con
 }
 
 /**
- * GPU point evaluation of nkeys VDPF keys: ys[k] = Eval(b, seeds[k], cws, cs[k],
- * ocws[k], xs[k])[0] and pi[k] = its corrected verification hash. One thread per
- * key. cws holds the key's own correction words, in_bits + 1 per key, which is
- * the layout Gen() writes and the layout the host Eval reads.
+ * GPU point evaluation of nkeys VDPF keys: ys[k] = Eval(b, seeds[k], cws, tr[k],
+ * cs[k], xs[k])[0] and pi[k] = its corrected verification hash. One thread per
+ * key. cws holds dense level-major correction words, the layout the split form of
+ * Gen() writes: layer i of key k is cws[i * nkeys + k] and the terminal layer is
+ * cws[in_bits * nkeys + k]. tr[k] carries key k's packed right-control bits, bit
+ * i for layer i.
  *
  * @tparam unroll Unroll factor of the level loop.
  * @param b Party index. False for 0 and true for 1.
  * @param seeds Party seeds (device memory), one per key.
- * @param cws Correction words (device memory), one key row of in_bits + 1 words per key.
+ * @param cws Level-major correction words (device memory), (in_bits + 1) * nkeys entries.
+ * @param tr Packed right-control bits (device memory), one per key.
  * @param cs Check seeds (device memory), one per key.
- * @param ocws Output correction words (device memory), one per key.
  * @param xs Evaluation points (device memory), one per key.
  * @param ys Output array (device memory), one int4 per key.
  * @param pi Output corrected per-point hashes (device memory), four int4s per key.
@@ -885,9 +1028,8 @@ __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, con
 template <int unroll = 4, int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In,
     typename Query = In>
   requires QueryFor<Query, in_bits>
-void VdpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds,
-    cuda::std::span<const typename Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Cw> cws,
-    cuda::std::span<const cuda::std::array<int4, 4>> cs, cuda::std::span<const int4> ocws,
+void VdpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
+    cuda::std::span<const In> tr, cuda::std::span<const cuda::std::array<int4, 4>> cs,
     cuda::std::span<const Query> xs, int4 *ys, cuda::std::span<cuda::std::array<int4, 4>> pi, int nkeys,
     const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
   if (nkeys == 0) return;
@@ -897,11 +1039,11 @@ void VdpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds,
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
     VdpfEvalPointKernel<in_bits, unroll, true, Descriptor, Query><<<blocks, kBs, 0, stream>>>(
-        ys, pi.data(), seeds.data(), cws.data(), cs.data(), ocws.data(), xs.data(), nkeys,
+        ys, pi.data(), seeds.data(), cws.data(), tr.data(), cs.data(), xs.data(), nkeys,
         fss::detail::SchemeAccess::GetPrg(vdpf), fss::detail::SchemeAccess::GetXorHash(vdpf));
   } else {
     VdpfEvalPointKernel<in_bits, unroll, false, Descriptor, Query><<<blocks, kBs, 0, stream>>>(
-        ys, pi.data(), seeds.data(), cws.data(), cs.data(), ocws.data(), xs.data(), nkeys,
+        ys, pi.data(), seeds.data(), cws.data(), tr.data(), cs.data(), xs.data(), nkeys,
         fss::detail::SchemeAccess::GetPrg(vdpf), fss::detail::SchemeAccess::GetXorHash(vdpf));
   }
 }
@@ -922,6 +1064,29 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
 inline __host__ __device__ cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Eval(
     bool b, int4 s0, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4, 4> cs, In x, int4 &y) {
+  return EvalCws(b, s0, cws.data(), cs, x, y);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline __host__ __device__ cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Eval(
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
+    cuda::std::span<const int4, 4> cs, In x, int4 &y, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
+  return EvalCws(b, s0, CwsView{cws.data(), tr, stride}, cs, x, y);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <typename Cws>
+inline __host__ __device__ cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalCws(
+    bool b, int4 s0, Cws cws, cuda::std::span<const int4, 4> cs, In x, int4 &y) {
   int4 s = s0;
   s = util::SetLsb(s, false);
   bool t = b;
@@ -1248,6 +1413,29 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen(
     Cw cws[], cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+  return Generate(AosWriter{cws}, cs, s0s.data(), a, b_buf);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen(
+    cuda::std::span<int4> cws, In &tr, cuda::std::span<int4, 4> cs,
+    cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride) {
+  assert(stride > 0);
+  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
+  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  assert(cws.size() >= required);
+  return Generate(CwsWriter{cws.data(), stride, tr}, cs, s0s.data(), a, b_buf);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <typename Writer>
+inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Generate(
+    Writer writer, cuda::std::span<int4, 4> cs, const int4 *s0s, In a, int4 b_buf) {
   int4 s0 = s0s[0];
   s0 = util::SetLsb(s0, false);
   int4 s1 = s0s[1];
@@ -1301,13 +1489,7 @@ inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen
     }
 
     s_cw = util::SetLsb(s_cw, tl_cw);
-    // Both 16B halves written so the full 32B slot gets unmasked stores.
-    // {s_cw, tr_cw} alone leaves padding undefined: NVCC emits a masked
-    // 256-bit store, and the partial-sector write forces a write-allocate
-    // round trip per level on GPU (measured ~2x Gen time).
-    int4 *cw_slot = reinterpret_cast<int4 *>(&cws[i]);
-    cw_slot[0] = s_cw;
-    cw_slot[1] = make_int4(tr_cw, 0, 0, 0);
+    writer.Write(i, s_cw, tr_cw);
   }
 
   // Verification hash
@@ -1330,8 +1512,7 @@ inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen
   // Output correction word
   auto v_cw = Group::From(b_buf) + (-Group::From(s0)) + Group::From(s1);
   if (t1) v_cw = -v_cw;
-  cws[in_bits].s = v_cw.Into();
-  cws[in_bits].tr = false;
+  writer.Finish(v_cw.Into());
 
   return 0;
 }

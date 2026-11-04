@@ -1021,3 +1021,90 @@ TEST(VdpfGenHalf, GpuAesSoftSelectedRangeProof) {
   ASSERT_EQ(aes.Allocate(), cudaSuccess);
   CheckRangeMerkle<16, uint16_t, BytesGroup, 8, 64>(3, 17, true, aes.Backend());
 }
+
+namespace {
+
+// Checks the split Gen and Eval against the Cw form on the same seeds.
+template <int bits, typename In, typename Group>
+void CheckVdpfSplitForm(In alpha) {
+  using Prg = fss::prg::ChaCha<2>;
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Hash, Hash, In>;
+  using Cw = typename Scheme::Cw;
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{Prg(kNonce0, kNonce1), hash, hash};
+  const int4 beta = {7, 19, 23, 42};
+  const int4 guard = {23, 45, 67, 88};
+  In maximum = static_cast<In>(~In{0});
+  if constexpr (bits < sizeof(In) * 8) maximum = static_cast<In>((In{1} << bits) - 1);
+  const In xs[4] = {alpha, In{0}, maximum, static_cast<In>(alpha == maximum ? maximum - 1 : alpha + 1)};
+
+  for (size_t stride : {size_t{1}, size_t{7}}) {
+    SCOPED_TRACE(::testing::Message() << "stride " << stride);
+    const size_t extent = static_cast<size_t>(bits) * stride + 1;
+    Cw cws[bits + 1];
+    cuda::std::array<int4, 4> cs, split_cs;
+    std::vector<int4> split(extent, guard);
+    In split_tr = 0;
+    int4 seeds[2] = {{0, 22, 33, 44}, {55, 66, 77, 88}};
+    int rc = 1;
+    for (int attempt = 0; attempt < 64; ++attempt) {
+      seeds[0].x = attempt;
+      const int cw_rc = scheme.Gen(cws, cuda::std::span<int4, 4>(cs.data(), 4),
+          cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+      const int split_rc = scheme.Gen(cuda::std::span<int4>(split.data(), extent), split_tr,
+          cuda::std::span<int4, 4>(split_cs.data(), 4), cuda::std::span<const int4, 2>(seeds, 2), alpha, beta, stride);
+      // Both forms share the generation core, so they agree on the retry decision too.
+      EXPECT_EQ(split_rc, cw_rc) << "attempt " << attempt;
+      rc = cw_rc;
+      if (rc == 0) break;
+    }
+    ASSERT_EQ(rc, 0);
+
+    for (int i = 0; i < 4; ++i) EXPECT_EQ(memcmp(&split_cs[i], &cs[i], sizeof(int4)), 0) << "cs block " << i;
+    for (int i = 0; i < bits; ++i) {
+      EXPECT_EQ(memcmp(&split[static_cast<size_t>(i) * stride], &cws[i].s, sizeof(int4)), 0) << "layer " << i;
+      EXPECT_EQ(((split_tr >> i) & 1) != 0, cws[i].tr) << "layer " << i;
+    }
+    EXPECT_EQ(memcmp(&split[static_cast<size_t>(bits) * stride], &cws[bits].s, sizeof(int4)), 0) << "terminal";
+    if constexpr (bits < sizeof(In) * 8) {
+      EXPECT_EQ(static_cast<In>(split_tr >> bits), In{0}) << "unused control bits";
+    }
+    for (size_t i = 0; i < extent; ++i) {
+      const bool written = i % stride == 0 && i / stride <= static_cast<size_t>(bits);
+      if (!written) EXPECT_EQ(memcmp(&split[i], &guard, sizeof(int4)), 0) << "unwritten index " << i;
+    }
+
+    for (int party = 0; party < 2; ++party) {
+      for (In x : xs) {
+        SCOPED_TRACE(::testing::Message() << "party " << party << " x " << static_cast<uint64_t>(x));
+        int4 y_cw, y_split;
+        const auto hash_cw = scheme.Eval(party != 0, seeds[party], cws, cuda::std::span<const int4, 4>(cs.data(), 4),
+            x, y_cw);
+        const auto hash_split = scheme.Eval(party != 0, seeds[party], cuda::std::span<const int4>(split.data(), extent),
+            split_tr, cuda::std::span<const int4, 4>(split_cs.data(), 4), x, y_split, stride);
+        EXPECT_EQ(memcmp(&y_split, &y_cw, sizeof(int4)), 0);
+        EXPECT_EQ(memcmp(hash_split.data(), hash_cw.data(), sizeof(cuda::std::array<int4, 4>)), 0);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+TEST(VdpfSplitForm, OneBitUint8) {
+  CheckVdpfSplitForm<1, uint8_t, BytesGroup>(1);
+}
+TEST(VdpfSplitForm, MiddleBitsUint16) {
+  CheckVdpfSplitForm<16, uint16_t, BytesGroup>(kAlpha);
+}
+TEST(VdpfSplitForm, MiddleBitsUint32) {
+  CheckVdpfSplitForm<20, uint32_t, BytesGroup>(0xA5A5A);
+}
+TEST(VdpfSplitForm, WideUint128) {
+  CheckVdpfSplitForm<128, __uint128_t, BytesGroup>(static_cast<__uint128_t>(1) << 127);
+}
+TEST(VdpfSplitForm, WideUint128Uint127Group) {
+  CheckVdpfSplitForm<128, __uint128_t, Uint127Group>((static_cast<__uint128_t>(1) << 127) + 7);
+}

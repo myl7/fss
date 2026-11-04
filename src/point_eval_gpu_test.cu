@@ -526,7 +526,6 @@ void CheckVdpfPoint() {
   using Blake3 = fss::hash::Blake3;
   using Group = fss::group::Bytes;
   using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>;
-  using Cw = typename Scheme::Cw;
   using Key = typename Scheme::Key;
   constexpr int kStride = bits + 1;
   // Blake3 copies the IV by value at construction.
@@ -536,30 +535,33 @@ void CheckVdpfPoint() {
   const int4 beta = {7, 19, 23, 42};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakePoints<bits, In>(alphas);
-  std::vector<Cw> cws(keys * kStride);
+  // Split form: layer i of key k lands at cws[i * keys + k], the terminal at
+  // cws[bits * keys + k], and the packed right-control bits in trs[k]. cs stays
+  // per-key.
+  std::vector<int4> cws(static_cast<size_t>(kStride) * keys);
+  std::vector<In> trs(keys);
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
   std::vector<cuda::std::array<int4, 4>> cs(keys);
-  std::vector<int4> h_ocws(keys);
   for (int k = 0; k < keys; ++k) {
     seeds[2 * k] = {11 + k, 22, 33, 44};
     seeds[2 * k + 1] = {55 + k, 66, 77, 88};
     ASSERT_EQ(fss_test::GenPair(scheme, keys0[k], keys1[k], cuda::std::span<int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta), 0);
-    for (int i = 0; i < kStride; ++i) cws[k * kStride + i] = keys0[k].cws[i];
+    ASSERT_EQ(scheme.Gen(cuda::std::span<int4>(cws.data() + k, static_cast<size_t>(bits) * keys + 1), trs[k],
+        cuda::std::span<int4, 4>(keys0[k].cs, 4),
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * k, 2), alphas[k], beta, keys), 0);
     for (int i = 0; i < 4; ++i) cs[k][i] = keys0[k].cs[i];
-    h_ocws[k] = keys0[k].cws[bits].s;
   }
-  // VDPF has no split form, so the launcher reads the key's own rows; only the
-  // output correction words move to their own array.
-  DeviceBuffer<Cw> device_cws;
-  DeviceBuffer<int4> device_ocws, device_seeds, device_ys;
+  DeviceBuffer<int4> device_cws;
+  DeviceBuffer<In> device_tr;
+  DeviceBuffer<int4> device_seeds, device_ys;
   DeviceBuffer<cuda::std::array<int4, 4>> device_pi;
   DeviceBuffer<cuda::std::array<int4, 4>> device_cs;
   DeviceBuffer<Query> device_xs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
-  ASSERT_EQ(device_ocws.Allocate(keys), cudaSuccess);
-  ASSERT_EQ(device_ocws.Upload(h_ocws.data(), keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Upload(trs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_cs.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_cs.Upload(cs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
@@ -577,9 +579,9 @@ void CheckVdpfPoint() {
     ASSERT_EQ(device_seeds.Upload(party_seeds.data(), keys), cudaSuccess);
     fss::gpu::detail::VdpfEvalPointGpu(party != 0,
         cuda::std::span<const int4>(device_seeds.data(), keys),
-        cuda::std::span<const Cw>(device_cws.data(), cws.size()),
+        cuda::std::span<const int4>(device_cws.data(), cws.size()),
+        cuda::std::span<const In>(device_tr.data(), keys),
         cuda::std::span<const cuda::std::array<int4, 4>>(device_cs.data(), keys),
-        cuda::std::span<const int4>(device_ocws.data(), keys),
         cuda::std::span<const Query>(device_xs.data(), keys), device_ys.data(),
         cuda::std::span<cuda::std::array<int4, 4>>(device_pi.data(), keys), keys, scheme, stream);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
