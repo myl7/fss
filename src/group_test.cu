@@ -134,3 +134,17 @@ TEST(GroupBoundaryBehavior, UnsignedCanonicalMaxEncodesAndWraps) {
   ExpectOneWrapsToZero<Uint127ModGroup>(
       BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x3fffffffU));
 }
+
+TEST(GroupPreconditionTest, BytesFromAcceptsClampedBlock) {
+  int4 clamped = {1, 2, 3, 4};
+  EXPECT_NO_THROW((void)BytesGroup::From(clamped));
+}
+
+#ifndef NDEBUG
+// The zero LSB is a caller precondition of the shared leaf conversion: Debug
+// builds abort with a diagnostic, and Release builds do not check it.
+TEST(GroupPreconditionTest, BytesFromAbortsOnNonzeroLsbInDebug) {
+  int4 odd = {1, 2, 3, 5};
+  EXPECT_DEATH((void)BytesGroup::From(odd), "Assertion.*failed");
+}
+#endif  // NDEBUG

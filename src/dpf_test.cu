@@ -1127,8 +1127,11 @@ TEST(DpfComponentEval, BackendCallsSelectedAndFallback) {
   CheckComponentEvalBackendCalls<false, 5>();
 }
 
+// The split Eval is a low-level entry shared with the device: layout
+// violations are caller preconditions, so Debug builds abort and these invalid
+// inputs must not run in Release.
 #ifndef NDEBUG
-TEST(DpfComponentEval, DebugRejectsInvalidComponentInputs) {
+TEST(DpfComponentEval, AbortsOnInvalidComponentInputsInDebug) {
   using Prg = fss::prg::ChaCha<2>;
   using Three = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
   Three three{Prg(kNonce0, kNonce1)};
@@ -1140,15 +1143,15 @@ TEST(DpfComponentEval, DebugRejectsInvalidComponentInputs) {
       "Assertion.*failed");
   // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
   EXPECT_DEATH((void)three.Eval(false, seed, cuda::std::span<const int4>(tiny, 3), uint8_t{0},
-                    uint8_t{0}, size_t{1}),
+                       uint8_t{0}, size_t{1}),
       "Assertion.*failed");
   EXPECT_DEATH((void)three.Eval(false, seed, cuda::std::span<const int4>(tiny, 6), uint8_t{0},
-                    uint8_t{0}, size_t{2}),
+                       uint8_t{0}, size_t{2}),
       "Assertion.*failed");
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   const size_t overflowing_stride = (kMaxElements - 1) / 3 + 1;
   EXPECT_DEATH((void)three.Eval(false, seed, tiny_span, uint8_t{0}, uint8_t{0},
-                    overflowing_stride),
+                       overflowing_stride),
       "Assertion.*failed");
 }
 #endif  // NDEBUG
@@ -1894,8 +1897,9 @@ TEST(DpfComponentGen, BackendCalls) {
   CheckGenBackendCalls<false, 5>();
 }
 
+// The split Gen is a low-level entry shared with the device, like split Eval.
 #ifndef NDEBUG
-TEST(DpfComponentGen, DebugRejectsInvalidInputs) {
+TEST(DpfComponentGen, AbortsOnInvalidInputsInDebug) {
   using Prg = fss::prg::ChaCha<2>;
   using One = fss::Dpf<1, BytesGroup, Prg, uint8_t>;
   using Three = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
@@ -1917,21 +1921,21 @@ TEST(DpfComponentGen, DebugRejectsInvalidInputs) {
       "Assertion.*failed");
   // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
   EXPECT_DEATH(three.Gen(cuda::std::span<int4>(slot, 3), tr8, seed_span, uint8_t{0},
-                    kComponentBeta),
+                       kComponentBeta),
       "Assertion.*failed");
   EXPECT_DEATH(three.Gen(cuda::std::span<int4>(slot, 4), tr8, seed_span, uint8_t{0},
-                    kComponentBeta, size_t{2}),
+                       kComponentBeta, size_t{2}),
       "Assertion.*failed");
   EXPECT_DEATH(three.Gen(one_slot, tr8, seed_span, uint8_t{0}, kComponentBeta,
-                    (kMaxElements - 1) / 3 + 1),
+                       (kMaxElements - 1) / 3 + 1),
       "Assertion.*failed");
   EXPECT_DEATH(one.Gen(one_slot, tr8, seed_span, uint8_t{0}, kComponentBeta,
-                    std::numeric_limits<size_t>::max()),
+                       std::numeric_limits<size_t>::max()),
       "Assertion.*failed");
   EXPECT_DEATH(one.Gen(one_slot, tr8, seed_span, uint8_t{0}, kComponentBeta, kMaxElements),
       "Assertion.*failed");
   EXPECT_DEATH(wide.Gen(one_slot, tr128, seed_span, __uint128_t{0}, kComponentBeta,
-                    (kMaxElements - 1) / 128 + 1),
+                       (kMaxElements - 1) / 128 + 1),
       "Assertion.*failed");
 }
 #endif  // NDEBUG
@@ -2104,13 +2108,13 @@ TEST(DpfCwsTest, WideInputRange) {
   }
 }
 
-#ifndef NDEBUG
-TEST(DpfCwsTest, DebugRejectsInvalidInputs) {
+// The split EvalAll() and EvalRange() checks throw on the host, so they are
+// tested in Release too, which is where the old compiled-out assertions were
+// defects. The terminal checks run before any parallel dispatch.
+TEST(DpfCwsTest, RejectsInvalidEvalInputs) {
   using Prg = fss::prg::ChaCha<2>;
   using Three = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
-  using Eight = fss::Dpf<8, BytesGroup, Prg, uint16_t>;
   Three three{Prg(kNonce0, kNonce1)};
-  Eight eight{Prg(kNonce0, kNonce1)};
   const int4 seeds[2] = {kComponentSeeds[0], kComponentSeeds[1]};
   int4 slot[10];
   for (auto &entry : slot) entry = kComponentSentinel;
@@ -2119,39 +2123,101 @@ TEST(DpfCwsTest, DebugRejectsInvalidInputs) {
   int4 ys[8] = {};
   const auto ys_span = cuda::std::span<int4>(ys, 8);
   uint8_t tr8 = 0;
-  uint16_t tr16 = 0;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
 
   // A zero stride is rejected on every split method.
-  EXPECT_DEATH(three.EvalAll(false, seeds[0], full, tr8, ys, 0, size_t{0}),
-      "Assertion.*failed");
-  EXPECT_DEATH(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0], full, tr8,
+  EXPECT_THROW(three.EvalAll(false, seeds[0], full, tr8, ys, 0, size_t{0}),
+      std::invalid_argument);
+  EXPECT_THROW(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0], full, tr8,
                     ys_span, 0, size_t{0}),
-      "Assertion.*failed");
+      std::invalid_argument);
   // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
-  EXPECT_DEATH(three.EvalAll(false, seeds[0], short_span, tr8, ys), "Assertion.*failed");
-  EXPECT_DEATH(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0], short_span, tr8,
+  EXPECT_THROW(three.EvalAll(false, seeds[0], short_span, tr8, ys), std::invalid_argument);
+  EXPECT_THROW(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0], short_span, tr8,
                     ys_span),
-      "Assertion.*failed");
+      std::invalid_argument);
   // A stride past the addressable guard is rejected.
-  EXPECT_DEATH(three.EvalAll(false, seeds[0], full, tr8, ys, 0, (kMaxElements - 1) / 3 + 1),
-      "Assertion.*failed");
-  EXPECT_DEATH(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0], full, tr8, ys_span,
+  EXPECT_THROW(three.EvalAll(false, seeds[0], full, tr8, ys, 0, (kMaxElements - 1) / 3 + 1),
+      std::invalid_argument);
+  EXPECT_THROW(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0], full, tr8, ys_span,
                     0, (kMaxElements - 1) / 3 + 1),
-      "Assertion.*failed");
-  // The terminal entry must have a zero LSB, on the per-input and the batched paths.
+      std::invalid_argument);
+#ifndef NDEBUG
+  EXPECT_DEBUG_DEATH(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0], full, tr8,
+                      ys_span, -1),
+      "par_depth >= 0");
+#endif  // NDEBUG
+}
+
+// The terminal LSB is a caller precondition, unlike the buffer metadata above:
+// Debug builds abort on the per-input and the batched paths, and Release
+// builds do not check it.
+#ifndef NDEBUG
+TEST(DpfCwsTest, AbortsOnBadTerminalInDebug) {
+  using Prg = fss::prg::ChaCha<2>;
+  using Three = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
+  using Eight = fss::Dpf<8, BytesGroup, Prg, uint16_t>;
+  Three three{Prg(kNonce0, kNonce1)};
+  Eight eight{Prg(kNonce0, kNonce1)};
+  const int4 seeds[2] = {kComponentSeeds[0], kComponentSeeds[1]};
   int4 odd[10];
   for (auto &entry : odd) entry = kComponentSentinel;
+  int4 ys[8] = {};
+  const auto ys_span = cuda::std::span<int4>(ys, 8);
+  uint8_t tr8 = 0;
+  uint16_t tr16 = 0;
   odd[3].w |= 1;
   EXPECT_DEATH(three.EvalAll(false, seeds[0], cuda::std::span<const int4>(odd, 4), tr8, ys),
       "Assertion.*failed");
   EXPECT_DEATH(three.EvalRange(false, uint8_t{0}, uint8_t{7}, seeds[0],
-                    cuda::std::span<const int4>(odd, 4), tr8, ys_span),
+                       cuda::std::span<const int4>(odd, 4), tr8, ys_span),
       "Assertion.*failed");
   odd[3].w &= ~1;
   odd[8].w |= 1;
   EXPECT_DEATH(eight.EvalAll(false, seeds[0], cuda::std::span<const int4>(odd, 9), tr16, ys),
       "Assertion.*failed");
+}
+#endif  // NDEBUG
+
+namespace {
+
+// An odd terminal violates a documented precondition: Debug builds must abort
+// on the calling thread, before any parallel dispatch, whatever the par_depth.
+template <int in_bits>
+void CheckDpfOddTerminalRejected(int par_depth) {
+  using Scheme = fss::Dpf<in_bits, BytesGroup, fss::prg::ChaCha<2>, uint8_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
+  const int4 s0 = {13, 27, 45, 66};
+  typename Scheme::Cw cws[in_bits + 1]{};
+  cws[in_bits].s.w |= 1;
+  int4 split_cws[in_bits + 1] = {};
+  split_cws[in_bits].w = 1;
+  const uint8_t tr = 0;
+  constexpr size_t n = size_t{1} << in_bits;
+  int4 ys_storage[n];
+  EXPECT_DEATH(scheme.EvalAll(false, s0, cws, ys_storage, par_depth), "Assertion.*failed");
+  EXPECT_DEATH(scheme.EvalRange(false, uint8_t{0}, uint8_t{n - 1}, s0, cws,
+      cuda::std::span<int4>(ys_storage, n), par_depth), "Assertion.*failed");
+  EXPECT_DEATH(scheme.EvalAll(false, s0, cuda::std::span<const int4>(split_cws, in_bits + 1),
+      tr, ys_storage, par_depth), "Assertion.*failed");
+  EXPECT_DEATH(scheme.EvalRange(false, uint8_t{0}, uint8_t{n - 1}, s0,
+      cuda::std::span<const int4>(split_cws, in_bits + 1), tr,
+      cuda::std::span<int4>(ys_storage, n), par_depth), "Assertion.*failed");
+}
+
+}  // namespace
+
+// in_bits 3 keeps the per-input walk and in_bits 8 uses the batched path; both
+// must abort on an odd terminal on the calling thread, before OpenMP work,
+// whatever the par_depth. Release builds do not check the precondition, so the
+// invalid inputs run only in Debug.
+#ifndef NDEBUG
+TEST(DpfTerminalTest, RejectsOddTerminalBeforeParallelDispatch) {
+  for (int par_depth = 0; par_depth <= 1; ++par_depth) {
+    SCOPED_TRACE(par_depth);
+    CheckDpfOddTerminalRejected<3>(par_depth);
+    CheckDpfOddTerminalRejected<8>(par_depth);
+  }
 }
 #endif  // NDEBUG
 
@@ -2406,3 +2472,77 @@ void CheckDpfSplitGpuLaunches() {
 
 TEST(DpfSplitGpuTest, SplitLaunchesMatchCwHost) { CheckDpfSplitGpuLaunches<BytesGroup>(); }
 TEST(DpfSplitGpuTest, WideGroupSplitLaunchesCompile) { CheckDpfSplitGpuLaunches<Uint127Group>(); }
+
+// The split EvalAll and EvalRange buffer checks stay host-boundary throws; the
+// split Gen, split Eval, and terminal requirements are low-level preconditions.
+TEST(DpfCwsTest, RejectsInvalidInputs) {
+  using Scheme = fss::Dpf<3, BytesGroup, fss::prg::ChaCha<2>, uint8_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  int4 cws[4] = {};
+  typename Scheme::Cw raw_cws[4] = {};
+  int4 ys[8] = {};
+  const int4 s0 = seeds[0];
+
+  EXPECT_THROW((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, 3),
+                        uint8_t{0}, ys),
+      std::invalid_argument);
+
+  // Range checks: reversed and out-of-domain intervals, short output, null input.
+  EXPECT_THROW((void)scheme.EvalRange(false, 3, 2, s0, raw_cws,
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 8, s0, raw_cws,
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0, raw_cws,
+                        cuda::std::span<int4>(ys, 7)),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0,
+                        static_cast<const typename Scheme::Cw *>(nullptr),
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+}
+
+#ifndef NDEBUG
+TEST(DpfCwsTest, AbortsOnInvalidLowLevelInputsInDebug) {
+  using Scheme = fss::Dpf<3, BytesGroup, fss::prg::ChaCha<2>, uint8_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  const cuda::std::span<const int4, 2> seed_span(seeds, 2);
+  int4 cws[4] = {};
+  int4 ys[8] = {};
+  uint8_t tr = 0;
+  const auto cws_out = cuda::std::span<int4>(cws, 4);
+  const auto cws_in = cuda::std::span<const int4>(cws, 4);
+  const int4 s0 = seeds[0];
+
+  // A zero stride is valid only in a batch method, so a non-batch method rejects it.
+  EXPECT_DEATH((void)scheme.Gen(cws_out, tr, seed_span, uint8_t{5}, kComponentBeta, 0),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0}, 0),
+      "Assertion.*failed");
+  // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
+  EXPECT_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, 3), tr, seed_span,
+                       uint8_t{5}, kComponentBeta),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, 3),
+                       uint8_t{0}, uint8_t{0}),
+      "Assertion.*failed");
+  // The terminal output correction word must have a zero LSB.
+  int4 odd_cws[4] = {};
+  odd_cws[3].w = 1;
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(odd_cws, 4),
+                       uint8_t{0}, uint8_t{0}),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(odd_cws, 4),
+                       uint8_t{0}, ys),
+      "Assertion.*failed");
+  // A stride past the addressable guard is rejected.
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  const size_t overflowing_stride = (kMaxElements - 1) / 3 + 1;
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0},
+                       overflowing_stride),
+      "Assertion.*failed");
+}
+#endif  // NDEBUG

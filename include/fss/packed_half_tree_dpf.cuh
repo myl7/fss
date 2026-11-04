@@ -78,6 +78,7 @@
 #include <limits>
 
 #include <fss/half_tree_dpf.cuh>
+#include <stdexcept>
 
 namespace fss {
 
@@ -211,6 +212,9 @@ public:
    * and cws has at least kDepth*stride+1 elements.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A beta, stride, or capacity violation aborts with a diagnostic in
+   * Debug builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    * @post cws and s0s[party] form the corresponding party's key.
    * @post Only the described prefix is written, and storage beyond it is untouched.
    */
@@ -252,6 +256,9 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
    * and cws has at least kDepth*stride+1 elements.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride or capacity violation aborts with a diagnostic in Debug
+   * builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       In x, size_t stride = 1);
@@ -313,6 +320,8 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
    * and cws has at least kDepth*stride+1 elements.
    * @pre The packed output element count and byte size fit size_t, and ys is allocated.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than kDepth*stride+1.
    * @post Block j covers inputs j * kLanes through (j + 1) * kLanes - 1.
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, int4 ys[],
@@ -331,6 +340,8 @@ public:
    * Positive depths require backends that support concurrent calls.
    * @pre first <= last and both endpoints belong to the input domain.
    * @pre The output block count and byte size fit size_t, and used pointers are nonnull.
+   * @throws std::invalid_argument if cws is null, first > last, an endpoint is
+   * outside the input domain, the interval does not fit size_t, or ys is too short.
    * @post Extract(ys[j / kLanes], j) is this party's share at first + j.
    * Unused lanes in the last output block are zero. Extra capacity is untouched.
    */
@@ -359,6 +370,9 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
    * and cws has at least kDepth*stride+1 elements.
    * @pre The output block count and byte size fit size_t, and used pointers are nonnull.
+   * @throws std::invalid_argument if stride is zero or too large, cws is shorter
+   * than kDepth*stride+1, ys is null, first > last, an endpoint is outside the
+   * input domain, the interval does not fit size_t, or ys is too short.
    * @post Extract(ys[j / kLanes], j) is this party's share at first + j.
    * Unused lanes in the last output block are zero. Extra capacity is untouched.
    */
@@ -654,11 +668,13 @@ template <int in_bits, int out_bits, typename Hash, typename In>
 __host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Gen(
     cuda::std::span<int4> cws, cuda::std::span<const int4, 2> s0s, In a, uint64_t beta,
     size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "PackedHalfTreeDpf::Gen: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth),
+      "PackedHalfTreeDpf::Gen: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "PackedHalfTreeDpf::Gen: cws must hold kDepth*stride+1 elements");
   Generate(CwsWriter{cws.data(), stride}, s0s.data(), a, beta);
 }
 
@@ -668,7 +684,7 @@ template <int in_bits, int out_bits, typename Hash, typename In>
 template <typename Writer>
 __host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Generate(
     Writer writer, const int4 *s0s, In a, uint64_t beta) {
-  assert(beta <= kBetaMax);
+  util::RequireArg(beta <= kBetaMax, "PackedHalfTreeDpf::Gen: beta exceeds kBetaMax");
 
   int4 packed_beta = PackBeta(a, beta);
 
@@ -729,11 +745,13 @@ template <int in_bits, int out_bits, typename Hash, typename In>
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 __host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval(
     bool b, int4 s0, cuda::std::span<const int4> cws, In x, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "PackedHalfTreeDpf::Eval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth),
+      "PackedHalfTreeDpf::Eval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "PackedHalfTreeDpf::Eval: cws must hold kDepth*stride+1 elements");
   return EvalCws(b, s0, CwsView{cws.data(), stride}, x);
 }
 
@@ -779,11 +797,13 @@ template <int in_bits, int out_bits, typename Hash, typename In>
 inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAll(
     bool b, int4 s0, cuda::std::span<const int4> cws, int4 ys[], int par_depth,
     size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0) throw std::invalid_argument("PackedHalfTreeDpf::EvalAll: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(kDepth))
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalAll: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalAll: cws must hold kDepth*stride+1 elements");
   EvalAllCws(b, s0, CwsView{cws.data(), stride}, ys, par_depth);
 }
 
@@ -815,7 +835,8 @@ template <int in_bits, int out_bits, typename Hash, typename In>
 inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRange(
     bool b, In first, In last, int4 s0, const Cw cws[],
     cuda::std::span<int4> ys, int par_depth) {
-  assert(cws != nullptr);
+  if (cws == nullptr)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: cws must not be null");
   EvalRangeCws(b, first, last, s0, cws, ys, par_depth);
 }
 
@@ -825,13 +846,16 @@ template <int in_bits, int out_bits, typename Hash, typename In>
 inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRange(bool b, In first,
     In last, int4 s0, cuda::std::span<const int4> cws, cuda::std::span<int4> ys,
     int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
-  assert(cws.data() != nullptr);
-  assert(ys.data() != nullptr);
+  if (stride == 0)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(kDepth))
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  if (cws.size() < required || cws.data() == nullptr)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: cws must hold kDepth*stride+1 elements");
+  if (ys.data() == nullptr)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: ys must not be null");
   EvalRangeCws(b, first, last, s0, CwsView{cws.data(), stride}, ys, par_depth);
 }
 
@@ -847,12 +871,20 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRangeCws(
   if constexpr (in_bits < sizeof(In) * 8) {
     domain_last = static_cast<In>((In{1} << in_bits) - 1);
   }
-  assert(first <= last && last <= domain_last);
+  if (first > last)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: first must not exceed last");
+  if (last > domain_last)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: last must stay inside the input domain");
   const __uint128_t distance = static_cast<__uint128_t>(last) - first;
   const __uint128_t block_distance = distance / kLanes;
-  assert(block_distance < std::numeric_limits<size_t>::max() / sizeof(int4));
+  // The caller controls the interval, so this is an argument check, not an
+  // invariant: with a 128-bit input domain the block distance can exceed
+  // size_t, and narrowing it first would shrink the output-size check.
+  if (block_distance >= std::numeric_limits<size_t>::max() / sizeof(int4))
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: the interval is too large for size_t");
   const size_t blocks = static_cast<size_t>(block_distance) + 1;
-  assert(ys.size() >= blocks && ys.data() != nullptr);
+  if (ys.size() < blocks || ys.data() == nullptr)
+    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: ys must hold the covered blocks");
 
   const size_t partitions = detail::ResolveParPartitions(par_depth, blocks);
   detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
@@ -1201,6 +1233,15 @@ template <int unroll = 4, int in_bits, int out_bits, typename Hash, typename In,
 void PackedHalfTreeDpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
     cuda::std::span<const Query> xs, int4 *ys, int nkeys, const PackedHalfTreeDpf<in_bits, out_bits, Hash, In> &dpf,
     cudaStream_t stream = 0) {
+  if (nkeys < 0)
+    throw std::invalid_argument("PackedHalfTreeDpfEvalPointGpu: nkeys must be nonnegative");
+  if (nkeys == 0) return;
+  const size_t count = static_cast<size_t>(nkeys);
+  constexpr size_t kLevels = static_cast<size_t>(PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::kDepth) + 1;
+  if (count > SIZE_MAX / kLevels || cws.size() < count * kLevels)
+    throw std::invalid_argument("PackedHalfTreeDpfEvalPointGpu: cws must hold (kDepth+1)*nkeys elements");
+  if (seeds.size() < count || xs.size() < count || ys == nullptr)
+    throw std::invalid_argument("PackedHalfTreeDpfEvalPointGpu: seeds, xs, and ys must cover nkeys entries");
   using Descriptor = PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
   PackedHalfTreeDpfEvalPointLaunch<unroll, false, in_bits, Descriptor, In, Query, int4>(b, seeds.data(), cws.data(),
       xs.data(), ys, nkeys, fss::detail::SchemeAccess::GetHash(dpf),

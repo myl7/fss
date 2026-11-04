@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Host boundary entries report `std::invalid_argument` for buffer, range, bucket, and count metadata in Debug and Release builds. Low-level algorithms, including split Gen/Eval layouts, terminal group values, PRP input domains, `Bytes::From`, and `Vdmpf::Eval`, treat these requirements as caller preconditions: Debug builds abort with a diagnostic on both the host and the device, and Release builds have undefined behavior. Terminal validation runs before parallel traversal.
 - Python packaging requires setuptools 84.1.0 or later and a filelock version without known vulnerabilities
 
 ## [1.3.0] - 2026-10-18

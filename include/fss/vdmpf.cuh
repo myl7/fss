@@ -242,6 +242,8 @@ public:
    * @post On success, cws, cs, sigma, and s0s define both parties' keys.
    * Correction-word outputs are unspecified on failure. m_rt and b_size_rt may
    * already have been written when the attempt fails; metadata alone is not a key.
+   * @throws std::invalid_argument if cws, cs, or s0s is too short, t is outside
+   * [kMinPoints, max_points], or the bucket size does not fit bucket_bits.
    * @return 0 on success, 1 if Cuckoo placement fails, or 2 if an inner VDPF Gen fails.
    */
   int Gen(cuda::std::span<Cw> cws, cuda::std::span<int4> cs,
@@ -264,7 +266,8 @@ public:
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cws or cs is too short, or ys is shorter than xs.
    */
   void BatchEval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -313,10 +316,11 @@ public:
    * @param y Output share for this input.
    * @return Corrected per-point hashes in candidate order, as described by EvalProof.
    * @pre All key arrays and metadata come from the same successful Gen().
-   * Device code traps instead; the trap aborts the CUDA context, so any
-   * CUDA work later in the process is affected, which is why no test traps
-   * on the device side.
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @pre b_size_rt is in [kBucketSize, 2^bucket_bits], cws has at least
+   * kBucketCount*(bucket_bits+1) elements, and cs has at least 4*kBucketCount
+   * elements. A violation of these three requirements aborts with a diagnostic
+   * in Debug builds, on both the host and the device, and is undefined behavior
+   * in Release builds.
    */
   __host__ __device__ EvalProof Eval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -349,7 +353,8 @@ public:
    * @param pi Borrowed output storage for four proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cs is shorter than 4*kBucketCount, or proof_values is shorter than xs.
    */
   void Prove(int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
@@ -371,7 +376,8 @@ public:
    * @param pi Caller-owned output storage for four chain-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cws or cs is too short, or ys is shorter than 2^in_bits.
    */
   void EvalAll(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -419,7 +425,8 @@ public:
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cws or cs is too short, or ys is shorter than xs.
    */
   void BatchEvalMerkle(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -454,7 +461,8 @@ public:
    * @param pi Borrowed output storage for four proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre xs is nonempty and proof_values.size() >= xs.size().
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cs is shorter than 4*kBucketCount, or proof_values is shorter than xs.
    */
   void ProveMerkle(int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
@@ -476,7 +484,8 @@ public:
    * @param pi Caller-owned output storage for four Merkle-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
    * @pre The full output and each temporary array's count and byte size fit size_t.
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cws or cs is too short, or ys is shorter than 2^in_bits.
    */
   void EvalAllMerkle(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -1188,16 +1197,29 @@ void VdmpfBatchEvalMerkleGpu(bool b, cuda::std::span<const In> xs, int4 *ys, cud
   if (n < 0 || n > std::numeric_limits<int>::max() / 3) {
     throw std::invalid_argument("n must be in [0, INT_MAX / 3]");
   }
-  const size_t total = static_cast<size_t>(n) * 3;
-  constexpr int kChunk = chunk_size;
-
   constexpr int kFoldThreads = (VdmpfT::kBucketCount + 31) / 32 * 32;
   if (n == 0) {
+    // Zero queries still produce the proof: the fold kernel reads the check
+    // seeds and writes d_pi, and touches no query or key buffer, so only cs
+    // and d_pi are required and ys may be null.
+    if (cs.size() < static_cast<size_t>(VdmpfT::kBucketCount) || d_pi == nullptr)
+      throw std::invalid_argument("VdmpfBatchEvalMerkleGpu: cs and d_pi must cover the fold kernel");
     VdmpfBucketFoldKernel<VdmpfT::kBucketCount, Hash>
         <<<1, kFoldThreads, 0, stream>>>(d_pi, nullptr, nullptr, cs.data(), fss::detail::SchemeAccess::GetHash(vdmpf));
     CheckCudaStatus(cudaGetLastError());
     return;
   }
+  const size_t count = static_cast<size_t>(n);
+  const size_t bucket_count = m_rt < 0 ? 0 : static_cast<size_t>(m_rt);
+  constexpr size_t kCwPerBucket = static_cast<size_t>(bucket_bits) + 1;
+  if (bucket_count > SIZE_MAX / kCwPerBucket || cws.size() < bucket_count * kCwPerBucket)
+    throw std::invalid_argument("VdmpfBatchEvalMerkleGpu: cws must hold m_rt*(bucket_bits+1) elements");
+  if (xs.size() < count || s0s.size() < bucket_count || ocws.size() < bucket_count ||
+      cs.size() < static_cast<size_t>(VdmpfT::kBucketCount) || ys == nullptr || d_pi == nullptr)
+    throw std::invalid_argument("VdmpfBatchEvalMerkleGpu: xs, s0s, cs, ocws, ys, and d_pi must cover the kernel reads");
+  const size_t total = static_cast<size_t>(n) * 3;
+  constexpr int kChunk = chunk_size;
+
   DeviceScratch d_keys_storage(stream);
   CheckCudaStatus(d_keys_storage.Allocate<uint32_t>(total));
   auto *d_keys = d_keys_storage.Get<uint32_t>();
@@ -1315,18 +1337,24 @@ inline int Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Pr
     int &m_rt, __uint128_t &b_size_rt,
     int4 sigma, cuda::std::span<const int4> s0s, cuda::std::span<const In> as,
     cuda::std::span<const int4> b_bufs, int t, int max_evictions) {
-  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
-  assert(cs.size() >= size_t{kBucketCount} * 4);
-  assert(s0s.size() >= size_t{kBucketCount} * 2);
-  assert(t <= max_points);
+  if (cws.size() < size_t{kBucketCount} * (bucket_bits + 1))
+    throw std::invalid_argument("Vdmpf::Gen: cws must hold kBucketCount*(bucket_bits+1) elements");
+  if (cs.size() < size_t{kBucketCount} * 4)
+    throw std::invalid_argument("Vdmpf::Gen: cs must hold 4*kBucketCount elements");
+  if (s0s.size() < size_t{kBucketCount} * 2)
+    throw std::invalid_argument("Vdmpf::Gen: s0s must hold 2*kBucketCount seeds");
+  if (t > max_points)
+    throw std::invalid_argument("Vdmpf::Gen: t must not exceed max_points");
 
   // Compute runtime bucket count and bucket size.
-  assert(t >= kMinPoints);
+  if (t < kMinPoints)
+    throw std::invalid_argument("Vdmpf::Gen: t must be at least kMinPoints");
   int m_ = cuckoo_hash::ChBucket(t, ch_lambda);
   assert(m_ <= kBucketCount);
   __uint128_t n128 = static_cast<__uint128_t>(kDomainSize);
   __uint128_t bucket_size = cuckoo_hash::detail::CeilDiv(n128 * kCuckooChoices, m_);
-  assert(bucket_size <= (__uint128_t{1} << bucket_bits));
+  if (bucket_size > (__uint128_t{1} << bucket_bits))
+    throw std::invalid_argument("Vdmpf::Gen: the bucket size does not fit bucket_bits");
   __uint128_t b_rt = bucket_size;
 
   m_rt = m_;
@@ -1397,15 +1425,12 @@ Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_l
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4> cs,
     In x, int4 &y) {
-  if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits)) {
-#ifdef __CUDA_ARCH__
-    __trap();
-#else
-    throw std::invalid_argument("Vdmpf::Eval: b_size_rt is outside [kBucketSize, 2^bucket_bits]");
-#endif
-  }
-  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
-  assert(cs.size() >= size_t{kBucketCount} * 4);
+  util::RequireArg(cuckoo_hash::detail::ValidBucketSize(b_size_rt, kBucketSize, bucket_bits),
+      "Vdmpf::Eval: b_size_rt is outside [kBucketSize, 2^bucket_bits]");
+  util::RequireArg(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1),
+      "Vdmpf::Eval: cws must hold kBucketCount*(bucket_bits+1) elements");
+  util::RequireArg(cs.size() >= size_t{kBucketCount} * 4,
+      "Vdmpf::Eval: cs must hold 4*kBucketCount elements");
   cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};
   cuda::std::array<LocatedCandidate, kCuckooChoices> located;
   int count = LocateCandidates(prp_hash, sigma, b_size_rt, x, located);
@@ -1439,9 +1464,11 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
     cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
   RequireBucketSize(b_size_rt, "Vdmpf::Prove");
-  assert(cs.size() >= size_t{kBucketCount} * 4);
+  if (cs.size() < size_t{kBucketCount} * 4)
+    throw std::invalid_argument("Vdmpf::Prove: cs must hold 4*kBucketCount elements");
   assert(!xs.empty());
-  assert(proof_values.size() >= xs.size());
+  if (proof_values.size() < xs.size())
+    throw std::invalid_argument("Vdmpf::Prove: proof_values must hold xs.size() entries");
 
   std::vector<std::vector<RouteRecord>> inputs = RouteInputs(sigma, b_size_rt, xs);
   pi[0] = int4{0, 0, 0, 0};
@@ -1522,9 +1549,11 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
     cuda::std::span<const EvalProof> proof_values, cuda::std::span<int4, 4> pi) {
   RequireBucketSize(b_size_rt, "Vdmpf::ProveMerkle");
-  assert(cs.size() >= size_t{kBucketCount} * 4);
+  if (cs.size() < size_t{kBucketCount} * 4)
+    throw std::invalid_argument("Vdmpf::ProveMerkle: cs must hold 4*kBucketCount elements");
   assert(!xs.empty());
-  assert(proof_values.size() >= xs.size());
+  if (proof_values.size() < xs.size())
+    throw std::invalid_argument("Vdmpf::ProveMerkle: proof_values must hold xs.size() entries");
 
   std::vector<std::vector<RouteRecord>> inputs = RouteInputs(sigma, b_size_rt, xs);
   std::vector<cuda::std::array<int4, 2>> bucket_nodes(kBucketCount);
@@ -1672,10 +1701,13 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4> cs,
     Inputs xs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
-  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
-  assert(cs.size() >= size_t{kBucketCount} * 4);
+  if (cws.size() < size_t{kBucketCount} * (bucket_bits + 1))
+    throw std::invalid_argument("Vdmpf::EvalInputs: cws must hold kBucketCount*(bucket_bits+1) elements");
+  if (cs.size() < size_t{kBucketCount} * 4)
+    throw std::invalid_argument("Vdmpf::EvalInputs: cs must hold 4*kBucketCount elements");
   size_t eta = xs.size();
-  assert(ys.size() >= eta);
+  if (ys.size() < eta)
+    throw std::invalid_argument("Vdmpf::EvalInputs: ys must hold xs.size() elements");
   __uint128_t b_rt = b_size_rt;
   // Exclusive upper bound on the bucket index of any candidate. The entry check
   // b_size_rt >= kBucketSize guarantees it does not exceed kBucketCount.
@@ -1777,10 +1809,13 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     cuda::std::span<const int4> cs,
     Inputs xs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi) {
-  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
-  assert(cs.size() >= size_t{kBucketCount} * 4);
+  if (cws.size() < size_t{kBucketCount} * (bucket_bits + 1))
+    throw std::invalid_argument("Vdmpf::EvalMerkleInputs: cws must hold kBucketCount*(bucket_bits+1) elements");
+  if (cs.size() < size_t{kBucketCount} * 4)
+    throw std::invalid_argument("Vdmpf::EvalMerkleInputs: cs must hold 4*kBucketCount elements");
   size_t eta = xs.size();
-  assert(ys.size() >= eta);
+  if (ys.size() < eta)
+    throw std::invalid_argument("Vdmpf::EvalMerkleInputs: ys must hold xs.size() elements");
   __uint128_t b_rt = b_size_rt;
 
   cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp_};

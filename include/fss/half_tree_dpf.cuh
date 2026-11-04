@@ -32,6 +32,7 @@
 #include <limits>
 
 #include <cstdint>
+#include <stdexcept>
 
 namespace fss {
 
@@ -145,6 +146,9 @@ public:
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride or capacity violation aborts with a diagnostic in Debug
+   * builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    * @post cws, tr and s0s[party] form the corresponding party's key.
    * @post Only the described prefix is written, and storage beyond it is untouched.
    */
@@ -186,6 +190,9 @@ public:
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre cws[in_bits*stride].w & 1 == 0.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride, capacity, or terminal violation aborts with a diagnostic in
+   * Debug builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       In tr, In x, size_t stride = 1);
@@ -202,6 +209,9 @@ public:
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    * @pre The output element count and byte size fit size_t.
+   * @pre cws and ys are nonnull.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
    * @post ys[x] contains this party's output share for x.
    */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
@@ -227,8 +237,11 @@ public:
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
-   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic
+   * in Debug builds and is undefined behavior in Release builds.
    * @pre The output element count and byte size fit size_t.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than in_bits*stride+1.
    * @post ys[x] contains this party's output share for x.
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
@@ -247,6 +260,10 @@ public:
    * Positive depths require backends that support concurrent calls.
    * @pre first <= last and both endpoints belong to the input domain.
    * @pre The output count and byte size fit size_t, and used pointers are nonnull.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if cws is null, first > last, an endpoint is
+   * outside the input domain, the interval does not fit size_t, or ys is too short.
    * @post ys[j] is this party's scalar share at first + j.
    * Extra output capacity is untouched.
    */
@@ -277,8 +294,12 @@ public:
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
-   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic
+   * in Debug builds and is undefined behavior in Release builds.
    * @pre The output count and byte size fit size_t, and used pointers are nonnull.
+   * @throws std::invalid_argument if stride is zero or too large, cws is shorter
+   * than in_bits*stride+1, ys is null, first > last, an endpoint is outside the
+   * input domain, or the interval does not fit size_t.
    * @post ys[j] is this party's scalar share at first + j.
    * Extra output capacity is untouched.
    */
@@ -882,11 +903,13 @@ template <int in_bits, typename Group, typename Hash, typename In>
 __host__ __device__ inline void HalfTreeDpf<in_bits, Group, Hash, In>::Gen(
     cuda::std::span<int4> cws, In &tr, cuda::std::span<const int4, 2> s0s,
     In a, int4 b_buf, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "HalfTreeDpf::Gen: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "HalfTreeDpf::Gen: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "HalfTreeDpf::Gen: cws must hold in_bits*stride+1 elements");
   Generate(CwsWriter{cws.data(), stride, tr}, s0s.data(), a, b_buf);
 }
 
@@ -1012,13 +1035,16 @@ template <int in_bits, typename Group, typename Hash, typename In>
       Groupable<Group> && CcrHashable<Hash>)
 __host__ __device__ inline int4 HalfTreeDpf<in_bits, Group, Hash, In>::Eval(
     bool b, int4 s0, cuda::std::span<const int4> cws, In tr, In x, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "HalfTreeDpf::Eval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "HalfTreeDpf::Eval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "HalfTreeDpf::Eval: cws must hold in_bits*stride+1 elements");
   const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
-  assert((terminal.w & 1) == 0);
+  util::RequireArg((terminal.w & 1) == 0,
+      "HalfTreeDpf::Eval: the terminal group value must have a zero LSB");
   return EvalWalk(b, s0, CwsView{cws.data(), tr, stride}, x);
 }
 
@@ -1055,13 +1081,13 @@ template <int in_bits, typename Group, typename Hash, typename In>
       Groupable<Group> && CcrHashable<Hash>)
 inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, int4 ys[], int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
-  const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
-  assert((terminal.w & 1) == 0);
+  if (stride == 0) throw std::invalid_argument("HalfTreeDpf::EvalAll: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("HalfTreeDpf::EvalAll: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("HalfTreeDpf::EvalAll: cws must hold in_bits*stride+1 elements");
   EvalAllCws(b, s0, CwsView{cws.data(), tr, stride}, ys, par_depth);
 }
 
@@ -1074,6 +1100,12 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllCws(
   assert(par_depth >= 0);
   static_assert(detail::FitsFullDomain<int4, in_bits>(),
       "full-domain output count and byte size must fit in size_t");
+
+  // The terminal LSB is a caller precondition. Check it on the calling thread,
+  // so a Debug violation aborts there with this entry's name instead of inside
+  // an OpenMP worker; Release builds do not check it.
+  util::RequireArg((cws[in_bits].s.w & 1) == 0,
+      "HalfTreeDpf::EvalAll: the terminal group value must have a zero LSB");
 
   if constexpr (in_bits < kBatchPrefix + 1) {
     // Domains too small to fill an 8-wide frontier evaluate per input; the
@@ -1112,7 +1144,8 @@ template <int in_bits, typename Group, typename Hash, typename In>
 inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalRange(
     bool b, In first, In last, int4 s0, const Cw cws[],
     cuda::std::span<int4> ys, int par_depth) {
-  assert(cws != nullptr);
+  if (cws == nullptr)
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: cws must not be null");
   EvalRangeCws(b, first, last, s0, cws, ys, par_depth);
 }
 
@@ -1122,15 +1155,15 @@ template <int in_bits, typename Group, typename Hash, typename In>
 inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalRange(bool b, In first, In last,
     int4 s0, cuda::std::span<const int4> cws, In tr, cuda::std::span<int4> ys,
     int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
-  assert(cws.data() != nullptr);
-  assert(ys.data() != nullptr);
-  const int4 terminal = cws[static_cast<size_t>(in_bits) * stride];
-  assert((terminal.w & 1) == 0);
+  if (stride == 0) throw std::invalid_argument("HalfTreeDpf::EvalRange: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required || cws.data() == nullptr)
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: cws must hold in_bits*stride+1 elements");
+  if (ys.data() == nullptr)
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: ys must not be null");
   EvalRangeCws(b, first, last, s0,
       CwsView{cws.data(), tr, stride}, ys, par_depth);
 }
@@ -1147,11 +1180,18 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeCws(
   if constexpr (in_bits < sizeof(In) * 8) {
     domain_last = static_cast<In>((In{1} << in_bits) - 1);
   }
-  assert(first <= last && last <= domain_last);
+  if (first > last)
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: first must not exceed last");
+  if (last > domain_last)
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: last must stay inside the input domain");
   const __uint128_t distance = static_cast<__uint128_t>(last) - first;
-  assert(distance < std::numeric_limits<size_t>::max() / sizeof(int4));
+  if (distance >= std::numeric_limits<size_t>::max() / sizeof(int4))
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: the interval is too large for size_t");
   const size_t count = static_cast<size_t>(distance) + 1;
-  assert(ys.size() >= count && ys.data() != nullptr);
+  if (ys.size() < count || ys.data() == nullptr)
+    throw std::invalid_argument("HalfTreeDpf::EvalRange: ys must hold last-first+1 entries");
+  util::RequireArg((cws[in_bits].s.w & 1) == 0,
+      "HalfTreeDpf::EvalRange: the terminal group value must have a zero LSB");
 
   const size_t partitions = detail::ResolveParPartitions(par_depth, count);
   detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
@@ -1463,7 +1503,15 @@ template <int unroll = 4, int in_bits, typename Group, typename Hash, typename I
 void HalfTreeDpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
     cuda::std::span<const In> tr, cuda::std::span<const Query> xs, int4 *ys, int nkeys,
     const HalfTreeDpf<in_bits, Group, Hash, In> &dpf, cudaStream_t stream = 0) {
+  if (nkeys < 0)
+    throw std::invalid_argument("HalfTreeDpfEvalPointGpu: nkeys must be nonnegative");
   if (nkeys == 0) return;
+  const size_t count = static_cast<size_t>(nkeys);
+  constexpr size_t kLevels = static_cast<size_t>(in_bits) + 1;
+  if (count > SIZE_MAX / kLevels || cws.size() < count * kLevels)
+    throw std::invalid_argument("HalfTreeDpfEvalPointGpu: cws must hold (in_bits+1)*nkeys elements");
+  if (seeds.size() < count || tr.size() < count || xs.size() < count || ys == nullptr)
+    throw std::invalid_argument("HalfTreeDpfEvalPointGpu: seeds, tr, xs, and ys must cover nkeys entries");
   using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
   using Descriptor = HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
   constexpr int kBs = 256;

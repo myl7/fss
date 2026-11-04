@@ -53,6 +53,7 @@
 #include <limits>
 #if defined(__CUDACC__)
 #include <cub/device/device_scan.cuh>
+#include <stdexcept>
 #endif
 
 namespace fss {
@@ -190,6 +191,9 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride or capacity violation aborts with a diagnostic in Debug
+   * builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    */
   __host__ __device__ bool Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       In tr, In x, size_t stride = 1);
@@ -252,6 +256,8 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre The parity-tree element count and byte size fit size_t.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than in_bits*stride+1.
    * @post ParityTreeView{p} can be queried through Eval() and EvalAll().
    */
   void Preprocess(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
@@ -294,6 +300,8 @@ public:
    * @return Move-only owner of the populated host storage.
    * @pre stride > 0 and cws holds at least in_bits*stride+1 elements.
    * @pre All allocated element counts and byte sizes fit size_t.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than in_bits*stride+1.
    */
   OwnedParityTree<GrottoDcf> PreprocessOwned(bool b, int4 s0,
       cuda::std::span<const int4> cws, In tr, int par_depth = 0, size_t stride = 1);
@@ -357,6 +365,8 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre The output element count and byte size fit size_t.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than in_bits*stride+1.
    * @post ys[x] contains this party's XOR share of alpha <= x.
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
@@ -815,11 +825,13 @@ template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 __host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::Eval(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, In x, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "GrottoDcf::Eval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "GrottoDcf::Eval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "GrottoDcf::Eval: cws must hold in_bits*stride+1 elements");
   return EvalCws(b, s0, CwsView{cws.data(), tr, stride}, x);
 }
 
@@ -843,11 +855,13 @@ template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 inline void GrottoDcf<in_bits, Prg, In>::Preprocess(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, bool p[], int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0) throw std::invalid_argument("GrottoDcf::Preprocess: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("GrottoDcf::Preprocess: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("GrottoDcf::Preprocess: cws must hold in_bits*stride+1 elements");
   PreprocessCws(b, s0, CwsView{cws.data(), tr, stride}, p, par_depth);
 }
 
@@ -914,11 +928,13 @@ template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 inline void GrottoDcf<in_bits, Prg, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, bool ys[], int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0) throw std::invalid_argument("GrottoDcf::EvalAll: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("GrottoDcf::EvalAll: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("GrottoDcf::EvalAll: cws must hold in_bits*stride+1 elements");
   EvalAllCws(b, s0, CwsView{cws.data(), tr, stride}, ys, par_depth);
 }
 
@@ -1208,11 +1224,14 @@ template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 inline OwnedParityTree<GrottoDcf<in_bits, Prg, In>> GrottoDcf<in_bits, Prg, In>::PreprocessOwned(
     bool b, int4 s0, cuda::std::span<const int4> cws, In tr, int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0)
+    throw std::invalid_argument("GrottoDcf::PreprocessOwned: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("GrottoDcf::PreprocessOwned: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("GrottoDcf::PreprocessOwned: cws must hold in_bits*stride+1 elements");
   return PreprocessOwnedCws(b, s0,
       CwsView{cws.data(), tr, stride}, par_depth);
 }
@@ -1325,6 +1344,15 @@ template <int unroll = 4, int in_bits, typename Prg, typename In, typename Query
 void GrottoDcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
     cuda::std::span<const In> tr, cuda::std::span<const Query> xs, bool *ys, int nkeys,
     const GrottoDcf<in_bits, Prg, In> &dcf, cudaStream_t stream = 0) {
+  if (nkeys < 0)
+    throw std::invalid_argument("GrottoDcfEvalPointGpu: nkeys must be nonnegative");
+  if (nkeys == 0) return;
+  const size_t count = static_cast<size_t>(nkeys);
+  constexpr size_t kLevels = static_cast<size_t>(in_bits) + 1;
+  if (count > SIZE_MAX / kLevels || cws.size() < count * kLevels)
+    throw std::invalid_argument("GrottoDcfEvalPointGpu: cws must hold (in_bits+1)*nkeys elements");
+  if (seeds.size() < count || tr.size() < count || xs.size() < count || ys == nullptr)
+    throw std::invalid_argument("GrottoDcfEvalPointGpu: seeds, tr, xs, and ys must cover nkeys entries");
   GrottoDcfEvalPointLaunch<unroll, in_bits, Prg, In, Query>(b, seeds.data(), cws.data(), tr.data(), xs.data(), ys,
       nkeys, fss::detail::SchemeAccess::GetPrg(dcf), stream);
 }

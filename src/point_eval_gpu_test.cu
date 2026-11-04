@@ -727,3 +727,185 @@ TEST(PointEvalGpu, Uint32QueriesForNarrowInputs) {
 
 
 }  // namespace
+
+// The span checks run on the host before any CUDA call, so these cases need no
+// device and never launch a kernel.
+TEST(PointEvalGpu, RejectsInvalidSpansBeforeLaunch) {
+  using BytesGroup = fss::group::Bytes;
+  using Prg = fss::prg::ChaCha<2>;
+  using CcrHash = fss_test::CcrBackend<fss_test::TestCcrHash>;
+  const int4 seed = {1, 2, 3, 4};
+  const int4 hash_key = {5, 6, 7, 8};
+  int4 ys = {};
+  bool bool_ys = false;
+  cuda::std::array<int4, 4> pi{};
+  const int4 cws_storage[9] = {};
+  const int4 seeds_storage[1] = {seed};
+  const uint8_t tr = 0;
+  const uint8_t xs8 = 0;
+  const uint16_t xs16 = 0;
+
+  {
+    fss::Dpf<8, BytesGroup, Prg, uint8_t> scheme{Prg(1, 2)};
+    EXPECT_THROW(fss::gpu::detail::DpfEvalPointGpu(false,
+                     cuda::std::span<const int4>(seeds_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 1),
+                     cuda::std::span<const uint8_t>(&tr, 1),
+                     cuda::std::span<const uint8_t>(&xs8, 1), &ys, 1, scheme),
+        std::invalid_argument);
+    EXPECT_THROW(fss::gpu::detail::DpfEvalPointGpu(false, cuda::std::span<const int4>(),
+                     cuda::std::span<const int4>(cws_storage, 9),
+                     cuda::std::span<const uint8_t>(&tr, 1),
+                     cuda::std::span<const uint8_t>(&xs8, 1), &ys, 1, scheme),
+        std::invalid_argument);
+  }
+  {
+    using DcfPrg = fss::prg::ChaCha<4>;
+    fss::Dcf<8, BytesGroup, DcfPrg, uint8_t> scheme{DcfPrg(1, 2)};
+    EXPECT_THROW(fss::gpu::detail::DcfEvalPointGpu(false,
+                     cuda::std::span<const int4>(seeds_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 9),
+                     cuda::std::span<const uint8_t>(&tr, 1),
+                     cuda::std::span<const uint8_t>(&xs8, 1), &ys, 1, scheme),
+        std::invalid_argument);
+  }
+  {
+    fss::GrottoDcf<8, Prg, uint8_t> scheme{Prg(1, 2)};
+    EXPECT_THROW(fss::gpu::detail::GrottoDcfEvalPointGpu(false,
+                     cuda::std::span<const int4>(seeds_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 1),
+                     cuda::std::span<const uint8_t>(&tr, 1),
+                     cuda::std::span<const uint8_t>(&xs8, 1), &bool_ys, 1, scheme),
+        std::invalid_argument);
+  }
+  {
+    fss::HalfTreeDpf<8, BytesGroup, CcrHash, uint8_t> scheme{
+        fss_test::Ccr(fss_test::TestCcrHash(1, 2)), hash_key};
+    EXPECT_THROW(fss::gpu::detail::HalfTreeDpfEvalPointGpu(false,
+                     cuda::std::span<const int4>(seeds_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 1),
+                     cuda::std::span<const uint8_t>(&tr, 1),
+                     cuda::std::span<const uint8_t>(&xs8, 1), &ys, 1, scheme),
+        std::invalid_argument);
+  }
+  {
+    fss::PackedHalfTreeDpf<10, 1, CcrHash, uint16_t> scheme{
+        fss_test::Ccr(fss_test::TestCcrHash(1, 2)), hash_key};
+    EXPECT_THROW(fss::gpu::detail::PackedHalfTreeDpfEvalPointGpu(false,
+                     cuda::std::span<const int4>(seeds_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 1),
+                     cuda::std::span<const uint16_t>(&xs16, 1), &ys, 1, scheme),
+        std::invalid_argument);
+  }
+  {
+    fss::HalfTreeGrottoDcf<8, CcrHash, uint8_t> scheme{
+        fss_test::Ccr(fss_test::TestCcrHash(1, 2)), hash_key};
+    EXPECT_THROW(fss::gpu::detail::HalfTreeGrottoDcfEvalPointGpu(false,
+                     cuda::std::span<const int4>(seeds_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 1),
+                     cuda::std::span<const uint8_t>(&xs8, 1), &bool_ys, 1, scheme),
+        std::invalid_argument);
+  }
+  {
+    const int4 iv[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+    const cuda::std::span<const int4, 2> iv_span(iv, 2);
+    fss::Vdpf<8, BytesGroup, Prg, fss::hash::Blake3, fss::hash::Blake3, uint16_t> scheme{
+        Prg(1, 2), fss::hash::Blake3(iv_span), fss::hash::Blake3(iv_span)};
+    EXPECT_THROW(fss::gpu::detail::VdpfEvalPointGpu(false,
+                     cuda::std::span<const int4>(seeds_storage, 1),
+                     cuda::std::span<const int4>(cws_storage, 1),
+                     cuda::std::span<const uint16_t>(&xs16, 1),
+                     cuda::std::span<const cuda::std::array<int4, 4>>(&pi, 1),
+                     cuda::std::span<const uint16_t>(&xs16, 1), &ys,
+                     cuda::std::span<cuda::std::array<int4, 4>>(&pi, 1), 1, scheme),
+        std::invalid_argument);
+  }
+}
+
+// Zero keys write no output, so all seven point launchers accept empty spans
+// and a null ys as a no-op, while a negative key count is still rejected. The
+// checks run before any CUDA call, so no device is needed.
+TEST(PointEvalGpu, ZeroKeysWithEmptySpansIsNoOp) {
+  using BytesGroup = fss::group::Bytes;
+  using Prg = fss::prg::ChaCha<2>;
+  using CcrHash = fss_test::CcrBackend<fss_test::TestCcrHash>;
+  const int4 hash_key = {5, 6, 7, 8};
+
+  {
+    fss::Dpf<8, BytesGroup, Prg, uint8_t> scheme{Prg(1, 2)};
+    EXPECT_NO_THROW(fss::gpu::detail::DpfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint8_t>(),
+        cuda::std::span<const uint8_t>(), nullptr, 0, scheme));
+    EXPECT_THROW(fss::gpu::detail::DpfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint8_t>(),
+        cuda::std::span<const uint8_t>(), nullptr, -1, scheme), std::invalid_argument);
+  }
+  {
+    using DcfPrg = fss::prg::ChaCha<4>;
+    fss::Dcf<8, BytesGroup, DcfPrg, uint8_t> scheme{DcfPrg(1, 2)};
+    EXPECT_NO_THROW(fss::gpu::detail::DcfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const int4>(),
+        cuda::std::span<const uint8_t>(), cuda::std::span<const uint8_t>(), nullptr, 0,
+        scheme));
+    EXPECT_THROW(fss::gpu::detail::DcfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const int4>(),
+        cuda::std::span<const uint8_t>(), cuda::std::span<const uint8_t>(), nullptr, -1,
+        scheme), std::invalid_argument);
+  }
+  {
+    fss::GrottoDcf<8, Prg, uint8_t> scheme{Prg(1, 2)};
+    EXPECT_NO_THROW(fss::gpu::detail::GrottoDcfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint8_t>(),
+        cuda::std::span<const uint8_t>(), nullptr, 0, scheme));
+    EXPECT_THROW(fss::gpu::detail::GrottoDcfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint8_t>(),
+        cuda::std::span<const uint8_t>(), nullptr, -1, scheme), std::invalid_argument);
+  }
+  {
+    fss::HalfTreeDpf<8, BytesGroup, CcrHash, uint8_t> scheme{
+        fss_test::Ccr(fss_test::TestCcrHash(1, 2)), hash_key};
+    EXPECT_NO_THROW(fss::gpu::detail::HalfTreeDpfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint8_t>(),
+        cuda::std::span<const uint8_t>(), nullptr, 0, scheme));
+    EXPECT_THROW(fss::gpu::detail::HalfTreeDpfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint8_t>(),
+        cuda::std::span<const uint8_t>(), nullptr, -1, scheme), std::invalid_argument);
+  }
+  {
+    fss::PackedHalfTreeDpf<10, 1, CcrHash, uint16_t> scheme{
+        fss_test::Ccr(fss_test::TestCcrHash(1, 2)), hash_key};
+    EXPECT_NO_THROW(fss::gpu::detail::PackedHalfTreeDpfEvalPointGpu(false,
+        cuda::std::span<const int4>(), cuda::std::span<const int4>(),
+        cuda::std::span<const uint16_t>(), nullptr, 0, scheme));
+    EXPECT_THROW(fss::gpu::detail::PackedHalfTreeDpfEvalPointGpu(false,
+        cuda::std::span<const int4>(), cuda::std::span<const int4>(),
+        cuda::std::span<const uint16_t>(), nullptr, -1, scheme), std::invalid_argument);
+  }
+  {
+    fss::HalfTreeGrottoDcf<8, CcrHash, uint8_t> scheme{
+        fss_test::Ccr(fss_test::TestCcrHash(1, 2)), hash_key};
+    EXPECT_NO_THROW(fss::gpu::detail::HalfTreeGrottoDcfEvalPointGpu(false,
+        cuda::std::span<const int4>(), cuda::std::span<const int4>(),
+        cuda::std::span<const uint8_t>(), nullptr, 0, scheme));
+    EXPECT_THROW(fss::gpu::detail::HalfTreeGrottoDcfEvalPointGpu(false,
+        cuda::std::span<const int4>(), cuda::std::span<const int4>(),
+        cuda::std::span<const uint8_t>(), nullptr, -1, scheme), std::invalid_argument);
+  }
+  {
+    const int4 iv[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+    const cuda::std::span<const int4, 2> iv_span(iv, 2);
+    fss::Vdpf<8, BytesGroup, Prg, fss::hash::Blake3, fss::hash::Blake3, uint16_t> scheme{
+        Prg(1, 2), fss::hash::Blake3(iv_span), fss::hash::Blake3(iv_span)};
+    EXPECT_NO_THROW(fss::gpu::detail::VdpfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint16_t>(),
+        cuda::std::span<const cuda::std::array<int4, 4>>(),
+        cuda::std::span<const uint16_t>(), nullptr,
+        cuda::std::span<cuda::std::array<int4, 4>>(), 0, scheme));
+    EXPECT_THROW(fss::gpu::detail::VdpfEvalPointGpu(false, cuda::std::span<const int4>(),
+        cuda::std::span<const int4>(), cuda::std::span<const uint16_t>(),
+        cuda::std::span<const cuda::std::array<int4, 4>>(),
+        cuda::std::span<const uint16_t>(), nullptr,
+        cuda::std::span<cuda::std::array<int4, 4>>(), -1, scheme), std::invalid_argument);
+  }
+}

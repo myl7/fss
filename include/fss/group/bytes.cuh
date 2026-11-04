@@ -34,9 +34,14 @@ public:
   /** Construct the additive identity. */
   __host__ __device__ Bytes() : val_({0, 0, 0, 0}) {}
 
-  /** Wrap a clamped block as a group element. */
+  /**
+   * Wrap a clamped block as a group element.
+   * @pre buf.w & 1 == 0. A violation aborts with a diagnostic in Debug builds
+   * on both the host and the device, and is undefined behavior in Release
+   * builds.
+   */
   __host__ __device__ static Bytes From(int4 buf) {
-    assert((buf.w & 1) == 0);
+    util::RequireArg((buf.w & 1) == 0, "Bytes::From: the block must have a zero LSB");
     return Bytes(buf);
   }
 

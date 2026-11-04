@@ -1108,3 +1108,96 @@ TEST(VdpfSplitForm, WideUint128) {
 TEST(VdpfSplitForm, WideUint128Uint127Group) {
   CheckVdpfSplitForm<128, __uint128_t, Uint127Group>((static_cast<__uint128_t>(1) << 127) + 7);
 }
+
+TEST(VdpfPreconditionTest, RejectsInvalidHostInputs) {
+  using Scheme = fss::Vdpf<8, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3,
+      fss::hash::Blake3, uint16_t>;
+  const int4 iv[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+  const cuda::std::span<const int4, 2> iv_span(iv, 2);
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::hash::Blake3(iv_span),
+      fss::hash::Blake3(iv_span)};
+  constexpr int kInBits = 8;
+  std::vector<typename Scheme::Cw> cws(kInBits + 1);
+  int4 cs[4] = {};
+  const auto cs_span = cuda::std::span<const int4, 4>(cs, 4);
+  std::vector<int4> ys(size_t{1} << kInBits);
+  cuda::std::array<int4, 4> pi{};
+  const int4 s0 = {0, 0, 0, 0};
+
+  EXPECT_THROW((void)scheme.EvalRange(false, 3, 2, s0, cuda::std::span<const typename Scheme::Cw>(cws),
+                        cs_span, cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, uint16_t{300}, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), cs_span,
+                        cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        cuda::std::span<int4>(ys.data(), 7), pi),
+      std::invalid_argument);
+
+  std::vector<uint16_t> xs(1, 0);
+  EXPECT_THROW((void)scheme.BatchEval(false, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), cs_span,
+                        cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.BatchEval(false, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        cuda::std::span<const uint16_t>(), cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.BatchEval(false, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.BatchEvalMerkle(false, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), cs_span,
+                        cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.BatchEvalMerkle(false, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        cuda::std::span<const uint16_t>(), cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.BatchEvalMerkle(false, s0,
+                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.ProveMerkle(
+                        cuda::std::span<const cuda::std::array<int4, 4>>(), cs_span, pi),
+      std::invalid_argument);
+}
+
+// The terminal LSB is a caller precondition of the range and full-domain
+// entries, unlike the buffer checks above: Debug builds abort on the calling
+// thread, and Release builds do not check it.
+#ifndef NDEBUG
+TEST(VdpfPreconditionTest, AbortsOnBadTerminalInDebug) {
+  using Scheme = fss::Vdpf<8, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3,
+      fss::hash::Blake3, uint16_t>;
+  const int4 iv[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+  const cuda::std::span<const int4, 2> iv_span(iv, 2);
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::hash::Blake3(iv_span),
+      fss::hash::Blake3(iv_span)};
+  std::vector<typename Scheme::Cw> cws(9);
+  int4 cs[4] = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}};
+  const auto cs_span = cuda::std::span<const int4, 4>(cs, 4);
+  std::vector<int4> ys(size_t{1} << 8);
+  cuda::std::array<int4, 4> pi{};
+  const int4 s0 = {0, 0, 0, 0};
+  cws[8].s.w = 1;
+  EXPECT_DEATH((void)scheme.EvalRange(false, 0, uint16_t{7}, s0,
+                       cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                       cuda::std::span<int4>(ys), pi),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const typename Scheme::Cw>(cws),
+                       cs_span, cuda::std::span<int4>(ys), pi),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.EvalAllMerkle(false, s0,
+                       cuda::std::span<const typename Scheme::Cw>(cws),
+                       cs_span, cuda::std::span<int4>(ys), pi),
+      "Assertion.*failed");
+}
+#endif  // NDEBUG

@@ -31,6 +31,7 @@
 #include <fss/prg/chacha.cuh>
 #include <cuda_runtime.h>
 #include <cassert>
+#include <fss/util.cuh>
 
 namespace fss::prp {
 
@@ -50,6 +51,8 @@ public:
    * @param x Input in [0, domain).
    * @param domain Domain size. Must be >= 2.
    * @return Output in [0, domain).
+   * @pre x < domain. A violation aborts with a diagnostic in Debug builds on
+   * both the host and the device, and is undefined behavior in Release builds.
    */
   __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
 
@@ -88,7 +91,7 @@ __host__ __device__ inline __uint128_t ChaChaFeistel::Unpack(int4 v) {
 }
 
 __host__ __device__ inline __uint128_t ChaChaFeistel::Permu(int4 seed, __uint128_t x, __uint128_t domain) {
-  assert(x < domain);
+  util::RequireArg(x < domain, "ChaChaFeistel::Permu: x must be inside the permutation domain");
   if (domain <= 1) return 0;
 
   int b = CeilLog2(domain);

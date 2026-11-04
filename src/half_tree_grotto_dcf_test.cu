@@ -233,8 +233,36 @@ TEST(HalfTreeGrottoDcfCwsTest, Depth9WideInput) {
   CheckHalfTreeGrottoSplit<16, uint64_t>(12345, 3);
 }
 
-#ifndef NDEBUG
+// The Preprocess, PreprocessOwned, and split EvalAll entries are host
+// boundaries and keep throwing; the split Gen and split Eval are low-level
+// entries shared with the device and abort in Debug.
 TEST(HalfTreeGrottoDcfCwsTest, RejectsInvalidInputs) {
+  using Prg = fss_test::TestCcrHash;
+  using Scheme = fss::HalfTreeGrottoDcf<8, fss_test::CcrBackend<Prg>, uint8_t>;
+  constexpr int kDepth = Scheme::kDepth;
+  Scheme scheme{Prg(kNonce0, kNonce1), {0x13572468, 0x2468ace0, 0x0badf00d, 0x7f7f7f7f}};
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  int4 cws[kDepth + 1] = {};
+  int4 blocks[4] = {};
+  bool p[8] = {};
+  const int4 s0 = seeds[0];
+  const auto cws_in = cuda::std::span<const int4>(cws, kDepth + 1);
+
+  // A zero stride is only the batch sentinel, so a non-batch method rejects it.
+  EXPECT_THROW((void)scheme.Preprocess(false, s0, cws_in, blocks, p, 0, 0),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.PreprocessOwned(false, s0, cws_in, 0, 0), std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalAll(false, s0, cws_in, p, 0, 0), std::invalid_argument);
+  // A span that omits the packed-output correction word at cws[kDepth*stride] is rejected.
+  EXPECT_THROW((void)scheme.Preprocess(false, s0, cuda::std::span<const int4>(cws, kDepth),
+                        blocks, p),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, kDepth), p),
+      std::invalid_argument);
+}
+
+#ifndef NDEBUG
+TEST(HalfTreeGrottoDcfCwsTest, AbortsOnInvalidLowLevelInputsInDebug) {
   using Prg = fss_test::TestCcrHash;
   using Scheme = fss::HalfTreeGrottoDcf<8, fss_test::CcrBackend<Prg>, uint8_t>;
   constexpr int kDepth = Scheme::kDepth;
@@ -242,34 +270,21 @@ TEST(HalfTreeGrottoDcfCwsTest, RejectsInvalidInputs) {
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
   const cuda::std::span<const int4, 2> seed_span(seeds, 2);
   int4 cws[kDepth + 1] = {};
-  int4 blocks[4] = {};
-  bool p[8] = {};
   const auto cws_out = cuda::std::span<int4>(cws, kDepth + 1);
   const auto cws_in = cuda::std::span<const int4>(cws, kDepth + 1);
   const int4 s0 = seeds[0];
 
-  // A zero stride is only the batch sentinel, so a non-batch method rejects it.
-  EXPECT_DEBUG_DEATH((void)scheme.Gen(cws_out, seed_span, uint8_t{5}, 0), "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, 0), "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Preprocess(false, s0, cws_in, blocks, p, 0, 0),
+  EXPECT_DEATH((void)scheme.Gen(cws_out, seed_span, uint8_t{5}, 0), "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, 0), "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, kDepth), seed_span, uint8_t{5}),
       "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.PreprocessOwned(false, s0, cws_in, 0, 0), "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cws_in, p, 0, 0), "Assertion.*failed");
-  // A span that omits the packed-output correction word at cws[kDepth*stride] is rejected.
-  EXPECT_DEBUG_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, kDepth), seed_span, uint8_t{5}),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, kDepth),
-                        uint8_t{0}),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Preprocess(false, s0, cuda::std::span<const int4>(cws, kDepth),
-                        blocks, p),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, kDepth), p),
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, kDepth),
+                       uint8_t{0}),
       "Assertion.*failed");
   // A stride past the addressable guard is rejected.
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   const size_t overflowing_stride = (kMaxElements - 1) / kDepth + 1;
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, overflowing_stride),
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, overflowing_stride),
       "Assertion.*failed");
 }
 #endif  // NDEBUG

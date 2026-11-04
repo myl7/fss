@@ -499,6 +499,71 @@ TEST(VdmpfGpuArguments, RejectsOversizedQueryCount) {
   EXPECT_THROW(evaluate(std::numeric_limits<int>::max() / 3 + 1), std::invalid_argument);
 }
 
+// The launcher's span checks run on the host before any CUDA call.
+TEST(VdmpfGpuArguments, BatchEvalMerkleGpuRejectsShortSpans) {
+  using Vdmpf = fss::Vdmpf<8, 30, 4, Group, Prg, ProofHash, ProofHash, Prp, uint8_t>;
+  Vdmpf scheme{Prg{23, 47}, MakeProofHash(), MakeProofHash(), Prp{}};
+  constexpr int kBuckets = Vdmpf::kBucketCount;
+  std::vector<int4> s0s(kBuckets);
+  std::vector<Vdmpf::Cw> cws(size_t{kBuckets} * 5);
+  std::vector<cuda::std::array<int4, 4>> cs(kBuckets);
+  std::vector<int4> ocws(kBuckets);
+  uint8_t xs[1] = {0};
+  int4 ys[1] = {};
+  cuda::std::array<int4, 4> pi{};
+  const auto all_xs = cuda::std::span<const uint8_t>(xs, 1);
+  const auto all_s0s = cuda::std::span<const int4>(s0s);
+  const auto all_cws = cuda::std::span<const Vdmpf::Cw>(cws);
+  const auto all_cs = cuda::std::span<const cuda::std::array<int4, 4>>(cs);
+  const auto all_ocws = cuda::std::span<const int4>(ocws);
+
+  EXPECT_THROW(fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false,
+                   cuda::std::span<const uint8_t>(), ys, &pi, 1, int4{}, 1,
+                   Vdmpf::kBucketSize, all_s0s, all_cws, all_cs, all_ocws, scheme),
+      std::invalid_argument);
+  EXPECT_THROW(fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, all_xs, ys, &pi, 1, int4{}, 1,
+                   Vdmpf::kBucketSize, cuda::std::span<const int4>(), all_cws, all_cs,
+                   all_ocws, scheme),
+      std::invalid_argument);
+  EXPECT_THROW(fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, all_xs, ys, &pi, 1, int4{}, 1,
+                   Vdmpf::kBucketSize, all_s0s,
+                   cuda::std::span<const Vdmpf::Cw>(cws.data(), 1), all_cs, all_ocws, scheme),
+      std::invalid_argument);
+  EXPECT_THROW(fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, all_xs, ys, &pi, 1, int4{}, 1,
+                   Vdmpf::kBucketSize, all_s0s, all_cws,
+                   cuda::std::span<const cuda::std::array<int4, 4>>(cs.data(), kBuckets - 1),
+                   all_ocws, scheme),
+      std::invalid_argument);
+  EXPECT_THROW(fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false, all_xs, ys, &pi, 1, int4{}, 1,
+                   Vdmpf::kBucketSize, all_s0s, all_cws, all_cs,
+                   cuda::std::span<const int4>(), scheme),
+      std::invalid_argument);
+}
+
+// Zero queries still produce a proof, so only the check seeds and the proof
+// output are required: a null ys is accepted, while a missing proof output or
+// short check seeds are rejected on the host before the fold launch. The
+// checks run before any CUDA call, so no device is needed.
+TEST(VdmpfGpuArguments, ZeroQueriesNeedOnlyProofBuffers) {
+  using Vdmpf = fss::Vdmpf<8, 30, 4, Group, Prg, ProofHash, ProofHash, Prp, uint8_t>;
+  Vdmpf scheme{Prg{23, 47}, MakeProofHash(), MakeProofHash(), Prp{}};
+  constexpr int kBuckets = Vdmpf::kBucketCount;
+  std::vector<cuda::std::array<int4, 4>> cs(kBuckets);
+  cuda::std::array<int4, 4> pi{};
+
+  EXPECT_THROW(fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false,
+                   cuda::std::span<const uint8_t>(), nullptr, nullptr, 0, {}, 0, 0,
+                   {}, {}, cuda::std::span<const cuda::std::array<int4, 4>>(cs),
+                   cuda::std::span<const int4>(), scheme),
+      std::invalid_argument);
+  EXPECT_THROW(fss::gpu::detail::VdmpfBatchEvalMerkleGpu(false,
+                   cuda::std::span<const uint8_t>(), nullptr, &pi, 0, {}, 0, 0,
+                   {}, {},
+                   cuda::std::span<const cuda::std::array<int4, 4>>(cs.data(), kBuckets - 1),
+                   cuda::std::span<const int4>(), scheme),
+      std::invalid_argument);
+}
+
 // Validation-only paths of the public entry; they run without a device.
 TEST(VdmpfGpuArguments, PublicBatchRejectsInvalidInputs) {
   using Vdmpf = fss::Vdmpf<8, 30, 4, Group, Prg, ProofHash, ProofHash, Prp, uint8_t>;

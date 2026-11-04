@@ -406,3 +406,46 @@ TEST(DmpfGpuBucketBound, EvalAllGpuBoundary) {
 
 }  // namespace bucket_bound
 }  // namespace
+
+// The span checks run on the host before any CUDA call.
+TEST(DmpfBatchEvalGpu, RejectsInvalidSpansBeforeLaunch) {
+  using Scheme = fss::Dmpf<16, 30, 14, fss::group::Bytes, fss::prg::ChaCha<2>,
+      fss::prp::ChaChaFeistel, uint16_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(1, 2), fss::prp::ChaChaFeistel{}};
+  const int4 sigma = {1, 2, 3, 4};
+  const int4 s0s[1] = {{5, 6, 7, 8}};
+  Scheme::Cw cws[15] = {};
+  const uint16_t xs[1] = {0};
+  int4 ys[1] = {};
+
+  // Short xs.
+  EXPECT_THROW(fss::gpu::detail::DmpfBatchEvalGpu<4>(false, cuda::std::span<const uint16_t>(),
+                   ys, 1, sigma, 1, Scheme::kBucketSize, cuda::std::span<const int4>(s0s, 1),
+                   cuda::std::span<const Scheme::Cw>(cws, 15), scheme),
+      std::invalid_argument);
+  // Short cws.
+  EXPECT_THROW(fss::gpu::detail::DmpfBatchEvalGpu<4>(false, cuda::std::span<const uint16_t>(xs, 1),
+                   ys, 1, sigma, 1, Scheme::kBucketSize, cuda::std::span<const int4>(s0s, 1),
+                   cuda::std::span<const Scheme::Cw>(cws, 1), scheme),
+      std::invalid_argument);
+  // Short s0s.
+  EXPECT_THROW(fss::gpu::detail::DmpfBatchEvalGpu<4>(false, cuda::std::span<const uint16_t>(xs, 1),
+                   ys, 1, sigma, 1, Scheme::kBucketSize, cuda::std::span<const int4>(),
+                   cuda::std::span<const Scheme::Cw>(cws, 15), scheme),
+      std::invalid_argument);
+}
+
+// Zero points write no output, so empty spans and a null ys are a valid no-op,
+// while a negative count is still rejected. The check runs before any CUDA
+// call, so no device is needed.
+TEST(DmpfBatchEvalGpu, ZeroPointsWithEmptySpansIsNoOp) {
+  using Scheme = fss::Dmpf<16, 30, 14, fss::group::Bytes, fss::prg::ChaCha<2>,
+      fss::prp::ChaChaFeistel, uint16_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(1, 2), fss::prp::ChaChaFeistel{}};
+  EXPECT_NO_THROW(fss::gpu::detail::DmpfBatchEvalGpu<4>(false, cuda::std::span<const uint16_t>(),
+      nullptr, 0, int4{}, 1, Scheme::kBucketSize, cuda::std::span<const int4>(),
+      cuda::std::span<const Scheme::Cw>(), scheme));
+  EXPECT_THROW(fss::gpu::detail::DmpfBatchEvalGpu<4>(false, cuda::std::span<const uint16_t>(),
+      nullptr, -1, int4{}, 1, Scheme::kBucketSize, cuda::std::span<const int4>(),
+      cuda::std::span<const Scheme::Cw>(), scheme), std::invalid_argument);
+}

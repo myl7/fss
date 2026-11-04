@@ -49,6 +49,7 @@
 #include <memory>
 #include <cuda/std/span>
 #include <utility>
+#include <stdexcept>
 
 namespace fss {
 
@@ -168,6 +169,9 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
    * and cws has at least kDepth*stride+1 elements.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride or capacity violation aborts with a diagnostic in Debug
+   * builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    */
   __host__ __device__ bool Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       In x, size_t stride = 1);
@@ -232,6 +236,8 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
    * and cws has at least kDepth*stride+1 elements.
    * @pre Packed-block and parity-tree element counts and byte sizes fit size_t.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than kDepth*stride+1.
    * @post ParityTreeView{blocks, p} can be passed to Eval() and EvalAll().
    */
   void Preprocess(bool b, int4 s0, cuda::std::span<const int4> cws, int4 blocks[],
@@ -273,6 +279,8 @@ public:
    * @return Move-only owner of the populated host storage.
    * @pre stride > 0 and cws holds at least kDepth*stride+1 elements.
    * @pre All allocated element counts and byte sizes fit size_t.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than kDepth*stride+1.
    */
   OwnedPackedParityTree<HalfTreeGrottoDcf> PreprocessOwned(bool b, int4 s0,
       cuda::std::span<const int4> cws, int par_depth = 0, size_t stride = 1);
@@ -323,6 +331,8 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4), stride <= (M-1)/kDepth
    * and cws has at least kDepth*stride+1 elements.
    * @pre The output and packed-block element counts and byte sizes fit size_t.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than kDepth*stride+1.
    * @post ys[x] is this party's XOR share of alpha <= x, using the leaf-prefix route.
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, bool ys[],
@@ -577,11 +587,13 @@ template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 __host__ __device__ inline bool HalfTreeGrottoDcf<in_bits, Hash, In>::Eval(bool b, int4 s0,
     cuda::std::span<const int4> cws, In x, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "HalfTreeGrottoDcf::Eval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth),
+      "HalfTreeGrottoDcf::Eval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "HalfTreeGrottoDcf::Eval: cws must hold kDepth*stride+1 elements");
   return EvalCws(b, s0, CwsView{cws.data(), stride}, x);
 }
 
@@ -607,11 +619,14 @@ template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 inline void HalfTreeGrottoDcf<in_bits, Hash, In>::Preprocess(bool b, int4 s0,
     cuda::std::span<const int4> cws, int4 blocks[], bool p[], int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0)
+    throw std::invalid_argument("HalfTreeGrottoDcf::Preprocess: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(kDepth))
+    throw std::invalid_argument("HalfTreeGrottoDcf::Preprocess: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("HalfTreeGrottoDcf::Preprocess: cws must hold kDepth*stride+1 elements");
   PreprocessCws(b, s0, CwsView{cws.data(), stride}, blocks, p, par_depth);
 }
 
@@ -670,11 +685,14 @@ template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 inline void HalfTreeGrottoDcf<in_bits, Hash, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, bool ys[], int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0)
+    throw std::invalid_argument("HalfTreeGrottoDcf::EvalAll: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(kDepth))
+    throw std::invalid_argument("HalfTreeGrottoDcf::EvalAll: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("HalfTreeGrottoDcf::EvalAll: cws must hold kDepth*stride+1 elements");
   EvalAllCws(b, s0, CwsView{cws.data(), stride}, ys, par_depth);
 }
 
@@ -967,11 +985,14 @@ template <int in_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> && CcrHashable<Hash>)
 inline OwnedPackedParityTree<HalfTreeGrottoDcf<in_bits, Hash, In>> HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessOwned(
     bool b, int4 s0, cuda::std::span<const int4> cws, int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(kDepth));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(kDepth) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0)
+    throw std::invalid_argument("HalfTreeGrottoDcf::PreprocessOwned: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(kDepth))
+    throw std::invalid_argument("HalfTreeGrottoDcf::PreprocessOwned: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(kDepth) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("HalfTreeGrottoDcf::PreprocessOwned: cws must hold kDepth*stride+1 elements");
   return PreprocessOwnedCws(b, s0, CwsView{cws.data(), stride}, par_depth);
 }
 
@@ -1023,6 +1044,15 @@ template <int unroll = 4, int in_bits, typename Hash, typename In, typename Quer
 void HalfTreeGrottoDcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
     cuda::std::span<const Query> xs, bool *ys, int nkeys, const HalfTreeGrottoDcf<in_bits, Hash, In> &dcf,
     cudaStream_t stream = 0) {
+  if (nkeys < 0)
+    throw std::invalid_argument("HalfTreeGrottoDcfEvalPointGpu: nkeys must be nonnegative");
+  if (nkeys == 0) return;
+  const size_t count = static_cast<size_t>(nkeys);
+  constexpr size_t kLevels = static_cast<size_t>(HalfTreeGrottoDcf<in_bits, Hash, In>::kDepth) + 1;
+  if (count > SIZE_MAX / kLevels || cws.size() < count * kLevels)
+    throw std::invalid_argument("HalfTreeGrottoDcfEvalPointGpu: cws must hold (kDepth+1)*nkeys elements");
+  if (seeds.size() < count || xs.size() < count || ys == nullptr)
+    throw std::invalid_argument("HalfTreeGrottoDcfEvalPointGpu: seeds, xs, and ys must cover nkeys entries");
   using Descriptor = HalfTreeGrottoGpuKernelDescriptor<in_bits, Hash, In>;
   PackedHalfTreeDpfEvalPointLaunch<unroll, true, in_bits, Descriptor, In, Query, bool>(b, seeds.data(), cws.data(),
       xs.data(), ys, nkeys, fss::detail::SchemeAccess::GetHash(dcf),

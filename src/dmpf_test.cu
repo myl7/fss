@@ -361,3 +361,59 @@ TEST(CuckooHashTest, Compact) {
   }
   EXPECT_EQ(count, t);
 }
+
+TEST(DmpfPreconditionTest, RejectsInvalidHostInputs) {
+  using Scheme = fss::Dmpf<16, 30, 14, BytesGroup, fss::prg::ChaCha<2>, fss::prp::Aes128Feistel, uint16_t>;
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::prp::Aes128Feistel{}};
+  constexpr int kBucketBits = 14;
+  constexpr size_t kCws = static_cast<size_t>(Scheme::kBucketCount) * (kBucketBits + 1);
+  std::vector<typename Scheme::Cw> cws(kCws);
+  std::vector<int4> s0s(static_cast<size_t>(Scheme::kBucketCount) * 2);
+  std::vector<uint16_t> as(30, 0);
+  std::vector<int4> betas(30);
+  int m_rt = 0;
+  __uint128_t b_size_rt = 0;
+  const int4 sigma = {1, 2, 3, 4};
+  const auto full_cws = cuda::std::span<typename Scheme::Cw>(cws);
+  const auto full_s0s = cuda::std::span<const int4>(s0s);
+
+  EXPECT_THROW(scheme.Gen(cuda::std::span<typename Scheme::Cw>(cws.data(), 1), m_rt, b_size_rt,
+                   sigma, full_s0s, cuda::std::span<const uint16_t>(as),
+                   cuda::std::span<const int4>(betas), 30),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Gen(full_cws, m_rt, b_size_rt, sigma,
+                   cuda::std::span<const int4>(s0s.data(), 1), cuda::std::span<const uint16_t>(as),
+                   cuda::std::span<const int4>(betas), 30),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Gen(full_cws, m_rt, b_size_rt, sigma, full_s0s,
+                   cuda::std::span<const uint16_t>(as), cuda::std::span<const int4>(betas), 31),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Gen(full_cws, m_rt, b_size_rt, sigma, full_s0s,
+                   cuda::std::span<const uint16_t>(as), cuda::std::span<const int4>(betas),
+                   Scheme::kMinPoints - 1),
+      std::invalid_argument);
+
+  const __uint128_t b_rt = Scheme::kBucketSize;
+  const auto bucket_s0s = cuda::std::span<const int4, Scheme::kBucketCount>(
+      s0s.data(), static_cast<size_t>(Scheme::kBucketCount));
+  const auto one_x = cuda::std::span<const uint16_t>(as.data(), 1);
+  std::vector<int4> ys(1);
+  EXPECT_THROW(scheme.BatchEval(false, sigma, b_rt, bucket_s0s,
+                   cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), one_x,
+                   cuda::std::span<int4>(ys)),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.BatchEval(false, sigma, b_rt, bucket_s0s,
+                   cuda::std::span<const typename Scheme::Cw>(cws), one_x,
+                   cuda::std::span<int4>()),
+      std::invalid_argument);
+
+  std::vector<int4> full_ys(size_t{1} << 16);
+  EXPECT_THROW(scheme.EvalAll(false, sigma, b_rt, bucket_s0s,
+                   cuda::std::span<const typename Scheme::Cw>(cws.data(), 1),
+                   cuda::std::span<int4>(full_ys)),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.EvalAll(false, sigma, b_rt, bucket_s0s,
+                   cuda::std::span<const typename Scheme::Cw>(cws),
+                   cuda::std::span<int4>(full_ys.data(), full_ys.size() - 1)),
+      std::invalid_argument);
+}

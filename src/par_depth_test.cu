@@ -461,6 +461,24 @@ TEST(ParDepthTest, VdpfProveMerkleHonorsZeroParDepth) {
 }
 
 
+// A __host__ __device__ caller proves the helper compiles in both passes.
+__host__ __device__ inline int RequirePositive(int value) {
+  fss::util::RequireArg(value > 0, "RequirePositive: value must be positive");
+  return value;
+}
+
+TEST(UtilTest, RequireArgAcceptsValidHostInput) {
+  EXPECT_EQ(RequirePositive(1), 1);
+}
+
+#ifndef NDEBUG
+// A precondition violation is a Debug diagnostic on the host too: Release
+// builds do not check it, so the abort case must not run there.
+TEST(UtilTest, RequireArgAbortsOnHostInDebug) {
+  EXPECT_DEATH(RequirePositive(0), "Assertion.*failed");
+}
+#endif  // NDEBUG
+
 TEST(ParDepthTest, LoopPartitionsAreBoundedAndCoverTheInput) {
   omp_set_num_threads(8);
   EXPECT_EQ(fss::detail::ResolveParPartitions(0, 100), 1);

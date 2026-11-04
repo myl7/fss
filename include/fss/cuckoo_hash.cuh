@@ -25,6 +25,7 @@
 #include <utility>
 #include <random>
 #include <fss/prp.cuh>
+#include <stdexcept>
 
 namespace fss::cuckoo_hash {
 
@@ -40,6 +41,7 @@ namespace fss::cuckoo_hash {
  * @param lambda Target Cuckoo-hashing failure exponent in bits.
  * @return Estimated bucket count m.
  * @pre The estimated bucket count is representable by int.
+ * @throws std::invalid_argument if t is less than 30.
  */
 constexpr int ChBucket(int t, int lambda);
 
@@ -244,7 +246,8 @@ constexpr int ChBucket(int t, int lambda) {
   // Remark 1 applies for t >= 30.
   // For smaller t, the full Lemma 5 formula with Normal CDF factors is needed,
   // but the paper considers t >= 30 to capture nearly all practical use cases.
-  assert(t >= 30);
+  if (t < 30)
+    throw std::invalid_argument("cuckoo_hash::ChBucket: t must be at least 30");
   double td = static_cast<double>(t);
   double e = (static_cast<double>(lambda) + 130.0 + detail::Log2(td)) / 123.5;
   return static_cast<int>(detail::Ceil(e * td));

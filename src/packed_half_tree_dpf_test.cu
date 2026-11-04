@@ -814,7 +814,10 @@ TEST(PackedHalfTreeRange, WideCoordinatesAndLastInput) {
   }
 }
 
-#ifndef NDEBUG
+// The checked preconditions throw std::invalid_argument on the host, so these
+// run in Release too, which is where the old compiled-out assertions were
+// defects. The par_depth assertion is an approved no-effect check and stays
+// Debug-only.
 TEST(PackedHalfTreeRange, RejectsInvalidPreconditions) {
   using Scheme = fss::PackedHalfTreeDpf<8, 8, fss_test::TestCcrHash, uint16_t>;
   Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
@@ -822,19 +825,46 @@ TEST(PackedHalfTreeRange, RejectsInvalidPreconditions) {
   int4 seed{};
   int4 outputs[1]{};
   auto ys = cuda::std::span<int4>(outputs, 1);
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws, ys, -1), "par_depth");
-  EXPECT_DEATH(scheme.EvalRange(false, 2, 1, seed, cws, ys), "first");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 256, seed, cws, ys), "last");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 16, seed, cws, ys), "ys.size");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, nullptr, ys), "cws");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws,
-      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1})), "ys.data");
+  EXPECT_THROW(scheme.EvalRange(false, 2, 1, seed, cws, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 256, seed, cws, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 16, seed, cws, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 0, seed, nullptr, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 0, seed, cws,
+      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1})),
+      std::invalid_argument);
   using Wide = fss::PackedHalfTreeDpf<128, 1, fss_test::TestCcrHash, __uint128_t>;
   Wide wide{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
   Wide::Cw wide_cws[Wide::kDepth + 1]{};
-  EXPECT_DEATH(wide.EvalRange(false, 0, ~__uint128_t{0}, seed, wide_cws, ys), "block_distance");
-}
+  EXPECT_THROW(wide.EvalRange(false, 0, ~__uint128_t{0}, seed, wide_cws, ys),
+      std::invalid_argument);
+#ifndef NDEBUG
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 0, seed, cws, ys, -1), "par_depth >= 0");
 #endif  // NDEBUG
+}
+
+// A block distance past size_t must be rejected before the narrowing cast:
+// narrowing 2^64 to size_t wraps to 0, and a one-block ys span would then pass
+// the size check and let the walk write past the output. Only small output and
+// correction arrays are allocated for this check.
+TEST(PackedHalfTreeRange, RejectsIntervalTooLargeForSizeT) {
+  using Wide = fss::PackedHalfTreeDpf<128, 64, fss_test::TestCcrHash, __uint128_t>;
+  static_assert(Wide::kLanes == 2);
+  Wide wide{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  Wide::Cw wide_cws[Wide::kDepth + 1]{};
+  int4 split_cws[Wide::kDepth + 1] = {};
+  int4 seed{};
+  int4 one_block[1] = {};
+  const __uint128_t last = __uint128_t{1} << 65;
+  // first = 0, last = 2^65: the block distance is 2^64, which one int4 block
+  // cannot hold, and both correction forms share the rejecting helper.
+  EXPECT_THROW((void)wide.EvalRange(false, __uint128_t{0}, last, seed, wide_cws,
+      cuda::std::span<int4>(one_block, 1)),
+      std::invalid_argument);
+  EXPECT_THROW((void)wide.EvalRange(false, __uint128_t{0}, last, seed,
+      cuda::std::span<const int4>(split_cws, Wide::kDepth + 1),
+      cuda::std::span<int4>(one_block, 1)),
+      std::invalid_argument);
+}
 }  // namespace
 
 namespace {
@@ -969,44 +999,74 @@ TEST(PackedHalfTreeDpfCwsTest, WideDomainWidth16) {
   CheckPackedHalfTreeSplit<16, 16, uint16_t>(12345, 0xbeef, 2);
 }
 
-#ifndef NDEBUG
+// The split EvalAll and EvalRange buffer checks stay host-boundary throws; the
+// split Gen and split Eval, including the beta bound, are low-level
+// preconditions.
 TEST(PackedHalfTreeDpfCwsTest, RejectsInvalidInputs) {
+  using Scheme = fss::PackedHalfTreeDpf<10, 1, fss_test::TestCcrHash, uint16_t>;
+  constexpr int kDepth = Scheme::kDepth;
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  int4 cws[kDepth + 1] = {};
+  int4 ys[8] = {};
+  const int4 s0 = seeds[0];
+  const auto cws_in = cuda::std::span<const int4>(cws, kDepth + 1);
+
+  // A zero stride is valid only in a batch method, so a non-batch method rejects it.
+  EXPECT_THROW((void)scheme.EvalAll(false, s0, cws_in, ys, 0, 0), std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{7}, s0, cws_in,
+                        cuda::std::span<int4>(ys, 8), 0, 0),
+      std::invalid_argument);
+  // A span that omits the packed-output correction word at cws[kDepth*stride] is rejected.
+  EXPECT_THROW((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, kDepth), ys),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{7}, s0,
+                        cuda::std::span<const int4>(cws, kDepth),
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  // Reversed and out-of-domain ranges and a short output block array are rejected.
+  EXPECT_THROW((void)scheme.EvalRange(false, uint16_t{3}, uint16_t{2}, s0, cws_in,
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{2000}, s0, cws_in,
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  // [0, 1023] covers exactly 1024 / kLanes = 8 blocks with out_bits = 1, so a
+  // 7-block output is short and the exact 8-block capacity is accepted.
+  EXPECT_THROW((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{1023}, s0, cws_in,
+                        cuda::std::span<int4>(ys, 7)),
+      std::invalid_argument);
+  EXPECT_NO_THROW((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{1023}, s0, cws_in,
+      cuda::std::span<int4>(ys, 8)));
+}
+
+#ifndef NDEBUG
+TEST(PackedHalfTreeDpfCwsTest, AbortsOnInvalidLowLevelInputsInDebug) {
   using Scheme = fss::PackedHalfTreeDpf<10, 1, fss_test::TestCcrHash, uint16_t>;
   constexpr int kDepth = Scheme::kDepth;
   Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
   const cuda::std::span<const int4, 2> seed_span(seeds, 2);
   int4 cws[kDepth + 1] = {};
-  int4 ys[8] = {};
   const auto cws_out = cuda::std::span<int4>(cws, kDepth + 1);
   const auto cws_in = cuda::std::span<const int4>(cws, kDepth + 1);
   const int4 s0 = seeds[0];
 
-  // A zero stride is valid only in a batch method, so a non-batch method rejects it.
-  EXPECT_DEBUG_DEATH((void)scheme.Gen(cws_out, seed_span, uint16_t{5}, 1, 0),
+  EXPECT_DEATH((void)scheme.Gen(cws_out, seed_span, uint16_t{5}, 1, 0),
       "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint16_t{0}, 0), "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cws_in, ys, 0, 0), "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{7}, s0, cws_in,
-                        cuda::std::span<int4>(ys, 8), 0, 0),
+  // beta must fit in out_bits bits; with out_bits = 1 the maximum is 1.
+  EXPECT_DEATH((void)scheme.Gen(cws_out, seed_span, uint16_t{5}, 2), "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint16_t{0}, 0), "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, kDepth), seed_span,
+                       uint16_t{5}, 1),
       "Assertion.*failed");
-  // A span that omits the packed-output correction word at cws[kDepth*stride] is rejected.
-  EXPECT_DEBUG_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, kDepth), seed_span,
-                        uint16_t{5}, 1),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, kDepth),
-                        uint16_t{0}),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, kDepth), ys),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalRange(false, uint16_t{0}, uint16_t{7}, s0,
-                        cuda::std::span<const int4>(cws, kDepth),
-                        cuda::std::span<int4>(ys, 8)),
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, kDepth),
+                       uint16_t{0}),
       "Assertion.*failed");
   // A stride past the addressable guard is rejected.
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   const size_t overflowing_stride = (kMaxElements - 1) / kDepth + 1;
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint16_t{0}, overflowing_stride),
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint16_t{0}, overflowing_stride),
       "Assertion.*failed");
 }
 #endif  // NDEBUG

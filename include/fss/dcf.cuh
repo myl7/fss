@@ -58,6 +58,7 @@
 #include <limits>
 
 #include <cstdint>
+#include <stdexcept>
 
 namespace fss {
 
@@ -195,6 +196,9 @@ public:
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride or capacity violation aborts with a diagnostic in Debug
+   * builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    * @post cws, vws, tr and s0s[party] form the corresponding party's key.
    * @post Only the described prefix is written, and storage beyond it is untouched.
    */
@@ -236,6 +240,9 @@ public:
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
    * @pre vws[in_bits*stride].w & 1 == 0.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride, capacity, or terminal violation aborts with a diagnostic in
+   * Debug builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       cuda::std::span<const int4> vws, In tr, In x, size_t stride = 1);
@@ -256,6 +263,10 @@ public:
    * @pre first <= last and both endpoints are in the input domain.
    * @pre The interval's output count and byte size fit size_t, and ys has at
    * least that many entries. The full input domain need not fit size_t.
+   * @pre cws[in_bits].v.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if first > last, either endpoint is outside
+   * the input domain, the interval does not fit size_t, or ys is too short.
    */
   void EvalRange(bool b, In first, In last, int4 s0, const Cw cws[],
       cuda::std::span<int4> ys, int par_depth = 0);
@@ -288,9 +299,13 @@ public:
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
-   * @pre vws[in_bits*stride].w & 1 == 0.
+   * @pre vws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic
+   * in Debug builds and is undefined behavior in Release builds.
    * @pre The interval's output count and byte size fit size_t, and ys has at
    * least that many entries. The full input domain need not fit size_t.
+   * @throws std::invalid_argument if first > last, either endpoint is outside
+   * the input domain, the interval does not fit size_t, ys is too short, stride
+   * is zero or too large, or the arrays are shorter than in_bits*stride+1.
    */
   void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws,
       cuda::std::span<const int4> vws, In tr, cuda::std::span<int4> ys,
@@ -306,6 +321,8 @@ public:
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    * @pre The output element count and byte size fit size_t, and ys is allocated.
+   * @pre cws[in_bits].v.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
    */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
 
@@ -332,8 +349,11 @@ public:
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements.
-   * @pre vws[in_bits*stride].w & 1 == 0.
+   * @pre vws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic
+   * in Debug builds and is undefined behavior in Release builds.
    * @pre The output element count and byte size fit size_t, and ys is allocated.
+   * @throws std::invalid_argument if stride is zero or too large or the arrays
+   * are shorter than in_bits*stride+1.
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws,
       cuda::std::span<const int4> vws, In tr, int4 ys[], int par_depth = 0, size_t stride = 1);
@@ -974,11 +994,13 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
 inline __host__ __device__ void Dcf<in_bits, Group, Prg, In, pred>::Gen(
     cuda::std::span<int4> cws, cuda::std::span<int4> vws, In &tr,
     cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required && vws.size() >= required);
+  util::RequireArg(stride > 0, "Dcf::Gen: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "Dcf::Gen: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required && vws.size() >= required,
+      "Dcf::Gen: cws and vws must hold in_bits*stride+1 elements");
   Generate(CwsWriter{cws.data(), vws.data(), stride, tr}, s0s.data(), a, b_buf);
 }
 
@@ -1087,11 +1109,13 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
 inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::Eval(
     bool b, int4 s0, cuda::std::span<const int4> cws, cuda::std::span<const int4> vws,
     In tr, In x, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required && vws.size() >= required);
+  util::RequireArg(stride > 0, "Dcf::Eval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "Dcf::Eval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required && vws.size() >= required,
+      "Dcf::Eval: cws and vws must hold in_bits*stride+1 elements");
   return EvalWalk(b, s0, CwsView{cws.data(), vws.data(), tr, stride}, x);
 }
 
@@ -1141,7 +1165,8 @@ inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::EvalWalk(
   }
 
   int4 v_cw_np1_buf = cws[in_bits].v;
-  assert((v_cw_np1_buf.w & 1) == 0);
+  util::RequireArg((v_cw_np1_buf.w & 1) == 0,
+      "Dcf::Eval: the terminal group value must have a zero LSB");
   auto v_cw_np1 = Group::From(v_cw_np1_buf);
 
   if (b) {
@@ -1170,11 +1195,13 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRange(bool b, In first, In last,
     int4 s0, cuda::std::span<const int4> cws, cuda::std::span<const int4> vws, In tr,
     cuda::std::span<int4> ys, int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required && vws.size() >= required);
+  if (stride == 0) throw std::invalid_argument("Dcf::EvalRange: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Dcf::EvalRange: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required || vws.size() < required)
+    throw std::invalid_argument("Dcf::EvalRange: cws and vws must hold in_bits*stride+1 elements");
   EvalRangeCws(b, first, last, s0,
       CwsView{cws.data(), vws.data(), tr, stride}, ys, par_depth);
 }
@@ -1186,16 +1213,25 @@ template <typename Cws>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRangeCws(bool b, In first,
     In last, int4 s0, Cws cws, cuda::std::span<int4> ys, int par_depth) {
   assert(par_depth >= 0);
-  assert(first <= last);
+  if (first > last)
+    throw std::invalid_argument("Dcf::EvalRange: first must not exceed last");
   constexpr In domain_last = [] {
     if constexpr (in_bits == sizeof(In) * 8) return static_cast<In>(~In{0});
     else return static_cast<In>((In{1} << in_bits) - 1);
   }();
-  assert(last <= domain_last);
+  if (last > domain_last)
+    throw std::invalid_argument("Dcf::EvalRange: last must stay inside the input domain");
   const __uint128_t distance = static_cast<__uint128_t>(last) - first;
-  assert(distance < std::numeric_limits<size_t>::max() / sizeof(int4));
+  if (distance >= std::numeric_limits<size_t>::max() / sizeof(int4))
+    throw std::invalid_argument("Dcf::EvalRange: the interval is too large for size_t");
   const size_t count = static_cast<size_t>(distance) + 1;
-  assert(ys.size() >= count);
+  if (ys.size() < count)
+    throw std::invalid_argument("Dcf::EvalRange: ys must hold last-first+1 entries");
+  // The terminal LSB is a caller precondition. Check it on the calling thread,
+  // so a Debug violation aborts there with this entry's name instead of inside
+  // an OpenMP worker; Release builds do not check it.
+  util::RequireArg(!util::GetLsb(cws[in_bits].v),
+      "Dcf::EvalRange: the terminal group value must have a zero LSB");
   const size_t partitions = detail::ResolveParPartitions(par_depth, count);
   detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
     const size_t remainder = count % partitions;
@@ -1218,6 +1254,7 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalRangeSerial(
     In first, In last, In node_first, In node_last, int level) {
   if (level == in_bits) {
     const int4 final_correction = cws[in_bits].v;
+    // The shared entry validated the terminal before parallel dispatch.
     assert(!util::GetLsb(final_correction));
     auto term = Group::From(util::SetLsb(st, false));
     if (util::GetLsb(st)) term = term + Group::From(final_correction);
@@ -1252,11 +1289,13 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
 inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, cuda::std::span<const int4> vws, In tr,
     int4 ys[], int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required && vws.size() >= required);
+  if (stride == 0) throw std::invalid_argument("Dcf::EvalAll: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Dcf::EvalAll: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required || vws.size() < required)
+    throw std::invalid_argument("Dcf::EvalAll: cws and vws must hold in_bits*stride+1 elements");
   EvalAllCws(b, s0, CwsView{cws.data(), vws.data(), tr, stride}, ys, par_depth);
 }
 
@@ -1269,6 +1308,12 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAllCws(
   assert(par_depth >= 0);
   static_assert(detail::FitsFullDomain<int4, in_bits>(),
       "full-domain output count and byte size must fit in size_t");
+
+  // The terminal LSB is a caller precondition. Check it on the calling thread,
+  // so a Debug violation aborts there with this entry's name instead of inside
+  // an OpenMP worker; Release builds do not check it.
+  util::RequireArg(!util::GetLsb(cws[in_bits].v),
+      "Dcf::EvalAll: the terminal group value must have a zero LSB");
 
   int par_depth_ = fss::detail::ResolveParDepth(par_depth, in_bits);
 
@@ -1321,7 +1366,8 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalTree(
 
   if (i == in_bits) {
     int4 v_cw_np1_buf = cws[in_bits].v;
-    assert((v_cw_np1_buf.w & 1) == 0);
+    // The shared entry validated the terminal before parallel dispatch.
+    assert(!util::GetLsb(v_cw_np1_buf));
     auto term = Group::From(s);
     if (t) term = term + Group::From(v_cw_np1_buf);
     if (b) term = -term;
@@ -1490,7 +1536,8 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalBatched8Group(
     }
 
     int4 v_cw_np1_buf = cws[in_bits].v;
-    assert((v_cw_np1_buf.w & 1) == 0);
+    // The shared entry validated the terminal before parallel dispatch.
+    assert(!util::GetLsb(v_cw_np1_buf));
     auto v_cw_np1 = Group::From(v_cw_np1_buf);
     for (int j = 0; j < w; ++j) {
       bool t = util::GetLsb(st_cur[j]);
@@ -1722,7 +1769,15 @@ template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In
 void DcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
     cuda::std::span<const int4> vws, cuda::std::span<const In> tr, cuda::std::span<const Query> xs, int4 *ys,
     int nkeys, const Dcf<in_bits, Group, Prg, In, pred> &dcf, cudaStream_t stream = 0) {
+  if (nkeys < 0)
+    throw std::invalid_argument("DcfEvalPointGpu: nkeys must be nonnegative");
   if (nkeys == 0) return;
+  const size_t count = static_cast<size_t>(nkeys);
+  constexpr size_t kLevels = static_cast<size_t>(in_bits) + 1;
+  if (count > SIZE_MAX / kLevels || cws.size() < count * kLevels || vws.size() < count * kLevels)
+    throw std::invalid_argument("DcfEvalPointGpu: cws and vws must hold (in_bits+1)*nkeys elements");
+  if (seeds.size() < count || tr.size() < count || xs.size() < count || ys == nullptr)
+    throw std::invalid_argument("DcfEvalPointGpu: seeds, tr, xs, and ys must cover nkeys entries");
   using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
   using Descriptor = DcfGpuKernelDescriptor<in_bits, GroupTag, Prg, In, pred>;
   constexpr int kBs = 256;

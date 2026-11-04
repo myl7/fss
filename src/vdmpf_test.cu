@@ -561,14 +561,26 @@ protected:
     EXPECT_DEATH(
         (void)scheme.ProveMerkle(k0.sigma, k0.b_size_rt, rows.cs, empty_xs, empty_proofs, pi),
         "Assertion.*failed");
-    EXPECT_DEATH((void)scheme.Prove(k0.sigma, k0.b_size_rt, rows.cs,
-                     cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
-        "Assertion.*failed");
-    EXPECT_DEATH((void)scheme.ProveMerkle(k0.sigma, k0.b_size_rt, rows.cs,
-                     cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
-        "Assertion.*failed");
   }
 #endif  // NDEBUG
+
+  // A nonempty xs with too few proof values is rejected by an explicit check
+  // that also fires in Release, so it throws instead of tripping an assertion.
+  void TestSplitRejectsShortProofValues() {
+    typename VdmpfType::Key k0, k1;
+    GenKeys(k0, k1);
+    VdmpfType scheme{prg, xor_hash, hash_, prp_};
+    fss_test::MultiRows<VdmpfType> rows(k0);
+    std::vector<uint16_t> xs(alphas, alphas + kT);
+    cuda::std::array<int4, 4> pi;
+    cuda::std::span<const typename VdmpfType::EvalProof> empty_proofs;
+    EXPECT_THROW((void)scheme.Prove(k0.sigma, k0.b_size_rt, rows.cs,
+                     cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
+        std::invalid_argument);
+    EXPECT_THROW((void)scheme.ProveMerkle(k0.sigma, k0.b_size_rt, rows.cs,
+                     cuda::std::span<const uint16_t>(xs), empty_proofs, pi),
+        std::invalid_argument);
+  }
 };
 
 using VdmpfBytesChaChaTest = VdmpfChaChaTest<BytesGroup>;
@@ -624,6 +636,9 @@ TEST_F(VdmpfBytesChaChaTest, SplitRejectsEmptyInputs) {
   TestSplitRejectsEmptyInputs();
 }
 #endif  // NDEBUG
+TEST_F(VdmpfBytesChaChaTest, SplitRejectsShortProofValues) {
+  TestSplitRejectsShortProofValues();
+}
 
 TEST_F(VdmpfUint128ChaChaTest, SplitMatchesFusedBatch) {
   TestSplitMatchesFusedBatch();
@@ -652,6 +667,9 @@ TEST_F(VdmpfSplitInactiveBytesTest, SplitRejectsEmptyInputs) {
   TestSplitRejectsEmptyInputs();
 }
 #endif  // NDEBUG
+TEST_F(VdmpfSplitInactiveBytesTest, SplitRejectsShortProofValues) {
+  TestSplitRejectsShortProofValues();
+}
 
 TEST_F(VdmpfSplitInactiveUint128Test, SplitMatchesFusedWithInactiveBuckets) {
   TestSplitInactiveBuckets();
@@ -779,7 +797,7 @@ TEST(VdmpfSplitDevice, EvalMatchesHostOnDevice) {
   ASSERT_EQ(cudaMemcpy(&device_y_value, device_y, sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
   ASSERT_EQ(cudaMemcpy(&device_proof_value, device_proof, sizeof(EvalProof), cudaMemcpyDeviceToHost), cudaSuccess);
   EXPECT_EQ(memcmp(&device_y_value, &host_y, sizeof(int4)), 0);
-  EXPECT_EQ(memcmp(&device_proof_value, &host_proof, sizeof(EvalProof)), 0);
+  EXPECT_EQ(std::memcmp(&device_proof_value, &host_proof, sizeof(EvalProof)), 0);
   EXPECT_EQ(cudaFree(device_s0s), cudaSuccess);
   EXPECT_EQ(cudaFree(device_cws), cudaSuccess);
   EXPECT_EQ(cudaFree(device_cs), cudaSuccess);
@@ -928,3 +946,82 @@ TEST(VdmpfGeneration, InnerVdpfFailurePreservesInputs) {
 }
 }  // namespace multi_point_domain
 }  // namespace
+
+TEST(VdmpfPreconditionTest, RejectsInvalidHostInputs) {
+  using Scheme = fss::Vdmpf<16, 30, 14, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3,
+      fss::hash::Blake3, fss::prp::Aes128Feistel, uint16_t>;
+  const int4 iv[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
+  const cuda::std::span<const int4, 2> iv_span(iv, 2);
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::hash::Blake3(iv_span),
+      fss::hash::Blake3(iv_span), fss::prp::Aes128Feistel{}};
+  constexpr int kBucketBits = 14;
+  constexpr size_t kBuckets = Scheme::kBucketCount;
+  std::vector<typename Scheme::Cw> cws(kBuckets * (kBucketBits + 1));
+  std::vector<int4> cs(kBuckets * 4);
+  std::vector<int4> s0s(kBuckets * 2);
+  std::vector<uint16_t> as(30, 0);
+  std::vector<int4> betas(30);
+  int m_rt = 0;
+  __uint128_t b_size_rt = 0;
+  const int4 sigma = {1, 2, 3, 4};
+  const auto full_cws = cuda::std::span<typename Scheme::Cw>(cws);
+  auto full_cs = cuda::std::span<int4>(cs);
+  const auto full_s0s = cuda::std::span<const int4>(s0s);
+  const auto one_as = cuda::std::span<const uint16_t>(as.data(), 1);
+
+  EXPECT_THROW(scheme.Gen(cuda::std::span<typename Scheme::Cw>(cws.data(), 1), full_cs, m_rt,
+                   b_size_rt, sigma, full_s0s, one_as, cuda::std::span<const int4>(betas), 30),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Gen(full_cws, cuda::std::span<int4>(cs.data(), 1), m_rt, b_size_rt,
+                   sigma, full_s0s, one_as, cuda::std::span<const int4>(betas), 30),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Gen(full_cws, full_cs, m_rt, b_size_rt, sigma,
+                   cuda::std::span<const int4>(s0s.data(), 1), one_as,
+                   cuda::std::span<const int4>(betas), 30),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Gen(full_cws, full_cs, m_rt, b_size_rt, sigma, full_s0s, one_as,
+                   cuda::std::span<const int4>(betas), 31),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Gen(full_cws, full_cs, m_rt, b_size_rt, sigma, full_s0s, one_as,
+                   cuda::std::span<const int4>(betas), Scheme::kMinPoints - 1),
+      std::invalid_argument);
+
+  const __uint128_t b_rt = Scheme::kBucketSize;
+  const auto bucket_s0s = cuda::std::span<const int4, Scheme::kBucketCount>(s0s.data(), kBuckets);
+  std::vector<typename Scheme::EvalProof> proofs(1);
+  cuda::std::array<int4, 4> pi{};
+  EXPECT_THROW(scheme.Prove(sigma, b_rt, cuda::std::span<const int4>(cs.data(), 1), one_as,
+                   cuda::std::span<const typename Scheme::EvalProof>(proofs), pi),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.Prove(sigma, b_rt, full_cs, one_as,
+                   cuda::std::span<const typename Scheme::EvalProof>(), pi),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.ProveMerkle(sigma, b_rt, cuda::std::span<const int4>(cs.data(), 1),
+                   one_as, cuda::std::span<const typename Scheme::EvalProof>(proofs), pi),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.ProveMerkle(sigma, b_rt, full_cs, one_as,
+                   cuda::std::span<const typename Scheme::EvalProof>(), pi),
+      std::invalid_argument);
+
+  std::vector<int4> ys(1);
+  EXPECT_THROW(scheme.BatchEval(false, sigma, b_rt, bucket_s0s,
+                   cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), full_cs, one_as,
+                   cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.BatchEval(false, sigma, b_rt, bucket_s0s, full_cws,
+                   cuda::std::span<const int4>(cs.data(), 1), one_as, cuda::std::span<int4>(ys),
+                   pi),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.BatchEval(false, sigma, b_rt, bucket_s0s, full_cws, full_cs, one_as,
+                   cuda::std::span<int4>(), pi),
+      std::invalid_argument);
+
+  std::vector<int4> full_ys(size_t{1} << 16);
+  EXPECT_THROW(scheme.EvalAll(false, sigma, b_rt, bucket_s0s,
+                   cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), full_cs,
+                   cuda::std::span<int4>(full_ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW(scheme.EvalAll(false, sigma, b_rt, bucket_s0s, full_cws, full_cs,
+                   cuda::std::span<int4>(full_ys.data(), full_ys.size() - 1), pi),
+      std::invalid_argument);
+}

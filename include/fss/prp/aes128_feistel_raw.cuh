@@ -27,6 +27,7 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <cassert>
+#include <fss/util.cuh>
 
 #ifndef __CUDA_ARCH__
   #include <wmmintrin.h>
@@ -73,6 +74,8 @@ public:
      * @param x Input in [0, domain).
      * @param domain Domain size. Must be >= 2.
      * @return Output in [0, domain).
+     * @pre x < domain. A violation aborts with a diagnostic in Debug builds and
+     * is undefined behavior in Release builds.
      */
   __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
 
@@ -206,7 +209,7 @@ __host__ __device__ inline __uint128_t Aes128FeistelRaw::Permu(int4 seed, __uint
   fss_host_only_Aes128FeistelRaw_used_in_device_code();
   return 0;
 #else
-  assert(x < domain);
+  util::RequireArg(x < domain, "Aes128FeistelRaw::Permu: x must be inside the permutation domain");
   if (domain <= 1) return 0;
 
   UpdateKeys(seed);

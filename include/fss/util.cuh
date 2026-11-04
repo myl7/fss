@@ -59,6 +59,21 @@ __host__ __device__ inline bool GetLsb(int4 val) {
   return (val.w & 1) != 0;
 }
 
+/**
+ * Check a caller precondition.
+ *
+ * A Debug build aborts with a diagnostic when ok is false, on both the host
+ * and the device. A Release build does not check it, and a violation is
+ * undefined behavior.
+ * @param ok The condition the caller must satisfy.
+ * @param msg The precondition description, naming the function and the
+ * violated requirement.
+ * @ingroup fss_api
+ */
+__host__ __device__ inline void RequireArg(bool ok, const char *msg) {
+  assert(ok && msg);
+}
+
 }  // namespace fss::util
 
 // -----------------------------------------------------------------------------

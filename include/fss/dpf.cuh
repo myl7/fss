@@ -54,6 +54,7 @@
 #include <fss/constraints.cuh>
 
 #include <cstdint>
+#include <stdexcept>
 
 namespace fss {
 
@@ -174,6 +175,9 @@ public:
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride or capacity violation aborts with a diagnostic in Debug
+   * builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    * @post Only the described prefix is written, and storage beyond it is untouched.
    */
   __host__ __device__ void Gen(cuda::std::span<int4> cws, In &tr,
@@ -214,6 +218,9 @@ public:
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre cws[in_bits*stride].w & 1 == 0.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride, capacity, or terminal violation aborts with a diagnostic in
+   * Debug builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       In tr, In x, size_t stride = 1);
@@ -233,6 +240,10 @@ public:
    * @pre The interval's output element count and byte size fit size_t.
    * The full input domain does not need to fit size_t.
    * @pre cws and ys.data() are nonnull and refer to accessible host storage.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if first > last, an endpoint is outside the
+   * input domain, the interval does not fit size_t, or ys is too short.
    * @post ys[x-first] contains this party's output share for each x in the interval.
    * Any extra elements of ys remain unchanged.
    */
@@ -262,8 +273,12 @@ public:
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
-   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic
+   * in Debug builds and is undefined behavior in Release builds.
    * @pre cws and ys.data() are nonnull and refer to accessible host storage.
+   * @throws std::invalid_argument if first > last, an endpoint is outside the
+   * input domain, the interval does not fit size_t, ys is too short, stride is
+   * zero or too large, or cws is shorter than in_bits*stride+1.
    * @post ys[x-first] contains this party's output share for each x in the interval.
    * Any extra elements of ys remain unchanged.
    */
@@ -282,6 +297,8 @@ public:
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    * @pre The output element count and byte size fit size_t.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
    * @post ys[x] contains this party's output share for x.
    */
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
@@ -308,7 +325,10 @@ public:
    * @pre stride > 0.
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
-   * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic
+   * in Debug builds and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if stride is zero or too large or cws is
+   * shorter than in_bits*stride+1.
    * @post ys[x] contains this party's output share for x.
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
@@ -948,7 +968,15 @@ template <int unroll = 4, int in_bits, typename Group, typename Prg, typename In
 void DpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span<const int4> cws,
     cuda::std::span<const In> tr, cuda::std::span<const Query> xs, int4 *ys, int nkeys,
     const Dpf<in_bits, Group, Prg, In> &dpf, cudaStream_t stream = 0) {
+  if (nkeys < 0)
+    throw std::invalid_argument("DpfEvalPointGpu: nkeys must be nonnegative");
   if (nkeys == 0) return;
+  const size_t count = static_cast<size_t>(nkeys);
+  constexpr size_t kLevels = static_cast<size_t>(in_bits) + 1;
+  if (count > SIZE_MAX / kLevels || cws.size() < count * kLevels)
+    throw std::invalid_argument("DpfEvalPointGpu: cws must hold (in_bits+1)*nkeys elements");
+  if (seeds.size() < count || tr.size() < count || xs.size() < count || ys == nullptr)
+    throw std::invalid_argument("DpfEvalPointGpu: seeds, tr, xs, and ys must cover nkeys entries");
   const int4 *out_cw = cws.data() + static_cast<size_t>(in_bits) * static_cast<size_t>(nkeys);
   DpfCoreEvalPointLaunch<unroll, Dpf<in_bits, Group, Prg, In>, In, Query>(b, seeds.data(), cws.data(), tr.data(),
       out_cw, xs.data(), ys, nkeys, fss::detail::SchemeAccess::GetPrg(dpf), stream);
@@ -989,11 +1017,13 @@ template <int in_bits, typename Group, typename Prg, typename In>
 __host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Gen(
     cuda::std::span<int4> cws, In &tr, cuda::std::span<const int4, 2> s0s,
     In a, int4 b_buf, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "Dpf::Gen: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "Dpf::Gen: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "Dpf::Gen: cws must hold in_bits*stride+1 elements");
   Generate(CwsWriter{cws.data(), stride, tr}, s0s.data(), a, b_buf);
 }
 
@@ -1076,11 +1106,13 @@ template <int in_bits, typename Group, typename Prg, typename In>
       Groupable<Group> && Prgable<Prg, 2>)
 __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, In x, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "Dpf::Eval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "Dpf::Eval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "Dpf::Eval: cws must hold in_bits*stride+1 elements");
   return EvalCws(b, s0, CwsView{cws.data(), tr, stride}, x);
 }
 
@@ -1092,7 +1124,8 @@ __host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::EvalCws(
     bool b, int4 s0, Cws cws, In x) {
   int4 state = Walk(b, s0, cws, x, [](bool, bool) {});
   const int4 terminal = cws[in_bits].s;
-  assert((terminal.w & 1) == 0);
+  util::RequireArg((terminal.w & 1) == 0,
+      "Dpf::Eval: the terminal group value must have a zero LSB");
   return ConvertLeaf(b, state, terminal);
 }
 
@@ -1101,7 +1134,8 @@ template <int in_bits, typename Group, typename Prg, typename In>
       Groupable<Group> && Prgable<Prg, 2>)
 inline void Dpf<in_bits, Group, Prg, In>::EvalRange(bool b, In first, In last,
     int4 s0, const Cw cws[], cuda::std::span<int4> ys, int par_depth) {
-  assert(cws != nullptr);
+  if (cws == nullptr)
+    throw std::invalid_argument("Dpf::EvalRange: cws must not be null");
   EvalRangeCws(b, first, last, s0, cws, ys, par_depth);
 }
 
@@ -1111,12 +1145,13 @@ template <int in_bits, typename Group, typename Prg, typename In>
 inline void Dpf<in_bits, Group, Prg, In>::EvalRange(bool b, In first, In last,
     int4 s0, cuda::std::span<const int4> cws, In tr, cuda::std::span<int4> ys,
     int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
-  assert(cws.data() != nullptr);
+  if (stride == 0) throw std::invalid_argument("Dpf::EvalRange: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Dpf::EvalRange: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required || cws.data() == nullptr)
+    throw std::invalid_argument("Dpf::EvalRange: cws must hold in_bits*stride+1 elements");
   EvalRangeCws(b, first, last, s0, CwsView{cws.data(), tr, stride},
       ys, par_depth);
 }
@@ -1128,13 +1163,20 @@ template <typename Cws>
 inline void Dpf<in_bits, Group, Prg, In>::EvalRangeCws(bool b, In first, In last,
     int4 s0, Cws cws, cuda::std::span<int4> ys, int par_depth) {
   assert(par_depth >= 0);
-  assert(first <= last);
-  if constexpr (in_bits < sizeof(In) * 8) assert((last >> in_bits) == 0);
+  if (first > last)
+    throw std::invalid_argument("Dpf::EvalRange: first must not exceed last");
+  if constexpr (in_bits < sizeof(In) * 8) {
+    if ((last >> in_bits) != 0)
+      throw std::invalid_argument("Dpf::EvalRange: last must stay inside the input domain");
+  }
   const __uint128_t difference = static_cast<__uint128_t>(last) - first;
-  assert(difference < std::numeric_limits<size_t>::max() / sizeof(int4));
+  if (difference >= std::numeric_limits<size_t>::max() / sizeof(int4))
+    throw std::invalid_argument("Dpf::EvalRange: the interval is too large for size_t");
   const size_t count = static_cast<size_t>(difference) + 1;
-  assert(ys.size() >= count && ys.data() != nullptr);
-  assert((cws[in_bits].s.w & 1) == 0);
+  if (ys.size() < count || ys.data() == nullptr)
+    throw std::invalid_argument("Dpf::EvalRange: ys must hold last-first+1 entries");
+  util::RequireArg((cws[in_bits].s.w & 1) == 0,
+      "Dpf::EvalRange: the terminal group value must have a zero LSB");
   const size_t partitions = detail::ResolveParPartitions(par_depth, count);
   detail::ParallelFor(par_depth, partitions, [&](size_t partition) {
     const size_t remainder = count % partitions;
@@ -1200,11 +1242,13 @@ template <int in_bits, typename Group, typename Prg, typename In>
       Groupable<Group> && Prgable<Prg, 2>)
 inline void Dpf<in_bits, Group, Prg, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, int4 ys[], int par_depth, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  if (stride == 0) throw std::invalid_argument("Dpf::EvalAll: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Dpf::EvalAll: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("Dpf::EvalAll: cws must hold in_bits*stride+1 elements");
   EvalAllCws(b, s0, CwsView{cws.data(), tr, stride}, ys, par_depth);
 }
 
@@ -1218,11 +1262,21 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalAllCws(
   static_assert(detail::FitsFullDomain<int4, in_bits>(),
       "full-domain output count and byte size must fit in size_t");
 
+  // The terminal LSB is a caller precondition. Check it on the calling thread,
+  // so a Debug violation aborts there with this entry's name instead of inside
+  // an OpenMP worker; Release builds do not check it.
+  util::RequireArg((cws[in_bits].s.w & 1) == 0,
+      "Dpf::EvalAll: the terminal group value must have a zero LSB");
+
   if constexpr (in_bits < kBatchPrefix + kBatchTail) {
     // Domains too small to fill an 8-wide frontier evaluate per input; the
     // point walk is cheaper than the batched machinery at this size.
     constexpr size_t n = size_t{1} << in_bits;
-    fss::detail::ParallelFor(par_depth, n, [&](size_t x) { ys[x] = EvalCws(b, s0, cws, static_cast<In>(x)); });
+    const int4 terminal = cws[in_bits].s;
+    fss::detail::ParallelFor(par_depth, n, [&](size_t x) {
+      const int4 state = Walk(b, s0, cws, static_cast<In>(x), [](bool, bool) {});
+      ys[x] = ConvertLeaf(b, state, terminal);
+    });
     return;
   }
 
@@ -1388,6 +1442,7 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalBatched8Group(
     }
 
     int4 v_cw_np1 = cws[in_bits].s;
+    // The shared entry validated the terminal before parallel dispatch.
     assert((v_cw_np1.w & 1) == 0);
     Group v_cw = Group::From(v_cw_np1);
     for (int j = 0; j < w; ++j) ys[l + j] = ConvertLeaf(b, cur[j], v_cw);

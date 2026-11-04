@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Regression tests for the runtime bucket size. b_size_rt is key metadata
-// that the key generator supplies together with the key, and every public CPU
-// entry validates it: a value outside [kBucketSize, 2^bucket_bits] throws
-// std::invalid_argument before any key array or output is touched. The
+// that the key generator supplies together with the key. The host batch,
+// full-domain, and proof entries validate it: a value outside
+// [kBucketSize, 2^bucket_bits] throws std::invalid_argument before any key
+// array or output is touched. The scalar Vdmpf::Eval is a low-level entry
+// shared with the device: the requirement is a caller precondition that
+// aborts in Debug builds, covered by the NDEBUG-guarded test below. The
 // kRejectedBucket checks exercised by the Locate-level tests are detail-level
-// defense-in-depth inside cuckoo_hash::detail. Only EXPECT_THROW and
-// EXPECT_NO_THROW are used, so both Debug and Release runs cover everything.
+// defense-in-depth inside cuckoo_hash::detail. The throw and no-throw tests
+// run in both Debug and Release.
 //
 // The reproducing configuration is in_bits = 31, bucket_bits = 27 and
 // b_size_rt = 1: y / b_size_rt >= 2^31 for roughly half of the permuted
@@ -96,9 +99,9 @@ TEST(CuckooHashTest, LocateRejectsZeroBucketSize) {
 }
 
 // A b_size_rt outside [kBucketSize, 2^bucket_bits] is a parameter bug: the
-// public entries reject it with std::invalid_argument before any assert or
-// output write. Before the entry validation this call routed with the tampered
-// value and relied on kRejectedBucket to drop every candidate.
+// host batch, full-domain, and proof entries reject it with
+// std::invalid_argument before any assert or output write. The scalar
+// Vdmpf::Eval is a low-level entry and aborts in Debug instead, covered below.
 TEST(CuckooHashTest, DmpfEntriesRejectOutOfRangeCandidates) {
   Scheme scheme{Prg{0x12345678, static_cast<int>(0x9abcdef0u)}, Prp{}};
   constexpr int kBuckets = Scheme::kBucketCount;
@@ -147,7 +150,6 @@ TEST(CuckooHashTest, VdmpfEntriesRejectOutOfRangeCandidates) {
   std::vector<int4> pi(4, int4{1, 1, 1, 1});
   std::vector<VdmpfScheme::EvalProof> proof_values(xs.size());
   std::vector<int4> all;  // Empty: the full-domain entries reject first.
-  int4 y = {1, 1, 1, 1};
 
   auto batch_eval = [&](__uint128_t b_size_rt) {
     scheme.BatchEval(false, kSigma, b_size_rt, cuda::std::span<const int4, kBuckets>(s0s.data(), kBuckets),
@@ -155,11 +157,6 @@ TEST(CuckooHashTest, VdmpfEntriesRejectOutOfRangeCandidates) {
         cuda::std::span<const int4>(cs.data(), cs.size()),
         cuda::std::span<const uint32_t>(xs.data(), xs.size()),
         cuda::std::span<int4>(ys.data(), ys.size()), cuda::std::span<int4, 4>(pi.data(), 4));
-  };
-  auto eval = [&](__uint128_t b_size_rt) {
-    (void)scheme.Eval(false, kSigma, b_size_rt, cuda::std::span<const int4, kBuckets>(s0s.data(), kBuckets),
-        cuda::std::span<const VdmpfScheme::Cw>(cws.data(), cws.size()),
-        cuda::std::span<const int4>(cs.data(), cs.size()), 0, y);
   };
   auto prove = [&](__uint128_t b_size_rt) {
     scheme.Prove(kSigma, b_size_rt, cuda::std::span<const int4>(cs.data(), cs.size()),
@@ -197,7 +194,6 @@ TEST(CuckooHashTest, VdmpfEntriesRejectOutOfRangeCandidates) {
   const __uint128_t oversized = (__uint128_t{1} << kBucketBits) + 1;
   for (__uint128_t b : {__uint128_t{0}, __uint128_t{1}, VdmpfScheme::kBucketSize - 1, oversized}) {
     EXPECT_THROW(batch_eval(b), std::invalid_argument);
-    EXPECT_THROW(eval(b), std::invalid_argument);
     EXPECT_THROW(prove(b), std::invalid_argument);
     EXPECT_THROW(eval_all(b), std::invalid_argument);
     EXPECT_THROW(batch_eval_merkle(b), std::invalid_argument);
@@ -212,8 +208,30 @@ TEST(CuckooHashTest, VdmpfEntriesRejectOutOfRangeCandidates) {
   for (size_t w = 0; w < 4; ++w) {
     EXPECT_EQ(memcmp(&pi[w], &one, sizeof(int4)), 0) << "w = " << w;
   }
-  EXPECT_EQ(memcmp(&y, &one, sizeof(int4)), 0);
 }
+
+#ifndef NDEBUG
+// The scalar Vdmpf::Eval is a low-level entry that both the host and the
+// device share: an out-of-range b_size_rt is a documented precondition, and
+// Debug builds abort with a diagnostic instead of throwing or trapping.
+TEST(CuckooHashTest, VdmpfEvalAbortsOnOutOfRangeBucketSizeInDebug) {
+  VdmpfScheme scheme{Prg{0x12345678, static_cast<int>(0x9abcdef0u)}, Hash{int4{1, 2, 3, 4}},
+      Hash{int4{5, 6, 7, 8}}, Prp{}};
+  constexpr int kBuckets = VdmpfScheme::kBucketCount;
+  std::vector<int4> s0s(kBuckets, int4{0, 0, 0, 0});
+  std::vector<VdmpfScheme::Cw> cws(size_t{kBuckets} * (kBucketBits + 1));
+  std::vector<int4> cs(size_t{kBuckets} * 4);
+  int4 y;
+  const __uint128_t oversized = (__uint128_t{1} << kBucketBits) + 1;
+  for (__uint128_t b : {__uint128_t{0}, __uint128_t{1}, VdmpfScheme::kBucketSize - 1, oversized}) {
+    EXPECT_DEATH((void)scheme.Eval(false, kSigma, b,
+                       cuda::std::span<const int4, kBuckets>(s0s.data(), kBuckets),
+                       cuda::std::span<const VdmpfScheme::Cw>(cws.data(), cws.size()),
+                       cuda::std::span<const int4>(cs.data(), cs.size()), 0, y),
+        "Assertion.*failed");
+  }
+}
+#endif  // NDEBUG
 
 // Both ends of the valid range evaluate without throwing. The full-domain
 // entries are not exercised here; the header comment explains the policy.
@@ -252,3 +270,8 @@ TEST(CuckooHashTest, EntriesAcceptBoundaryBucketSizes) {
 
 }  // namespace
 }  // namespace fss
+
+TEST(CuckooHashTest, ChBucketRejectsFewerThanThirtyElements) {
+  EXPECT_THROW(fss::cuckoo_hash::ChBucket(29, 80), std::invalid_argument);
+  EXPECT_NO_THROW(fss::cuckoo_hash::ChBucket(30, 80));
+}

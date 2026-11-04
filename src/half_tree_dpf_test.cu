@@ -768,7 +768,10 @@ TEST(HalfTreeRange, WideCoordinatesAndLastInput) {
   }
 }
 
-#ifndef NDEBUG
+// The checked preconditions throw std::invalid_argument on the host, so these
+// run in Release too, which is where the old compiled-out assertions were
+// defects. The par_depth assertion is an approved no-effect check and stays
+// Debug-only.
 TEST(HalfTreeRange, RejectsInvalidPreconditions) {
   using Scheme = fss::HalfTreeDpf<5, BytesGroup, fss_test::TestCcrHash, uint8_t>;
   Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
@@ -776,19 +779,22 @@ TEST(HalfTreeRange, RejectsInvalidPreconditions) {
   int4 seed{};
   int4 outputs[4]{};
   auto ys = cuda::std::span<int4>(outputs, 4);
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws, ys, -1), "par_depth");
-  EXPECT_DEATH(scheme.EvalRange(false, 2, 1, seed, cws, ys), "first");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 32, seed, cws, ys), "last");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 4, seed, cws, ys), "ys.size");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, nullptr, ys), "cws");
-  EXPECT_DEATH(scheme.EvalRange(false, 0, 0, seed, cws,
-      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1})), "ys.data");
+  EXPECT_THROW(scheme.EvalRange(false, 2, 1, seed, cws, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 32, seed, cws, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 4, seed, cws, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 0, seed, nullptr, ys), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 0, seed, cws,
+      cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1})),
+      std::invalid_argument);
   using Wide = fss::HalfTreeDpf<128, BytesGroup, fss_test::TestCcrHash, __uint128_t>;
   Wide wide{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
   Wide::Cw wide_cws[129]{};
-  EXPECT_DEATH(wide.EvalRange(false, 0, ~__uint128_t{0}, seed, wide_cws, ys), "distance");
-}
+  EXPECT_THROW(wide.EvalRange(false, 0, ~__uint128_t{0}, seed, wide_cws, ys),
+      std::invalid_argument);
+#ifndef NDEBUG
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 0, seed, cws, ys, -1), "par_depth >= 0");
 #endif  // NDEBUG
+}
 }  // namespace
 
 
@@ -998,8 +1004,46 @@ TEST(HalfTreeDpfCwsTest, TrBitPosition) {
   EXPECT_GT(differences, size_t{0}) << "a wrong control bit position was not caught";
 }
 
-#ifndef NDEBUG
+// The split EvalAll and EvalRange buffer checks and the Cw-form range checks
+// stay host-boundary throws; the split Gen, split Eval, and terminal
+// requirements are low-level preconditions.
 TEST(HalfTreeDpfCwsTest, RejectsInvalidInputs) {
+  using Scheme = fss::HalfTreeDpf<3, BytesGroup, fss_test::TestCcrHash, uint8_t>;
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
+  int4 cws[4] = {};
+  int4 ys[8] = {};
+  const int4 s0 = seeds[0];
+  const auto cws_in = cuda::std::span<const int4>(cws, 4);
+
+  // A zero stride is valid only in a batch method, so a non-batch method rejects it.
+  EXPECT_THROW((void)scheme.EvalAll(false, s0, cws_in, uint8_t{0}, ys, 0, 0),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{7}, s0, cws_in,
+                        uint8_t{0}, cuda::std::span<int4>(ys, 8), 0, 0),
+      std::invalid_argument);
+  // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
+  EXPECT_THROW((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, 3),
+                        uint8_t{0}, ys),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{7}, s0,
+                        cuda::std::span<const int4>(cws, 3), uint8_t{0},
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  // Reversed and out-of-domain ranges and a short output are rejected.
+  EXPECT_THROW((void)scheme.EvalRange(false, uint8_t{3}, uint8_t{2}, s0, cws_in, uint8_t{0},
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{8}, s0, cws_in, uint8_t{0},
+                        cuda::std::span<int4>(ys, 8)),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{7}, s0, cws_in, uint8_t{0},
+                        cuda::std::span<int4>(ys, 7)),
+      std::invalid_argument);
+}
+
+#ifndef NDEBUG
+TEST(HalfTreeDpfCwsTest, AbortsOnInvalidLowLevelInputsInDebug) {
   using Scheme = fss::HalfTreeDpf<3, BytesGroup, fss_test::TestCcrHash, uint8_t>;
   Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
@@ -1012,44 +1056,30 @@ TEST(HalfTreeDpfCwsTest, RejectsInvalidInputs) {
   const auto cws_in = cuda::std::span<const int4>(cws, 4);
   const int4 s0 = seeds[0];
 
-  // A zero stride is valid only in a batch method, so a non-batch method rejects it.
-  EXPECT_DEBUG_DEATH((void)scheme.Gen(cws_out, tr, seed_span, uint8_t{5}, beta, 0),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0}, 0),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cws_in, uint8_t{0}, ys, 0, 0),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{7}, s0, cws_in,
-                        uint8_t{0}, cuda::std::span<int4>(ys, 8), 0, 0),
-      "Assertion.*failed");
-  // A span that omits the terminal slot at cws[in_bits*stride] is rejected.
-  EXPECT_DEBUG_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, 3), tr, seed_span,
-                        uint8_t{5}, beta),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, 3),
-                        uint8_t{0}, uint8_t{0}),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(cws, 3),
-                        uint8_t{0}, ys),
-      "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalRange(false, uint8_t{0}, uint8_t{7}, s0,
-                        cuda::std::span<const int4>(cws, 3), uint8_t{0},
-                        cuda::std::span<int4>(ys, 8)),
-      "Assertion.*failed");
   // The terminal output correction word must have a zero LSB.
   int4 odd_cws[4] = {};
   odd_cws[3].w = 1;
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(odd_cws, 4),
-                        uint8_t{0}, uint8_t{0}),
+  EXPECT_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(odd_cws, 4),
+                       uint8_t{0}, ys),
       "Assertion.*failed");
-  EXPECT_DEBUG_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const int4>(odd_cws, 4),
-                        uint8_t{0}, ys),
+  EXPECT_DEATH((void)scheme.Gen(cws_out, tr, seed_span, uint8_t{5}, beta, 0),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0}, 0),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Gen(cuda::std::span<int4>(cws, 3), tr, seed_span,
+                       uint8_t{5}, beta),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(cws, 3),
+                       uint8_t{0}, uint8_t{0}),
+      "Assertion.*failed");
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cuda::std::span<const int4>(odd_cws, 4),
+                       uint8_t{0}, uint8_t{0}),
       "Assertion.*failed");
   // A stride past the addressable guard is rejected.
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   const size_t overflowing_stride = (kMaxElements - 1) / 3 + 1;
-  EXPECT_DEBUG_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0},
-                        overflowing_stride),
+  EXPECT_DEATH((void)scheme.Eval(false, s0, cws_in, uint8_t{0}, uint8_t{0},
+                       overflowing_stride),
       "Assertion.*failed");
 }
 #endif  // NDEBUG
@@ -1258,3 +1288,42 @@ TEST(HalfTreeDpfSplitGpuTest, SplitLaunchesMatchCwHost) { CheckHalfTreeSplitGpuL
 TEST(HalfTreeDpfSplitGpuTest, WideGroupSplitLaunchesCompile) {
   CheckHalfTreeSplitGpuLaunches<Uint127Group>();
 }
+
+// An odd terminal violates a documented precondition: Debug builds must abort
+// on the calling thread, before any parallel dispatch. Release builds do not
+// check it, so the invalid inputs run only in Debug.
+template <int bits>
+void CheckHalfTreeOddTerminalRejected() {
+  using Scheme = fss::HalfTreeDpf<bits, BytesGroup, fss_test::TestCcrHash, uint8_t>;
+  Scheme scheme{fss_test::TestCcrHash{}, {31, 47, 59, 83}};
+  constexpr size_t kCount = size_t{1} << bits;
+  typename Scheme::Cw cws[bits + 1] = {};
+  int4 split_cws[bits + 1] = {};
+  cws[bits].s.w = 1;
+  split_cws[bits].w = 1;
+  const auto split = cuda::std::span<const int4>(split_cws, bits + 1);
+  const int4 seed = {13, 27, 45, 66};
+  int4 ys[kCount];
+  for (int par_depth : {0, 1}) {
+    SCOPED_TRACE(par_depth);
+    EXPECT_DEATH(scheme.EvalAll(false, seed, cws, ys, par_depth), "Assertion.*failed");
+    EXPECT_DEATH(scheme.EvalAll(false, seed, split, uint8_t{0}, ys, par_depth),
+        "Assertion.*failed");
+    EXPECT_DEATH(scheme.EvalRange(false, uint8_t{0}, static_cast<uint8_t>(kCount - 1), seed,
+                       cws, cuda::std::span<int4>(ys, kCount), par_depth),
+        "Assertion.*failed");
+    EXPECT_DEATH(scheme.EvalRange(false, uint8_t{0}, static_cast<uint8_t>(kCount - 1), seed,
+                       split, uint8_t{0}, cuda::std::span<int4>(ys, kCount), par_depth),
+        "Assertion.*failed");
+  }
+}
+
+#ifndef NDEBUG
+TEST(HalfTreeTerminalTest, SmallDomainRejectsBeforeParallelDispatch) {
+  CheckHalfTreeOddTerminalRejected<3>();
+}
+
+TEST(HalfTreeTerminalTest, BatchedDomainRejectsBeforeParallelDispatch) {
+  CheckHalfTreeOddTerminalRejected<5>();
+}
+#endif  // NDEBUG

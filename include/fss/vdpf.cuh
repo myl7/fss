@@ -52,6 +52,7 @@
 #include <fss/util.cuh>
 #include <fss/constraints.cuh>
 #include <fss/dpf.cuh>
+#include <stdexcept>
 
 namespace fss {
 
@@ -206,6 +207,9 @@ public:
    * @pre The input seeds are unchanged.
    * @pre Inputs and outputs do not overlap.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride or capacity violation aborts with a diagnostic in Debug
+   * builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    * @post Only the described prefix is written, and storage beyond it is untouched.
    * @post On success, the terminal at index in_bits*stride has its LSB zero.
    * Correction-word, control-bit, and cs outputs are unspecified on failure.
@@ -252,6 +256,9 @@ public:
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre cws[in_bits*stride].w & 1 == 0.
    * @pre All accessed storage is accessible from the calling execution space.
+   * @pre A stride, capacity, or terminal violation aborts with a diagnostic in
+   * Debug builds on both the host and the device, and is undefined behavior in
+   * Release builds.
    */
   __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       In tr, cuda::std::span<const int4, 4> cs, In x, int4 &y, size_t stride = 1);
@@ -294,6 +301,10 @@ public:
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    * @pre The full-domain output count and byte size fit size_t.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if cws is shorter than in_bits+1 or ys is too
+   * short.
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
@@ -318,6 +329,11 @@ public:
    * @pre first <= last < 2^in_bits. The range output count and byte size fit size_t.
    * A small range is supported even when the full input domain cannot be
    * materialized in addressable storage.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if first > last, last is outside the input
+   * domain, the interval does not fit size_t, cws is shorter than in_bits+1,
+   * or ys is too short.
    */
   void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
@@ -338,6 +354,7 @@ public:
    * @param pi Borrowed output storage for four proof blocks.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
+   * @throws std::invalid_argument if pi_tildes is empty.
    */
   void ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes, cuda::std::span<const int4, 4> cs,
       cuda::std::span<int4, 4> pi, int par_depth = 0);
@@ -366,6 +383,8 @@ public:
    * @param xs Ordered input sequence; it may be sparse, unsorted, and contain duplicates.
    * @param ys Output shares in xs order, with at least xs.size() entries.
    * @param pi Borrowed output storage for four chain-proof blocks.
+   * @throws std::invalid_argument if cws is shorter than in_bits+1, xs is
+   * empty, or ys is too short.
    */
   void BatchEval(bool b, int4 s0, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
@@ -395,6 +414,8 @@ public:
    * @param xs Ordered input sequence; it may be sparse, unsorted, and contain duplicates.
    * @param ys Output shares in xs order, with at least xs.size() entries.
    * @param pi Borrowed output storage for four Merkle-proof blocks.
+   * @throws std::invalid_argument if cws is shorter than in_bits+1, xs is
+   * empty, or ys is too short.
    */
   void BatchEvalMerkle(bool b, int4 s0, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
@@ -417,6 +438,10 @@ public:
    * Positive depths require backends that support concurrent calls.
    * @pre The full-domain output count, output bytes, and per-point proof
    * scratch bytes fit size_t.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if cws is shorter than in_bits+1, ys is too
+   * short, or the proof scratch does not fit size_t.
    */
   void EvalAllMerkle(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
@@ -467,8 +492,13 @@ public:
    * For M = last - first + 1, proof scratch payload is at most
    * 96*M + 32*ceil(M/2) bytes, plus 16*M output bytes and allocator overhead.
    * @pre first <= last < 2^in_bits. Output and proof scratch bytes fit size_t.
+   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds and is undefined behavior in Release builds.
    * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
+   * @throws std::invalid_argument if first > last, last is outside the input
+   * domain, the output or proof scratch does not fit size_t, cws is shorter
+   * than in_bits+1, or ys is too short.
    */
   void EvalRangeMerkle(bool b, In first, In last, int4 s0,
       cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
@@ -1032,7 +1062,16 @@ void VdpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span
     cuda::std::span<const In> tr, cuda::std::span<const cuda::std::array<int4, 4>> cs,
     cuda::std::span<const Query> xs, int4 *ys, cuda::std::span<cuda::std::array<int4, 4>> pi, int nkeys,
     const Vdpf<in_bits, Group, Prg, XorHash, Hash, In> &vdpf, cudaStream_t stream = 0) {
+  if (nkeys < 0)
+    throw std::invalid_argument("VdpfEvalPointGpu: nkeys must be nonnegative");
   if (nkeys == 0) return;
+  const size_t count = static_cast<size_t>(nkeys);
+  constexpr size_t kLevels = static_cast<size_t>(in_bits) + 1;
+  if (count > SIZE_MAX / kLevels || cws.size() < count * kLevels)
+    throw std::invalid_argument("VdpfEvalPointGpu: cws must hold (in_bits+1)*nkeys elements");
+  if (seeds.size() < count || tr.size() < count || cs.size() < count || xs.size() < count ||
+      ys == nullptr || pi.size() < count)
+    throw std::invalid_argument("VdpfEvalPointGpu: seeds, tr, cs, xs, ys, and pi must cover nkeys entries");
   using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
   using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   constexpr int kBs = 256;
@@ -1073,11 +1112,13 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
 inline __host__ __device__ cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Eval(
     bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<const int4, 4> cs, In x, int4 &y, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "Vdpf::Eval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "Vdpf::Eval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "Vdpf::Eval: cws must hold in_bits*stride+1 elements");
   return EvalCws(b, s0, CwsView{cws.data(), tr, stride}, cs, x, y);
 }
 
@@ -1113,7 +1154,8 @@ inline __host__ __device__ cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, X
   // Output share
   auto g = Group::From(s);
   int4 ocw = cws[in_bits].s;
-  assert((ocw.w & 1) == 0);
+  util::RequireArg((ocw.w & 1) == 0,
+      "Vdpf::Eval: the terminal group value must have a zero LSB");
   if (t) g = g + Group::From(ocw);
   if (b) g = -g;
 
@@ -1179,12 +1221,18 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
   if constexpr (in_bits < sizeof(In) * 8) {
     max_input = static_cast<In>((In{1} << in_bits) - 1);
   }
-  assert(first <= last && last <= max_input);
+  if (first > last)
+    throw std::invalid_argument("Vdpf::EvalRange: first must not exceed last");
+  if (last > max_input)
+    throw std::invalid_argument("Vdpf::EvalRange: last must stay inside the input domain");
   const __uint128_t distance = static_cast<__uint128_t>(last) - first;
-  assert(distance < static_cast<size_t>(-1) / sizeof(int4));
+  if (distance >= static_cast<size_t>(-1) / sizeof(int4))
+    throw std::invalid_argument("Vdpf::EvalRange: the interval is too large for size_t");
   const size_t num_inputs = static_cast<size_t>(distance) + 1;
-  assert(cws.size() >= in_bits + 1);
-  assert(ys.size() >= num_inputs);
+  if (cws.size() < size_t{in_bits} + 1)
+    throw std::invalid_argument("Vdpf::EvalRange: cws must hold in_bits+1 correction words");
+  if (ys.size() < num_inputs)
+    throw std::invalid_argument("Vdpf::EvalRange: ys must hold last-first+1 entries");
 
   const int4 st = util::SetLsb(s0, b);
   const int par_depth_ = fss::detail::ResolveParDepth(par_depth, in_bits);
@@ -1206,7 +1254,8 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
   pi[3] = cs[3];
 
   int4 ocw = cws[in_bits].s;
-  assert((ocw.w & 1) == 0);
+  util::RequireArg((ocw.w & 1) == 0,
+      "Vdpf::EvalRange: the terminal group value must have a zero LSB");
   auto ocw_group = Group::From(ocw);
   for (size_t offset = 0; offset < num_inputs; ++offset) {
     const In x = static_cast<In>(first + offset);
@@ -1244,7 +1293,8 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::ProveMerkle(
     cuda::std::span<int4, 4> pi, int par_depth) {
   assert(par_depth >= 0);
   size_t count = pi_tildes.size();
-  assert(count >= 1);
+  if (count < 1)
+    throw std::invalid_argument("Vdpf::ProveMerkle: pi_tildes must not be empty");
 
   std::vector<cuda::std::array<int4, 2>> nodes(count);
   if constexpr (HasHash4<Hash>) {
@@ -1319,21 +1369,28 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
   if constexpr (in_bits < sizeof(In) * 8) {
     max_input = static_cast<In>((In{1} << in_bits) - 1);
   }
-  assert(first <= last && last <= max_input);
+  if (first > last)
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: first must not exceed last");
+  if (last > max_input)
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: last must stay inside the input domain");
   const __uint128_t distance = static_cast<__uint128_t>(last) - first;
-  // The bounds below share one named size_t limit across three assertions, so
-  // the names stay out of Release builds where the assertions are gone.
-  [[maybe_unused]] constexpr size_t kMaxBytes = size_t(-1);
-  assert(distance < kMaxBytes / sizeof(cuda::std::array<int4, 4>));
+  // The bounds below share one named size_t limit across three checks.
+  constexpr size_t kMaxBytes = size_t(-1);
+  if (distance >= kMaxBytes / sizeof(cuda::std::array<int4, 4>))
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: the interval is too large for size_t");
   const size_t kOutputCount = static_cast<size_t>(distance) + 1;
-  [[maybe_unused]] const size_t next_count = kOutputCount / 2 + kOutputCount % 2;
-  assert(kOutputCount <= kMaxBytes / (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>)));
-  [[maybe_unused]] const size_t initial_bytes = kOutputCount *
+  const size_t next_count = kOutputCount / 2 + kOutputCount % 2;
+  if (kOutputCount > kMaxBytes / (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>)))
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: the proof scratch is too large for size_t");
+  const size_t initial_bytes = kOutputCount *
       (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>));
-  assert(next_count <= (kMaxBytes - initial_bytes) / sizeof(cuda::std::array<int4, 2>));
+  if (next_count > (kMaxBytes - initial_bytes) / sizeof(cuda::std::array<int4, 2>))
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: the proof scratch is too large for size_t");
   const int4 st = util::SetLsb(s0, b);
-  assert(cws.size() >= in_bits + 1);
-  assert(ys.size() >= kOutputCount);
+  if (cws.size() < size_t{in_bits} + 1)
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: cws must hold in_bits+1 correction words");
+  if (ys.size() < kOutputCount)
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: ys must hold last-first+1 entries");
 
   int par_depth_ = fss::detail::ResolveParDepth(par_depth, in_bits);
 
@@ -1349,7 +1406,8 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
 
   const size_t n = kOutputCount;
   int4 ocw = cws[in_bits].s;
-  assert((ocw.w & 1) == 0);
+  util::RequireArg((ocw.w & 1) == 0,
+      "Vdpf::EvalRangeMerkle: the terminal group value must have a zero LSB");
   auto ocw_group = Group::From(ocw);
   std::vector<cuda::std::array<int4, 4>> leaves(n);
   fss::detail::ParallelFor(par_depth, n, [&](size_t j) {
@@ -1381,9 +1439,12 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEval(
     bool b, int4 s0, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
-  assert(cws.size() >= size_t{in_bits} + 1);
-  assert(!xs.empty());
-  assert(ys.size() >= xs.size());
+  if (cws.size() < size_t{in_bits} + 1)
+    throw std::invalid_argument("Vdpf::BatchEval: cws must hold in_bits+1 correction words");
+  if (xs.empty())
+    throw std::invalid_argument("Vdpf::BatchEval: xs must not be empty");
+  if (ys.size() < xs.size())
+    throw std::invalid_argument("Vdpf::BatchEval: ys must hold xs.size() entries");
   std::vector<cuda::std::array<int4, 4>> pi_tildes(xs.size());
   for (size_t i = 0; i < xs.size(); ++i) {
     pi_tildes[i] = Eval(b, s0, cws, cs, xs[i], ys[i]);
@@ -1398,9 +1459,12 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEvalMerkle(
     bool b, int4 s0, cuda::std::span<const Cw> cws,
     cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
-  assert(cws.size() >= size_t{in_bits} + 1);
-  assert(!xs.empty());
-  assert(ys.size() >= xs.size());
+  if (cws.size() < size_t{in_bits} + 1)
+    throw std::invalid_argument("Vdpf::BatchEvalMerkle: cws must hold in_bits+1 correction words");
+  if (xs.empty())
+    throw std::invalid_argument("Vdpf::BatchEvalMerkle: xs must not be empty");
+  if (ys.size() < xs.size())
+    throw std::invalid_argument("Vdpf::BatchEvalMerkle: ys must hold xs.size() entries");
   std::vector<cuda::std::array<int4, 4>> pi_tildes(xs.size());
   for (size_t i = 0; i < xs.size(); ++i) {
     pi_tildes[i] = Eval(b, s0, cws, cs, xs[i], ys[i]);
@@ -1422,11 +1486,13 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
 inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen(
     cuda::std::span<int4> cws, In &tr, cuda::std::span<int4, 4> cs,
     cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride) {
-  assert(stride > 0);
-  [[maybe_unused]] constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
-  assert(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits));
-  [[maybe_unused]] const size_t required = static_cast<size_t>(in_bits) * stride + 1;
-  assert(cws.size() >= required);
+  util::RequireArg(stride > 0, "Vdpf::Gen: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  util::RequireArg(stride <= (kMaxElements - 1) / static_cast<size_t>(in_bits),
+      "Vdpf::Gen: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  util::RequireArg(cws.size() >= required,
+      "Vdpf::Gen: cws must hold in_bits*stride+1 elements");
   return Generate(CwsWriter{cws.data(), stride, tr}, cs, s0s.data(), a, b_buf);
 }
 

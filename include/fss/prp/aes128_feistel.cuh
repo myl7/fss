@@ -24,6 +24,8 @@
 #include <cassert>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
+#include <stdexcept>
+#include <fss/util.cuh>
 
 namespace fss::prp {
 
@@ -63,6 +65,8 @@ public:
      * @param x Input in [0, domain).
      * @param domain Domain size. Must be >= 2.
      * @return Output in [0, domain).
+     * @pre x < domain. A violation aborts with a diagnostic in Debug builds and
+     * is undefined behavior in Release builds.
      */
   __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
 
@@ -192,7 +196,7 @@ __host__ __device__ inline __uint128_t Aes128Feistel::Permu(int4 seed, __uint128
   fss_host_only_Aes128Feistel_used_in_device_code();
   return 0;
 #else
-  assert(x < domain);
+  util::RequireArg(x < domain, "Aes128Feistel::Permu: x must be inside the permutation domain");
   if (domain <= 1) return 0;
 
   int b = CeilLog2(domain);

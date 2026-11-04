@@ -201,6 +201,9 @@ public:
    * @pre The first t alpha values are distinct and belong to [0, kDomainSize).
    * @pre max_evictions is nonnegative.
    * @pre ceil(3*kDomainSize/cuckoo_hash::ChBucket(t, ch_lambda)) <= 2^bucket_bits.
+   * @throws std::invalid_argument if cws is shorter than
+   * kBucketCount*(bucket_bits+1), s0s is shorter than 2*kBucketCount, t is
+   * outside [kMinPoints, max_points], or the bucket size does not fit bucket_bits.
    * @post On success, cws, sigma, and s0s define both parties' keys.
    * Correction-word outputs are unspecified on failure. m_rt and b_size_rt may
    * already have been written when the attempt fails; metadata alone is not a key.
@@ -222,7 +225,8 @@ public:
    * @param cws At least kBucketCount*(bucket_bits+1) read-only correction words in bucket-major order.
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cws is shorter than kBucketCount*(bucket_bits+1), or ys is shorter than xs.
    */
   void BatchEval(bool b, int4 sigma, __uint128_t b_size_rt,
       cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
@@ -235,7 +239,8 @@ public:
    * ceil(3*kDomainSize/b_size_rt). Gen() sizes b_size_rt =
    * ceil(3*kDomainSize/m_rt), so the bound is at most m_rt and is exactly one
    * past the largest bucket index a candidate can reach.
-   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits].
+   * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
+   * cws is shorter than kBucketCount*(bucket_bits+1), or ys does not hold 2^in_bits elements.
    *
    * @pre The full output and each inner bucket output have element counts and byte sizes that fit size_t.
    *
@@ -448,7 +453,16 @@ void DmpfBatchEvalGpu(bool b, cuda::std::span<const In> xs, int4 *ys, int n, int
         in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::Cw> cws,
     const Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda> &dmpf,
     cudaStream_t stream = 0) {
+  if (n < 0)
+    throw std::invalid_argument("DmpfBatchEvalGpu: n must be nonnegative");
   if (n == 0) return;
+  const size_t count = static_cast<size_t>(n);
+  const size_t bucket_count = m_rt < 0 ? 0 : static_cast<size_t>(m_rt);
+  constexpr size_t kCwPerBucket = static_cast<size_t>(bucket_bits) + 1;
+  if (bucket_count > SIZE_MAX / kCwPerBucket || cws.size() < bucket_count * kCwPerBucket)
+    throw std::invalid_argument("DmpfBatchEvalGpu: cws must hold m_rt*(bucket_bits+1) elements");
+  if (xs.size() < count || s0s.size() < bucket_count || ys == nullptr)
+    throw std::invalid_argument("DmpfBatchEvalGpu: xs, s0s, and ys must cover n and m_rt entries");
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
   using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
   using Descriptor = DmpfBatchGpuKernelDescriptor<in_bits, bucket_bits, GroupTag, Prg, Prp, In>;
@@ -494,17 +508,22 @@ inline int Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda
     cuda::std::span<Cw> cws, int &m_rt, __uint128_t &b_size_rt,
     int4 sigma, cuda::std::span<const int4> s0s,
     cuda::std::span<const In> as, cuda::std::span<const int4> b_bufs, int t, int max_evictions) {
-  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
-  assert(s0s.size() >= size_t{kBucketCount} * 2);
-  assert(t <= max_points);
-  assert(t >= kMinPoints);
+  if (cws.size() < size_t{kBucketCount} * (bucket_bits + 1))
+    throw std::invalid_argument("Dmpf::Gen: cws must hold kBucketCount*(bucket_bits+1) elements");
+  if (s0s.size() < size_t{kBucketCount} * 2)
+    throw std::invalid_argument("Dmpf::Gen: s0s must hold 2*kBucketCount seeds");
+  if (t > max_points)
+    throw std::invalid_argument("Dmpf::Gen: t must not exceed max_points");
+  if (t < kMinPoints)
+    throw std::invalid_argument("Dmpf::Gen: t must be at least kMinPoints");
 
   // Compute runtime bucket count and bucket size.
   int m_ = cuckoo_hash::ChBucket(t, ch_lambda);
   assert(m_ <= kBucketCount);
   __uint128_t n128 = static_cast<__uint128_t>(kDomainSize);
   __uint128_t bucket_size = cuckoo_hash::detail::CeilDiv(n128 * kCuckooChoices, m_);
-  assert(bucket_size <= (__uint128_t{1} << bucket_bits));
+  if (bucket_size > (__uint128_t{1} << bucket_bits))
+    throw std::invalid_argument("Dmpf::Gen: the bucket size does not fit bucket_bits");
   __uint128_t b_rt = bucket_size;
 
   m_rt = m_;
@@ -559,9 +578,11 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
     cuda::std::span<const int4, kBucketCount> s0s, cuda::std::span<const Cw> cws,
     cuda::std::span<const In> xs, cuda::std::span<int4> ys) {
   RequireBucketSize(b_size_rt, "Dmpf::BatchEval");
-  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
+  if (cws.size() < size_t{kBucketCount} * (bucket_bits + 1))
+    throw std::invalid_argument("Dmpf::BatchEval: cws must hold kBucketCount*(bucket_bits+1) elements");
   size_t eta = xs.size();
-  assert(ys.size() >= eta);
+  if (ys.size() < eta)
+    throw std::invalid_argument("Dmpf::BatchEval: ys must hold xs.size() elements");
 
   __uint128_t b_rt = b_size_rt;
 
@@ -630,12 +651,14 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
     cuda::std::span<int4> ys, int par_depth)
   requires(in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
   RequireBucketSize(b_size_rt, "Dmpf::EvalAll");
-  assert(cws.size() >= size_t{kBucketCount} * (bucket_bits + 1));
+  if (cws.size() < size_t{kBucketCount} * (bucket_bits + 1))
+    throw std::invalid_argument("Dmpf::EvalAll: cws must hold kBucketCount*(bucket_bits+1) elements");
   assert(par_depth >= 0);
   static_assert(detail::FitsFullDomain<int4, in_bits>(),
       "full-domain output count and byte size must fit in size_t");
   constexpr size_t bucket_size = detail::FullDomainSize<int4, bucket_bits>();
-  assert(ys.size() == kDomainSize);
+  if (ys.size() != kDomainSize)
+    throw std::invalid_argument("Dmpf::EvalAll: ys must hold 2^in_bits elements");
 
   __uint128_t b_rt = b_size_rt;
   // Exclusive upper bound on the bucket index of any candidate. The entry check
