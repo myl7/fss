@@ -14,6 +14,7 @@
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 #include <fss/util.cuh>
+#include <stdexcept>
 
 namespace fss::prg {
 
@@ -54,17 +55,23 @@ public:
      * Create cipher contexts.
      *
      * @param keys mul 16B AES-128 keys.
+     * @throws std::runtime_error if an OpenSSL context allocation or setup call fails.
      */
   static cuda::std::array<EVP_CIPHER_CTX *, mul> CreateCtxs(const unsigned char *keys[mul]);
 
   static void FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs);
 
+  /**
+   * Expand one seed into mul blocks.
+   * @throws std::runtime_error if EVP_EncryptUpdate fails.
+   */
   __host__ __device__ cuda::std::array<int4, mul> Gen(int4 seed);
 
   /**
    * Return the selected half of Gen() with the same call requirements.
    *
    * @param right false selects the first half, true selects the second half.
+   * @throws std::runtime_error if EVP_EncryptUpdate fails.
    */
   __host__ __device__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
     requires(mul > 0 && mul % 2 == 0);
@@ -81,18 +88,25 @@ inline Aes128Mmo<mul>::Aes128Mmo(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs) {
 
 template <int mul>
 inline cuda::std::array<EVP_CIPHER_CTX *, mul> Aes128Mmo<mul>::CreateCtxs(const unsigned char *keys[mul]) {
-  int ret;
-  cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs;
+  cuda::std::array<EVP_CIPHER_CTX *, mul> ctxs{};
 
-  for (int i = 0; i < mul; ++i) {
-    ctxs[i] = EVP_CIPHER_CTX_new();
-    assert(ctxs[i] != NULL);
+  try {
+    for (int i = 0; i < mul; ++i) {
+      ctxs[i] = EVP_CIPHER_CTX_new();
+      if (ctxs[i] == NULL)
+        throw std::runtime_error("Aes128Mmo::CreateCtxs: EVP_CIPHER_CTX_new failed");
 
-    ret = EVP_EncryptInit_ex2(ctxs[i], EVP_aes_128_ecb(), keys[i], NULL, NULL);
-    assert(ret == 1);
+      int ret = EVP_EncryptInit_ex2(ctxs[i], EVP_aes_128_ecb(), keys[i], NULL, NULL);
+      if (ret != 1)
+        throw std::runtime_error("Aes128Mmo::CreateCtxs: EVP_EncryptInit_ex2 failed");
 
-    ret = EVP_CIPHER_CTX_set_padding(ctxs[i], 0);
-    assert(ret == 1);
+      ret = EVP_CIPHER_CTX_set_padding(ctxs[i], 0);
+      if (ret != 1)
+        throw std::runtime_error("Aes128Mmo::CreateCtxs: EVP_CIPHER_CTX_set_padding failed");
+    }
+  } catch (...) {
+    FreeCtxs(ctxs);
+    throw;
   }
   return ctxs;
 }
@@ -105,7 +119,7 @@ inline void Aes128Mmo<mul>::FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs
 }
 
 template <int mul>
-__host__ __device__ inline cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 seed) {
+__host__ __device__ __forceinline__ cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 seed) {
   cuda::std::array<int4, mul> out{};
 
 #ifdef __CUDA_ARCH__
@@ -116,8 +130,10 @@ __host__ __device__ inline cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 
     auto seed_ptr = reinterpret_cast<const unsigned char *>(&seed);
     int cipher_len = 0;
     int ret = EVP_EncryptUpdate(ctxs_[i], out_ptr, &cipher_len, seed_ptr, AES_BLOCK_SIZE);
-    assert(ret == 1);
-    assert(cipher_len == AES_BLOCK_SIZE);
+    if (ret != 1)
+      throw std::runtime_error("Aes128Mmo::Gen: EVP_EncryptUpdate failed");
+    if (cipher_len != AES_BLOCK_SIZE)
+      throw std::runtime_error("Aes128Mmo::Gen: EVP_EncryptUpdate returned a partial block");
 
     out[i] = fss::util::Xor(out[i], seed);
   }
@@ -127,7 +143,7 @@ __host__ __device__ inline cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 
 }
 
 template <int mul>
-__host__ __device__ inline cuda::std::array<int4, mul / 2> Aes128Mmo<mul>::GenHalf(int4 seed, bool right)
+__host__ __device__ __forceinline__ cuda::std::array<int4, mul / 2> Aes128Mmo<mul>::GenHalf(int4 seed, bool right)
   requires(mul > 0 && mul % 2 == 0)
 {
   cuda::std::array<int4, mul / 2> out{};
@@ -141,8 +157,10 @@ __host__ __device__ inline cuda::std::array<int4, mul / 2> Aes128Mmo<mul>::GenHa
     auto seed_ptr = reinterpret_cast<const unsigned char *>(&seed);
     int cipher_len = 0;
     int ret = EVP_EncryptUpdate(ctxs_[i + offset], out_ptr, &cipher_len, seed_ptr, AES_BLOCK_SIZE);
-    assert(ret == 1);
-    assert(cipher_len == AES_BLOCK_SIZE);
+    if (ret != 1)
+      throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate failed");
+    if (cipher_len != AES_BLOCK_SIZE)
+      throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate returned a partial block");
 
     out[i] = fss::util::Xor(out[i], seed);
   }

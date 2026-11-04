@@ -138,6 +138,19 @@ if(BUILD_TESTING)
     target_compile_options(release_compat_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-msse4.2>)
     gtest_discover_tests(release_compat_test)
 
+    # Linker wrapping gives deterministic OpenSSL failures without an injection
+    # hook in the public code. GNU ld and lld support --wrap, so this is Linux-only.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(openssl_failure_cleanup_test src/openssl_failure_cleanup_test.cu)
+        target_link_libraries(openssl_failure_cleanup_test GTest::gtest_main fss OpenSSL::Crypto)
+        target_link_options(openssl_failure_cleanup_test PRIVATE
+            -Wl,--wrap=EVP_CIPHER_CTX_new
+            -Wl,--wrap=EVP_EncryptInit_ex2
+            -Wl,--wrap=EVP_CIPHER_CTX_set_padding
+            -Wl,--wrap=EVP_CIPHER_CTX_free)
+        gtest_discover_tests(openssl_failure_cleanup_test)
+    endif()
+
     add_executable(word_arithmetic_test src/word_arithmetic_test.cu)
     target_link_libraries(word_arithmetic_test GTest::gtest_main fss)
     gtest_discover_tests(word_arithmetic_test)

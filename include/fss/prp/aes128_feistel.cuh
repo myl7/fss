@@ -48,8 +48,16 @@ __device__ void fss_host_only_Aes128Feistel_used_in_device_code();
  */
 class Aes128Feistel {
 public:
+  /**
+   * Construct with a new OpenSSL cipher context.
+   * @throws std::runtime_error if an OpenSSL context allocation or setup call fails.
+   */
   __host__ __device__ Aes128Feistel();
   __host__ __device__ ~Aes128Feistel();
+  /**
+   * Copy by creating a new OpenSSL cipher context.
+   * @throws std::runtime_error if an OpenSSL context allocation or setup call fails.
+   */
   __host__ __device__ Aes128Feistel(const Aes128Feistel &);
   __host__ __device__ Aes128Feistel &operator=(const Aes128Feistel &);
   __host__ __device__ Aes128Feistel(Aes128Feistel &&o) noexcept;
@@ -86,13 +94,21 @@ private:
 // -----------------------------------------------------------------------------
 
 inline void Aes128Feistel::InitCtx() {
-  ctx_ = EVP_CIPHER_CTX_new();
-  assert(ctx_ != NULL);
+  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+  if (ctx == NULL)
+    throw std::runtime_error("Aes128Feistel::InitCtx: EVP_CIPHER_CTX_new failed");
   unsigned char dummy[16] = {};
-  int ret = EVP_EncryptInit_ex2(ctx_, EVP_aes_128_ecb(), dummy, NULL, NULL);
-  assert(ret == 1);
-  ret = EVP_CIPHER_CTX_set_padding(ctx_, 0);
-  assert(ret == 1);
+  int ret = EVP_EncryptInit_ex2(ctx, EVP_aes_128_ecb(), dummy, NULL, NULL);
+  if (ret != 1) {
+    EVP_CIPHER_CTX_free(ctx);
+    throw std::runtime_error("Aes128Feistel::InitCtx: EVP_EncryptInit_ex2 failed");
+  }
+  ret = EVP_CIPHER_CTX_set_padding(ctx, 0);
+  if (ret != 1) {
+    EVP_CIPHER_CTX_free(ctx);
+    throw std::runtime_error("Aes128Feistel::InitCtx: EVP_CIPHER_CTX_set_padding failed");
+  }
+  ctx_ = ctx;
 }
 
 inline int Aes128Feistel::CeilLog2(__uint128_t x) {
@@ -113,12 +129,15 @@ inline int4 Aes128Feistel::RawAes(int4 key, int4 plaintext) {
   auto out_ptr = reinterpret_cast<unsigned char *>(&out);
 
   int ret = EVP_EncryptInit_ex2(ctx_, NULL, key_ptr, NULL, NULL);
-  assert(ret == 1);
+  if (ret != 1)
+    throw std::runtime_error("Aes128Feistel::RawAes: EVP_EncryptInit_ex2 failed");
 
   int cipher_len = 0;
   ret = EVP_EncryptUpdate(ctx_, out_ptr, &cipher_len, in_ptr, AES_BLOCK_SIZE);
-  assert(ret == 1);
-  assert(cipher_len == AES_BLOCK_SIZE);
+  if (ret != 1)
+    throw std::runtime_error("Aes128Feistel::RawAes: EVP_EncryptUpdate failed");
+  if (cipher_len != AES_BLOCK_SIZE)
+    throw std::runtime_error("Aes128Feistel::RawAes: EVP_EncryptUpdate returned a partial block");
 
   return out;
 }

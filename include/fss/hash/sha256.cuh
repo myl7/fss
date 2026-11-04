@@ -14,6 +14,7 @@
 #include <cassert>
 #include <openssl/evp.h>
 #include <fss/util.cuh>
+#include <stdexcept>
 
 namespace fss::hash {
 
@@ -43,6 +44,7 @@ public:
      *
      * @param msg 4 int4 blocks (64B).
      * @return 2 int4 blocks (32B) SHA-256 digest.
+     * @throws std::runtime_error if EVP_Digest fails.
      */
   __host__ __device__ cuda::std::array<int4, 2> Hash(cuda::std::span<const int4, 4> msg);
 
@@ -54,6 +56,7 @@ public:
      *
      * @param msg Tuple of (a, b) where a's LSB is used for domain separation.
      * @return 4 int4 blocks (64B).
+     * @throws std::runtime_error if EVP_Digest fails.
      */
   __host__ __device__ cuda::std::array<int4, 4> Hash(cuda::std::tuple<int4, const int4> msg);
 
@@ -72,7 +75,8 @@ __host__ __device__ inline cuda::std::array<int4, 2> Sha256::Hash(cuda::std::spa
   auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
   auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
   int ret = EVP_Digest(buf_ptr, 80, out_ptr, NULL, EVP_sha256(), NULL);
-  assert(ret == 1);
+  if (ret != 1)
+    throw std::runtime_error("Sha256::Hash: EVP_Digest failed");
 #endif
 
   return out;
@@ -89,11 +93,13 @@ __host__ __device__ inline cuda::std::array<int4, 4> Sha256::Hash(cuda::std::tup
   auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
   auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
   int ret = EVP_Digest(buf_ptr, 48, out_ptr, NULL, EVP_sha256(), NULL);
-  assert(ret == 1);
+  if (ret != 1)
+    throw std::runtime_error("Sha256::Hash: EVP_Digest failed");
 
   buf[1] = fss::util::SetLsb(a, true);
   ret = EVP_Digest(buf_ptr, 48, out_ptr + 32, NULL, EVP_sha256(), NULL);
-  assert(ret == 1);
+  if (ret != 1)
+    throw std::runtime_error("Sha256::Hash: EVP_Digest failed");
 #endif
 
   return out;
