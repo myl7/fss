@@ -65,18 +65,22 @@ namespace detail {
 
 // Split correction-word view shared by the host and device split paths. Layer i is
 // read from cws[i*stride] and the right-control correction is bit i of
-// packed_tr, so bits of packed_tr at or above the domain depth are never read.
-// The layer LSB keeps the left-control correction exactly as the Cw layout
-// does. operator[] recovers the Cw the shared algorithms consume, so their
-// bodies stay identical on the Cw and split paths.
-template <typename Cw, typename In>
+// packed_tr. The terminal is rebuilt as a plain Cw with no control bit, so bits of
+// packed_tr at or above in_bits are never read; the shift by in_bits would be
+// undefined when in_bits equals the width of In. The layer LSB keeps the
+// left-control correction exactly as the Cw layout does. operator[] recovers the Cw
+// the shared algorithms consume, so their bodies stay identical on the Cw and split
+// paths.
+template <typename Cw, typename In, int in_bits>
 struct DpfCwsView {
   const int4 *s;
   In packed_tr;
   size_t stride;
 
   __host__ __device__ inline Cw operator[](int i) const {
-    return Cw{s[static_cast<size_t>(i) * stride], ((packed_tr >> i) & 1) != 0};
+    const int4 s_cw = s[static_cast<size_t>(i) * stride];
+    if (i >= in_bits) return Cw{s_cw, false};
+    return Cw{s_cw, ((packed_tr >> i) & 1) != 0};
   }
 };
 
@@ -521,7 +525,7 @@ private:
 
   // Split correction-word view over the caller's arrays. The host methods and the
   // split GPU kernels share this one view; see detail::DpfCwsView.
-  using CwsView = detail::DpfCwsView<Cw, In>;
+  using CwsView = detail::DpfCwsView<Cw, In, in_bits>;
 
   // Writes Cw slots in the legacy AoS layout, covering each full 32B slot.
   struct AosWriter {
@@ -811,7 +815,8 @@ __global__ void DpfSplitEvalRangeKernel(bool b, int4 s0,
     int depth, int frontier, int root, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
   using Cws = fss::detail::DpfCwsView<typename Scheme::Cw,
-      typename DpfGpuSchemeTraits<Scheme>::Input>;
+      typename DpfGpuSchemeTraits<Scheme>::Input,
+      DpfGpuSchemeTraits<Scheme>::kInputBits>;
   const auto *cws = static_cast<const int4 *>(cws_buf);
   __shared__ int4 states[threads_per_block];
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -825,7 +830,8 @@ __global__ void DpfSplitEvalAllKernel(bool b, int4 s0, const void *cws_buf,
     int4 *ys, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
   using Cws = fss::detail::DpfCwsView<typename Scheme::Cw,
-      typename DpfGpuSchemeTraits<Scheme>::Input>;
+      typename DpfGpuSchemeTraits<Scheme>::Input,
+      DpfGpuSchemeTraits<Scheme>::kInputBits>;
   const auto *cws = static_cast<const int4 *>(cws_buf);
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (thread_index >= (1LL << frontier_depth)) return;
@@ -840,7 +846,8 @@ __global__ void DpfSplitEvalAllBatchKernel(bool b, const int4 *s0s, const void *
     int4 *ys, typename Descriptor::Backend prg) {
   using Scheme = typename Descriptor::Scheme;
   using Cws = fss::detail::DpfCwsView<typename Scheme::Cw,
-      typename DpfGpuSchemeTraits<Scheme>::Input>;
+      typename DpfGpuSchemeTraits<Scheme>::Input,
+      DpfGpuSchemeTraits<Scheme>::kInputBits>;
   const auto *cws = static_cast<const int4 *>(cws_buf);
   constexpr int kInputBits = DpfGpuSchemeTraits<Scheme>::kInputBits;
   constexpr int kBlocksPerKey = 1 << block_root_depth;
