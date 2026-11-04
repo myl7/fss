@@ -1,14 +1,12 @@
 # VDPF and VDMPF Merkle-fold proof accumulation: security analysis
 
-This document analyzes the modification to the 2-party VDPF of de Castro and Polychroniadou
-([dCP22], EUROCRYPT 2022, eprint 2021/580) implemented in this library: `Gen`, `Eval`, and
-`Verify` are kept exactly as in the paper/implementation, and only the `Prove` accumulation is
-replaced by a parallel binary Merkle fold over a fixed ordered sequence. The new algorithm
-ships as `ProveMerkle`, `EvalAllMerkle`, and `EvalAllMerkleGpu`, with the VDMPF extension
-shipping as `BatchEvalMerkle` and `BatchEvalMerkleGpu` (Section 8). The paper-faithful chains `Prove` and VDMPF
-`BatchEval` remain implemented as the references. Both parties must select the same
-accumulator and input order. Chain and Merkle proofs differ, and `Verify` compares proofs
-within one accumulator only.
+This document analyzes the Merkle accumulation alternative for this library's implementation of the 2-party VDPF of de Castro and Polychroniadou ([dCP22], EUROCRYPT 2022, eprint 2021/580).
+For the implemented `Gen`, `Eval`, and `Verify`, it replaces the sequential `Prove` accumulation with a parallel binary Merkle fold over a fixed ordered sequence.
+Section 2 states the library's seed/control-bit bookkeeping and concrete H input encoding, which must be distinguished from the paper's notation.
+The alternative ships as `ProveMerkle`, `EvalAllMerkle`, and `EvalAllMerkleGpu`, with the VDMPF extension shipping as `BatchEvalMerkle` and `BatchEvalMerkleGpu` (Section 8).
+The implemented reference chains `Prove` and VDMPF `BatchEval` remain available.
+Both parties must select the same accumulator and input order.
+Chain and Merkle proofs differ, and `Verify` compares proofs within one accumulator only.
 
 The document is self-contained for a reader with [dCP22] at hand. It states what is proven here,
 what is inherited from the paper verbatim, and what is assumed of the hashes. Where the paper
@@ -38,9 +36,9 @@ n `Hash` calls — about twice the hash count, bought back many times over by pa
 
 This is a performance-motivated deviation from Figure 1's `Prove`. The security question is
 whether the deviation preserves the soundness statement that [dCP22]'s Theorem 3 needs. Sections
-4-6 answer yes, under hash assumptions no stronger than the paper's, and with the binding step of
-the reduction written out in full — fuller, in fact, than the paper's own one-sentence treatment
-of the chain accumulator (Section 5, Remark 2).
+4-6 give the conditional Merkle argument under the common-key, nonzero-cs and hash assumptions stated below.
+Its binding reduction is written out explicitly.
+The chain retains the inherited assertion described in Section 5, Remark 2.
 
 ## 2. The original construction
 
@@ -49,8 +47,29 @@ Notation follows the library. Parties are b ∈ {0,1}; the input domain is
 least significant bit is clamped to zero, i.e. λ = 127 nominal. Concrete widths: seeds and group
 elements are 16B (`int4`); the paper's H is `XorHash`, 32B in (x packed into 16B, seed 16B) to
 64B out, matching the paper's H: (x, s) ↦ 4λ bits; the paper's H' is `Hash`, 64B in to 32B out,
-matching H': 4λ ↦ 2λ bits. Both are single fixed-key Blake3 compressions
-(`include/fss/hash/blake3.cuh`). `⊕` is XOR and `||` concatenation.
+matching H': 4λ ↦ 2λ bits.
+With Blake3, H concatenates two 32B digests from two fixed-key compressions.
+H' uses one fixed-key Blake3 compression (`include/fss/hash/blake3.cuh`).
+`⊕` is XOR and `||` concatenation.
+
+**Logical H input and encoding.** Write P(x) for the complete 128-bit coordinate block produced by `Pack(x)` and let S be the seed blocks whose fourth 32-bit word has bit 0 cleared.
+The scheme calls `XorHash` with the tuple `(P(x), s)` for s in S.
+VDMPF uses the within-bucket index as x in each inner VDPF.
+`Pack` preserves all coordinate bits; in particular, coordinate bit 96 occupies bit 0 of P(x)'s fourth word and remains message data.
+The second block has 127 effective message bits, with its fourth word's bit 0 reserved.
+Thus the logical tuple domain is 128 + 127 bits, restricted to the scheme's declared coordinate range.
+
+Let T_d(s) set that reserved seed bit to d in a copy of s, for d in {0,1}.
+The built-in tuple backends concatenate the digest of `P(x) || T_0(s)` with the digest of `P(x) || T_1(s)`.
+For Blake3, each message is 32B, with counter 0 and flags `CHUNK_START | CHUNK_END | ROOT | KEYED_HASH` under the configured IV.
+For Sha256, each digest hashes the configured 16B key prefix followed by that 32B message, for 48B total; this is the existing prefixed-hash construction, not HMAC.
+The supplied value of the second block's reserved bit is ignored by these backends, and the caller's input blocks are not modified.
+Gen and every Eval path use a clamped leaf seed, so they supply zero in that position.
+
+The notation H(x || s) below refers to this logical `(coordinate, seed)` input and its explicit encoding.
+Different coordinates and different clamped seeds remain different logical messages; the reserved bit is not additional message data or the separately tracked control bit t.
+Collision resistance and XOR-collision resistance on this domain are assumptions, not consequences of the encoding or of the `XorHashable` concept.
+Custom backends must satisfy this domain contract and the required assumptions.
 
 **Gen** (per level i = 0..in_bits-1, `Cw` = {s_cw with tl_cw in its LSB, tr_cw}): expand both
 parties' seeds with the PRG, compute s_cw from the off-path child pair and the two control bits,
@@ -59,6 +78,7 @@ advance along the bit of a. After the loop, with s_b the two leaf seeds at a:
 ```
 pi_tilde_b = XorHash(a || s_b)                // 64B
 cs = pi_tilde_0 XOR pi_tilde_1                // 64B correction seed, part of both keys
+if cs == 0: retry with fresh seeds             // library returns 1, caller resamples
 if t_0 == t_1: retry with fresh seeds          // library returns 1, caller resamples
 ocw = +-(beta - Group(s_0) + Group(s_1))       // sign from t_1
 ```
@@ -104,8 +124,9 @@ Two implementation conventions differ from Figure 1's letter and matter for the 
 
 ## 3. The Merkle-fold Prove
 
-`ProveMerkle` replaces only the accumulation. `HashMerkle` is the existing Blake3 `Hash`
-(64B in, 32B out, `array<int4,2>`); no hash code changes.
+`ProveMerkle` replaces only the accumulation.
+`HashMerkle` uses the Blake3 four-block `Hash` overload (64B in, 32B out, `array<int4,2>`).
+The tuple H encoding is specified separately in Section 2.
 
 ```
 leaf:      L(x) = HashMerkle(C(x))                  // x = 0..n-1, leaves indexed by domain point
@@ -165,8 +186,9 @@ implies the parties' output shares form a 2-party sharing of some point function
 
 ### Assumptions
 
-**Assumption 1 (common key material).** The two keys carry identical cws, cs, and ocw; only the
-initial seeds differ, as Gen produces. This is a protocol-level assumption about key distribution
+**Assumption 1 (common key material).** The two keys carry identical cws, cs, and ocw; only the initial seeds may differ.
+The malicious-key model does not require the initial seeds to be unequal or the keys to have been produced by honest Gen.
+This is a protocol-level assumption about key distribution
 (send the common arrays once, or have the servers compare them). [dCP22]'s Lemma 2 proof uses
 exactly this ("The servers also have the same correction seed cs") without deriving it from
 `Verify`, and we inherit it unchanged. We note for honesty that `Verify` compares cs[2:3]
@@ -187,10 +209,12 @@ no-op), both accumulators output identical proofs, `Verify` accepts, and the out
 to ±ocw at every point of the domain — not a point-function sharing. With cs ≠ 0 the implication
 is restored wherever the per-point values match: C_0(x) = C_1(x) with equal π̃ forces t_0(x) =
 t_1(x), since differing control bits would XOR cs into exactly one side and make the values
-differ by cs ≠ 0. Honest Gen outputs cs = 0 with probability 2^{-512} (cs is the XOR of two
-512-bit `XorHash` outputs), and servers can reject cs = 0 keys syntactically at zero cost.
-This is a property of `Eval`, not of the accumulator: the reference chain carries the same
-exposure, and the paper's own construction is immune to it because of the LSB convention.
+differ by cs ≠ 0.
+The implemented `Gen` returns failure when cs = 0, so every successful generation satisfies this condition.
+This generation check does not enforce the condition on maliciously supplied keys.
+Servers must reject zero cs or otherwise enforce Assumption 2 before relying on the soundness statement.
+The zero-cs exposure follows from the implemented `Eval` bookkeeping and applies to both accumulators.
+The paper instead ties the leaf control bit to the seed's LSB.
 
 **Hash assumptions.** H = `XorHash` is collision-resistant and XOR-collision-resistant
 ([dCP22], Definition 11); `HashMerkle` is collision-resistant. Section 6 discusses the
@@ -271,11 +295,28 @@ What is inherited from the paper and what is new:
   π̃-equality a plain collision (this is what lets the accumulator-independent part of the
   argument go through unchanged), and the Assumption 2 handling.
 
-**Remark 1 (evaluation subsets).** The theorem is stated for the full domain, which is what
-`EvalAllMerkle` computes. The identical argument works for any common evaluation set X folded
-in domain order (the point-evaluation API): "at most one differing seed" then holds within X,
-and the outputs form a point-function sharing on X. This matches the paper's Lemma 2, which is
-likewise relative to the evaluated points.
+**Remark 1 (evaluation sequences).** The theorem is stated for the full domain, which is what `EvalAllMerkle` computes.
+For `BatchEvalMerkle` and `BatchEvalMerkleGpu`, let `xs = (x_0, ..., x_{M-1})` be a common nonempty sequence of inputs in D = {0,...,2^in_bits-1}, and let X = {x_i : 0 <= i < M} be its set of distinct values.
+Both parties must use the same sequence, including its order and length, the Merkle accumulator, and the same configured hash functions.
+Assumptions 1 and 2 and all hash assumptions of Theorem 2 remain required.
+
+The leaf at position i is L_b(i) = HashMerkle(C_b(x_i)).
+At each level, hash adjacent pairs in order and carry an odd trailing node to the next level unchanged.
+A one-leaf tree has that leaf as its root.
+Thus the common length fixes the same positional tree shape even when M is not a power of two.
+If `Verify` accepts, the roots agree.
+If corresponding leaves differed, follow a differing leaf toward the common root until a differing node has an equal parent.
+An unchanged carry cannot remove a difference, so this transition must occur at a hash of two children and exposes a `HashMerkle` collision, as in Lemma 1.
+Equal leaves with different C-preimages expose Lemma 2's collision.
+Therefore acceptance implies C_0(x_i) = C_1(x_i) at every sequence position, except with the collision-finding probability covered by the stated assumptions.
+
+Apply Steps 3 and 4 to the distinct values in X.
+Except with the stated hash failure probability, there exist alpha in D and beta in the output group such that y_0(x_i) + y_1(x_i) equals beta when x_i = alpha and zero otherwise, for every i.
+Each occurrence of a repeated input contributes its own leaf and repeats the same output share for each party.
+Consequently, several sequence positions may reconstruct to a nonzero value, but at most one distinct input value in X may do so.
+This statement does not constrain outputs outside X or establish soundness for parties using different sequences.
+Both servers must obtain the same `xs` by a path the client cannot split.
+This is a deployment assumption, not a sequence-agreement guarantee of `Verify`.
 
 **Remark 2 (honesty about the chain).** For the reference chain, the step "matching accumulated
 proofs ⇒ per-point C-agreement at every point" is asserted by [dCP22]'s Lemma 2 proof in one
@@ -286,39 +327,40 @@ and do not improve it in this document. The Merkle fold's corresponding step —
 is the reason the fold was chosen: its reduction to pairwise collision resistance is complete
 and short enough to write out, so the library's alternative algorithm does not inherit an
 asserted aggregation argument.
+This document does not supply a general chain-binding reduction from ordinary collision resistance.
 
 ## 6. Required hash properties
 
 - **H = `XorHash`** (32B in, 64B out, used for π̃): must be collision-resistant and
-  XOR-collision-resistant, exactly as the paper requires (Definition 11). The 4λ = 512-bit
-  output width is the paper's own parameter choice for making XOR-collisions hard.
+  XOR-collision-resistant on the logical input domain defined in Section 2, as required by the paper's Definition 11.
+  The byte-aligned implementation uses 512 bits for this role and 256 bits for H', while λ = 127 describes the clamped seed width.
 - **`HashMerkle`** (64B in, 32B out, used for leaves and internal nodes): must be
   collision-resistant. This is a strictly weaker flavor of assumption than XOR-collision
   resistance — the reduction (Lemma 1, Lemma 2) only ever extracts a pairwise collision.
 
-Both are instantiated as single fixed-key Blake3 compressions with a caller-supplied IV.
-Modeling a fixed-key Blake3 compression as collision-resistant (or as a random oracle) is a
-standard but unproven heuristic; no reduction to Blake3's underlying primitives is claimed.
+The concrete H uses two fixed-key Blake3 compressions and concatenates their first 32B outputs.
+`HashMerkle` uses one fixed-key Blake3 compression and returns its first 32B output.
+The IV is caller-supplied.
+The required collision and XOR-collision properties of these instantiated functions remain assumptions.
+No reduction to Blake3's underlying primitives is claimed.
 
-Concrete level. The binding strength of the fold is the collision resistance of a 256-bit
-output: a single grinding attempt to make two chosen distinct 64B preimages collide succeeds
-with probability ~2^{-256}, and the usual birthday accounting gives advantage ~q²/2^256 for q
-compression-function evaluations, i.e. 128-bit collision security — the standard ceiling for any
-256-bit hash. The chain's accumulator updates a state of 2λ = 254 bits under the library's
+Concrete level. In an ideal 256-bit-output hash model, two fixed distinct messages collide with probability 2^{-256}, and the birthday collision probability after q distinct queries is of order q²/2^256 while that ratio is small.
+This gives the usual approximately 128-bit collision-work target, not a proof that the configured Blake3 function attains it.
+The chain's accumulator updates a state of 2λ = 254 bits under the library's
 λ = 127 accounting (concretely the full 32B, since the whole first half is XORed with the 32B
 `Hash` output), produced by the same Blake3 compression with the same 256-bit output width. The
-fold's root is likewise the full 32B output. Both accumulators therefore reduce to collisions
-of the same primitive at the same width: the concrete security level is not reduced by the
-switch.
+fold's root is likewise the full 32B output.
+The fold's conditional binding reduction uses this 256-bit `HashMerkle` output.
+The output-width comparison does not establish a binding reduction for the chain.
+The chain retains the inherited assertion described in Section 5, Remark 2.
+A concrete security claim also requires the instantiated hashes to satisfy the stated assumptions.
 
 Two remarks on domain separation:
 
-- No leaf/internal separation is needed. Classic Merkle-tree guidance adds level tags to block
-  second-preimage attacks that mix leaves with internal nodes; those attacks matter when the
-  tree serves as an authenticated dictionary against a prover who must extend an *honest* tree.
-  Here the tree is only an equality compressor: both leaf sequences are derived from the
-  adversary's own keys, and any level-mixing collision is simply one more collision excluded by
-  plain collision resistance. The reduction never distinguishes leaf from internal queries.
+- No leaf/internal separation is required for the binding of two evaluations on the common fixed tree shape considered here.
+  The reduction compares corresponding positions in that shape and extracts a literal collision if differing values occur beneath equal roots.
+  It does not establish binding across different tree shapes or sequence lengths.
+  Agreement on the evaluation sequence remains a separate assumption.
 - `Hash` and `HashMerkle` share one interface and one Blake3 implementation. A deployment
   instantiating both accumulators in one binary should hand them different IVs. This is hygiene
   rather than a requirement of the analysis — the fold's reduction never mixes the two hash
@@ -343,13 +385,13 @@ reduction needs only pairwise collision resistance: root equality with a differi
 a literal collision by the sibling-path induction of Lemma 1, with no condition on any number
 of terms.
 
-**(c) Order independence.** The soundness reduction never uses the order in which the leaves are
-folded — Lemma 1 only uses that both parties fold the *same* sequence into the *same* tree
-positions. Each leaf's preimage carries x inside the `XorHash` input, so a leaf cannot be
-reinterpreted as another point's leaf without an H collision; the accumulation order is not
-load-bearing for security. The implementation nevertheless fixes domain order on both sides:
-this keeps the two trees aligned by construction and the proofs byte-reproducible, which is what
-`Verify`'s equality test and the completeness argument use.
+**(c) Common sequence and tree shape.** Lemma 1 compares corresponding positions in the same tree shape.
+Its argument does not depend on the execution order of independent hash computations.
+Full-domain evaluation uses domain order.
+Batch evaluation uses the caller's ordered sequence, including repeated inputs, with the adjacent-pair and odd-carry rule in Remark 1.
+Both parties must agree on that sequence and its length.
+This agreement aligns corresponding leaves and makes honestly generated proofs reproducible.
+The argument does not establish agreement on the sequence or binding across different sequences or tree shapes.
 
 **(d) VDMPF accumulation.** The paper's VDMPF (Figure 2) uses chains within buckets and across buckets.
 Section 8 defines the implemented Merkle alternative, with a canonical tree within each bucket and another over the bucket nodes.
@@ -472,6 +514,15 @@ Section 5's remaining per-point argument applies within each bucket under its in
 The output-share computation and Cuckoo construction are unchanged.
 This supplies the replacement accumulation step in the VDMPF share-integrity argument without introducing a chunk-size assumption.
 
+Repeated outer inputs are allowed in the common batch.
+Every occurrence contributes its own candidate records at its own input position and one leaf per record.
+For bucket i, apply the per-point argument to the set of distinct within-bucket indices in its records.
+Its conclusion is at most one distinct evaluated within-bucket index with a nonzero reconstructed inner output, even when that index occurs in several records.
+This is a per-bucket statement, not a one-point bound for the VDMPF's outer input batch.
+The common Cuckoo mapping and the remaining VDMPF assumptions are still required.
+Both servers must obtain the same ordered batch, including its length, by a path the client cannot split.
+The fold does not establish this deployment assumption.
+
 A union bound accounts for failures across the tiers.
 Let ε_leaf, ε_tree, ε_bucket, and ε_top denote the collision-finding advantages for the leaf hashes, bucket trees, anchored bucket hashes, and top fold.
 Let ε_H include the inherited H collision and XOR-collision advantages, summed over the inner buckets.
@@ -499,11 +550,3 @@ The Merkle proof definition is independent of GPU execution parameters.
   ESL-R-994, Stanford University, 1979. (Merkle trees.)
 - David Wagner. *A Generalized Birthday Problem.* CRYPTO 2002. (XOR-fold aggregation costs.)
 - BLAKE3: <https://github.com/BLAKE3-team/BLAKE3>. (Hash instantiation.)
-
-Citation correction note: the headers `include/fss/vdpf.cuh`, `include/fss/cuckoo_hash.cuh`,
-and `include/fss/vdmpf.cuh` currently link the scheme to eprint 2024/677. That number is an
-unrelated paper — *Asynchronous Consensus without Trusted Setup or Public-Key Cryptography*,
-Das, Duan, Liu, Momose, Ren, Shoup, ACM CCS 2024. The correct citation for the VDPF/VDMPF
-scheme is eprint 2021/580 above (the headers' own reference lists already carry the correct
-DOI; only the eprint links are wrong). The headers are being corrected in the same change that
-adds the Merkle-fold accumulator.

@@ -8,6 +8,11 @@ The motivation was measured, not aesthetic: on the reference CPU host the chain 
 The security analysis ended well — two constructions with reviewed bounds — and the measurements ended the attempt: in the two-step Hirose shape Blake3 runs at 0.057 ns per hash on the A6000 (17.6 GH/s) and 118.8-131.5 ns on the pinned CPU, and both approved candidates measure behind it on both platforms (Section 10.4).
 Everything from the decision preamble through the References is preserved verbatim from the analysis as it stood after each review; this reframing only added the Overview, the Timeline, and the Part groupings.
 
+Current encoding note: the historical tuple description below uses the first block's reserved bit.
+The current VDPF/VDMPF tuple contract instead preserves the full first-block coordinate and uses bit 0 of the second block's fourth word for the two digest tags.
+The H' overload is unchanged by that encoding update, and the sibling security document now states the two-compression H implementation explicitly.
+See [the current security analysis](vdpf_merkle_fold_security.md) for its assumptions and the common-sequence Merkle argument.
+
 ## Timeline
 
 | When | Phase | Outcome |

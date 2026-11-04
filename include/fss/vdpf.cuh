@@ -93,6 +93,11 @@ struct VdpfCwsView {
  * ProveMerkle(), EvalAllMerkle(), and EvalRangeMerkle() use a Merkle fold over a fixed ordered sequence.
  * Both parties must use the same accumulator, key configuration, and ordered inputs.
  * Chain and Merkle proofs have the same representation but different values.
+ * XorHash receives (packed coordinate, clamped leaf seed), in that order.
+ * Every coordinate bit is message data. Bit 0 of the seed's fourth word
+ * is reserved and passed as zero; the built-in backends use it for digest tags.
+ * Verification guarantees require the assumptions and accumulator-specific
+ * proof conditions in doc/vdpf_merkle_fold_security.md.
  *
  * @tparam in_bits Input domain bit size.
  * @tparam Group Type for the output domain. See Groupable.
@@ -375,6 +380,15 @@ public:
    *
    * Internally buffers the corrected per-point hashes, 64 B per input.
    *
+   * xs may be any nonempty sequence of inputs in [0, 2^in_bits), including
+   * sparse, unsorted, or repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   *
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
@@ -405,6 +419,16 @@ public:
    * node once.
    *
    * Internally buffers the corrected per-point hashes, 64 B per input.
+   *
+   * xs may be any nonempty sequence of inputs in [0, 2^in_bits), including
+   * sparse, unsorted, or repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   * Each occurrence of a repeated input contributes its own leaf.
    *
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
    * @param b Party index, false for party 0 and true for party 1.
@@ -555,6 +579,16 @@ public:
    * released on stream. No upload, deep copy, or synchronization occurs.
    * Backend resources must support concurrent device calls and remain valid
    * until the stream completes. The host instance supplies backend values.
+   *
+   * xs may be any nonempty sequence of inputs in [0, 2^in_bits), including
+   * sparse, unsorted, or repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   * Each occurrence of a repeated input contributes its own leaf.
    *
    * @tparam threads_per_block Power-of-two block size in [1, 1024]. Defaults to 256.
    * @param b Party index, false for party 0 and true for party 1.

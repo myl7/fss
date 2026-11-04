@@ -9,17 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- VDPF `EvalRange`, which evaluates a contiguous input range and proves at most one nonzero output within it
-- VDMPF split evaluation (`EvalProof`, `Eval`, `Prove`, `ProveMerkle`), which evaluates each input separately and accumulates the chain or Merkle proof into caller-owned storage. The proofs match the fused `BatchEval`, `BatchEvalMerkle`, `EvalAll`, and `EvalAllMerkle` exactly, and the output shares match for the commutative Group backends in this repository
-- `kCuckooChoices` is now public on VDMPF and DMPF, so the fixed Cuckoo candidate count is available to callers
-- GPU point evaluation for the packed HalfTree DPF (`PackedHalfTreeDpfRepackGpu`, `PackedHalfTreeDpfEvalPointGpu`)
-- Single-path Grotto DCF evaluation, `GrottoDcf::Eval(b, key, x)`: Grotto's prefix-parity algorithm on one root-to-leaf path, with in_bits PRG calls per query and no preprocessing, plus the GPU launcher `GrottoDcfEvalPointGpu` after `GrottoDcfRepackGpu`
-- Grotto DCF on packed HalfTree DPF keys (`HalfTreeGrottoDcf`, experimental): shares of `1[alpha <= x]` from a 1-bit packed HalfTree DPF key with beta = 1 at the cost of its `Eval`, plus the GPU launcher `HalfTreeGrottoDcfEvalPointGpu` after `HalfTreeGrottoDcfRepackGpu`
+- Closed-interval host evaluation for DPF, DCF, `HalfTreeDpf`, `PackedHalfTreeDpf`, and VDPF, with CUDA range evaluation for DCF.
+- VDPF sparse-batch and range Merkle accumulation on CPU and CUDA.
+- Single-path Grotto DCF evaluation without preprocessing, and the experimental `HalfTreeGrottoDcf` scheme with Python bindings.
+- Public optional primitive extensions through `HasGenHalf`, `HasGen8`, and `HasHash4`, with scalar fallbacks.
+- Standalone Python Group, PRG, hash, and PRP operations, and explicit primitive configuration for schemes.
+- Python precompilation and scoped compiled-plugin caches, including read-only cache reuse.
 
 ### Changed
 
+- Scheme operations use caller-owned component buffers instead of aggregate Key-taking overloads. Correction arrays include terminal data, and host parallel depth is a per-call argument.
+- Grotto preprocessing uses explicit parity-tree views and owned trees whose `View()` methods expose borrowed storage.
+- VDPF and VDMPF generation preserve caller-supplied seeds and report a single attempt's status; callers resample and retry failed attempts.
+- Python scheme methods fill caller-owned tensors and select CPU or CUDA from their tensor arguments. Mixed devices are rejected instead of copied automatically.
 - Host boundary entries report `std::invalid_argument` for buffer, range, bucket, and count metadata in Debug and Release builds. Low-level algorithms, including split Gen/Eval layouts, terminal group values, PRP input domains, `Bytes::From`, and `Vdmpf::Eval`, treat these requirements as caller preconditions: Debug builds abort with a diagnostic on both the host and the device, and Release builds have undefined behavior. Terminal validation runs before parallel traversal.
-- Python packaging requires setuptools 84.1.0 or later and a filelock version without known vulnerabilities
+- OpenSSL backend failures report `std::runtime_error`, and failed context setup releases allocated resources.
+- Python packaging requires setuptools >= 84.1.0, filelock == 3.20.3 on Python 3.10, and filelock >= 4.2.1 on newer Python versions.
+
+### Fixed
+
+- Preserved every coordinate bit in Blake3 and Sha256 tuple hashing used by VDPF and VDMPF, fixing the loss of bit 96 for 97- to 128-bit coordinates.
+
+### Removed
+
+- Public `RelayoutGpu` and `RepackGpu` preparation helpers; generate layouts with the split or strided Gen overloads.
+- Public point-launcher helpers; launchers in `gpu::detail` are implementation details.
+- Python `DmpfKey` and `VdmpfKey` wrappers.
 
 ## [1.3.0] - 2026-10-18
 
@@ -96,7 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-03-05
 
-[unreleased]: https://github.com/myl7/fss/compare/v1.2.0...HEAD
+[unreleased]: https://github.com/myl7/fss/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/myl7/fss/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/myl7/fss/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/myl7/fss/releases/tag/v1.1.0
 [1.0.0]: https://github.com/myl7/fss/releases/tag/v1.0.0

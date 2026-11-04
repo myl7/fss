@@ -91,6 +91,11 @@ class SchemeAccess;
  * bucket_bits can lower kMinPoints at the cost of more correction word storage.
  * BatchEval() uses chain accumulation and BatchEvalMerkle() uses a Merkle fold.
  * Both parties must use the same accumulator, key configuration, and query sequence.
+ * XorHash receives (packed within-bucket index, clamped leaf seed), in that order.
+ * The index uses the full coordinate block; bit 0 of the seed's fourth word
+ * is reserved and passed as zero. The built-in backends use that seed bit for digest tags.
+ * Verification guarantees require the assumptions and accumulator-specific
+ * proof conditions in doc/vdpf_merkle_fold_security.md.
  * EvalAll() and EvalAllMerkle() use the same accumulators for the full domain
  * in increasing input order.
  * Eval() evaluates one input per call and returns the proof material for
@@ -256,6 +261,15 @@ public:
    *
    * Evaluates caller-owned correction words and party seeds on a batch of inputs, producing shares and a chain proof.
    *
+   * Inputs in xs must lie in [0, 2^in_bits).
+   * The sequence may be sparse, unsorted, or contain repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
@@ -342,6 +356,15 @@ public:
    * must not be mixed: Prove() and ProveMerkle() produce different proofs from
    * the same values.
    *
+   * Inputs in xs must lie in [0, 2^in_bits).
+   * The sequence may be sparse, unsorted, or contain repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   *
    * @param sigma The effective PRP seed from Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
    * @param cs At least 4*kBucketCount read-only blocks of the inner VerDPF's
@@ -415,6 +438,17 @@ public:
    * one. This host path is the sequential reference; the GPU path folds the
    * same construction and matches it bit-exactly.
    *
+   * Inputs in xs must lie in [0, 2^in_bits).
+   * The sequence may be sparse, unsorted, or contain repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   * Each occurrence of a repeated input contributes its own candidate records
+   * and one leaf per record.
+   *
    * @param b Party index. False for 0 and true for 1.
    * @param sigma The effective PRP seed from Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
@@ -449,6 +483,17 @@ public:
    * the same xs order and the same accumulator. Chain and Merkle accumulators
    * must not be mixed: Prove() and ProveMerkle() produce different proofs from
    * the same values.
+   *
+   * Inputs in xs must lie in [0, 2^in_bits).
+   * The sequence may be sparse, unsorted, or contain repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   * Each occurrence of a repeated input contributes its own candidate records
+   * and one leaf per record.
    *
    * @param sigma The effective PRP seed from Gen().
    * @param b_size_rt Runtime bucket domain size returned by Gen().
@@ -555,6 +600,17 @@ public:
    * must be device-callable: ChaChaFeistel qualifies; Aes128Feistel and
    * Aes128FeistelRaw are host-only and fail to build with an unresolved-extern
    * error when used on device.
+   *
+   * Inputs in xs must lie in [0, 2^in_bits).
+   * The sequence may be sparse, unsorted, or contain repeated inputs.
+   * Both parties must use the same sequence, including its order and length,
+   * and the same proof accumulator and hash configuration.
+   * Both servers must obtain the same xs by a path the client cannot split.
+   * Any verification guarantee is restricted to the evaluated input values
+   * and requires the scheme's security assumptions.
+   * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   * Each occurrence of a repeated input contributes its own candidate records
+   * and one leaf per record.
    *
    * @tparam threads_per_block Power-of-two block size in [1,1024], default 256.
    * @param b Party index, false for party 0 and true for party 1.

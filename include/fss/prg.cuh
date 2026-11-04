@@ -68,9 +68,11 @@ concept HasGenHalf = mul > 0 && mul % 2 == 0 && Prgable<Prg, mul> && requires(Pr
  * It made no difference to Dpf's that the measurement could separate from
  * its own bias.
  *
- * Gen8() must be bit-exact with Gen(). Full-domain evaluation uses Gen8() and
- * point evaluation uses Gen(), so a mismatch makes the two disagree without
- * any error.
+ * Gen8() must return the same blocks as eight calls to Gen() on the same seeds.
+ * A backend can test this requirement on the host by comparing Gen8(seeds)[j]
+ * with Gen(seeds[j]) for every j in [0, 8), using multiple seed batches.
+ * A mismatch can make evaluators that select Gen8() disagree with point
+ * evaluation without an error.
  *
  * @tparam Prg User-provided or library-provided PRG type.
  * @tparam mul Seed expansion factor, as in Prgable.
