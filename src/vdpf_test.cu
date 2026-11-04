@@ -803,6 +803,132 @@ TEST(VdpfBatchMerkle, GpuRejectsInvalidBatchArguments) {
       cuda::std::span<int4, 4>(static_cast<int4 *>(nullptr), 4)), cudaErrorInvalidValue);
 }
 
+struct XorHashContractPrg {
+  __host__ __device__ cuda::std::array<int4, 2> Gen(int4) {
+    const int4 child = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
+    return {child, child};
+  }
+};
+
+struct XorHashContractObserver {
+  std::vector<cuda::std::array<int4, 2>> *messages;
+
+  __host__ __device__ cuda::std::array<int4, 4> Hash(cuda::std::tuple<int4, const int4> input) {
+#ifndef __CUDA_ARCH__
+    auto [coordinate, seed] = input;
+    messages->push_back({coordinate, seed});
+#endif
+    return {};
+  }
+};
+
+TEST(VdpfXorHashContract, WideCoordinateAndClampedSeed) {
+  using Scheme = fss::Vdpf<128, BytesGroup, XorHashContractPrg,
+      XorHashContractObserver, fss::hash::Blake3, __uint128_t>;
+  std::vector<cuda::std::array<int4, 2>> messages;
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  Scheme scheme{XorHashContractPrg{}, XorHashContractObserver{&messages},
+      fss::hash::Blake3{cuda::std::span<const int4, 2>(iv, 2)}};
+  const Scheme::Cw cws[129]{};
+  const int4 cs[4]{};
+  const int4 initial_seed = {11, 22, 33, 45};
+  const int4 expected_seed = {0x12345678, 0x23456789, 0x3456789a, 0x456789aa};
+  struct Case {
+    __uint128_t x;
+    int4 coordinate;
+  };
+  const Case cases[] = {
+      {0, {0, 0, 0, 0}},
+      {__uint128_t{1} << 96, {0, 0, 0, 1}},
+      {__uint128_t{1} << 127, {0, 0, 0, -2147483647 - 1}},
+      {(__uint128_t{0x76543210} << 96) | (__uint128_t{0x6543210f} << 64) |
+          (__uint128_t{0x543210fe} << 32) | __uint128_t{0x43210fed},
+          {0x43210fed, 0x543210fe, 0x6543210f, 0x76543210}},
+  };
+  // Constant children isolate the backend payload from tree traversal.
+  for (const auto &test_case : cases) {
+    for (int party = 0; party < 2; ++party) {
+      SCOPED_TRACE(::testing::Message() << "party " << party
+          << " coordinate high word " << test_case.coordinate.w);
+      messages.clear();
+      int4 y;
+      scheme.Eval(party != 0, initial_seed, cws,
+          cuda::std::span<const int4, 4>(cs, 4), test_case.x, y);
+      ASSERT_FALSE(messages.empty());
+      for (const auto &message : messages) {
+        ExpectMerkleBlock(message[0], test_case.coordinate);
+        ExpectMerkleBlock(message[1], expected_seed);
+      }
+    }
+  }
+}
+
+void CheckFixedBit96CaseRejects(bool merkle) {
+  SCOPED_TRACE(merkle ? "Merkle" : "chain");
+  using Input = __uint128_t;
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<97, Uint127Group, fss::prg::ChaCha<2>, Hash, Hash, Input>;
+  const int4 iv[2]{};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{fss::prg::ChaCha<2>{0, 0}, hash, hash};
+  const Input xs[2] = {0, Input{1} << 96};
+  ASSERT_TRUE(xs[0] != xs[1]);
+  ASSERT_TRUE(xs[0] < (Input{1} << 97));
+  ASSERT_TRUE(xs[1] < (Input{1} << 97));
+
+  // Frozen trial 2 from 010c0d2. All remaining corrections, including the
+  // terminal, are zero. Keep the original cs when changing the hash encoding.
+  const Scheme::Cw cws[98] = {
+      {{1715251663, 1119711520, static_cast<int>(4107019318u), 1095222437}, true}};
+  const int4 cs[4] = {
+      {static_cast<int>(2323156350u), 1254992691, 377754959, static_cast<int>(2978946471u)},
+      {583504993, 39867407, static_cast<int>(2754790639u), static_cast<int>(2786589795u)},
+      {static_cast<int>(3353835671u), 972790625, static_cast<int>(2292373154u),
+          static_cast<int>(2901350010u)},
+      {1253408694, 354916733, static_cast<int>(3490181160u), 2038253979},
+  };
+  bool nonzero_cs = false;
+  for (const int4 &block : cs)
+    nonzero_cs |= (block.x | block.y | block.z | block.w) != 0;
+  ASSERT_TRUE(nonzero_cs);
+  const int4 initial_seed = {2, 0, 0, 0};
+  const cuda::std::span<const Scheme::Cw> common_cws(cws, 98);
+  const cuda::std::span<const int4, 4> common_cs(cs, 4);
+  const cuda::std::span<const Input> common_inputs(xs, 2);
+  int4 outputs[2][2];
+  cuda::std::array<int4, 4> proofs[2];
+  for (int party = 0; party < 2; ++party) {
+    if (merkle) {
+      scheme.BatchEvalMerkle(party != 0, initial_seed, common_cws, common_cs,
+          common_inputs, cuda::std::span<int4>(outputs[party], 2), proofs[party]);
+    } else {
+      scheme.BatchEval(party != 0, initial_seed, common_cws, common_cs,
+          common_inputs, cuda::std::span<int4>(outputs[party], 2), proofs[party]);
+    }
+  }
+  const int4 expected[2] = {
+      {static_cast<int>(3665264785u), 94261333, 1337733932, 1969104572},
+      {629702511, static_cast<int>(4200705962u), static_cast<int>(2957233363u),
+          static_cast<int>(2325862722u)},
+  };
+  for (int i = 0; i < 2; ++i) {
+    SCOPED_TRACE(::testing::Message() << "query index " << i);
+    const int4 reconstructed =
+        (Uint127Group::From(outputs[0][i]) + Uint127Group::From(outputs[1][i])).Into();
+    ExpectMerkleBlock(reconstructed, expected[i]);
+    ASSERT_NE(reconstructed.x | reconstructed.y | reconstructed.z | reconstructed.w, 0);
+  }
+  EXPECT_FALSE(Scheme::Verify(proofs[0], proofs[1]));
+}
+
+TEST(VdpfSoundness, FixedBit96CaseRejectsChain) {
+  CheckFixedBit96CaseRejects(false);
+}
+
+TEST(VdpfSoundness, FixedBit96CaseRejectsMerkle) {
+  CheckFixedBit96CaseRejects(true);
+}
+
 struct MerkleRangeExecution {
   const std::thread::id caller = std::this_thread::get_id();
   std::atomic<int> active{0};

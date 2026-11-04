@@ -7,11 +7,14 @@
 #include <array>
 #include <bit>
 #include <climits>
+#include <cstdio>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 #include <fss/prg/chacha.cuh>
 #include <fss/hash/blake3.cuh>
+#include <fss/hash/sha256.cuh>
 #include <fss/dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <omp.h>
@@ -241,6 +244,78 @@ static_assert(Hashable<WrongHash4Shape>);
 static_assert(!HasHash4<WrongHash4Shape>);
 static_assert(HasHash4<fss::hash::Blake3>);
 
+// Golden fixtures for the tuple hash message domain: the first tuple element is
+// a full 128-bit coordinate, the second is a seed whose lowest bit of w is a
+// reserved tag. S_t = (seed.x, seed.y, seed.z, (seed.w & 0xfffffffe) | t) and
+// M_t = W(coordinate) || W(S_t), where W writes the words x, y, z, w in this
+// order, each little-endian. bit96-lo/hi hold the integers 0 and 2^96.
+//
+// The digests were generated independently with blake3 1.0.11 and hashlib
+// (Python 3.12.3, OpenSSL 3.0.13), without importing fss code. BLAKE3 golden = keyed(W(iv), M_0) || keyed(W(iv), M_1)
+// with 32B messages; Sha256 golden = SHA256(W(key) || M_0) || SHA256(W(key) || M_1)
+// with 48B messages. The same package reproduced the official BLAKE3 1.8.2
+// keyed vector with input_len=64 (kOfficialBlakeDigest) before digesting.
+struct TupleGoldenCase {
+  int4 coordinate;
+  int4 seed;
+  uint32_t blake3_golden[16];
+  uint32_t sha256_golden[16];
+};
+
+const int4 kTupleGoldenIv[2] = {
+    {static_cast<int>(0x6A09E667u), static_cast<int>(0xBB67AE85u), static_cast<int>(0x3C6EF372u), static_cast<int>(0xA54FF53Au)},
+    {static_cast<int>(0x510E527Fu), static_cast<int>(0x9B05688Cu), static_cast<int>(0x1F83D9ABu), static_cast<int>(0x5BE0CD19u)}};
+const int4 kTupleGoldenShaKey = {static_cast<int>(0xDEADBEEFu), static_cast<int>(0xFEEDFACEu), static_cast<int>(0x0BADCAFEu), static_cast<int>(0x0C0FFEE1u)};
+const TupleGoldenCase kTupleGoldenCases[] = {
+    // asym-a
+    {{static_cast<int>(0x243F6A88u), static_cast<int>(0x85A308D3u), static_cast<int>(0x13198A2Eu), static_cast<int>(0x03707345u)}, {static_cast<int>(0xA4093822u), static_cast<int>(0x299F31D0u), static_cast<int>(0x082EFA98u), static_cast<int>(0xEC4E6C44u)},
+        {0x8A6822E2u, 0x535A2295u, 0x131D17B4u, 0x178D2BF0u, 0x346F943Bu, 0xFB35ECF2u, 0xAF51FA37u, 0x6743472Au, 0x05994585u, 0xB35DC332u, 0xAF7690DEu, 0xCE5E851Fu, 0x1BC3B921u, 0x00D0496Du, 0x586188F7u, 0x4BBE9AA3u},
+        {0xCF7B5054u, 0x585B130Du, 0x9731C753u, 0x29CF96CBu, 0x4C8D7D09u, 0xB900D9DBu, 0x983688EBu, 0xEF75DCC6u, 0xD955A769u, 0xEB6A8789u, 0x3C29FED4u, 0xA45E9D37u, 0xC3AAA4B4u, 0x493742C9u, 0x2ED1EB54u, 0x6D5EAD6Bu}},
+    // asym-b
+    {{static_cast<int>(0x452821E6u), static_cast<int>(0x38D01377u), static_cast<int>(0xBE5466CFu), static_cast<int>(0x34E90C6Cu)}, {static_cast<int>(0xC0AC29B7u), static_cast<int>(0xC97C50DDu), static_cast<int>(0x3F84D5B5u), static_cast<int>(0xB5470917u)},
+        {0x498A2AF1u, 0xF5D83BA7u, 0x880EA565u, 0x5F522283u, 0x9A9B206Au, 0x55682F30u, 0x0C04CE10u, 0xBB68FA0Au, 0x515743D8u, 0x0EA88C6Eu, 0xFA7E0C7Cu, 0x6C429E6Cu, 0xD80EAE88u, 0x64B8E63Bu, 0x7E10FF43u, 0x8121AF53u},
+        {0x821597A8u, 0x34A3C06Cu, 0x4D413DC0u, 0xDA4B076Au, 0x05A64F9Bu, 0x3CAD2BCCu, 0x88430F32u, 0x26ED4F8Du, 0xB25EF07Au, 0xA337451Du, 0x35F1AD17u, 0x311C032Au, 0x39EA07E8u, 0x49EB3D32u, 0x5E924A3Cu, 0x50CFF815u}},
+    // bit96-lo
+    {{static_cast<int>(0x00000000u), static_cast<int>(0x00000000u), static_cast<int>(0x00000000u), static_cast<int>(0x00000000u)}, {static_cast<int>(0x1F2E3D4Cu), static_cast<int>(0x5B6A7988u), static_cast<int>(0x99AABBCCu), static_cast<int>(0xD0E0F010u)},
+        {0x4A6B5FC5u, 0x652C4ADBu, 0x1DA3429Du, 0x4250CB63u, 0xAA4FA6D6u, 0xC0E1C41Au, 0xEDEA7527u, 0xC11FE225u, 0x73E95ADCu, 0xA7422F2Au, 0x2C178C3Bu, 0xAC9828E1u, 0xB670944Du, 0x784B3A2Eu, 0xC9570776u, 0xE062CA60u},
+        {0xE4EF1ECDu, 0xBEFE6E53u, 0x95BCC75Au, 0xFAF0069Bu, 0xCEEDAA22u, 0x7E82B3ACu, 0xE95D522Fu, 0xA8D66F51u, 0xF78D3615u, 0x06543C76u, 0x4C215F14u, 0x89A746BFu, 0xF217499Au, 0x7DFB1809u, 0x73BA9D37u, 0xD6460FBBu}},
+    // bit96-hi
+    {{static_cast<int>(0x00000000u), static_cast<int>(0x00000000u), static_cast<int>(0x00000000u), static_cast<int>(0x00000001u)}, {static_cast<int>(0x1F2E3D4Cu), static_cast<int>(0x5B6A7988u), static_cast<int>(0x99AABBCCu), static_cast<int>(0xD0E0F010u)},
+        {0x3F7C0C7Au, 0xBE774891u, 0xD5554624u, 0xD6D5C5A9u, 0x6EFA4555u, 0xF49C9CFCu, 0x54FA07C7u, 0xDA91003Eu, 0xBB205DEEu, 0x3B36E4AAu, 0x059A98B3u, 0x974C1784u, 0x7215E6EEu, 0x1749E516u, 0x8E764D66u, 0x163614EEu},
+        {0x7B779B0Bu, 0xDEB202C9u, 0x11D36DA1u, 0x8AE13496u, 0x56D6C8A8u, 0xC39F8915u, 0x8F298B9Du, 0xE92DAB9Fu, 0xB2CEFBA9u, 0xB2E5B7B3u, 0xAFB2CAAAu, 0xBC5346C8u, 0x63F2B0B5u, 0x6F3672F6u, 0x1B24C675u, 0x3D1EA17Eu}},
+};
+
+bool SameTupleWords(const int4 a[4], const int4 b[4]) {
+  for (int block = 0; block < 4; ++block) {
+    auto wa = Unpack(a[block]);
+    auto wb = Unpack(b[block]);
+    for (int i = 0; i < 4; ++i)
+      if (wa[i] != wb[i]) return false;
+  }
+  return true;
+}
+
+std::string HexTupleWords(const int4 blocks[4]) {
+  std::string out;
+  char buf[16];
+  for (int block = 0; block < 4; ++block) {
+    auto words = Unpack(blocks[block]);
+    for (int i = 0; i < 4; ++i) {
+      std::snprintf(buf, sizeof(buf), "%08x ", words[i]);
+      out += buf;
+    }
+  }
+  return out;
+}
+
+void ExpectTupleGolden(const char *backend, const int4 actual[4], const uint32_t golden[16]) {
+  for (int block = 0; block < 4; ++block) {
+    auto words = Unpack(actual[block]);
+    for (int i = 0; i < 4; ++i)
+      EXPECT_EQ(words[i], golden[4 * block + i]) << backend << " digest word " << 4 * block + i;
+  }
+}
+
 }  // namespace
 
 TEST(WordArithmetic, ChaChaMatchesUnsignedReference) {
@@ -276,7 +351,7 @@ TEST(WordArithmetic, Blake3HighWordsAndTupleMatchUnsignedReference) {
     auto tuple = hash.Hash(cuda::std::tuple<int4, const int4>{message[0], message[1]});
     int4 padded[4] = {message[0], message[1], {0, 0, 0, 0}, {0, 0, 0, 0}};
     for (int bit = 0; bit < 2; ++bit) {
-      padded[0].w = (padded[0].w & ~1) | bit;
+      padded[1].w = (padded[1].w & ~1) | bit;
       auto expected = ReferenceBlake3(iv, padded, 32);
       for (int i = 0; i < 2; ++i) ExpectBlock(tuple[2 * bit + i], expected[i]);
     }
@@ -386,7 +461,7 @@ TEST(WordArithmetic, Blake3GpuMatchesOfficialVectorAndUnsignedTupleReference) {
     for (int i = 0; i < 2; ++i) ExpectBlock(actual[6 * index + i], expected[i]);
     int4 padded[4] = {inputs[index].message[0], inputs[index].message[1], {0, 0, 0, 0}, {0, 0, 0, 0}};
     for (int bit = 0; bit < 2; ++bit) {
-      padded[0].w = (padded[0].w & ~1) | bit;
+      padded[1].w = (padded[1].w & ~1) | bit;
       auto tuple = ReferenceBlake3(inputs[index].iv, padded, 32);
       for (int i = 0; i < 2; ++i) ExpectBlock(actual[6 * index + 2 + 2 * bit + i], tuple[i]);
     }
@@ -396,4 +471,59 @@ TEST(WordArithmetic, Blake3GpuMatchesOfficialVectorAndUnsignedTupleReference) {
 #else
   GTEST_SKIP() << "CUDA compiler required";
 #endif
+}
+
+TEST(WordArithmetic, Blake3TupleMatchesCoordinateSeedGolden) {
+  fss::hash::Blake3 hash(cuda::std::span<const int4, 2>(kTupleGoldenIv, 2));
+  for (const auto &test_case : kTupleGoldenCases) {
+    auto actual = hash.Hash(cuda::std::tuple<int4, const int4>{test_case.coordinate, test_case.seed});
+    ExpectTupleGolden("Blake3", actual.data(), test_case.blake3_golden);
+  }
+}
+
+TEST(WordArithmetic, Sha256TupleMatchesCoordinateSeedGolden) {
+  fss::hash::Sha256 hash(kTupleGoldenShaKey);
+  for (const auto &test_case : kTupleGoldenCases) {
+    auto actual = hash.Hash(cuda::std::tuple<int4, const int4>{test_case.coordinate, test_case.seed});
+    ExpectTupleGolden("Sha256", actual.data(), test_case.sha256_golden);
+  }
+}
+
+TEST(WordArithmetic, TupleHashBindsCoordinateBit96) {
+  const int4 coordinate_lo = {0, 0, 0, 0};
+  const int4 coordinate_hi = {0, 0, 0, 1};
+  fss::hash::Blake3 blake3(cuda::std::span<const int4, 2>(kTupleGoldenIv, 2));
+  auto blake3_lo = blake3.Hash(cuda::std::tuple<int4, const int4>{coordinate_lo, kTupleGoldenCases[2].seed});
+  auto blake3_hi = blake3.Hash(cuda::std::tuple<int4, const int4>{coordinate_hi, kTupleGoldenCases[2].seed});
+  EXPECT_FALSE(SameTupleWords(blake3_lo.data(), blake3_hi.data()))
+      << "Blake3: coordinate bit 96 changed (block w bit 0 of the first tuple element), digest unchanged\n"
+      << "  digest coordinate=0:    " << HexTupleWords(blake3_lo.data()) << "\n"
+      << "  digest coordinate=2^96: " << HexTupleWords(blake3_hi.data());
+  fss::hash::Sha256 sha256(kTupleGoldenShaKey);
+  auto sha_lo = sha256.Hash(cuda::std::tuple<int4, const int4>{coordinate_lo, kTupleGoldenCases[2].seed});
+  auto sha_hi = sha256.Hash(cuda::std::tuple<int4, const int4>{coordinate_hi, kTupleGoldenCases[2].seed});
+  EXPECT_FALSE(SameTupleWords(sha_lo.data(), sha_hi.data()))
+      << "Sha256: coordinate bit 96 changed (block w bit 0 of the first tuple element), digest unchanged\n"
+      << "  digest coordinate=0:    " << HexTupleWords(sha_lo.data()) << "\n"
+      << "  digest coordinate=2^96: " << HexTupleWords(sha_hi.data());
+  // The lowest bit of the seed's fourth word is the reserved tag, not seed
+  // data, so toggling it must not change either digest.
+  for (int i = 0; i < 2; ++i) {
+    int4 flipped = kTupleGoldenCases[i].seed;
+    flipped.w ^= 1;
+    auto blake3_base = blake3.Hash(
+        cuda::std::tuple<int4, const int4>{kTupleGoldenCases[i].coordinate, kTupleGoldenCases[i].seed});
+    auto blake3_flipped = blake3.Hash(cuda::std::tuple<int4, const int4>{kTupleGoldenCases[i].coordinate, flipped});
+    EXPECT_TRUE(SameTupleWords(blake3_base.data(), blake3_flipped.data()))
+        << "Blake3: reserved seed bit (seed.w bit 0 of the second tuple element) changed the digest, case "
+        << i << "\n  base:    " << HexTupleWords(blake3_base.data()) << "\n  flipped: "
+        << HexTupleWords(blake3_flipped.data());
+    auto sha_base = sha256.Hash(
+        cuda::std::tuple<int4, const int4>{kTupleGoldenCases[i].coordinate, kTupleGoldenCases[i].seed});
+    auto sha_flipped = sha256.Hash(cuda::std::tuple<int4, const int4>{kTupleGoldenCases[i].coordinate, flipped});
+    EXPECT_TRUE(SameTupleWords(sha_base.data(), sha_flipped.data()))
+        << "Sha256: reserved seed bit (seed.w bit 0 of the second tuple element) changed the digest, case "
+        << i << "\n  base:    " << HexTupleWords(sha_base.data()) << "\n  flipped: "
+        << HexTupleWords(sha_flipped.data());
+  }
 }

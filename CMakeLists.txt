@@ -152,7 +152,7 @@ if(BUILD_TESTING)
     endif()
 
     add_executable(word_arithmetic_test src/word_arithmetic_test.cu)
-    target_link_libraries(word_arithmetic_test GTest::gtest_main fss)
+    target_link_libraries(word_arithmetic_test GTest::gtest_main fss OpenSSL::Crypto)
     gtest_discover_tests(word_arithmetic_test)
 
     # Compile-only coverage for the wide Uint127 Group in CUDA host stubs.

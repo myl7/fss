@@ -54,6 +54,18 @@ concept HasHash4 = Hashable<Hash> &&
 
 /**
  * Collision-resistant and XOR-collision-resistant hash interface.
+ *
+ * VDPF and VDMPF pass the packed coordinate as the first block and the
+ * clamped leaf seed as the second block. All 128 bits of the first block
+ * and the 127 nonreserved bits of the second block are message data.
+ * Bit 0 of the second block's fourth word is reserved; the schemes pass it
+ * as zero. The built-in tuple backends use it for the two digest tags.
+ * A custom backend must preserve these message bits over the instantiated
+ * scheme's coordinate domain and satisfy the scheme's collision-resistance
+ * and XOR-collision-resistance assumptions.
+ * This concept checks only the expression and return type,
+ * not these semantic or cryptographic properties.
+ *
  * @ingroup fss_api
  */
 template <typename Hash>

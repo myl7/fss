@@ -49,12 +49,17 @@ public:
   __host__ __device__ cuda::std::array<int4, 2> Hash(cuda::std::span<const int4, 4> msg);
 
   /**
-     * XOR-collision-resistant hash.
+     * Hash a 128+127-bit logical message into two 32B digests.
      *
-     * Produces two 32B digests (one with LSB cleared, one with LSB set)
-     * and concatenates them into 64B.
+     * All 128 bits of a are message data. Bit 0 of b.w is reserved for
+     * domain separation; its supplied value is ignored. The other 127 bits
+     * of b are message data. Hash a followed by a copy of b with its reserved
+     * bit set to 0, then to 1, and concatenate the digests in that order.
+     * The input blocks are not modified.
+     * Each digest hashes the configured 16B key prefix followed by the
+     * two message blocks, for 48B total. This is a prefixed SHA-256 hash.
      *
-     * @param msg Tuple of (a, b) where a's LSB is used for domain separation.
+     * @param msg Tuple of (a, b), with the reserved bit in the second block.
      * @return 4 int4 blocks (64B).
      * @throws std::runtime_error if EVP_Digest fails.
      */
@@ -89,14 +94,14 @@ __host__ __device__ inline cuda::std::array<int4, 4> Sha256::Hash(cuda::std::tup
   fss_host_only_Sha256_used_in_device_code();
 #else
   auto [a, b] = msg;
-  int4 buf[3] = {key_, fss::util::SetLsb(a, false), b};
+  int4 buf[3] = {key_, a, fss::util::SetLsb(b, false)};
   auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
   auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
   int ret = EVP_Digest(buf_ptr, 48, out_ptr, NULL, EVP_sha256(), NULL);
   if (ret != 1)
     throw std::runtime_error("Sha256::Hash: EVP_Digest failed");
 
-  buf[1] = fss::util::SetLsb(a, true);
+  buf[2] = fss::util::SetLsb(b, true);
   ret = EVP_Digest(buf_ptr, 48, out_ptr + 32, NULL, EVP_sha256(), NULL);
   if (ret != 1)
     throw std::runtime_error("Sha256::Hash: EVP_Digest failed");

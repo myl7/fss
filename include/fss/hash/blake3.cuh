@@ -70,12 +70,17 @@ public:
   __host__ __device__ cuda::std::array<int4, 2> Hash(cuda::std::span<const int4, 4> msg);
 
   /**
-     * XOR-collision-resistant hash.
+     * Hash a 128+127-bit logical message into two 32B digests.
      *
-     * Produces two 32B digests (one with LSB cleared, one with LSB set)
-     * and concatenates them into 64B.
+     * All 128 bits of a are message data. Bit 0 of b.w is reserved for
+     * domain separation; its supplied value is ignored. The other 127 bits
+     * of b are message data. Hash a followed by a copy of b with its reserved
+     * bit set to 0, then to 1, and concatenate the digests in that order.
+     * The input blocks are not modified.
+     * Each digest uses a 32B message, counter 0, and flags
+     * CHUNK_START | CHUNK_END | ROOT | KEYED_HASH under the configured IV.
      *
-     * @param msg Tuple of (a, b) where a's LSB is used for domain separation.
+     * @param msg Tuple of (a, b), with the reserved bit in the second block.
      * @return 4 int4 blocks (64B).
      */
   __host__ __device__ cuda::std::array<int4, 4> Hash(cuda::std::tuple<int4, const int4> msg);
@@ -228,11 +233,11 @@ __host__ __device__ inline cuda::std::array<int4, 2> Blake3::Hash(cuda::std::spa
 __host__ __device__ inline cuda::std::array<int4, 4> Blake3::Hash(cuda::std::tuple<int4, const int4> msg) {
   constexpr int flags = kChunkStart | kChunkEnd | kRoot | kKeyedHash;
   auto [a, b] = msg;
-  int4 padded[4] = {util::SetLsb(a, false), b, {0, 0, 0, 0}, {0, 0, 0, 0}};
+  int4 padded[4] = {a, util::SetLsb(b, false), {0, 0, 0, 0}, {0, 0, 0, 0}};
 
   auto out0 = Compress(iv_, padded, 0, 32, flags);
 
-  padded[0] = util::SetLsb(a, true);
+  padded[1] = util::SetLsb(b, true);
   auto out1 = Compress(iv_, padded, 0, 32, flags);
 
   return {out0[0], out0[1], out1[0], out1[1]};
