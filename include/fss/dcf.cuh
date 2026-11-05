@@ -1165,8 +1165,9 @@ inline __host__ __device__ int4 Dcf<in_bits, Group, Prg, In, pred>::EvalWalk(
   }
 
   int4 v_cw_np1_buf = cws[in_bits].v;
-  util::RequireArg((v_cw_np1_buf.w & 1) == 0,
-      "Dcf::Eval: the terminal group value must have a zero LSB");
+  if ((v_cw_np1_buf.w & 1) != 0) {
+    util::RequireArg(false, "Dcf::Eval: the terminal group value must have a zero LSB");
+  }
   auto v_cw_np1 = Group::From(v_cw_np1_buf);
 
   if (b) {

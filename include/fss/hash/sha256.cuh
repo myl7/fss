@@ -15,6 +15,7 @@
 #include <openssl/evp.h>
 #include <fss/util.cuh>
 #include <stdexcept>
+#include <memory>
 
 namespace fss::hash {
 
@@ -97,14 +98,20 @@ __host__ __device__ inline cuda::std::array<int4, 4> Sha256::Hash(cuda::std::tup
   int4 buf[3] = {key_, a, fss::util::SetLsb(b, false)};
   auto buf_ptr = reinterpret_cast<const unsigned char *>(buf);
   auto out_ptr = reinterpret_cast<unsigned char *>(out.data());
-  int ret = EVP_Digest(buf_ptr, 48, out_ptr, NULL, EVP_sha256(), NULL);
-  if (ret != 1)
-    throw std::runtime_error("Sha256::Hash: EVP_Digest failed");
-
-  buf[2] = fss::util::SetLsb(b, true);
-  ret = EVP_Digest(buf_ptr, 48, out_ptr + 32, NULL, EVP_sha256(), NULL);
-  if (ret != 1)
-    throw std::runtime_error("Sha256::Hash: EVP_Digest failed");
+  std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+  if (!ctx)
+    throw std::runtime_error("Sha256::Hash: EVP_MD_CTX_new failed");
+  for (int i = 0; i < 2; ++i) {
+    EVP_MD_CTX_set_flags(ctx.get(), EVP_MD_CTX_FLAG_ONESHOT);
+    unsigned int digest_length = 0;
+    if (EVP_DigestInit_ex(ctx.get(), i == 0 ? EVP_sha256() : NULL, NULL) != 1 ||
+        EVP_DigestUpdate(ctx.get(), buf_ptr, 48) != 1 ||
+        EVP_DigestFinal_ex(ctx.get(), out_ptr + i * 32, &digest_length) != 1)
+      throw std::runtime_error("Sha256::Hash: EVP_Digest failed");
+    if (digest_length != 32)
+      throw std::runtime_error("Sha256::Hash: EVP_Digest returned a partial digest");
+    if (i == 0) buf[2].w |= 1;
+  }
 #endif
 
   return out;

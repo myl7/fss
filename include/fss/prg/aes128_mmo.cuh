@@ -120,23 +120,35 @@ inline void Aes128Mmo<mul>::FreeCtxs(cuda::std::span<EVP_CIPHER_CTX *, mul> ctxs
 
 template <int mul>
 __host__ __device__ __forceinline__ cuda::std::array<int4, mul> Aes128Mmo<mul>::Gen(int4 seed) {
-  cuda::std::array<int4, mul> out{};
-
 #ifdef __CUDA_ARCH__
+  cuda::std::array<int4, mul> out{};
   fss_host_only_Aes128Mmo_used_in_device_code();
 #else
+  static_assert(sizeof(int4) == AES_BLOCK_SIZE);
+  cuda::std::array<int4, mul> out;
+  cuda::std::array<int, mul> cipher_lengths{};
+// NVCC parses the host hint before GCC applies it.
+#if defined(__CUDACC__) && defined(__NVCC__)
+#pragma nv_diag_push
+#pragma nv_diag_suppress 1675
+#endif
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC unroll 4
+#endif
   for (int i = 0; i < mul; ++i) {
     auto out_ptr = reinterpret_cast<unsigned char *>(&out[i]);
     auto seed_ptr = reinterpret_cast<const unsigned char *>(&seed);
-    int cipher_len = 0;
-    int ret = EVP_EncryptUpdate(ctxs_[i], out_ptr, &cipher_len, seed_ptr, AES_BLOCK_SIZE);
+    int ret = EVP_EncryptUpdate(ctxs_[i], out_ptr, &cipher_lengths[i], seed_ptr, AES_BLOCK_SIZE);
     if (ret != 1)
       throw std::runtime_error("Aes128Mmo::Gen: EVP_EncryptUpdate failed");
-    if (cipher_len != AES_BLOCK_SIZE)
+    if (cipher_lengths[i] != AES_BLOCK_SIZE)
       throw std::runtime_error("Aes128Mmo::Gen: EVP_EncryptUpdate returned a partial block");
 
     out[i] = fss::util::Xor(out[i], seed);
   }
+#if defined(__CUDACC__) && defined(__NVCC__)
+#pragma nv_diag_pop
+#endif
 #endif
 
   return out;
@@ -146,21 +158,32 @@ template <int mul>
 __host__ __device__ __forceinline__ cuda::std::array<int4, mul / 2> Aes128Mmo<mul>::GenHalf(int4 seed, bool right)
   requires(mul > 0 && mul % 2 == 0)
 {
-  cuda::std::array<int4, mul / 2> out{};
-
 #ifdef __CUDA_ARCH__
+  cuda::std::array<int4, mul / 2> out{};
   fss_host_only_Aes128Mmo_used_in_device_code();
 #else
+  static_assert(sizeof(int4) == AES_BLOCK_SIZE);
+  cuda::std::array<int4, mul / 2> out;
+  cuda::std::array<int, mul / 2> cipher_lengths{};
   int offset = right ? mul / 2 : 0;
   for (int i = 0; i < mul / 2; ++i) {
     auto out_ptr = reinterpret_cast<unsigned char *>(&out[i]);
     auto seed_ptr = reinterpret_cast<const unsigned char *>(&seed);
-    int cipher_len = 0;
-    int ret = EVP_EncryptUpdate(ctxs_[i + offset], out_ptr, &cipher_len, seed_ptr, AES_BLOCK_SIZE);
-    if (ret != 1)
-      throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate failed");
-    if (cipher_len != AES_BLOCK_SIZE)
-      throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate returned a partial block");
+    int ret = EVP_EncryptUpdate(ctxs_[i + offset], out_ptr, &cipher_lengths[i], seed_ptr, AES_BLOCK_SIZE);
+    if constexpr (mul == 2) {
+      const unsigned mismatch = (static_cast<unsigned>(ret) ^ 1U) |
+          (static_cast<unsigned>(cipher_lengths[i]) ^ static_cast<unsigned>(AES_BLOCK_SIZE));
+      if (mismatch != 0) {
+        if (ret != 1)
+          throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate failed");
+        throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate returned a partial block");
+      }
+    } else {
+      if (ret != 1)
+        throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate failed");
+      if (cipher_lengths[i] != AES_BLOCK_SIZE)
+        throw std::runtime_error("Aes128Mmo::GenHalf: EVP_EncryptUpdate returned a partial block");
+    }
 
     out[i] = fss::util::Xor(out[i], seed);
   }

@@ -147,7 +147,15 @@ if(BUILD_TESTING)
             -Wl,--wrap=EVP_CIPHER_CTX_new
             -Wl,--wrap=EVP_EncryptInit_ex2
             -Wl,--wrap=EVP_CIPHER_CTX_set_padding
-            -Wl,--wrap=EVP_CIPHER_CTX_free)
+            -Wl,--wrap=EVP_CIPHER_CTX_free
+            -Wl,--wrap=EVP_EncryptUpdate
+            -Wl,--wrap=EVP_Digest
+            -Wl,--wrap=EVP_MD_CTX_new
+            -Wl,--wrap=EVP_MD_CTX_free
+            -Wl,--wrap=EVP_MD_CTX_reset
+            -Wl,--wrap=EVP_DigestInit_ex
+            -Wl,--wrap=EVP_DigestUpdate
+            -Wl,--wrap=EVP_DigestFinal_ex)
         gtest_discover_tests(openssl_failure_cleanup_test)
     endif()
 
