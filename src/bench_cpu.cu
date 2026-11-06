@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 #include "core_api_test_helpers.cuh"
+#include "benchmark_work.h"
 
 using BytesGroup = fss::group::Bytes;
 using UintGroup = fss::group::Uint<uint64_t>;
@@ -139,6 +140,7 @@ static void BM_DpfGen(benchmark::State &state) {
       benchmark::DoNotOptimize(k0);
     }
   }
+  fss_bench::SetWork(state, {.keys = 1, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -191,6 +193,8 @@ static void BM_DpfEval(benchmark::State &state) {
       benchmark::DoNotOptimize(y);
     }
   }
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = 1, .logical_outputs = 1, .output_bytes = 16, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -226,6 +230,8 @@ static void BM_DpfEvalPoint(benchmark::State &state) {
       benchmark::DoNotOptimize(y);
     }
   }
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = 1, .logical_outputs = 1, .output_bytes = 16, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -269,6 +275,9 @@ static void BM_DpfEvalAll(benchmark::State &state) {
     }
   }
   state.SetItemsProcessed(state.iterations() * n);
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = int64_t{n}, .logical_outputs = int64_t{n},
+      .output_bytes = fss_bench::CheckedMul(int64_t{n}, 16), .api_calls = 1});
 }
 
 // --- DCF benchmarks ---
@@ -300,6 +309,7 @@ static void BM_DcfGen(benchmark::State &state) {
       benchmark::DoNotOptimize(k0);
     }
   }
+  fss_bench::SetWork(state, {.keys = 1, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -332,6 +342,8 @@ static void BM_DcfEval(benchmark::State &state) {
       benchmark::DoNotOptimize(y);
     }
   }
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = 1, .logical_outputs = 1, .output_bytes = 16, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -366,6 +378,9 @@ static void BM_DcfEvalAll(benchmark::State &state) {
     }
   }
   state.SetItemsProcessed(state.iterations() * n);
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = int64_t{n}, .logical_outputs = int64_t{n},
+      .output_bytes = fss_bench::CheckedMul(int64_t{n}, 16), .api_calls = 1});
 }
 
 // --- VDPF benchmarks ---
@@ -389,17 +404,24 @@ static void BM_VdpfGen(benchmark::State &state) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
     for (auto _ : state) {
-      fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+      if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+        state.SkipWithError("vdpf genpair failed during timing");
+        break;
+      }
       benchmark::DoNotOptimize(k0);
     }
   } else {
     Prg prg(kNonce0, kNonce1);
     VdpfType vdpf{prg, xor_hash, hash_};
     for (auto _ : state) {
-      fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+      if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+        state.SkipWithError("vdpf genpair failed during timing");
+        break;
+      }
       benchmark::DoNotOptimize(k0);
     }
   }
+  fss_bench::SetWork(state, {.keys = 1, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
@@ -421,7 +443,10 @@ static void BM_VdpfEval(benchmark::State &state) {
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
-    fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+    if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+      state.SkipWithError("vdpf genpair failed at setup");
+      return;
+    }
     for (auto _ : state) {
       auto [y, pi_tilde] = fss_test::EvalKey(vdpf, false, k0, x);
       cuda::std::array<int4, 4> pi;
@@ -432,7 +457,10 @@ static void BM_VdpfEval(benchmark::State &state) {
   } else {
     Prg prg(kNonce0, kNonce1);
     VdpfType vdpf{prg, xor_hash, hash_};
-    fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+    if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+      state.SkipWithError("vdpf genpair failed at setup");
+      return;
+    }
     for (auto _ : state) {
       auto [y, pi_tilde] = fss_test::EvalKey(vdpf, false, k0, x);
       cuda::std::array<int4, 4> pi;
@@ -441,6 +469,8 @@ static void BM_VdpfEval(benchmark::State &state) {
       benchmark::DoNotOptimize(pi);
     }
   }
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = 1, .logical_outputs = 1, .output_bytes = 16, .api_calls = 2});
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
@@ -460,7 +490,10 @@ static void BM_VdpfProve(benchmark::State &state) {
   auto hash_ = MakeHash<Hash>();
   Prg prg(kNonce0, kNonce1);
   VdpfType vdpf{prg, xor_hash, hash_};
-  fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+  if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+    state.SkipWithError("vdpf genpair failed at setup");
+    return;
+  }
 
   auto [y, pi_tilde] = fss_test::EvalKey(vdpf, false, k0, x);
 
@@ -469,6 +502,8 @@ static void BM_VdpfProve(benchmark::State &state) {
     vdpf.Prove({&pi_tilde, 1}, cuda::std::span<const int4, 4>(k0.cs), pi);
     benchmark::DoNotOptimize(pi);
   }
+  fss_bench::SetWork(state, {.api_calls = 1});
+  fss_bench::SetProofWork(state, 1, 64);
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
@@ -491,7 +526,10 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
-    fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+    if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+      state.SkipWithError("vdpf genpair failed at setup");
+      return;
+    }
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       fss_test::EvalAllKey(vdpf, false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -500,7 +538,10 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
     }
   } else {
     VdpfType vdpf{Prg(kNonce0, kNonce1), xor_hash, hash_};
-    fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+    if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+      state.SkipWithError("vdpf genpair failed at setup");
+      return;
+    }
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       fss_test::EvalAllKey(vdpf, false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -509,6 +550,9 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
     }
   }
   state.SetItemsProcessed(state.iterations() * n);
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = int64_t{n}, .logical_outputs = int64_t{n},
+      .output_bytes = fss_bench::CheckedMul(int64_t{n}, 16), .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash>
@@ -531,7 +575,10 @@ static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
     VdpfType vdpf{ctx.prg, xor_hash, hash_};
-    fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+    if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+      state.SkipWithError("vdpf genpair failed at setup");
+      return;
+    }
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       fss_test::EvalAllMerkleKey(vdpf, false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -540,7 +587,10 @@ static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
     }
   } else {
     VdpfType vdpf{Prg(kNonce0, kNonce1), xor_hash, hash_};
-    fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta);
+    if (fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, beta) != 0) {
+      state.SkipWithError("vdpf genpair failed at setup");
+      return;
+    }
     for (auto _ : state) {
       cuda::std::array<int4, 4> pi;
       fss_test::EvalAllMerkleKey(vdpf, false, k0, cuda::std::span<int4>(ys.data(), n), pi);
@@ -549,6 +599,9 @@ static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
     }
   }
   state.SetItemsProcessed(state.iterations() * n);
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = int64_t{n}, .logical_outputs = int64_t{n},
+      .output_bytes = fss_bench::CheckedMul(int64_t{n}, 16), .api_calls = 1});
 }
 
 // --- HalfTreeDpf benchmarks ---
@@ -572,6 +625,7 @@ static void BM_HalfTreeDpfGen(benchmark::State &state) {
     fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
     benchmark::DoNotOptimize(k0);
   }
+  fss_bench::SetWork(state, {.keys = 1, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -595,6 +649,8 @@ static void BM_HalfTreeDpfEval(benchmark::State &state) {
     int4 y = fss_test::EvalKey(dpf, false, k0, x);
     benchmark::DoNotOptimize(y);
   }
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = 1, .logical_outputs = 1, .output_bytes = 16, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -632,6 +688,8 @@ static void BM_HalfTreeDpfEvalPoint(benchmark::State &state) {
       benchmark::DoNotOptimize(y);
     }
   }
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = 1, .logical_outputs = 1, .output_bytes = 16, .api_calls = 1});
 }
 
 template <int in_bits, typename Group, typename Prg>
@@ -667,6 +725,9 @@ static void BM_HalfTreeDpfEvalAll(benchmark::State &state) {
     }
   }
   state.SetItemsProcessed(state.iterations() * n);
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = int64_t{n}, .logical_outputs = int64_t{n},
+      .output_bytes = fss_bench::CheckedMul(int64_t{n}, 16), .api_calls = 1});
 }
 
 // --- Packed HalfTree DPF benchmarks (experimental, 1-bit outputs) ---
@@ -704,6 +765,9 @@ static void BM_PackedHalfTreeDpfEvalAll(benchmark::State &state) {
     }
   }
   state.SetItemsProcessed(state.iterations() * n);
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = int64_t{n}, .logical_outputs = int64_t{n},
+      .output_bytes = fss_bench::CheckedMul(int64_t{blocks}, 16), .api_calls = 1});
 }
 
 // --- GrottoDcf benchmarks ---
@@ -731,6 +795,8 @@ static void BM_GrottoDcfEval(benchmark::State &state) {
     bool y = GdcfType::Eval(tree.View(), x);
     benchmark::DoNotOptimize(y);
   }
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = 1, .logical_outputs = 1, .output_bytes = 1, .api_calls = 1});
 }
 
 template <int in_bits, typename Prg>
@@ -760,6 +826,8 @@ static void BM_GrottoDcfPreprocess(benchmark::State &state) {
       benchmark::DoNotOptimize(tree.View().p);
     }
   }
+  fss_bench::SetWork(state, {.keys = 1, .api_calls = 1});
+  fss_bench::SetPreparedLeaves(state, int64_t{size_t{1} << in_bits});
 }
 
 template <int in_bits, typename Prg>
@@ -798,6 +866,9 @@ static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
     }
   }
   state.SetItemsProcessed(state.iterations() * N);
+  fss_bench::SetWork(state, {
+      .keys = 1, .queries = int64_t{N}, .logical_outputs = int64_t{N}, .output_bytes = int64_t{N},
+      .api_calls = 2});
 }
 
 // --- Registration ---
