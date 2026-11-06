@@ -428,10 +428,11 @@ public:
    * its tree root. An empty bucket contributes only its hashed cs.
    * The kBucketCount bucket nodes fold the same way into the final proof,
    * whose last two words stay zero. Execution block sizes and GPU work
-   * partitioning do not change this tree or the proof. Every
-   * combining step hashes 64B to 32B, so soundness reduces to the pairwise
-   * collision resistance of the fold hash exactly like the VDPF Merkle fold;
-   * see doc/vdpf_merkle_fold_security.md.
+   * partitioning do not change this tree or the proof.
+   * Every combining step hashes 64B to 32B, so fold binding for a common
+   * ordered query sequence and tree shape reduces to the pairwise collision
+   * resistance of the fold hash. Share integrity also requires the remaining
+   * assumptions in doc/vdpf_merkle_fold_security.md.
    *
    * The proof keeps the 64B shape, so Verify() is shared, but chain and fold
    * accumulators produce different proofs: both parties must pick the same

@@ -57,8 +57,6 @@ Output width alone supplies no lower bound on collision-finding cost.
 The sibling document's Lemmas 1 and 2 extract literal `HashMerkle` collisions from VDPF fold disagreements.
 Its Section 8, Lemma 3, does the same for the VDMPF fold, including chunk folds, anchored bucket chains, and the top fold.
 These reductions require no XOR-collision property of H'.
-The reference chain has a different status: Section 5, Remark 2, inherits the paper's asserted accumulation step without supplying a complete induction.
-This review does not upgrade that assertion to a proved chain-binding theorem.
 
 The current interfaces in `include/fss/hash/blake3.cuh` are:
 
@@ -659,7 +657,6 @@ A replacement proof would need:
 5. Concrete query and reduction losses across full-domain evaluation, batch evaluation, and repeated instances.
 
 This is new protocol analysis, not a consequence of AES being a PRP or of honest H outputs appearing random.
-It would also retain the sibling document's unresolved full chain-binding induction unless that step were proved separately.
 Recommend the general-CR Hirose route before investing in this weaker-assumption route.
 The research route becomes attractive only if a measured performance advantage justifies the additional proof work and narrower deployment contract.
 Its current status is **FEASIBLE via protocol-specific analysis only as an open research direction, with no security approval**.

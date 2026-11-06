@@ -38,7 +38,6 @@ This is a performance-motivated deviation from Figure 1's `Prove`. The security 
 whether the deviation preserves the soundness statement that [dCP22]'s Theorem 3 needs. Sections
 4-6 give the conditional Merkle argument under the common-key, nonzero-cs and hash assumptions stated below.
 Its binding reduction is written out explicitly.
-The chain retains the inherited assertion described in Section 5, Remark 2.
 
 ## 2. The original construction
 
@@ -257,8 +256,7 @@ particular the first 32B are equal, i.e. root_0 = root_1.
 **Step 2 (root equality ⇒ per-point value agreement).** By Lemma 1, if any leaf differed we
 would have a `HashMerkle` collision; ruling that out, L_0(x) = L_1(x) for all x. By Lemma 2,
 if any preimage pair C_0(x) ≠ C_1(x) hid behind equal leaves we would again have a collision;
-ruling that out, C_0(x) = C_1(x) for all x. These two steps are the fully written-out
-replacement for the step the paper asserts for the chain (Remark 2 below).
+ruling that out, C_0(x) = C_1(x) for all x.
 
 **Step 3 (per-point agreement ⇒ at most one differing seed; paper's Lemma 3 machinery).**
 Fix x and write π̃_b(x) = H(x || s_b(x)). Consider three cases, assuming C_0(x) = C_1(x).
@@ -318,17 +316,6 @@ This statement does not constrain outputs outside X or establish soundness for p
 Both servers must obtain the same `xs` by a path the client cannot split.
 This is a deployment assumption, not a sequence-agreement guarantee of `Verify`.
 
-**Remark 2 (honesty about the chain).** For the reference chain, the step "matching accumulated
-proofs ⇒ per-point C-agreement at every point" is asserted by [dCP22]'s Lemma 2 proof in one
-sentence ("From the collision resistance of H', if the proofs match then π^(x)_0 = π^(x)_1 for
-all x"), and the paper's accumulation semantics is recovered from a one-line formula; a full
-induction like Lemma 1's is not written there. We rely on that asserted sentence for the chain
-and do not improve it in this document. The Merkle fold's corresponding step — Steps 1-2 above —
-is the reason the fold was chosen: its reduction to pairwise collision resistance is complete
-and short enough to write out, so the library's alternative algorithm does not inherit an
-asserted aggregation argument.
-This document does not supply a general chain-binding reduction from ordinary collision resistance.
-
 ## 6. Required hash properties
 
 - **H = `XorHash`** (32B in, 64B out, used for π̃): must be collision-resistant and
@@ -351,8 +338,6 @@ The chain's accumulator updates a state of 2λ = 254 bits under the library's
 `Hash` output), produced by the same Blake3 compression with the same 256-bit output width. The
 fold's root is likewise the full 32B output.
 The fold's conditional binding reduction uses this 256-bit `HashMerkle` output.
-The output-width comparison does not establish a binding reduction for the chain.
-The chain retains the inherited assertion described in Section 5, Remark 2.
 A concrete security claim also requires the instantiated hashes to satisfy the stated assumptions.
 
 Two remarks on domain separation:

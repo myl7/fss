@@ -62,7 +62,7 @@ public:
      *
      * @param msg Tuple of (a, b), with the reserved bit in the second block.
      * @return 4 int4 blocks (64B).
-     * @throws std::runtime_error if EVP_Digest fails.
+     * @throws std::runtime_error if context allocation or a digest operation fails or returns an invalid length.
      */
   __host__ __device__ cuda::std::array<int4, 4> Hash(cuda::std::tuple<int4, const int4> msg);
 
