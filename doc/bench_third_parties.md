@@ -391,12 +391,15 @@ python3 third_party/bench.py prepare --platform all
 python3 third_party/bench.py build --platform all --cuda-arch 120 --jobs 4
 
 # Short runs validate initialization and output collection. They omit long EvalAll cases.
-python3 third_party/bench.py run --platform all --cuda-arch 120 --cpu 24 --gpu 0 \
+# The smoke profile defaults to the current library only, so name the suite explicitly.
+python3 third_party/bench.py run --libraries all --platform all --cuda-arch 120 --cpu 24 --gpu 0 \
   --no-build --smoke --run-id smoke
 
-# Full comparison runs, using five repetitions for Google Benchmark and Python.
-python3 third_party/bench.py run --platform cpu --cpu 24 --no-build --run-id comparison-cpu
-python3 third_party/bench.py run --platform gpu --cpu 24 --gpu 0 --no-build --run-id comparison-gpu
+# Full comparison runs. The publication profile restores the historical
+# selection (every library) and five repetitions for Google Benchmark and Python;
+# the default decision profile would run the current library only.
+python3 third_party/bench.py run --profile publication --platform cpu --cpu 24 --no-build --run-id comparison-cpu
+python3 third_party/bench.py run --profile publication --platform gpu --cpu 24 --gpu 0 --no-build --run-id comparison-gpu
 ```
 
 Replace `120`, `24`, and `0` with the GPU architecture, an idle allowed CPU, and

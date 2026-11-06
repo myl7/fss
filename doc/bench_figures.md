@@ -27,7 +27,9 @@ Eval at all N inputs. The other supported cases use seven domain sizes.
 The separate current-FSS block sweep fixes `n = 20` and uses
 `T = 16, 32, 64, 128, 256, 512, 1024` threads per block.
 
-CPU Gen measures one two-party key generation. CPU Eval measures one
+CPU Gen times one direct public Core Gen call per iteration, one attempt on
+fixture material that already succeeded in setup; the seed-retry loop and the
+second-party fixture copy stay outside the timed region. CPU Eval measures one
 party at one query. EvalAll measures one party over N logical domain outputs
 with one key. Ordinary GPU Gen and point Eval use 262144 independent keys
 per invocation. GPU DMPF/VDMPF Eval uses one key and 262144 queries. Their
@@ -38,7 +40,11 @@ multi-point kernels use fixed T=256. A packed frontier may use fewer threads
 than requested for a small domain.
 
 The collector checks native domain, launch, and explicit work-count counters
-against the requested case before accepting a receipt. The supported-case
+against the requested case before accepting a receipt, and every raw
+repetition of one benchmark must report the same per-iteration work counters,
+including the proof, prepared-leaf, and point-hash fields. Point-hash bytes
+are raw corrected hash material, preserved separately from logical outputs
+and proofs. The supported-case
 registry controls both default and scoped GPU filters. Only the DPF software-AES
 point workload is in the block sweep. A scoped block sweep for a different
 scheme skips point Eval instead of selecting that DPF workload.
@@ -81,7 +87,8 @@ upstream license forbids redistribution
 
 Current-FSS specialty schemes extend these boundaries. Grotto DCF point Eval
 times the parity-tree query only, with Preprocess outside timing, and its
-EvalAll times Preprocess plus the scan as one full-domain operation.
+EvalAll times exactly one public EvalAll call, which performs its own
+preprocessing inside that call.
 DMPF and VDMPF use `t = 64` points with `m = ChBucket(64, 80) = 112` Cuckoo
 buckets and bucket domains of `2^(n-5)`. DMPF EvalAll evaluates every padded
 bucket domain, and VDMPF EvalAll materializes through BatchEval over all N
@@ -149,7 +156,11 @@ measured iteration do not contribute to operation time.
 
 CPU timings use framework wall time. Current FSS and historical FSS GPU
 harnesses use CUDA events around operation kernel launches, with allocation
-and input copies outside timing. EzPC Gen/Eval events surround the native GPU
+and input copies outside timing. The GPU VDMPF rows and the VDPF Merkle
+EvalAll row instead time the complete public batch call: the API acquires and
+releases its internal device scratch inside the timed region, while the
+caller's input and output allocation and upload stay outside it. EzPC Gen/Eval
+events surround the native GPU
 API calls and include GPU work and transfers within that interval. EzPC full
 evaluation times its packed output adapter kernel. GPU-DPF full evaluation
 places events around the native `dpf_hybrid` call, with key upload and result
@@ -289,9 +300,11 @@ selection used for the published curves, and `--profile smoke` uses a short
 correctness budget with full-domain coverage. `--plan` prints the resolved
 policy and the exact case list without building; it extends `list` and
 `--dry-run`. New wrapper receipts carry per-iteration work counters with
-`work_schema_version = 1`; the collector accepts the historical
-`key_count`/`query_count`/`domain_outputs` counters and the new aliases, and
-keeps logical output counts and packed output bytes separate.
+`work_schema_version = 1`, and a new fss collection whose receipts lack the
+marker fails instead of falling back to the historical reading; export, merge,
+and re-read keep accepting historical receipts. The collector accepts the
+historical `key_count`/`query_count`/`domain_outputs` counters and the new
+aliases, and keeps logical output counts and packed output bytes separate.
 
 Inspect the requested cases before starting. Each `run` directory must be
 new. Use a new suffix for a repeated experiment. The examples below pass

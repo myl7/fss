@@ -52,22 +52,32 @@ Explicit `--min-time` and `--repetitions` values (and `--warmup` on the figure r
 
 `--smoke` remains an alias for `--profile smoke`; combining it with a different explicit profile fails.
 The `decision` default excludes the internal compact-path and point-launcher experiment rows (names containing `EvalPoint`) from the `main` library; an explicit `--filter` and the `publication` profile keep the full selection.
+The filters are plain POSIX extended alternations over the registered operation names, because the native binaries compile `--benchmark_filter` with a regex backend that rejects lookaround.
 Smoke includes the full-domain rows instead of excluding them, so one correctness run covers at least one real `n = 20` full evaluation.
+Explicit `--min-time` and `--repetitions` values reach the native commands unchanged in every profile, including smoke.
 
 `--plan` prints the resolved libraries, exact filters, timing budget, and work configuration without building or touching hardware.
+A `--benchmark_filter=` value passed after `--` is folded into the plan before it is printed, so the plan always shows the exact filter the run would use.
 The native result-row count is printed as unresolved because it is known only after the run.
 
 ### Full-domain launch control
 
 The main GPU batch full-domain rows process the `2^20`-key fixture through saturated 1024-key API calls.
+The fixture's alphas and evaluation points are masked to the configured input domain, and the receipt records that fixture domain.
 `--workload daily` (default) runs one full API call per iteration, `--workload legacy` restores the historical 1024 calls per iteration, and `--full-launches N` selects 1 to 1024 calls explicitly.
 The runner forwards the resolved value through `FSS_BENCH_FULL_LAUNCHES` and records it in the run manifest and `--plan`; the executed `calls_per_iteration` and `batch_keys` counters are checked against that plan, and batch keys stay 1024.
+The four batch full-domain rows (DPF, DCF, HalfTree DPF, packed HalfTree DPF) must carry both counters; a receipt missing either fails the run.
+The single-key full-domain rows (Grotto DCF, VDPF Merkle) are exempt.
 `--workload legacy` conflicts with an explicit `--full-launches` other than 1024.
 The daily row keeps real batch throughput semantics with a workload identity different from the legacy row, and its 1024-key batch cost divided by 1024 is an amortized per-key cost, not single-key latency.
 
-New main and FSS receipts carry per-iteration work counters with `work_schema_version = 1`.
-The runner normalizes them as time per iteration divided by work per iteration, keeps logical output counts, packed output bytes, and GPU host wall time in separate summary columns, and records the process wall time per command separately.
-`output_bytes` counts logical output storage bytes, not DRAM traffic.
+New main and FSS receipts carry per-iteration work counters with `work_schema_version = 1`; a new `main` or `fss` collection whose receipts lack the marker fails instead of falling back to the legacy reading.
+The runner normalizes them as time per iteration divided by work per iteration, keeps logical output counts, output bytes, proof counts, proof bytes, point-hash bytes, and GPU host wall time in separate summary columns, and records the process wall time per command separately.
+The work unit names the primary metric: keys or PRG calls, queries, domain outputs, prepared leaves for preprocess rows, or proofs for proof rows.
+Proof rows report their real zero keys and zero logical output bytes with the proof count and proof bytes in their own columns, and leave the key columns empty, because they process no keys.
+`output_bytes` counts logical output storage bytes, not DRAM traffic; `proof_bytes` counts final proof storage; `point_hash_bytes` counts the raw corrected per-point hash material `Eval` stores, which is the input to `Prove`, not a proof.
+The main GPU VDPF point rows carry `point_hash_bytes_per_iteration` with 64 hash bytes per key next to their 16 logical output bytes per key, and a new main collection missing it on those rows fails; the single-key full-domain Merkle row reports different fields.
+Native `items_per_second` is cross-checked on CPU against `cpu_time` and on GPU against the manual event time, each raw repetition on its own, and never overwrites the wall-normalized rate.
 Rows without the schema marker, including historical receipts and unchanged third-party adapters, keep the legacy name-based reading and are marked `legacy` in the summary.
 
 Reproduce the historical workload and sampling together with `--profile publication --workload legacy`.
