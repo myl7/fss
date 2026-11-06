@@ -500,6 +500,46 @@ TEST_F(OpenSslFailureCleanupTest, FeistelSuccessFreesEachContextOnce) {
   EXPECT_TRUE(fault_.live.empty());
 }
 
+TEST_F(OpenSslFailureCleanupTest, FeistelCopyAssignmentIntoMovedFromRestoresContext) {
+  {
+    Aes128Feistel a;
+    Aes128Feistel b;
+    EXPECT_EQ(fault_.new_calls, 2);
+
+    b = a;
+    EXPECT_EQ(fault_.new_calls, 2);
+
+    Aes128Feistel sink(std::move(a));
+    EXPECT_EQ(fault_.live.size(), 2u);
+
+    a = b;
+    EXPECT_EQ(fault_.new_calls, 3);
+    EXPECT_EQ(fault_.live.size(), 3u);
+    EXPECT_EQ(a.Permu({1, 2, 3, 4}, 5, 100), b.Permu({1, 2, 3, 4}, 5, 100));
+  }
+
+  EXPECT_EQ(fault_.free_calls, 3);
+  EXPECT_TRUE(fault_.live.empty());
+}
+
+TEST_F(OpenSslFailureCleanupTest, FeistelCopyAssignmentAllocationFailurePropagates) {
+  {
+    Aes128Feistel a;
+    Aes128Feistel b;
+    Aes128Feistel sink(std::move(a));
+    EXPECT_EQ(fault_.live.size(), 2u);
+
+    fault_.fail_new_at = 3;
+    ExpectRuntimeError([&] { a = b; }, "EVP_CIPHER_CTX_new failed");
+
+    EXPECT_EQ(fault_.free_calls, 0);
+    EXPECT_TRUE(b.Permu({1, 2, 3, 4}, 5, 100) < 100);
+  }
+
+  EXPECT_EQ(fault_.free_calls, 2);
+  EXPECT_TRUE(fault_.live.empty());
+}
+
 template <int mul>
 void RunUpdateFailure(const UpdateFailureParam &param, OpenSslFault &fault) {
   unsigned char storage[mul][16] = {};

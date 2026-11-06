@@ -45,6 +45,11 @@ __device__ void fss_host_only_Aes128Feistel_used_in_device_code();
  * execution-space warnings. Device use of any of them, e.g. calling Permu() or
  * copying the object in a kernel, fails to build with an unresolved-extern error
  * that names `fss_host_only_Aes128Feistel_used_in_device_code`.
+ *
+ * After a move the source owns no context. It may be destroyed or assigned
+ * to. Permu() on a moved-from object is undefined behavior, and only a
+ * successful assignment restores the context. A failed assignment does not
+ * restore it.
  */
 class Aes128Feistel {
 public:
@@ -55,7 +60,8 @@ public:
   __host__ __device__ Aes128Feistel();
   __host__ __device__ ~Aes128Feistel();
   /**
-   * Copy by creating a new OpenSSL cipher context.
+   * Copy by creating a new OpenSSL cipher context. Copy assignment reuses the
+   * destination context, or creates one when the destination is moved-from.
    * @throws std::runtime_error if an OpenSSL context allocation or setup call fails.
    */
   __host__ __device__ Aes128Feistel(const Aes128Feistel &);
@@ -75,6 +81,9 @@ public:
      * @return Output in [0, domain).
      * @pre x < domain. A violation aborts with a diagnostic in Debug builds and
      * is undefined behavior in Release builds.
+     * @pre The object is not moved-from. A moved-from object needs a
+     *      successful assignment to restore its context; a failed assignment
+     *      does not restore it.
      */
   __host__ __device__ __uint128_t Permu(int4 seed, __uint128_t x, __uint128_t domain);
 
@@ -185,6 +194,8 @@ __host__ __device__ inline Aes128Feistel::Aes128Feistel(const Aes128Feistel &) {
 __host__ __device__ inline Aes128Feistel &Aes128Feistel::operator=(const Aes128Feistel &) {
 #ifdef __CUDA_ARCH__
   fss_host_only_Aes128Feistel_used_in_device_code();
+#else
+  if (ctx_ == nullptr) InitCtx();
 #endif
   return *this;
 }

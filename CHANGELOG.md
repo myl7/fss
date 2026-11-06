@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Preserved every coordinate bit in Blake3 and Sha256 tuple hashing used by VDPF and VDMPF, fixing the loss of bit 96 for 97- to 128-bit coordinates.
+- Copy assignment into a moved-from `Aes128Feistel` now recreates its cipher context and restores the object to a usable state.
 
 ### Removed
 
