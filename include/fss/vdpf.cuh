@@ -232,6 +232,7 @@ public:
    * @param x Input in the scheme's domain.
    * @param y Output share for this input.
    * @return Corrected per-point hash for Prove() or ProveMerkle().
+   * @pre The four cs blocks are not jointly all zero.
    */
   __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4, 4> cs, In x, int4 &y);
@@ -260,6 +261,7 @@ public:
    * @pre With M = numeric_limits<size_t>::max()/sizeof(int4),
    * stride <= (M-1)/in_bits and cws has at least in_bits*stride+1 elements.
    * @pre cws[in_bits*stride].w & 1 == 0.
+   * @pre The four cs blocks are not jointly all zero.
    * @pre All accessed storage is accessible from the calling execution space.
    * @pre A stride, capacity, or terminal violation aborts with a diagnostic in
    * Debug builds on both the host and the device, and is undefined behavior in
@@ -275,6 +277,7 @@ public:
    * Both parties must supply the same ordered input sequence.
    *
    * @pre pi_tildes is nonempty.
+   * @pre The four cs blocks are not jointly all zero.
    * @param pi_tildes Corrected per-point hashes returned by Eval().
    * @param cs Returned by Gen().
    * @param pi Borrowed output storage for four proof blocks.
@@ -306,6 +309,7 @@ public:
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
    * @pre The full-domain output count and byte size fit size_t.
+   * @pre The four cs blocks are not jointly all zero.
    * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
    * Debug builds and is undefined behavior in Release builds.
    * @throws std::invalid_argument if cws is shorter than in_bits+1 or ys is too
@@ -334,6 +338,7 @@ public:
    * @pre first <= last < 2^in_bits. The range output count and byte size fit size_t.
    * A small range is supported even when the full input domain cannot be
    * materialized in addressable storage.
+   * @pre The four cs blocks are not jointly all zero.
    * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
    * Debug builds and is undefined behavior in Release builds.
    * @throws std::invalid_argument if first > last, last is outside the input
@@ -354,6 +359,7 @@ public:
    * the fold sequential. See doc/vdpf_merkle_fold_security.md.
    *
    * @pre pi_tildes is nonempty.
+   * @pre The four cs blocks are not jointly all zero.
    * @param pi_tildes Corrected per-point hashes returned by Eval().
    * @param cs Returned by Gen().
    * @param pi Borrowed output storage for four proof blocks.
@@ -390,6 +396,7 @@ public:
    * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
    *
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
+   * @pre The four cs blocks are not jointly all zero.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
    * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
@@ -431,6 +438,7 @@ public:
    * Each occurrence of a repeated input contributes its own leaf.
    *
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
+   * @pre The four cs blocks are not jointly all zero.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
    * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
@@ -462,6 +470,7 @@ public:
    * Positive depths require backends that support concurrent calls.
    * @pre The full-domain output count, output bytes, and per-point proof
    * scratch bytes fit size_t.
+   * @pre The four cs blocks are not jointly all zero.
    * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
    * Debug builds and is undefined behavior in Release builds.
    * @throws std::invalid_argument if cws is shorter than in_bits+1, ys is too
@@ -494,6 +503,7 @@ public:
    * @param stream Stream on the device owning the referenced resources.
    * @pre this is host-accessible. Buffers and backend resources remain valid
    * until work completes and permit the kernel's concurrent backend calls.
+   * @pre The four cs blocks are not jointly all zero.
    * @return The first immediate CUDA allocation, launch, or release status.
    * Invalid buffers or unaddressable output storage return cudaErrorInvalidValue.
    * Execution is
@@ -516,6 +526,7 @@ public:
    * For M = last - first + 1, proof scratch payload is at most
    * 96*M + 32*ceil(M/2) bytes, plus 16*M output bytes and allocator overhead.
    * @pre first <= last < 2^in_bits. Output and proof scratch bytes fit size_t.
+   * @pre The four cs blocks are not jointly all zero.
    * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
    * Debug builds and is undefined behavior in Release builds.
    * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
@@ -547,6 +558,7 @@ public:
    * frontier states per block.
    * The proof uses actual inputs in increasing order and carries odd nodes.
    * Both parties must agree on the range, order, and Merkle mode externally.
+   * @pre The four cs blocks are not jointly all zero.
    * @return First immediate CUDA error. Invalid endpoints, buffers, or byte
    * counts return cudaErrorInvalidValue. An oversized grid returns
    * cudaErrorInvalidConfiguration. Execution errors are observed by the caller
@@ -601,6 +613,7 @@ public:
    * @param pi Device output storage for the four-block Merkle proof.
    * @param stream Stream on the device owning the referenced resources.
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
+   * @pre The four cs blocks are not jointly all zero.
    * @return First immediate CUDA error. Invalid buffers or empty xs return
    * cudaErrorInvalidValue. An oversized grid returns
    * cudaErrorInvalidConfiguration. Execution errors are observed by the caller

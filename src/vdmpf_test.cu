@@ -957,7 +957,7 @@ TEST(VdmpfPreconditionTest, RejectsInvalidHostInputs) {
   constexpr int kBucketBits = 14;
   constexpr size_t kBuckets = Scheme::kBucketCount;
   std::vector<typename Scheme::Cw> cws(kBuckets * (kBucketBits + 1));
-  std::vector<int4> cs(kBuckets * 4);
+  std::vector<int4> cs(kBuckets * 4, int4{1, 1, 1, 1});
   std::vector<int4> s0s(kBuckets * 2);
   std::vector<uint16_t> as(30, 0);
   std::vector<int4> betas(30);

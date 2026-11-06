@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VDPF and VDMPF generation preserve caller-supplied seeds and report a single attempt's status; callers resample and retry failed attempts.
 - Python scheme methods fill caller-owned tensors and select CPU or CUDA from their tensor arguments. Mixed devices are rejected instead of copied automatically.
 - Host boundary entries report `std::invalid_argument` for buffer, range, bucket, and count metadata in Debug and Release builds. Low-level algorithms, including split Gen/Eval layouts, terminal group values, PRP input domains, `Bytes::From`, and `Vdmpf::Eval`, treat these requirements as caller preconditions: Debug builds abort with a diagnostic on both the host and the device, and Release builds have undefined behavior. Terminal validation runs before parallel traversal.
+- VDPF and VDMPF evaluation and proof entry points document nonzero correction seeds as a precondition; keys from a successful `Gen()` satisfy it.
 - OpenSSL backend failures report `std::runtime_error`, and failed context setup releases allocated resources.
 - Python packaging requires setuptools >= 84.1.0, filelock == 3.20.3 on Python 3.10, and filelock >= 4.2.1 on newer Python versions.
 

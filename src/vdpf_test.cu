@@ -830,7 +830,7 @@ TEST(VdpfXorHashContract, WideCoordinateAndClampedSeed) {
   Scheme scheme{XorHashContractPrg{}, XorHashContractObserver{&messages},
       fss::hash::Blake3{cuda::std::span<const int4, 2>(iv, 2)}};
   const Scheme::Cw cws[129]{};
-  const int4 cs[4]{};
+  const int4 cs[4] = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
   const int4 initial_seed = {11, 22, 33, 45};
   const int4 expected_seed = {0x12345678, 0x23456789, 0x3456789a, 0x456789aa};
   struct Case {
@@ -1244,7 +1244,7 @@ TEST(VdpfPreconditionTest, RejectsInvalidHostInputs) {
       fss::hash::Blake3(iv_span)};
   constexpr int kInBits = 8;
   std::vector<typename Scheme::Cw> cws(kInBits + 1);
-  int4 cs[4] = {};
+  int4 cs[4] = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}};
   const auto cs_span = cuda::std::span<const int4, 4>(cs, 4);
   std::vector<int4> ys(size_t{1} << kInBits);
   cuda::std::array<int4, 4> pi{};
@@ -1327,3 +1327,51 @@ TEST(VdpfPreconditionTest, AbortsOnBadTerminalInDebug) {
       "Assertion.*failed");
 }
 #endif  // NDEBUG
+
+TEST(VdpfPreconditionTest, GenKeyStillEvaluatesAndVerifies) {
+  using Scheme = fss::Vdpf<1, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3,
+      fss::hash::Blake3, uint8_t>;
+  const int4 iv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
+      {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)}};
+  const cuda::std::span<const int4, 2> iv_span(iv, 2);
+  Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::hash::Blake3(iv_span),
+      fss::hash::Blake3(iv_span)};
+  Scheme::Cw cws[2];
+  int4 cs[4];
+  int4 seeds[2] = {{0, 0, 0, 0}, {0, 0, 0, 0}};
+  constexpr uint8_t kAlpha = 1;
+  const int4 kBeta = {1, 0, 0, 0};
+  int rc = 1;
+  for (int attempt = 0; attempt < 64; ++attempt) {
+    seeds[0].x = attempt;
+    rc = scheme.Gen(cws, cuda::std::span<int4, 4>(cs, 4),
+        cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
+    if (rc == 0) break;
+  }
+  ASSERT_EQ(rc, 0);
+
+  const auto cws_span = cuda::std::span<const Scheme::Cw>(cws, 2);
+  const auto cs_span = cuda::std::span<const int4, 4>(cs, 4);
+  int4 shares[2][2];
+  cuda::std::array<int4, 4> pi_tildes[2][2];
+  cuda::std::array<int4, 4> chain[2], merkle[2];
+  for (int party = 0; party < 2; ++party) {
+    for (int x = 0; x < 2; ++x) {
+      pi_tildes[party][x] = scheme.Eval(party != 0, seeds[party], cws_span, cs_span,
+          static_cast<uint8_t>(x), shares[party][x]);
+    }
+    const auto leaves = cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes[party], 2);
+    scheme.Prove(leaves, cs_span, cuda::std::span<int4, 4>(chain[party].data(), 4));
+    scheme.ProveMerkle(leaves, cs_span, cuda::std::span<int4, 4>(merkle[party].data(), 4));
+  }
+  EXPECT_TRUE(Scheme::Verify(cuda::std::span<const int4, 4>(chain[0].data(), 4),
+      cuda::std::span<const int4, 4>(chain[1].data(), 4)));
+  EXPECT_TRUE(Scheme::Verify(cuda::std::span<const int4, 4>(merkle[0].data(), 4),
+      cuda::std::span<const int4, 4>(merkle[1].data(), 4)));
+  const int4 expected[2] = {{0, 0, 0, 0}, kBeta};
+  for (int x = 0; x < 2; ++x) {
+    const int4 reconstructed =
+        (BytesGroup::From(shares[0][x]) + BytesGroup::From(shares[1][x])).Into();
+    EXPECT_EQ(memcmp(&reconstructed, &expected[x], sizeof(int4)), 0);
+  }
+}

@@ -280,6 +280,8 @@ public:
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
    * cws or cs is too short, or ys is shorter than xs.
    */
@@ -330,6 +332,8 @@ public:
    * @param y Output share for this input.
    * @return Corrected per-point hashes in candidate order, as described by EvalProof.
    * @pre All key arrays and metadata come from the same successful Gen().
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @pre b_size_rt is in [kBucketSize, 2^bucket_bits], cws has at least
    * kBucketCount*(bucket_bits+1) elements, and cs has at least 4*kBucketCount
    * elements. A violation of these three requirements aborts with a diagnostic
@@ -375,6 +379,8 @@ public:
    * xs[i]. Entries for candidates outside the allocated buckets are not read.
    * @param pi Borrowed output storage for four proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @pre xs is nonempty and proof_values.size() >= xs.size().
    * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
    * cs is shorter than 4*kBucketCount, or proof_values is shorter than xs.
@@ -398,6 +404,8 @@ public:
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four chain-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @pre The full output and each temporary array's count and byte size fit size_t.
    * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
    * cws or cs is too short, or ys is shorter than 2^in_bits.
@@ -460,6 +468,8 @@ public:
    * @param xs Input points to evaluate.
    * @param ys Output shares (pre-allocated, size >= xs.size()). Will be zero-initialized.
    * @param pi Borrowed output storage for four proof blocks.
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
    * cws or cs is too short, or ys is shorter than xs.
    */
@@ -506,6 +516,8 @@ public:
    * xs[i]. Entries for candidates outside the allocated buckets are not read.
    * @param pi Borrowed output storage for four proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @pre xs is nonempty and proof_values.size() >= xs.size().
    * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
    * cs is shorter than 4*kBucketCount, or proof_values is shorter than xs.
@@ -529,6 +541,8 @@ public:
    * @param ys Caller-owned output storage with at least 2^in_bits int4 entries.
    * @param pi Caller-owned output storage for four Merkle-proof blocks.
    * @pre All key arrays and metadata come from the same successful Gen().
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @pre The full output and each temporary array's count and byte size fit size_t.
    * @throws std::invalid_argument if b_size_rt is outside [kBucketSize, 2^bucket_bits],
    * cws or cs is too short, or ys is shorter than 2^in_bits.
@@ -566,6 +580,8 @@ public:
    * @pre this is host accessible. Buffers and referenced backend resources
    * remain valid until queued work completes. CUDA stream-ordered allocation
    * must be supported on the current device.
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @return The first immediate CUDA allocation, launch, or release error.
    * Invalid sizes, metadata, or pointers return
    * cudaErrorInvalidValue. CUB's current int record count requires
@@ -631,6 +647,8 @@ public:
    * metadata come from the same successful Gen(). Buffers and referenced
    * backend resources remain valid until queued work completes. CUDA
    * stream-ordered allocation must be supported on the current device.
+   * @pre Every bucket's four cs blocks are not jointly all zero, for all
+   * kBucketCount buckets including inactive ones.
    * @return The first immediate CUDA allocation, launch, or release error.
    * Invalid sizes, metadata, or pointers return cudaErrorInvalidValue. CUB's
    * current int record count requires 3*xs.size() <= INT_MAX. Unrepresentable

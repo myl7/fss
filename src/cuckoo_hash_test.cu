@@ -243,7 +243,7 @@ TEST(CuckooHashTest, EntriesAcceptBoundaryBucketSizes) {
   std::vector<int4> s0s(kBuckets, int4{0, 0, 0, 0});
   std::vector<Scheme::Cw> cws(size_t{kBuckets} * (kBucketBits + 1));
   std::vector<VdmpfScheme::Cw> vcws(size_t{kBuckets} * (kBucketBits + 1));
-  std::vector<int4> cs(size_t{kBuckets} * 4);
+  std::vector<int4> cs(size_t{kBuckets} * 4, int4{1, 1, 1, 1});
   std::vector<uint32_t> xs;
   for (uint32_t i = 0; i < 64; ++i) xs.push_back(i);
   std::vector<int4> ys(xs.size());
