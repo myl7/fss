@@ -609,8 +609,10 @@ def _publish(prepared: _Prepared, locations: _Locations, source: Path | None):
         else:
             shutil.copyfile(source / f"{prepared.key}.so", staging / f"{prepared.key}.so")
         _revalidate(prepared)
-        module = _import_artifact(prepared, staging)
-        (staging / "build_inputs.json").write_text(prepared.manifest_text)
+        # The dynamic loader keys a DSO by inode: importing staging before its
+        # rename makes a later import of the final path re-run PyInit on the
+        # same DSO and corrupt the static PyModuleDef refcount freed at exit.
+        _validate_artifact(prepared, staging)
         destination = root / prepared.key
         # Compilers run in separate staging directories. Only publication is locked.
         with FileLock(str(root / f".{prepared.key}.publish.lock")):
@@ -621,20 +623,38 @@ def _publish(prepared: _Prepared, locations: _Locations, source: Path | None):
                 except (ImportError, OSError):
                     existing = None
             _revalidate(prepared)
-            if existing is None:
+            if existing is not None:
+                module = _import_artifact(prepared, destination)
+                _revalidate(prepared)
+            else:
+                stale = None
                 if destination.exists() or destination.is_symlink():
                     stale = root / f".{prepared.key}.stale.{os.getpid()}.{threading.get_ident()}"
                     destination.rename(stale)
-                    try:
-                        staging.rename(destination)
-                    finally:
-                        if stale.is_dir() and not stale.is_symlink():
-                            shutil.rmtree(stale)
-                        else:
-                            stale.unlink()
-                else:
+                committed = False
+                try:
+                    # Without build_inputs.json, readers skip the destination
+                    # until the stable import and drift checks have passed.
                     staging.rename(destination)
-            module.__file__ = str(destination / f"{prepared.key}.so")
+                    module = _import_artifact(prepared, destination)
+                    _revalidate(prepared)
+                    pending = destination / f".{prepared.key}.inputs.{os.getpid()}.{threading.get_ident()}"
+                    pending.write_text(prepared.manifest_text)
+                    os.replace(pending, destination / "build_inputs.json")
+                    committed = True
+                finally:
+                    if not committed:
+                        if destination.is_dir() and not destination.is_symlink():
+                            shutil.rmtree(destination, ignore_errors=True)
+                        else:
+                            destination.unlink(missing_ok=True)
+                        if stale is not None and not destination.exists():
+                            stale.rename(destination)
+                if stale is not None:
+                    if stale.is_dir() and not stale.is_symlink():
+                        shutil.rmtree(stale)
+                    else:
+                        stale.unlink()
         return _remember(prepared, module, destination)
     finally:
         shutil.rmtree(staging, ignore_errors=True)

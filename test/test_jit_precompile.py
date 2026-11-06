@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import inspect
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import threading
 import time
@@ -408,6 +409,132 @@ def test_import_input_drift_is_not_published(fake_compiler, cache_workspace, mon
         with pytest.raises(RuntimeError, match="inputs changed"):
             group.Bytes().precompile()
     assert not list(output.rglob("build_inputs.json"))
+    assert not _jit._EXT_CACHE
+
+
+def test_publish_imports_only_stable_destination(fake_compiler, cache_workspace):
+    output = cache_workspace / "stable-destination"
+    with jit.cache(write_root=output):
+        _load_dpf()
+    key = next(iter(_jit._EXT_CACHE))
+    assert fake_compiler["import"] == [(key, output / key / f"{key}.so")]
+
+
+def test_ready_marker_lands_only_after_stable_import(fake_compiler, cache_workspace, monkeypatch):
+    import_built = _jit._import_built
+    observed = []
+
+    def probe(name, path):
+        directory = Path(path).parent
+        observed.append((Path(path), (directory / "build_inputs.json").is_file()))
+        return import_built(name, path)
+
+    monkeypatch.setattr(_jit, "_import_built", probe)
+    output = cache_workspace / "marker-timing"
+    with jit.cache(write_root=output):
+        _load_dpf()
+    key = next(iter(_jit._EXT_CACHE))
+    directory = output / key
+    assert observed == [(directory / f"{key}.so", False)]
+    assert (directory / "build_inputs.json").is_file()
+    assert json.loads((directory / "build_inputs.json").read_text())["source"]
+
+
+def test_failed_stable_import_publishes_nothing(fake_compiler, cache_workspace, monkeypatch):
+    import_built = _jit._import_built
+
+    def broken_import(name, path):
+        import_built(name, path)
+        raise ImportError("stable import failed")
+
+    monkeypatch.setattr(_jit, "_import_built", broken_import)
+    output = cache_workspace / "failed-import"
+    with jit.cache(write_root=output):
+        with pytest.raises(ImportError, match="stable import failed"):
+            _load_dpf()
+    assert not list(output.rglob("build_inputs.json"))
+    assert not list(output.rglob("*.so"))
+    assert not _jit._EXT_CACHE
+
+
+def test_valid_winner_is_loaded_from_stable_path(fake_compiler, cache_workspace):
+    source = cache_workspace / "winner-source"
+    destination = cache_workspace / "winner-destination"
+    with jit.cache(write_root=source):
+        group.Bytes().precompile()
+    key = next(iter(_jit._EXT_CACHE))
+    # A committed artifact at the write root models a concurrent publisher
+    # that won the publish lock while this process was still preparing.
+    shutil.copytree(source / key, destination / key)
+    before = (_snapshot(source / key), _snapshot(destination / key))
+    _jit._EXT_CACHE.clear()
+    fake_compiler["import"].clear()
+    with jit.cache(read_roots=(source,), write_root=destination):
+        group.Bytes().precompile()
+    assert fake_compiler["import"] == [(key, source / key / f"{key}.so"),
+                                       (key, destination / key / f"{key}.so")]
+    assert (_snapshot(source / key), _snapshot(destination / key)) == before
+    leftovers = [path for path in destination.glob(f".{key}.*")
+                 if not path.name.endswith(".publish.lock")]
+    assert not leftovers
+    assert len(fake_compiler["build"]) == 1
+
+
+def test_winner_import_input_drift_is_not_remembered(fake_compiler, cache_workspace, monkeypatch):
+    source = cache_workspace / "winner-drift-source"
+    destination = cache_workspace / "winner-drift-destination"
+    with jit.cache(write_root=source):
+        group.Bytes().precompile()
+    key = next(iter(_jit._EXT_CACHE))
+    shutil.copytree(source / key, destination / key)
+    before = _snapshot(destination / key)
+    _jit._EXT_CACHE.clear()
+    import_built = _jit._import_built
+
+    def changing_import(name, path):
+        module = import_built(name, path)
+        if Path(path) == destination / key / f"{key}.so":
+            (Path(_jit._find_include_dir()) / "fss" / "probe.cuh").write_text(
+                "// changed during winner import\n")
+        return module
+
+    monkeypatch.setattr(_jit, "_import_built", changing_import)
+    with jit.cache(read_roots=(source,), write_root=destination):
+        with pytest.raises(RuntimeError, match="inputs changed"):
+            group.Bytes().precompile()
+    assert fake_compiler["import"][-1] == (key, destination / key / f"{key}.so")
+    assert _snapshot(destination / key) == before
+    leftovers = [path for path in destination.glob(f".{key}.*")
+                 if not path.name.endswith(".publish.lock")]
+    assert not leftovers
+    assert not _jit._EXT_CACHE
+
+
+def test_replacement_failure_preserves_published_artifact(fake_compiler, cache_workspace, monkeypatch):
+    output = cache_workspace / "replacement-failure"
+    with jit.cache(write_root=output):
+        _load_dpf()
+    key = next(iter(_jit._EXT_CACHE))
+    before = _snapshot(output / key)
+    _jit._EXT_CACHE.clear()
+
+    def rejecting_validation(prepared, directory):
+        if directory == output / key:
+            raise ImportError("winner is corrupt")
+
+    def broken_import(name, path):
+        assert Path(path).is_file()
+        raise ImportError("replacement import failed")
+
+    monkeypatch.setattr(_jit, "_validate_artifact", rejecting_validation)
+    monkeypatch.setattr(_jit, "_import_built", broken_import)
+    with jit.cache(write_root=output):
+        with pytest.raises(ImportError, match="replacement import failed"):
+            _load_dpf()
+    assert _snapshot(output / key) == before
+    leftovers = [path for path in output.glob(f".{key}.*")
+                 if not path.name.endswith(".publish.lock")]
+    assert not leftovers
     assert not _jit._EXT_CACHE
 
 
