@@ -18,6 +18,9 @@ constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 template <typename Group>
 class DmpfChaChaTest : public ::testing::Test {
+public:
+  using Prp = fss::prp::Aes128Feistel;
+
 protected:
   static constexpr int kInBits = 16;
   static constexpr int kMaxPoints = 30;
@@ -25,7 +28,6 @@ protected:
   static constexpr int kT = 30;
 
   using Prg = fss::prg::ChaCha<2>;
-  using Prp = fss::prp::Aes128Feistel;
   using DmpfType = fss::Dmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, Prp, uint16_t>;
 
   static constexpr int m = DmpfType::kBucketCount;

@@ -41,6 +41,9 @@ cuda::std::array<int4, 2> ReferenceMerkleRoot(
 
 template <typename Group, int InBits = 16, int MaxPoints = 30, int BucketBits = 14>
 class VdmpfChaChaTest : public ::testing::Test {
+public:
+  using Prp = fss::prp::Aes128Feistel;
+
 protected:
   static constexpr int kInBits = InBits;
   static constexpr int kMaxPoints = MaxPoints;
@@ -50,7 +53,6 @@ protected:
   using Prg = fss::prg::ChaCha<2>;
   using XorHash = fss::hash::Blake3;
   using Hash = fss::hash::Blake3;
-  using Prp = fss::prp::Aes128Feistel;
   using VdmpfType = fss::Vdmpf<kInBits, kMaxPoints, kBucketBits, Group, Prg, XorHash, Hash, Prp, uint16_t>;
 
   static constexpr int m = VdmpfType::kBucketCount;
