@@ -23,6 +23,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import bench
+import benchmark_policy
 
 ROOT = bench.ROOT
 BUILD = bench.BUILD / "sweep"
@@ -403,12 +404,48 @@ def native_receipts(raw, expected_hash):
             if not value.get("error_occurred") and value.get("aggregate_name") in (None, "median")}
 
 
+def native_counter(value, field):
+    if not isinstance(value, (int, float)) or isinstance(value, bool) \
+            or not math.isfinite(value) or value < 0 or value != int(value):
+        raise ValueError(f"invalid native counter {field}={value!r}")
+    return int(value)
+
+
+def unified_counters(value):
+    counters = {field: native_counter(value[field], field)
+                for field in ("key_count", "query_count", "domain_outputs", "keys_per_launch",
+                              "threads_per_block") if field in value}
+    for alias, legacy in (("keys_per_iteration", "key_count"),
+                          ("queries_per_iteration", "query_count"),
+                          ("logical_outputs_per_iteration", "domain_outputs")):
+        if alias in value:
+            unified = native_counter(value[alias], alias)
+            if legacy in counters and counters[legacy] != unified:
+                raise ValueError(f"benchmark {alias} does not match {legacy}")
+            counters[legacy] = unified
+    for field in ("proofs_per_iteration", "proof_bytes_per_iteration",
+                  "prepared_leaves_per_iteration", "point_hash_bytes_per_iteration",
+                  "batch_keys", "calls_per_iteration",
+                  "api_calls_per_iteration", "output_bytes_per_iteration"):
+        if field in value:
+            counters[field] = native_counter(value[field], field)
+    return counters
+
+
 def measurement_metadata(row):
     """Recover work quantities from receipts and documented wrapper contracts."""
     row = dict(row)
     receipt = native_receipts(str(row.get("raw_result", "")), row.get("raw_result_sha256")).get(row.get("benchmark"), {})
-    fields = ("key_count", "query_count", "domain_outputs", "keys_per_launch", "threads_per_block")
-    counters = {field: int(receipt[field]) for field in fields if field in receipt}
+    schema = receipt.get("work_schema_version")
+    if schema is not None:
+        if schema != 1:
+            raise ValueError(f"unsupported work schema version {schema}")
+        row["work_schema_version"] = 1
+        for field in ("api_calls_per_iteration", "output_bytes_per_iteration",
+                      "point_hash_bytes_per_iteration", "host_wall_ns_per_iteration"):
+            if field in receipt:
+                row[field] = receipt[field]
+    counters = unified_counters(receipt)
     row["native_counters"] = counters or row.get("native_counters", {})
     counters = row["native_counters"]
     row.setdefault("requested_threads_per_block", row.get("config", row).get("threads_per_block"))
@@ -546,7 +583,17 @@ def polish_metadata(row):
             row["timing_boundary_detail"] = "CUDA events around the native dpf_hybrid call for one party; input key upload and result download are outside timing"
         else:
             row["timing_boundary"] = "cuda_event_operation_kernel_launches"
-            row["timing_boundary_detail"] = "CUDA events around operation kernel launches; allocation and input copies are outside timing"
+            if scheme == "VDMPF" or scheme == "VDPF" and operation == "EvalAll":
+                # VdmpfBatchEvalMerkleGpu and Vdpf EvalAllMerkleGpu acquire and
+                # release DeviceScratch inside the public call
+                # (include/fss/vdmpf.cuh), and the wrapper times that complete
+                # call (benchmark-runner-accepted.md).
+                row["timing_boundary_detail"] = ("CUDA events around the complete public API call; "
+                                                 "the API-internal device scratch allocation and release are "
+                                                 "inside timing, while caller input and output allocation and "
+                                                 "upload stay outside timing")
+            else:
+                row["timing_boundary_detail"] = "CUDA events around operation kernel launches; allocation and input copies are outside timing"
     else:
         row["timing_boundary"] = "wall_time_operation"
         row["timing_boundary_detail"] = "Native framework wall time per operation; setup outside the benchmark iteration is excluded"
@@ -590,9 +637,25 @@ def polish_metadata(row):
 
 
 def validate_native_configuration(case, raw):
+    repetition_work = {}
     for value in json.loads(raw.read_text())["benchmarks"]:
         if value.get("error_occurred") or value.get("aggregate_name") not in (None, "median"):
             continue
+        benchmark = value.get("run_name", value.get("name", ""))
+        if value.get("work_schema_version") is None:
+            if case["library"] == "fss" and not value.get("aggregate_name"):
+                raise ValueError(f"benchmark {benchmark}: new fss collection receipt is missing "
+                                 "work_schema_version; historical receipts stay valid for "
+                                 "export and merge")
+        elif value["work_schema_version"] != 1:
+            raise ValueError(f"unsupported work schema version {value['work_schema_version']}")
+        counters = unified_counters(value)
+        if not value.get("aggregate_name"):
+            work = tuple(sorted(counters.items()))
+            if benchmark in repetition_work and repetition_work[benchmark] != work:
+                raise ValueError(f"benchmark {benchmark} repetitions report "
+                                 "different per-iteration work counters")
+            repetition_work[benchmark] = work
         if case["library"] in ("dpf-cpp", "dpfplusplus"):
             # The new C++ wrappers carry the domain size in the benchmark ID
             # instead of custom counters; the ID must match the requested case.
@@ -600,7 +663,7 @@ def validate_native_configuration(case, raw):
             if match and int(match.group(2)) != case["domain_bits"]:
                 raise ValueError(f"benchmark id {value['name']} does not match the configured domain {case['domain_bits']}")
         if case["library"] == "fss":
-            name = value.get("run_name", value.get("name", ""))
+            name = benchmark
             match = re.search(r"/(Gen|Prepare|Eval|EvalAll)(/|$)", name)
             operation = match.group(1) if match else case["operation"]
             batch = case["platform"] == "gpu" and "DMPF" in name
@@ -612,8 +675,15 @@ def validate_native_configuration(case, raw):
                                "domain_outputs": case["domain_size"] if operation == "EvalAll" else 0,
                                "keys_per_launch": keys}
             for field, expected in expected_counts.items():
-                if field in value and value[field] != expected:
-                    raise ValueError(f"benchmark {field} {value[field]} does not match configured {expected}")
+                if field not in counters:
+                    continue
+                # Native EvalAll receipts report the walked domain as queries;
+                # legacy wrapper EvalAll rows leave the count at zero.
+                if field == "query_count" and operation == "EvalAll" \
+                        and counters[field] in (0, case["domain_size"]):
+                    continue
+                if counters[field] != expected:
+                    raise ValueError(f"benchmark {field} {counters[field]} does not match configured {expected}")
         for field, expected in (("domain_bits", case["domain_bits"]), ("keys", case["num_keys"]),
                                 ("threads_per_block", case["threads_per_block"])):
             if expected is None or field not in value or value[field] == expected:
@@ -696,7 +766,7 @@ def collect(args, case, directory, sources):
             raw = directory / f"raw-{index}.json"
             command = pin + [str(binary), f"--benchmark_filter={selected_filter}", f"--benchmark_min_time={args.min_time}s",
                              f"--benchmark_min_warmup_time={args.warmup}", f"--benchmark_repetitions={args.repetitions}",
-                             "--benchmark_report_aggregates_only=true", "--benchmark_out_format=json", f"--benchmark_out={raw}"]
+                             "--benchmark_display_aggregates_only=true", "--benchmark_out_format=json", f"--benchmark_out={raw}"]
             (directory / f"command-{index}.json").write_text(json.dumps(command) + "\n")
             process_error = None
             try:
@@ -830,12 +900,28 @@ def main(argv=None):
     parser.add_argument("--jobs", type=int, default=2)
     parser.add_argument("--cuda-arch", default=os.environ.get("CUDA_ARCH"))
     parser.add_argument("--governor", choices=("performance", "keep"), default="performance")
-    parser.add_argument("--repetitions", type=int, default=5)
-    parser.add_argument("--min-time", type=float, default=.1)
-    parser.add_argument("--warmup", type=float, default=.1)
+    parser.add_argument("--profile", choices=benchmark_policy.PROFILES,
+                        help="run profile; explicit timing and selection arguments override it")
+    parser.add_argument("--workload", choices=benchmark_policy.WORKLOADS,
+                        help="recorded workload identity; full-launch control applies to main runs only")
+    parser.add_argument("--full-launches", type=int,
+                        help="explicit full API calls per iteration, 1 to 1024; affects main runs only")
+    parser.add_argument("--repetitions", type=int)
+    parser.add_argument("--min-time", type=float)
+    parser.add_argument("--warmup", type=float)
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--plan", action="store_true",
+                        help="print the resolved policy and exact cases without building")
     args = parser.parse_args(argv)
+    policy = benchmark_policy.resolve_policy(args, "figure")
+    args.profile = policy["profile"]
+    args.workload = policy["workload"]
+    args.full_launches = policy["full_launches"]
+    args.min_time = policy["min_time_s"]
+    args.repetitions = policy["repetitions"]
+    args.warmup = policy["warmup_s"]
+    benchmark_policy.apply_default_selection(args, "figure", args.profile, policy)
     if args.domain_bits and any(n < 8 or n > 20 for n in args.domain_bits):
         raise ValueError("domain bits must be between 8 and 20")
     if args.threads_per_block and any(t not in BLOCKS for t in args.threads_per_block):
@@ -848,6 +934,9 @@ def main(argv=None):
         return 0
     if args.action in ("build", "run") and not selected:
         raise ValueError("no benchmark cases selected for the requested libraries, operations, and domains")
+    if args.plan:
+        print(json.dumps({"policy": policy, "case_count": len(selected), "cases": selected}, indent=2))
+        return 0
     directory = args.directory or BUILD / "results" / datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     directory = directory.resolve()
     if not directory.is_relative_to(ROOT / "build"):
@@ -867,7 +956,7 @@ def main(argv=None):
     directory.mkdir(parents=True, exist_ok=False)
     hashes_args = argparse.Namespace(libraries=",".join(dict.fromkeys(c["library"] for c in selected)), platform=args.platform)
     manifest = dict(schema_version=1, started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    arguments=vars(args) | {"directory": str(directory)}, cases=selected,
+                    arguments=vars(args) | {"directory": str(directory)}, policy=policy, cases=selected,
                     source_sha256=bench.benchmark_source_hashes(hashes_args),
                     runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                     excluded_variants=[] if args.include_uint else [dict(library="fss_v060", variant="DCF-uint",

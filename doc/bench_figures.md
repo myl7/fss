@@ -137,8 +137,10 @@ The T sweep therefore adjusts the block root depth to satisfy the public
 kernel constraint `2^(z - b1) = T`. The timed kernel includes all tree
 traversal and excludes key generation, allocation, and upload.
 
-Google Benchmark runs use five repetitions, at least 0.1 seconds of
-measurement, and 0.1 seconds of warmup. The figure uses the median.
+Google Benchmark runs under the publication profile use five repetitions, at
+least 0.1 seconds of measurement, and 0.1 seconds of warmup; the decision
+profile defaults to a 0.3-second minimum measurement, one repetition, and no
+warmup. The figure uses the median.
 Rust cases use five separate Criterion processes, each with 20 samples,
 0.2 seconds of warmup, and a 0.2-second requested measurement interval.
 The figure uses the median of the five process medians. Criterion can extend
@@ -276,19 +278,35 @@ comparison figures. This figure stays in the methodology documentation.
 
 ## Run and export
 
+The figure runner shares the profile policy with `bench.py` through
+`third_party/benchmark_policy.py`. The default `decision` profile requests a
+0.3-second minimum measurement, one repetition, and no warmup, and selects
+only the current FSS wrapper at n = 8 and n = 20 for an ordinary domain sweep.
+Explicit `--libraries`, `--domain-bits`, `--platform`, `--scheme`,
+`--operations`, and timing arguments override the profile defaults.
+`--profile publication` restores the historical sampling and the full library
+selection used for the published curves, and `--profile smoke` uses a short
+correctness budget with full-domain coverage. `--plan` prints the resolved
+policy and the exact case list without building; it extends `list` and
+`--dry-run`. New wrapper receipts carry per-iteration work counters with
+`work_schema_version = 1`; the collector accepts the historical
+`key_count`/`query_count`/`domain_outputs` counters and the new aliases, and
+keeps logical output counts and packed output bytes separate.
+
 Inspect the requested cases before starting. Each `run` directory must be
-new. Use a new suffix for a repeated experiment. The examples use the defaults
+new. Use a new suffix for a repeated experiment. The examples below pass
+`--profile publication` to reproduce the published curves with the defaults
 of five repetitions and the measurement settings above.
 
 ```sh
 python3 third_party/figure_bench.py list --platform cpu --sweep domain
-python3 third_party/figure_bench.py run --platform cpu --sweep domain \
+python3 third_party/figure_bench.py run --profile publication --platform cpu --sweep domain \
   --cpu 24 --cpu-prg aes-ni --governor performance --jobs 2 \
   --directory build/third_party/sweep/results/cpu-domain
-python3 third_party/figure_bench.py run --platform gpu --sweep domain \
+python3 third_party/figure_bench.py run --profile publication --platform gpu --sweep domain \
   --cpu 100 --gpu 1 --cuda-arch 86 --governor keep --jobs 2 \
   --directory build/third_party/sweep/results/gpu-domain
-python3 third_party/figure_bench.py run --platform gpu --libraries fss \
+python3 third_party/figure_bench.py run --profile publication --platform gpu --libraries fss \
   --sweep block --operations Eval EvalAll --domain-bits 20 \
   --threads-per-block 16 32 64 128 256 512 1024 \
   --num-keys 262144 --cpu 100 --gpu 1 --cuda-arch 86 \

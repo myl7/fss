@@ -16,6 +16,10 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import benchmark_policy
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build" / "third_party"
@@ -41,6 +45,20 @@ LIBRARIES = {
 }
 RUST = {"libdpf": "nightly-2025-09-01", "fss_v060": "nightly-2025-09-01",
         "mastic": "stable", "plasma": "stable", "sycret": "stable"}
+TIME_UNITS = {"ns": 1, "us": 1000, "ms": 1_000_000, "s": 1_000_000_000}
+V1_WORK_FIELDS = ("api_calls_per_iteration", "keys_per_iteration", "queries_per_iteration",
+                  "logical_outputs_per_iteration", "output_bytes_per_iteration",
+                  "proofs_per_iteration", "proof_bytes_per_iteration",
+                  "prepared_leaves_per_iteration", "point_hash_bytes_per_iteration",
+                  "batch_keys", "calls_per_iteration")
+V1_COUNTABLE_FIELDS = ("work_schema_version",) + V1_WORK_FIELDS + ("fixture_keys",)
+
+
+def v1_counter(value, field):
+    if not isinstance(value, (int, float)) or isinstance(value, bool) \
+            or not math.isfinite(value) or value < 0 or value != int(value):
+        raise ValueError(f"invalid per-iteration counter {field}={value!r}")
+    return int(value)
 
 
 def source(library):
@@ -111,6 +129,8 @@ def environment(args, library):
         env.update(BAZELISK_HOME=str(BUILD / "google_dpf" / "bazelisk"),
                    USE_BAZEL_VERSION="7.6.1")
     env.setdefault("FSS_EZPC_POOL_MIB", "512")
+    if library == "main" and getattr(args, "full_launches", None) is not None:
+        env["FSS_BENCH_FULL_LAUNCHES"] = str(args.full_launches)
     if args.cuda_arch:
         arch = args.cuda_arch
         if not re.fullmatch(r"[0-9]+", arch):
@@ -252,7 +272,8 @@ def governor(cpu, mode):
 def benchmark_source_hashes(args):
     """Identify local benchmark inputs independently of Git dirty-state summaries."""
     paths = {ROOT / "CMakeLists.txt", ROOT / "third_party" / "CMakeLists.txt",
-             ROOT / "third_party" / "bench.py", ROOT / "third_party" / "figure_bench.py"}
+             ROOT / "third_party" / "bench.py", ROOT / "third_party" / "figure_bench.py",
+             ROOT / "third_party" / "benchmark_policy.py"}
     for name in dict.fromkeys(n for n, _ in selection(args)):
         directory = source(name)
         for pattern in ("*.cu", "*.cc", "*.cpp", "*.cuh", "*.h", "*.py", "CMakeLists.txt",
@@ -262,6 +283,7 @@ def benchmark_source_hashes(args):
             paths.update(directory.glob(pattern))
         if name == "main":
             paths.update((ROOT / "src").rglob("*.cu"))
+            paths.update((ROOT / "src").rglob("*.h"))
     paths.update((ROOT / "include").rglob("*.cuh"))
     return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(paths) if path.is_file()}
@@ -306,6 +328,9 @@ def metadata(args, active_governor):
             "cpu_id": args.cpu, "gpu_id": args.gpu, "governor": active_governor,
             "omp_num_threads": 1, "rayon_num_threads": 1,
             "cuda_arch": args.cuda_arch, "smoke": args.smoke,
+            "profile": getattr(args, "profile", None), "workload": getattr(args, "workload", None),
+            "full_launches": getattr(args, "full_launches", None),
+            "policy": getattr(args, "policy", None),
             "repetitions": args.repetitions, "min_time_seconds": args.min_time,
             "selected": selection(args),
             "rust_toolchains": RUST,
@@ -346,11 +371,29 @@ def binaries(name, device, args=None):
     return [(directory / "cmake" / binary, "")]
 
 
-def default_filter(name, device):
+# The native binaries compile filters with the POSIX extended regex backend,
+# which rejects lookaround. Both patterns are plain alternations over the
+# operation tokens the main binaries register (src/bench_cpu.cu and
+# src/bench_gpu.cu), so EvalPoint rows never match.
+MAIN_OPERATION_TOKENS = r"(Gen|Eval|EvalAll(Merkle)?(Gpu)?|Prove|Preprocess(EvalAll)?(Gpu)?)_"
+SMOKE_MAIN_OPERATION_TOKENS = r"(Gen|Eval|EvalAll(Merkle)?(Gpu)?)_"
+
+
+def default_filter(name, device, exclude_internal_points=False):
     if name == "main":
-        return ".*"
+        return "^BM_.*" + MAIN_OPERATION_TOKENS if exclude_internal_points else ".*"
     prefixes = {"fss": "fss", "torchcsprng": "(torchcsprng|fss-prg)"}
     return f"^{prefixes.get(name, '.*')}/{device.upper()}/"
+
+
+def resolved_filter(args, name, device):
+    if args.filter:
+        return args.filter
+    if args.smoke:
+        return (default_filter(name, device) + r"(.*/)?(Gen|Eval|EvalAll|FullEval|AesSoft)(/|$)"
+                if name != "main" else "^BM_.*" + SMOKE_MAIN_OPERATION_TOKENS + ".*")
+    return default_filter(name, device,
+                          exclude_internal_points=getattr(args, "profile", None) == "decision")
 
 
 def record(args, name, device, directory, commands):
@@ -366,7 +409,7 @@ def record(args, name, device, directory, commands):
         command = pin + ["cargo", f"+{RUST[name]}", "bench", "--locked", "--bench", bench,
                          "--", "--sample-size", "10" if args.smoke else "100",
                          "--warm-up-time", "0.1" if args.smoke else "3",
-                         "--measurement-time", "0.1" if args.smoke else str(args.min_time)]
+                         "--measurement-time", str(args.min_time)]
         if args.filter:
             command.append(args.filter)
         elif args.smoke:
@@ -379,17 +422,14 @@ def record(args, name, device, directory, commands):
                                              str(directory_env / "extension-source")])
         command = pin + [str(directory_env / "venv/bin/python"), str(source(name) / "bench_gpu.py"),
                          "--output", str(directory / "python.json"),
-                         "--repetitions", "2" if args.smoke else str(args.repetitions),
+                         "--repetitions", str(args.repetitions),
                          "--warmup", "1" if args.smoke else "2"]
         if args.filter:
             command += ["--filter", args.filter]
         units.append((command, "python", "", None))
     else:
         for binary, variant in binaries(name, device, args):
-            pattern = args.filter or default_filter(name, device)
-            if args.smoke and not args.filter:
-                pattern = (default_filter(name, device) + "(.*/)?(Gen|Eval|AesSoft)(/|$)"
-                           if name != "main" else "^BM_.*(Gen|Eval)_.*")
+            pattern = resolved_filter(args, name, device)
             filters = [pattern]
             if name == "fss_v070":
                 group, scheme = variant.split("-")
@@ -405,9 +445,9 @@ def record(args, name, device, directory, commands):
                 suffix = hashlib.sha256(pattern.encode()).hexdigest()[:8]
                 output = directory / f"google-{variant}-{suffix}.json"
                 command = pin + [str(binary), f"--benchmark_filter={pattern}",
-                                 f"--benchmark_min_time={'0.01' if args.smoke else args.min_time}s",
-                                 f"--benchmark_repetitions={1 if args.smoke else args.repetitions}",
-                                 "--benchmark_report_aggregates_only=true",
+                                 f"--benchmark_min_time={args.min_time}s",
+                                 f"--benchmark_repetitions={args.repetitions}",
+                                 "--benchmark_display_aggregates_only=true",
                                  "--benchmark_out_format=json", f"--benchmark_out={output}"]
                 units.append((command, "google", variant + "-" + suffix, None))
     if not units:
@@ -422,7 +462,12 @@ def record(args, name, device, directory, commands):
         entry = {"library": name, "device": device, "framework": framework,
                  "command": command, "log": str(log.relative_to(directory.parent)),
                  "status": "ok"}
+        if name == "main":
+            entry["full_launches"] = getattr(args, "full_launches", None)
+        if name in ("main", "fss"):
+            entry["required_work_schema"] = 1
         commands.append(entry)
+        started = time.monotonic()
         try:
             execute(command, cwd=source(name), env=env, log=log)
         except (RuntimeError, OSError) as error:
@@ -432,6 +477,8 @@ def record(args, name, device, directory, commands):
         except BaseException as error:
             entry.update(status="failed", error=str(error) or type(error).__name__)
             raise
+        finally:
+            entry["process_wall_seconds"] = round(time.monotonic() - started, 3)
         if target and (target / "criterion").exists():
             shutil.copytree(target / "criterion", directory / "criterion", dirs_exist_ok=True)
         try:
@@ -445,31 +492,138 @@ def record(args, name, device, directory, commands):
     return records
 
 
+def plan_document(args, selected):
+    return {"profile": args.profile, "workload": args.workload,
+            "min_time_s": args.min_time, "repetitions": args.repetitions,
+            "warmup_s": args.warmup_s, "full_launches": args.full_launches,
+            "full_launches_env": benchmark_policy.FULL_LAUNCHES_ENV,
+            "full_launches_scope": "main GPU batch full-domain rows; batch keys stay "
+                                   f"{benchmark_policy.FULL_EVAL_BATCH_KEYS}",
+            "libraries": args.libraries, "sources": args.policy["sources"],
+            "commands": [{"library": name, "device": device,
+                          "filter": resolved_filter(args, name, device),
+                          "result_row_count": "unresolved until the native run"}
+                         for name, device in selected]}
+
+
 def result_rows(entry, data):
     """Parse preserved output, returning usable rows and explicit data failures."""
     name, device = entry["library"], entry["device"]
     rows, errors = [], []
 
-    def row(benchmark, total, batch=1, work=None, statistic="median"):
+    def row(benchmark, total, batch=1, work=None, statistic="median", item_unit=None):
         if not math.isfinite(total) or total <= 0 or batch <= 0:
             raise ValueError("invalid benchmark time or batch")
         work = batch if work is None else work
         if not math.isfinite(work) or work <= 0:
             raise ValueError("invalid benchmark work count")
+        unit = item_unit or ("domain_outputs" if "EvalAll" in benchmark and name != "ezpc"
+                             else "keys_or_prg_calls")
         rows.append([name, device, benchmark, batch, total, total / batch,
                      work, 1e9 * work / total, statistic,
                      "cuda_event" if device == "gpu" else "wall_time", "", "", "",
-                     "domain_outputs" if "EvalAll" in benchmark and name != "ezpc" else "keys_or_prg_calls",
-                     "", "real_time", ""])
+                     unit, "", "real_time", "", "", "", "", "", "", "", "legacy"])
+
+    def schema_v1_row(benchmark, value, aggregate, repetition_work):
+        """Normalize one schema v1 receipt row from per-iteration counters.
+
+        Google Benchmark v1.9.5 reports time fields per iteration, so the
+        aggregate ``iterations`` count never rescales the normalization.
+        """
+        for field in V1_COUNTABLE_FIELDS:
+            if field in value:
+                v1_counter(value[field], field)
+        if value.get("work_schema_version") != 1:
+            raise ValueError(f"{benchmark}: unsupported work schema version "
+                             f"{value.get('work_schema_version')}")
+        for field in ("real_time", "time_unit"):
+            if field not in value:
+                raise ValueError(f"{benchmark}: schema v1 receipt is missing {field}")
+        if repetition_work and len(repetition_work) > 1:
+            raise ValueError(f"{benchmark}: repetitions report different per-iteration work counters")
+        total = value["real_time"] * TIME_UNITS[value["time_unit"]]
+        keys = v1_counter(value.get("keys_per_iteration", 0), "keys_per_iteration")
+        queries = v1_counter(value.get("queries_per_iteration", 0), "queries_per_iteration")
+        outputs = v1_counter(value.get("logical_outputs_per_iteration", 0),
+                             "logical_outputs_per_iteration")
+        proofs = v1_counter(value.get("proofs_per_iteration", 0), "proofs_per_iteration")
+        prepared = v1_counter(value.get("prepared_leaves_per_iteration", 0),
+                              "prepared_leaves_per_iteration")
+        work, unit = ((outputs, "domain_outputs") if outputs > 0 else
+                      (queries, "keys_or_prg_calls") if queries > 0 else
+                      (prepared, "prepared_leaves") if prepared > 0 else
+                      (proofs, "proofs") if proofs > 0 else
+                      (keys, "keys_or_prg_calls") if keys > 0 else (0, "keys_or_prg_calls"))
+        if work <= 0:
+            raise ValueError(f"{benchmark}: schema v1 receipt has no per-iteration work counters")
+        batch_keys = v1_counter(value.get("batch_keys", 0), "batch_keys")
+        if name == "main":
+            batch_full_domain = (device == "gpu" and "EvalAll" in benchmark
+                                 and "Grotto" not in benchmark and "VdpfEvalAllMerkle" not in benchmark)
+            if batch_full_domain and ("calls_per_iteration" not in value or "batch_keys" not in value):
+                raise ValueError(f"{benchmark}: batch full-domain row is missing "
+                                 "calls_per_iteration or batch_keys")
+            planned = entry.get("full_launches") or benchmark_policy.DAILY_FULL_LAUNCHES
+            calls = value.get("calls_per_iteration")
+            if calls is not None and calls != planned:
+                raise ValueError(f"{benchmark}: executed calls_per_iteration {calls} does not "
+                                 f"match the planned {planned} full launches")
+            if batch_keys and batch_keys != benchmark_policy.FULL_EVAL_BATCH_KEYS:
+                raise ValueError(f"{benchmark}: executed batch_keys {batch_keys} does not match "
+                                 f"the planned {benchmark_policy.FULL_EVAL_BATCH_KEYS} batch keys")
+            if (entry.get("required_work_schema") and "VdpfEval" in benchmark
+                    and "EvalAll" not in benchmark and "EvalPoint" not in benchmark
+                    and "point_hash_bytes_per_iteration" not in value):
+                raise ValueError(f"{benchmark}: new main GPU VDPF point receipt is missing "
+                                 "point_hash_bytes_per_iteration")
+        batch = batch_keys or keys or queries or work
+        row(benchmark, total, batch, work, "median" if aggregate else "single", unit)
+        rows[-1][5] = total / keys if keys > 0 else ""
+        if "cpu_time" in value:
+            rows[-1][14] = value["cpu_time"] * TIME_UNITS[value["time_unit"]]
+        native_rate = value.get("items_per_second")
+        if native_rate is not None:
+            if not math.isfinite(native_rate) or native_rate <= 0:
+                raise ValueError("invalid native benchmark throughput")
+            basis = ("manual_time" if device == "gpu" or "/manual_time" in benchmark
+                     else "real_time" if "/real_time" in benchmark else "cpu_time")
+            if not aggregate:
+                if basis == "cpu_time" and "cpu_time" in value:
+                    basis_time = value["cpu_time"] * TIME_UNITS[value["time_unit"]]
+                else:
+                    basis = "manual_time" if basis == "manual_time" else "real_time"
+                    basis_time = total
+                computed = 1e9 * work / basis_time
+                if abs(native_rate - computed) > 1e-3 * computed:
+                    raise ValueError(f"{benchmark}: native items_per_second {native_rate:.6g} "
+                                     f"conflicts with the per-iteration counters on {basis} "
+                                     f"({computed:.6g})")
+            rows[-1][16] = native_rate
+            rows[-1][15] = basis
+        def receipt_counter(field):
+            return v1_counter(value[field], field) if field in value else ""
+
+        rows[-1][17:] = [receipt_counter("logical_outputs_per_iteration"),
+                         receipt_counter("output_bytes_per_iteration"),
+                         receipt_counter("proofs_per_iteration"),
+                         receipt_counter("proof_bytes_per_iteration"),
+                         receipt_counter("point_hash_bytes_per_iteration"),
+                         value.get("host_wall_ns_per_iteration", ""), "v1"]
 
     framework = entry["framework"]
     if framework == "google":
         filename = next(x.split("=", 1)[1] for x in entry["command"]
                         if x.startswith("--benchmark_out="))
         values = json.loads((data / Path(filename).name).read_text())["benchmarks"]
-        units = {"ns": 1, "us": 1000, "ms": 1_000_000, "s": 1_000_000_000}
+        units = TIME_UNITS
         aggregate_names = {v.get("run_name", v["name"]) for v in values
                            if v.get("aggregate_name") == "median"}
+        repetition_work = {}
+        for value in values:
+            if (value.get("work_schema_version") is not None and not value.get("aggregate_name")
+                    and not value.get("error_occurred")):
+                repetition_work.setdefault(value.get("run_name", value["name"]), set()).add(
+                    tuple(value.get(field) for field in V1_WORK_FIELDS))
         for value in values:
             benchmark = value.get("run_name", value["name"])
             if value.get("error_occurred"):
@@ -480,6 +634,12 @@ def result_rows(entry, data):
                 continue
             if not aggregate and benchmark in aggregate_names:
                 continue
+            if value.get("work_schema_version") is not None:
+                schema_v1_row(benchmark, value, aggregate, repetition_work.get(benchmark))
+                continue
+            if entry.get("required_work_schema"):
+                raise ValueError(f"{benchmark}: new {name} receipt is missing work_schema_version; "
+                                 "historical legacy rows are only valid for re-summarized runs")
             batch = 1
             if device == "gpu":
                 batch = entry.get("num_keys", 1 << 20)
@@ -556,7 +716,11 @@ def summarize(directory):
     headings = ["library", "platform", "benchmark", "batch", "time_ns", "ns_per_key",
                 "items_per_iteration", "items_per_second", "statistic", "timing_boundary",
                 "operation", "prf", "domain_size", "item_unit", "cpu_time_ns",
-                "throughput_time_basis", "native_items_per_second"]
+                "throughput_time_basis", "native_items_per_second",
+                "logical_outputs_per_iteration", "output_bytes_per_iteration",
+                "proofs_per_iteration", "proof_bytes_per_iteration",
+                "point_hash_bytes_per_iteration",
+                "host_wall_ns_per_iteration", "work_schema"]
     (directory / "summary.json").write_text(json.dumps([dict(zip(headings, row)) for row in rows], indent=2) + "\n")
     with (directory / "summary.csv").open("w") as handle:
         writer = csv.writer(handle)
@@ -569,11 +733,23 @@ def summarize(directory):
              "records keys per iteration or call, or PRG calls for raw AES rows. It is retained",
              "for compatibility and does not record CUDA threads per block. Native Google Benchmark throughput",
              "uses CPU time on CPU and manual CUDA time on GPU. The CSV/JSON records its time basis",
-             "and preserves the native counter. Rows without counters use real time.", "",
-             "| Library | Platform | Benchmark | Keys/iteration | Time (ns) | ns/key | Items/s |",
-             "| --- | --- | --- | ---: | ---: | ---: | ---: |"]
+             "and preserves the native counter. Rows without counters use real time.",
+             "Schema v1 rows carry per-iteration work counters: they divide time per iteration by",
+             "work per iteration only (keys, queries, domain outputs, prepared leaves, or proofs),",
+             "keep logical output counts, output bytes (logical storage bytes, not DRAM traffic),",
+             "proof counts, proof bytes, point-hash bytes (raw corrected hash material, not",
+             "proofs), and GPU host wall time separate from CUDA event time, and are marked v1.",
+             "Their items/s column stays wall-normalized while the native rate column keeps its",
+             "own recorded time basis. Rows without the marker keep the legacy name-based",
+             "reading. Keyless rows leave the key cells empty; the Work unit column names each",
+             "row's counted unit.", "",
+             "| Library | Platform | Benchmark | Keys/iteration | Work/iteration | Work unit | Time (ns) | ns/key | Items/s |",
+             "| --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: |"]
     for row in rows:
-        lines.append(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]:.3f} | {row[5]:.3f} | {row[7]:.3f} |")
+        per_key = f"{row[5]:.3f}" if row[5] != "" else ""
+        keys = str(int(row[3])) if row[5] != "" else ""
+        lines.append(f"| {row[0]} | {row[1]} | {row[2]} | {keys} | {int(row[6])} | {row[13]} | "
+                     f"{row[4]:.3f} | {per_key} | {row[7]:.3f} |")
     failures = [entry for entry in manifest["commands"] if entry["status"] != "ok"]
     if manifest.get("run_error"):
         lines += ["", "Run failed: " + manifest["run_error"]]
@@ -632,7 +808,8 @@ def main():
     summary.add_argument("directory", type=Path)
     for action in ("prepare", "build", "run"):
         command = subparsers.add_parser(action)
-        command.add_argument("--libraries", default="all", help="comma-separated names from list")
+        command.add_argument("--libraries", default=None if action == "run" else "all",
+                             help="comma-separated names from list")
         command.add_argument("--platform", choices=("cpu", "gpu", "all"), default="all")
         command.add_argument("--jobs", type=int, default=int(os.environ.get("JOBS", "4")))
         command.add_argument("--cuda-arch", default=os.environ.get("CUDA_ARCH"))
@@ -641,11 +818,20 @@ def main():
             command.add_argument("--cpu", type=int, default=int(os.environ.get("CPU_ID", "0")))
             command.add_argument("--governor", choices=("performance", "keep"), default="performance")
             command.add_argument("--no-build", action="store_true")
-            command.add_argument("--smoke", action="store_true")
+            command.add_argument("--smoke", action="store_true",
+                                 help="alias for --profile smoke; conflicts with --profile")
+            command.add_argument("--profile", choices=benchmark_policy.PROFILES,
+                                 help="run profile; explicit timing and selection arguments override it")
+            command.add_argument("--workload", choices=benchmark_policy.WORKLOADS,
+                                 help="full API calls per iteration for the main GPU batch full-domain rows")
+            command.add_argument("--full-launches", type=int,
+                                 help="explicit full API calls per iteration, 1 to 1024")
+            command.add_argument("--plan", action="store_true",
+                                 help="print the resolved run plan without building or touching hardware")
             command.add_argument("--run-id")
             command.add_argument("--filter")
-            command.add_argument("--min-time", type=float, default=1)
-            command.add_argument("--repetitions", type=int, default=5)
+            command.add_argument("--min-time", type=float)
+            command.add_argument("--repetitions", type=int)
             command.add_argument("native_args", nargs=argparse.REMAINDER, help="native benchmark arguments after --")
     args = parser.parse_args()
     if args.action == "list":
@@ -657,6 +843,16 @@ def main():
     if not 1 <= args.jobs <= max(1, os.cpu_count() or 1):
         raise RuntimeError("jobs must be positive and no greater than the host CPU count")
     if args.action == "run":
+        policy = benchmark_policy.resolve_policy(args, "bench")
+        args.profile = policy["profile"]
+        args.workload = policy["workload"]
+        args.full_launches = policy["full_launches"]
+        args.min_time = policy["min_time_s"]
+        args.repetitions = policy["repetitions"]
+        args.warmup_s = policy["warmup_s"]
+        args.smoke = policy["profile"] == "smoke"
+        args.policy = policy
+        benchmark_policy.apply_default_selection(args, "bench", args.profile, policy)
         if not math.isfinite(args.min_time) or args.min_time <= 0 or args.repetitions <= 0:
             raise RuntimeError("min-time and repetitions must be positive")
         if args.native_args[:1] == ["--"]:
@@ -667,6 +863,9 @@ def main():
             if value.startswith("--benchmark_filter="):
                 args.filter = value.split("=", 1)[1]
         args.native_args = [v for v in args.native_args if not v.startswith("--benchmark_filter=")]
+        if args.plan:
+            print(json.dumps(plan_document(args, selection(args)), indent=2))
+            return 0
     selected = selection(args)
     if args.action == "prepare":
         prepare(args, selected)

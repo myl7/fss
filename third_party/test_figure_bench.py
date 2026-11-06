@@ -1,6 +1,8 @@
 """Sweep planning and native-result normalization tests without GPU/toolchains."""
 import argparse
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -112,7 +114,7 @@ class FigureSweepTest(unittest.TestCase):
             filters.append(selected)
             raw = Path(next(arg.split("=", 1)[1] for arg in command if arg.startswith("--benchmark_out=")))
             name = selected.removeprefix("^").removesuffix("(/|$)")
-            raw.write_text(json.dumps({"benchmarks": [dict(name=name, real_time=100, time_unit="ns", key_count=1 if "DMPF" in name else 262144, query_count=262144, threads_per_block=256)]}))
+            raw.write_text(json.dumps({"benchmarks": [dict(name=name, real_time=100, time_unit="ns", work_schema_version=1, key_count=1 if "DMPF" in name else 262144, query_count=262144, threads_per_block=256)]}))
         with mock.patch.object(sweep, "environment", return_value={}), mock.patch.object(sweep, "executables", return_value=[Path("bench")]), mock.patch.object(sweep.bench, "execute", side_effect=execute):
             rows = sweep.collect(args, case, self.directory / "case", {})
         self.assertEqual(len(rows), 5)
@@ -179,7 +181,7 @@ class FigureSweepTest(unittest.TestCase):
     def test_native_work_counters_reject_stale_configuration(self):
         raw = self.directory / "counts.json"
         def validate(case, name, **counters):
-            raw.write_text(json.dumps({"benchmarks": [dict(name=name, **counters)]}))
+            raw.write_text(json.dumps({"benchmarks": [dict(name=name, work_schema_version=1, **counters)]}))
             sweep.validate_native_configuration(case, raw)
         full = self.case(operation="EvalAll", num_keys=1)
         validate(full, "fss/GPU/VDMPF-bytes/EvalAll", key_count=1, query_count=4096, domain_outputs=4096, keys_per_launch=1)
@@ -479,21 +481,21 @@ class FigureSweepTest(unittest.TestCase):
 
     def test_stale_native_configuration_is_rejected(self):
         raw = self.directory / "raw.json"
-        raw.write_text(json.dumps({"benchmarks": [dict(name="x", domain_bits=20, keys=262144)]}))
+        raw.write_text(json.dumps({"benchmarks": [dict(name="x", domain_bits=20, keys=262144, work_schema_version=1)]}))
         with self.assertRaisesRegex(ValueError, "domain_bits"):
             sweep.validate_native_configuration(self.case(), raw)
-        raw.write_text(json.dumps({"benchmarks": [dict(name="x", domain_bits=12, keys=262144, threads_per_block=256)]}))
+        raw.write_text(json.dumps({"benchmarks": [dict(name="x", domain_bits=12, keys=262144, threads_per_block=256, work_schema_version=1)]}))
         sweep.validate_native_configuration(self.case(), raw)
 
     def test_dmpf_gpu_reports_its_fixed_block_size(self):
         raw = self.directory / "raw.json"
         raw.write_text(json.dumps({"benchmarks": [
-            dict(name="fss/GPU/DMPF-bytes/EvalAll", domain_bits=12, keys=262144, threads_per_block=256)]}))
+            dict(name="fss/GPU/DMPF-bytes/EvalAll", domain_bits=12, keys=262144, threads_per_block=256, work_schema_version=1)]}))
         # The DMPF GPU kernels launch fixed 256-thread blocks, so the reported
         # size is accepted against a smaller configured EvalAll default.
         sweep.validate_native_configuration(self.case(operation="EvalAll", threads_per_block=128), raw)
         raw.write_text(json.dumps({"benchmarks": [
-            dict(name="fss/GPU/DPF-bytes/EvalAll", domain_bits=12, keys=262144, threads_per_block=256)]}))
+            dict(name="fss/GPU/DPF-bytes/EvalAll", domain_bits=12, keys=262144, threads_per_block=256, work_schema_version=1)]}))
         with self.assertRaisesRegex(ValueError, "threads_per_block"):
             sweep.validate_native_configuration(self.case(operation="EvalAll", threads_per_block=128), raw)
 
@@ -688,6 +690,225 @@ class FigureSweepTest(unittest.TestCase):
         (new / "benchmark.json").write_text(json.dumps({"full_id": "libdpf/CPU/DPF/EvalAll"}))
         (new / "estimates.json").write_text(json.dumps({"median": {"point_estimate": 20}}))
         self.assertEqual(sweep.bench.result_rows(entry, self.directory)[0][0][6], 4096)
+
+    def test_v1_receipt_aliases_feed_quantity_counters(self):
+        raw = self.directory / "v1.json"
+        raw.write_text(json.dumps({"benchmarks": [dict(name="fss/GPU/DPF-bytes/EvalAll",
+                                                       work_schema_version=1,
+                                                       keys_per_iteration=1,
+                                                       queries_per_iteration=0,
+                                                       logical_outputs_per_iteration=4096,
+                                                       output_bytes_per_iteration=512,
+                                                       host_wall_ns_per_iteration=1234)]}))
+        case = self.case(operation="EvalAll", num_keys=1)
+        row = sweep.normalize(case, "fss/GPU/DPF-bytes/EvalAll", 4096, raw, {})
+        self.assertEqual((row["key_count"], row["domain_output_count"]), (1, 4096))
+        self.assertEqual(row["work_schema_version"], 1)
+        self.assertEqual((row["output_bytes_per_iteration"], row["host_wall_ns_per_iteration"]),
+                         (512, 1234))
+        sweep.validate_native_configuration(case, raw)
+
+    def test_v1_receipt_aliases_must_agree_and_version_is_checked(self):
+        raw = self.directory / "v1.json"
+        case = self.case(operation="EvalAll", num_keys=1)
+        raw.write_text(json.dumps({"benchmarks": [dict(name="fss/GPU/DPF-bytes/EvalAll",
+                                                       work_schema_version=1, key_count=1,
+                                                       keys_per_iteration=2)]}))
+        with self.assertRaisesRegex(ValueError, "keys_per_iteration"):
+            sweep.validate_native_configuration(case, raw)
+        raw.write_text(json.dumps({"benchmarks": [dict(name="fss/GPU/DPF-bytes/EvalAll",
+                                                       work_schema_version=2)]}))
+        with self.assertRaisesRegex(ValueError, "schema version"):
+            sweep.validate_native_configuration(case, raw)
+        with self.assertRaisesRegex(ValueError, "schema version"):
+            sweep.normalize(case, "fss/GPU/DPF-bytes/EvalAll", 4096, raw, {})
+
+    def test_alias_only_receipt_must_match_the_resolved_case(self):
+        raw = self.directory / "alias.json"
+        gen = dict(name="fss/CPU/DPF-bytes/Gen", work_schema_version=1.0,
+                   api_calls_per_iteration=1.0, keys_per_iteration=1.0,
+                   queries_per_iteration=0.0, logical_outputs_per_iteration=0.0,
+                   output_bytes_per_iteration=0.0)
+        case = self.case(platform="cpu", operation="Gen", num_keys=1)
+        raw.write_text(json.dumps({"benchmarks": [gen]}))
+        sweep.validate_native_configuration(case, raw)
+        raw.write_text(json.dumps({"benchmarks": [dict(gen, keys_per_iteration=7.0)]}))
+        with self.assertRaisesRegex(ValueError, "key_count 7"):
+            sweep.validate_native_configuration(case, raw)
+
+    def test_native_evalall_receipt_queries_match_the_walked_domain(self):
+        raw = self.directory / "evalall.json"
+        value = dict(name="fss/CPU/DCF-bytes/EvalAll", work_schema_version=1.0,
+                     api_calls_per_iteration=1.0, keys_per_iteration=1.0,
+                     queries_per_iteration=1048576.0,
+                     logical_outputs_per_iteration=1048576.0,
+                     output_bytes_per_iteration=16777216.0)
+        case = self.case(platform="cpu", operation="EvalAll", num_keys=1,
+                         domain_bits=20, domain_size=1 << 20)
+        raw.write_text(json.dumps({"benchmarks": [value]}))
+        sweep.validate_native_configuration(case, raw)
+        raw.write_text(json.dumps({"benchmarks": [dict(value, queries_per_iteration=7.0)]}))
+        with self.assertRaisesRegex(ValueError, "query_count 7"):
+            sweep.validate_native_configuration(case, raw)
+
+    def test_alias_counters_must_be_finite_nonnegative_and_integral(self):
+        raw = self.directory / "counters.json"
+        case = self.case(platform="cpu", operation="Gen", num_keys=1)
+        for field, bad in (("keys_per_iteration", -1.0), ("keys_per_iteration", 1.5),
+                           ("keys_per_iteration", float("nan")), ("proofs_per_iteration", -2.0),
+                           ("prepared_leaves_per_iteration", float("inf"))):
+            value = dict(name="fss/CPU/DPF-bytes/Gen", work_schema_version=1, keys_per_iteration=1.0)
+            value[field] = bad
+            raw.write_text(json.dumps({"benchmarks": [value]}))
+            with self.assertRaisesRegex(ValueError, "invalid native counter"):
+                sweep.validate_native_configuration(case, raw)
+
+    def test_raw_repetitions_must_report_consistent_work(self):
+        raw = self.directory / "repetitions.json"
+        sample = dict(name="fss/CPU/DPF-bytes/Gen", work_schema_version=1.0,
+                      keys_per_iteration=1.0, queries_per_iteration=0.0,
+                      logical_outputs_per_iteration=0.0, output_bytes_per_iteration=0.0)
+        case = self.case(platform="cpu", operation="Gen", num_keys=1)
+        raw.write_text(json.dumps({"benchmarks": [
+            sample, dict(sample, keys_per_iteration=7.0),
+            dict(sample, aggregate_name="median", run_type="aggregate", iterations=2)]}))
+        with self.assertRaisesRegex(ValueError, "different per-iteration work"):
+            sweep.validate_native_configuration(case, raw)
+        raw.write_text(json.dumps({"benchmarks": [
+            sample, dict(sample, proofs_per_iteration=1.0, proof_bytes_per_iteration=64.0),
+            dict(sample, aggregate_name="median", run_type="aggregate")]}))
+        with self.assertRaisesRegex(ValueError, "different per-iteration work"):
+            sweep.validate_native_configuration(case, raw)
+        raw.write_text(json.dumps({"benchmarks": [
+            sample, dict(sample, point_hash_bytes_per_iteration=65536.0),
+            dict(sample, point_hash_bytes_per_iteration=1.0),
+            dict(sample, aggregate_name="median", run_type="aggregate")]}))
+        with self.assertRaisesRegex(ValueError, "different per-iteration work"):
+            sweep.validate_native_configuration(case, raw)
+        raw.write_text(json.dumps({"benchmarks": [
+            sample, dict(sample),
+            dict(sample, aggregate_name="median", run_type="aggregate", iterations=2)]}))
+        sweep.validate_native_configuration(case, raw)
+
+    def test_point_hash_bytes_are_validated_preserved_and_consistent(self):
+        raw = self.directory / "point-hash.json"
+        case = self.case(operation="Eval", num_keys=4, configured_num_keys=4)
+        receipt = dict(name="fss/GPU/VDMPF-bytes/Eval/manual_time", work_schema_version=1,
+                       key_count=1, query_count=4, point_hash_bytes_per_iteration=256)
+        raw.write_text(json.dumps({"benchmarks": [receipt]}))
+        row = sweep.normalize(case, receipt["name"], 2000, raw, {})
+        self.assertEqual((row["point_hash_bytes_per_iteration"],
+                          row["native_counters"]["point_hash_bytes_per_iteration"]), (256, 256))
+        self.assertEqual(row["domain_output_count"], 0)
+        for bad in (-1, 1.5, float("inf")):
+            raw.write_text(json.dumps({"benchmarks": [
+                dict(receipt, point_hash_bytes_per_iteration=bad)]}))
+            with self.assertRaisesRegex(ValueError, "invalid native counter"):
+                sweep.validate_native_configuration(case, raw)
+        raw.write_text(json.dumps({"benchmarks": [
+            dict(receipt, point_hash_bytes_per_iteration=65536),
+            dict(receipt, point_hash_bytes_per_iteration=65536)]}))
+        sweep.validate_native_configuration(case, raw)
+
+    def test_new_fss_collections_require_schema_v1(self):
+        raw = self.directory / "schema.json"
+        gen = dict(name="fss/CPU/DPF-bytes/Gen", real_time=2241.064285643592,
+                   cpu_time=2241.1702026599114, time_unit="ns", api_calls_per_iteration=1.0,
+                   keys_per_iteration=1.0, queries_per_iteration=0.0,
+                   logical_outputs_per_iteration=0.0, output_bytes_per_iteration=0.0)
+        case = self.case(platform="cpu", operation="Gen", num_keys=1)
+        raw.write_text(json.dumps({"benchmarks": [gen]}))
+        with self.assertRaisesRegex(ValueError, "work_schema_version"):
+            sweep.validate_native_configuration(case, raw)
+        third_party = self.directory / "third-party.json"
+        third_party.write_text(json.dumps({"benchmarks": [
+            dict(name="fss-v0.7.0/CPU/bytes/DPF/Gen", real_time=5, time_unit="ns")]}))
+        sweep.validate_native_configuration(dict(case, library="fss_v070"), third_party)
+        row = sweep.normalize(case, gen["name"], 2241.0, raw, {})
+        self.assertEqual(row["status"], "ok")
+        self.assertNotIn("work_schema_version", row)
+
+    def test_collect_rejects_fss_receipt_without_schema(self):
+        case = self.case(platform="cpu", operation="Gen", num_keys=1)
+        args = argparse.Namespace(cpu=0, repetitions=1, min_time=.3, warmup=0)
+        gen = dict(name="fss/CPU/DPF-bytes/Gen", real_time=2241.064285643592,
+                   cpu_time=2241.1702026599114, time_unit="ns", api_calls_per_iteration=1.0,
+                   keys_per_iteration=1.0, queries_per_iteration=0.0,
+                   logical_outputs_per_iteration=0.0, output_bytes_per_iteration=0.0)
+
+        def execute(command, **unused):
+            raw = Path(next(argument.split("=", 1)[1] for argument in command
+                            if argument.startswith("--benchmark_out=")))
+            raw.write_text(json.dumps({"benchmarks": [gen]}))
+
+        with mock.patch.object(sweep, "environment", return_value={}), \
+             mock.patch.object(sweep, "executables", return_value=[Path("bench")]), \
+             mock.patch.object(sweep.bench, "execute", side_effect=execute):
+            with self.assertRaisesRegex(ValueError, "work_schema_version"):
+                sweep.collect(args, case, self.directory / "case", {})
+
+    def test_vdmpf_gpu_boundary_counts_internal_scratch_allocation(self):
+        # VdmpfBatchEvalMerkleGpu and Vdpf EvalAllMerkleGpu acquire and release
+        # DeviceScratch inside the public call, and the wrapper times that
+        # complete call (benchmark-runner-accepted.md).
+        for name in ("fss/GPU/VDMPF-bytes/Eval/manual_time", "fss/GPU/VDMPF-bytes/EvalAll/manual_time",
+                     "fss/GPU/VDPF-bytes/EvalAll/manual_time"):
+            row = sweep.normalize(self.case(operation="EvalAll" if "EvalAll" in name else "Eval",
+                                            num_keys=1), name, 1000, "absent", {})
+            self.assertIn("inside timing", row["timing_boundary_detail"], name)
+            self.assertIn("scratch", row["timing_boundary_detail"], name)
+        dmpf = sweep.normalize(self.case(operation="EvalAll", num_keys=1),
+                               "fss/GPU/DMPF-bytes/EvalAll/manual_time", 1000, "absent", {})
+        self.assertEqual(dmpf["timing_boundary_detail"],
+                         "CUDA events around operation kernel launches; allocation and input copies are outside timing")
+
+    def test_google_collect_command_preserves_raw_repetitions(self):
+        case = self.case(operation="EvalAll", num_keys=1)
+        args = argparse.Namespace(cpu=100, repetitions=5, min_time=.1, warmup=.1)
+        commands = []
+        def execute(command, **unused):
+            commands.append(command)
+            raw = Path(next(argument.split("=", 1)[1] for argument in command
+                            if argument.startswith("--benchmark_out=")))
+            raw.write_text(json.dumps({"benchmarks": [
+                dict(name="fss/GPU/DPF-bytes/EvalAll", real_time=100, time_unit="ns", work_schema_version=1)]}))
+        with mock.patch.object(sweep, "environment", return_value={}), \
+             mock.patch.object(sweep, "executables", return_value=[Path("bench")]), \
+             mock.patch.object(sweep.bench, "execute", side_effect=execute):
+            sweep.collect(args, case, self.directory / "case", {})
+        command = commands[0]
+        self.assertIn("--benchmark_display_aggregates_only=true", command)
+        self.assertNotIn("--benchmark_report_aggregates_only=true", command)
+
+
+class FigurePolicyTest(unittest.TestCase):
+    def capture(self, argv):
+        output = io.StringIO()
+        with mock.patch.object(sweep, "build_case") as build, contextlib.redirect_stdout(output):
+            self.assertEqual(sweep.main(argv), 0)
+        self.assertFalse(build.called)
+        return json.loads(output.getvalue())
+
+    def test_plan_prints_resolved_policy_and_exact_decision_cases(self):
+        plan = self.capture(["run", "--plan"])
+        self.assertEqual((plan["policy"]["profile"], plan["policy"]["min_time_s"],
+                          plan["policy"]["repetitions"], plan["policy"]["warmup_s"],
+                          plan["policy"]["full_launches"]), ("decision", .3, 1, 0.0, 1))
+        self.assertEqual(plan["case_count"], len(plan["cases"]))
+        self.assertEqual({case["library"] for case in plan["cases"]}, {"fss"})
+        self.assertEqual({case["domain_bits"] for case in plan["cases"]}, {8, 20})
+
+    def test_plan_explicit_selectors_override_decision_defaults(self):
+        plan = self.capture(["run", "--plan", "--libraries", "libdpf", "--domain-bits", "16"])
+        self.assertEqual(plan["policy"]["profile"], "decision")
+        self.assertEqual({(case["library"], case["domain_bits"]) for case in plan["cases"]},
+                         {("libdpf", 16)})
+
+    def test_plan_publication_restores_full_selection_and_timing(self):
+        plan = self.capture(["run", "--plan", "--profile", "publication", "--platform", "cpu"])
+        self.assertEqual((plan["policy"]["min_time_s"], plan["policy"]["repetitions"],
+                          plan["policy"]["warmup_s"]), (0.1, 5, 0.1))
+        self.assertGreater(len({case["library"] for case in plan["cases"]}), 1)
 
 
 if __name__ == "__main__":

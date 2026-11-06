@@ -5,6 +5,8 @@ CPU_ID ?= 0
 GPU_ID ?= 0
 CUDA_ARCH ?=
 JOBS ?= 4
+BENCH_PROFILE ?= decision
+BENCH_WORKLOAD ?= daily
 FLAMEGRAPH_DIR ?= ../FlameGraph
 FLAMEGRAPH_BENCH ?= BM_DpfEval_Uint_Aes/20
 GPU_PROFILE_BENCH ?= BM_DpfEval_Uint_ChaCha/20
@@ -20,9 +22,9 @@ format_check:
 	clang-format --dry-run --Werror $(SOURCES)
 
 bench_cpu:
-	python3 third_party/bench.py run --libraries main --platform cpu --cpu $(CPU_ID) --jobs $(JOBS) $(if $(strip $(CUDA_ARCH)),--cuda-arch $(CUDA_ARCH))
+	python3 third_party/bench.py run --libraries main --platform cpu --cpu $(CPU_ID) --jobs $(JOBS) --profile $(BENCH_PROFILE) --workload $(BENCH_WORKLOAD) $(if $(strip $(CUDA_ARCH)),--cuda-arch $(CUDA_ARCH))
 bench_gpu:
-	python3 third_party/bench.py run --libraries main --platform gpu --cpu $(CPU_ID) --jobs $(JOBS) --gpu $(GPU_ID) $(if $(strip $(CUDA_ARCH)),--cuda-arch $(CUDA_ARCH))
+	python3 third_party/bench.py run --libraries main --platform gpu --cpu $(CPU_ID) --jobs $(JOBS) --gpu $(GPU_ID) --profile $(BENCH_PROFILE) --workload $(BENCH_WORKLOAD) $(if $(strip $(CUDA_ARCH)),--cuda-arch $(CUDA_ARCH))
 bench_build:
 	cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCH=ON $(CMAKE_CUDA_ARCH_FLAGS)
 	cmake --build build --parallel $(JOBS)
