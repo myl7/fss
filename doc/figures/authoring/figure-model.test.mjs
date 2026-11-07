@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {expectedCoordinates, figureGroups, methodInventory, normalizeRecords, pairedSpeedups} from './figure-model.mjs';
+import {expectedCoordinates, figureGroups, methodInventory, normalizeRecords, pairedSpeedups, stripRetiredProvenance} from './figure-model.mjs';
 import {assertPanelIdentities, buildMethodStyles, buildRowLegend, describeMethod, methodId, scaleTime, timeUnit, timingMetric, variantQualifiers} from '../../site/method-model.mjs';
 const measured = {platform: 'gpu', scheme: 'DPF', operation: 'Eval', library: 'fss',
   variant: 'DPF-bytes-ChaCha20-x2', group: 'bytes', prg: 'ChaCha20-x2',
@@ -34,10 +34,11 @@ assert(inventory.every(method => method.figures.length > 0));
 assert.equal(new Set(records.filter(row => row.operation === 'eval').map(row => describeMethod({...row, operation: 'Eval'}).label)).size, 3);
 assert.throws(() => assertPanelIdentities([{method:'a',methodLabel:'same',style:{}},{method:'b',methodLabel:'same',style:{}}]), /duplicate panel labels/);
 assert.throws(() => assertPanelIdentities([{method:'a',methodLabel:'a',style:{}},{method:'b',methodLabel:'b',style:{}}]), /duplicate panel styles/);
-const pair = normalizeRecords([cpuRow('DPF', 'Eval'), cpuRow('DPF', 'Eval', 'fss', '-packedkey')].map(row => ({...row, source_sha256: {header: 'same'}, raw_result: 'same-receipt.json', raw_result_sha256: 'same-receipt-hash'})));
+const pair = normalizeRecords([cpuRow('DPF', 'Eval'), cpuRow('DPF', 'Eval', 'fss', '-packedkey')].map(row => ({...row, raw_result: 'same-receipt.json'})));
 assert.equal(pairedSpeedups(pair).length, 1);
-assert.equal(pairedSpeedups(pair.map((row, index) => index ? {...row, source_sha256: {header: 'different'}} : row)).length, 0);
+assert.equal(pairedSpeedups(pair)[0].paired_reference.raw_result, 'same-receipt.json');
 assert.equal(pairedSpeedups(pair.map((row, index) => index ? {...row, raw_result: 'another-host/receipt.json'} : row)).length, 0);
+assert.equal(pairedSpeedups(pair.map(row => ({...row, raw_result: undefined}))).length, 0);
 const sharedProof = figureGroups(normalizeRecords([
   cpuRow('VDPF', 'Gen'), cpuRow('VDPF', 'Eval', 'fss', '-chains'), cpuRow('VDPF', 'EvalAll', 'fss', '-chains'),
 ])).find(figure => figure.id === 'cpu-operations');
@@ -83,4 +84,21 @@ const missingMiddle = {records: [measured, {...measured, domain_bits:10, status:
 assert.deepEqual(expectedCoordinates(missingMiddle).get('gpu|domain'), [8,10,12]);
 assert(normalizeRecords(missingMiddle).every(row => row.expected_coordinates.join(',') === '8,10,12'));
 assert.deepEqual(expectedCoordinates({records:[measured], metadata:{runs:[{metadata:{cases:[{platform:'gpu', domain_bits:10}]}}]}}).get('gpu|domain'), [8,10]);
-console.log('figure identities, layout, denominator, pairing, and unit checks passed');
+const legacyInput = {library_versions: {fss: '0.7.0'}, git_revision: 'x', source_sha256: {run: 'x'},
+  runs: [{sha256: 'x', metadata: {host: 'h', git_commit: 'x', library_versions: {fss: '0.7.0'}}}],
+  records: [{median_ns: 5, status: 'ok', library_version: '0.7.0', raw_result: 'receipt.json',
+    runner_sha256: 'x', config: {num_keys: 1, source_sha256: 'x'},
+    paired_reference: {raw_result: 'receipt.json', raw_result_sha256: 'x'}}]};
+const cleaned = JSON.stringify(stripRetiredProvenance(legacyInput));
+for (const field of ['source_sha256', 'runner_sha256', 'raw_result_sha256', 'sha256', 'git_revision', 'git_commit']) {
+  assert(!cleaned.includes(field), `retired field survived: ${field}`);
+}
+const cleanedInput = stripRetiredProvenance(legacyInput);
+assert.equal(cleanedInput.records[0].median_ns, 5);
+assert.equal(cleanedInput.records[0].library_version, '0.7.0');
+assert.equal(cleanedInput.records[0].raw_result, 'receipt.json');
+assert.deepEqual(cleanedInput.records[0].config, {num_keys: 1});
+assert.deepEqual(cleanedInput.records[0].paired_reference, {raw_result: 'receipt.json'});
+assert.equal(cleanedInput.runs[0].metadata.host, 'h');
+assert.deepEqual(cleanedInput.library_versions, {fss: '0.7.0'});
+console.log('figure identities, layout, denominator, pairing, unit, and provenance cleanup checks passed');

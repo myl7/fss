@@ -122,16 +122,13 @@ function preparedPanels(rows) {
 }
 export function pairedSpeedups(records) {
   const relevant = row => JSON.stringify([row.device, row.scheme, row.log_n, row.group, row.logical_output_bits,
-    row.prg, row.key_count, row.query_count, row.time_denominator, row.raw_result, row.raw_result_sha256, row.source_sha256]);
+    row.prg, row.key_count, row.query_count, row.time_denominator, row.raw_result]);
   const direct = new Map(records.filter(row => row.library === 'fss' && row.operation === 'eval' && !prepared(row)).map(row => [relevant(row), row]));
   return records.filter(row => row.operation === 'eval' && prepared(row)).flatMap(row => {
-    // Only pair when source hashes exist and the configuration matches. The
-    // paired raw receipt remains explicit in exported provenance.
     const reference = direct.get(relevant(row));
-    if (!reference || !row.raw_result || !row.raw_result_sha256 || !row.source_sha256 || !Object.keys(row.source_sha256).length) return [];
+    if (!reference || !row.raw_result) return [];
     return [{...row, speedup: reference.ns_per_unit / row.ns_per_unit,
-      paired_reference: {raw_result: reference.raw_result, raw_result_sha256: reference.raw_result_sha256,
-        ns_per_unit: reference.ns_per_unit, source_sha256: reference.source_sha256}}];
+      paired_reference: {raw_result: reference.raw_result, ns_per_unit: reference.ns_per_unit}}];
   });
 }
 export function methodInventory(records, figures) {
@@ -140,4 +137,17 @@ export function methodInventory(records, figures) {
     figures: figures.filter(figure => figure.panels.some(panel => panel.rows.some(item => item.method === row.method))).map(figure => figure.id),
     comparison_site: records.some(item => item.method === row.method && item.scan !== 'threads'),
   }));
+}
+// Result provenance fingerprint fields retired from every benchmark schema.
+const retiredProvenanceFields = new Set(['source_sha256', 'runner_sha256', 'raw_result_sha256', 'lockfile_sha256',
+  'binary_sha256', 'timed_runner_sha256', 'post_collection_normalizer_sha256', 'sha256', 'git_revision',
+  'git_commit', 'upstream_commit', 'git_status', 'post_timing_source_delta']);
+export function stripRetiredProvenance(value) {
+  if (Array.isArray(value)) return value.map(stripRetiredProvenance);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !retiredProvenanceFields.has(key))
+      .map(([key, item]) => [key, stripRetiredProvenance(item)]));
+  }
+  return value;
 }

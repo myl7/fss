@@ -5,7 +5,7 @@ import argparse
 import contextlib
 import csv
 import datetime
-import hashlib
+import functools
 import json
 import math
 import os
@@ -73,6 +73,14 @@ def capture(command, cwd=ROOT, env=None):
         return str(error)
 
 
+class CommandError(RuntimeError):
+    """A nonzero command exit; returncode carries the subprocess exit status."""
+
+    def __init__(self, message, returncode):
+        super().__init__(message)
+        self.returncode = returncode
+
+
 def execute(command, *, cwd=ROOT, env=None, log=None):
     print("+ " + " ".join(map(str, command)), flush=True)
     if log is None:
@@ -98,8 +106,8 @@ def execute(command, *, cwd=ROOT, env=None, log=None):
                 process.wait()
             raise
         if code:
-            raise RuntimeError(f"command exited with status {code}" +
-                               (f"; see {log}" if log else ""))
+            raise CommandError(f"command exited with status {code}" +
+                               (f"; see {log}" if log else ""), code)
 
 
 def selection(args):
@@ -269,24 +277,19 @@ def governor(cpu, mode):
             write(previous)
 
 
-def benchmark_source_hashes(args):
-    """Identify local benchmark inputs independently of Git dirty-state summaries."""
-    paths = {ROOT / "CMakeLists.txt", ROOT / "third_party" / "CMakeLists.txt",
-             ROOT / "third_party" / "bench.py", ROOT / "third_party" / "figure_bench.py",
-             ROOT / "third_party" / "benchmark_policy.py"}
-    for name in dict.fromkeys(n for n, _ in selection(args)):
-        directory = source(name)
-        for pattern in ("*.cu", "*.cc", "*.cpp", "*.cuh", "*.h", "*.py", "CMakeLists.txt",
-                        "Cargo.toml", "BUILD", "BUILD.bazel", "WORKSPACE", "WORKSPACE.bazel",
-                        ".bazelversion", "pyproject.toml", "benches/*.rs", "patches/**/*.patch",
-                        "sytorch/CMakeLists.txt", "torchcsprng/*.cuh", "*.sh"):
-            paths.update(directory.glob(pattern))
-        if name == "main":
-            paths.update((ROOT / "src").rglob("*.cu"))
-            paths.update((ROOT / "src").rglob("*.h"))
-    paths.update((ROOT / "include").rglob("*.cuh"))
-    return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(paths) if path.is_file()}
+@functools.lru_cache(maxsize=None)
+def declared_version(name):
+    """Return the human version a library declares about itself, or None."""
+    if name in ("fss", "main"):
+        declared = re.search(r"project\(\s*fss\b[^)]*VERSION\s+(\d+\.\d+\.\d+)",
+                             (ROOT / "CMakeLists.txt").read_text())
+        if not declared:
+            return None
+        changelog = ROOT / "CHANGELOG.md"
+        released = changelog.exists() and not re.search(r"^## \[Unreleased\]",
+                                                        changelog.read_text(), re.M)
+        return declared.group(1) + ("" if released else "-unreleased")
+    return {"fss_v060": "0.6.0", "fss_v070": "0.7.0"}.get(name)
 
 
 def build_configuration(selected):
@@ -313,10 +316,8 @@ def build_configuration(selected):
 
 
 def metadata(args, active_governor):
+    selected = selection(args)
     probes = {
-        "git_commit": ["git", "rev-parse", "HEAD"],
-        "git_changes": ["git", "status", "--porcelain", "--untracked-files=no"],
-        "submodules": ["git", "submodule", "status", "--recursive"],
         "cpu": ["lscpu"], "gpu": ["nvidia-smi", "--query-gpu=index,uuid,name,memory.total,"
                                 "memory.used,utilization.gpu,driver_version", "--format=csv"],
         "nvcc": ["nvcc", "--version"], "cxx": ["c++", "--version"],
@@ -332,7 +333,7 @@ def metadata(args, active_governor):
             "full_launches": getattr(args, "full_launches", None),
             "policy": getattr(args, "policy", None),
             "repetitions": args.repetitions, "min_time_seconds": args.min_time,
-            "selected": selection(args),
+            "selected": selected,
             "rust_toolchains": RUST,
             "environment": {key: environment(args, "gpu_dpf").get(key)
                             for key in ("OMP_NUM_THREADS", "RAYON_NUM_THREADS", "OPENBLAS_NUM_THREADS",
@@ -340,16 +341,9 @@ def metadata(args, active_governor):
                                         "MAX_JOBS", "CMAKE_PREFIX_PATH", "LIBRARY_PATH", "CPATH",
                                         "CPLUS_INCLUDE_PATH", "CUDA_HOME", "TORCH_CUDA_ARCH_LIST",
                                         "FSS_EZPC_POOL_MIB")},
-            "build_configuration": build_configuration(selection(args)),
-            "source_sha256": benchmark_source_hashes(args),
-            "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "lockfile_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                                for path in [source("libdpf") / "Cargo.lock",
-                                             source("fss_v060") / "Cargo.lock",
-                                             source("mastic") / "Cargo.lock",
-                                             source("plasma") / "Cargo.lock",
-                                             source("sycret") / "Cargo.lock",
-                                             source("gpu_dpf") / "uv.lock"] if path.exists()},
+            "build_configuration": build_configuration(selected),
+            "library_versions": {name: declared_version(name)
+                                 for name in dict.fromkeys(name for name, _ in selected)},
             "probes": {key: capture(command,
                                     cwd=source("google_dpf") if key == "bazel" else ROOT,
                                     env=environment(args, "google_dpf" if key == "bazel" else "main"))
@@ -451,9 +445,9 @@ def record(args, name, device, directory, commands):
                     continue
                 if device == "gpu":
                     filters = [f"^{prefix}/{operation}(/|$)" for operation in operations]
-            for pattern in filters:
-                suffix = hashlib.sha256(pattern.encode()).hexdigest()[:8]
-                output = directory / f"google-{variant}-{suffix}.json"
+            for index, pattern in enumerate(filters):
+                stem = f"google-{variant}-{index}" if variant else f"google-{index}"
+                output = directory / f"{stem}.json"
                 command = pin + [str(binary), f"--benchmark_filter={pattern}",
                                  f"--benchmark_min_time={args.min_time}s",
                                  f"--benchmark_repetitions={args.repetitions}",
@@ -461,7 +455,7 @@ def record(args, name, device, directory, commands):
                                  "--benchmark_out_format=json", f"--benchmark_out={output}"]
                 if native_interleaving:
                     command.append(native_interleaving)
-                units.append((command, "google", variant + "-" + suffix, None))
+                units.append((command, "google", stem, None))
     if not units:
         entry = {"library": name, "device": device, "framework": "selection",
                  "command": [], "log": "", "status": "failed", "error": "no benchmarks matched"}

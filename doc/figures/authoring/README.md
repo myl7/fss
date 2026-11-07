@@ -40,8 +40,9 @@ The absolute log axes retain slow third-party baselines.
 Supplementary figures separate prepared-key setup/query/one-shot costs,
 proof accumulators, PRP backends, and output groups or PRG backends. Prepared-key static panels focus on the default byte group. The site
 retains integer-group preparation and query variants. Prepared
-query speedups require matching configuration and source hashes. The direct
-reference receipt is embedded in the speedup point's provenance. Setup is a
+query speedups pair rows from the same raw receipt with matching
+configuration. The direct reference receipt is embedded in the speedup
+point's provenance. Setup is a
 separately timed `Prepare` operation, never a subtraction of medians. The
 block sweep uses actual T and excludes fixed-256-thread multi-point kernels.
 
@@ -63,8 +64,8 @@ operation and its configuration. Curves and source records remain separate.
 `build/figures/manifest.json` lists every method's static figures and site
 availability, including historical methods that remain site-only.
 
-Each SVG embeds source hashes, leaf run manifests with hardware and revision,
-and every plotted point's original record, raw receipt hash, explicit work
-counts, setup boundary, and requested/actual T. Legacy `num_keys` and
+Each SVG embeds leaf run manifests with hardware and declared library
+versions, and every plotted point's original record, raw receipt path,
+explicit work counts, setup boundary, and requested/actual T. Legacy `num_keys` and
 `ns_per_key` are retained as historical fields. Consumers use `key_count`,
 `query_count`, `domain_output_count`, `time_denominator`, and `ns_per_unit`.

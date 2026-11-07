@@ -436,7 +436,7 @@ Do not compare a smoke result with a full measurement.
 
 Each run creates a new `build/third_party/results/<run-id>/` containing:
 
-- `run.json`: hardware, source and lockfile hashes, compiler and tool versions,
+- `run.json`: hardware, declared library versions, compiler and tool versions,
   governor, device selection, timing parameters, commands, and process status.
 - Per-library logs and raw Google Benchmark JSON, Criterion estimates and
   samples, or Python timings and validation results.

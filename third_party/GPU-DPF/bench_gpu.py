@@ -131,8 +131,7 @@ def main():
                           "torch_cuda": torch.version.cuda,
                           "gpu": torch.cuda.get_device_name(),
                           "gpu_capability": list(torch.cuda.get_device_capability()),
-                          "table_columns": 1, "table_dtype": "int32",
-                          "upstream_commit": "ce23a06af884ee54300b5bc5fd5350e445f10b0b"}}
+                          "table_columns": 1, "table_dtype": "int32"}}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
 

@@ -63,10 +63,12 @@ state what the timed operation contains.
 values are also recorded in `legacy_quantity_fields`. They mislabeled old
 multi-query batches and must not be used for new normalization. Receipt
 counters take priority over requested T, which is retained as
-`requested_threads_per_block`. For old multi-point receipts without counters,
-the collector recognizes the verified wrappers at e25a42c and 84b93e5 by
-SHA-256. They establish one key, kN queries, and fixed T=256 without changing
-the elapsed measurements. Unknown wrapper/counter combinations are marked
+`requested_threads_per_block`. Old multi-point receipts without counters keep
+the legacy wrapper contract (one key, kN queries, fixed T=256) only when the
+row itself recorded it as `quantity_source="verified_wrapper_source"` at
+collection time; the contract never changes the elapsed measurements and is
+never re-derived from the local source tree. Unknown wrapper/counter
+combinations are marked
 `metadata_status="requires_recollection"` and omitted from figures. This
 metadata repair does not represent a new measurement.
 
@@ -247,8 +249,8 @@ absent, including GPU VDPF Gen/Eval and multi-point GPU Gen.
 
 Prepared-key variants have a focused default-byte-group comparison with separate setup,
 steady-state query, and pack-plus-query panels. A speedup panel is produced
-only for actual paired direct/variant measurements with matching configuration
-and source hashes. The pairing retains the direct reference receipt. It does
+only for actual paired direct/variant measurements from the same raw receipt
+with matching configuration. The pairing retains the direct reference receipt. It does
 not derive standalone setup cost from unrelated medians. Integer-group
 prepared variants remain selectable on the comparison site and are listed
 in the method inventory.
@@ -358,8 +360,9 @@ accompany a completed dataset containing recorded failures. Inspect the
 records and logs before continuing.
 
 Build caches live under `build/third_party/sweep/<library>/<platform>`.
-Each result directory contains the run manifest, source, lockfile, and raw-result hashes,
-per-case configuration and statuses, exact commands, logs, and native JSON or
+Each result directory contains the run manifest with the declared library
+versions, per-case configuration and statuses, exact commands, logs, native
+receipts with the process wall time and exit status, and native JSON or
 Criterion estimates. Keep these files with the merged data.
 
 Use the offline D3/Playwright setup in

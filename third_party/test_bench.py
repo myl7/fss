@@ -420,12 +420,16 @@ class RunnerSelectionTest(unittest.TestCase):
         args = argparse.Namespace(libraries="google_dpf", platform="cpu", gpu="0", jobs=4,
                                   cuda_arch=None, cpu=0, smoke=True, repetitions=1, min_time=.01)
         with mock.patch.object(bench, "capture", return_value="test probe") as capture:
-            bench.metadata(args, "performance")
+            metadata = bench.metadata(args, "performance")
         call = next(call for call in capture.call_args_list if call.args[0] == ["bazel", "--version"])
         self.assertEqual(call.kwargs["cwd"], bench.source("google_dpf"))
         env = call.kwargs["env"]
         self.assertEqual(env["USE_BAZEL_VERSION"], "7.6.1")
         self.assertEqual(Path(env["BAZELISK_HOME"]), bench.BUILD / "google_dpf" / "bazelisk")
+        self.assertEqual(metadata["library_versions"], {"google_dpf": None})
+        for field in ("source_sha256", "runner_sha256", "lockfile_sha256"):
+            self.assertNotIn(field, metadata)
+        self.assertNotIn("git_commit", metadata["probes"])
         with mock.patch.dict(bench.os.environ, {"CPLUS_INCLUDE_PATH": "/openssl", "C_INCLUDE_PATH": "/openssl", "CPATH": "/openssl"}):
             bazel_env = bench.environment(args, "google_dpf")
             main_env = bench.environment(args, "main")
@@ -435,25 +439,20 @@ class RunnerSelectionTest(unittest.TestCase):
         if "USE_BAZEL_VERSION" not in bench.os.environ:
             self.assertNotIn("USE_BAZEL_VERSION", bench.environment(args, "main"))
 
-    def test_source_hashes_include_harness_configuration_and_patches(self):
-        (bench.ROOT / "build").mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=bench.ROOT / "build") as temp:
-            root = Path(temp)
-            relative = ["third_party/fss/bench.cu", "third_party/fss/CMakeLists.txt",
-                        "third_party/fss/patches/fix.patch", "third_party/fss/check.h",
-                        "third_party/torchcsprng/torchcsprng/aes128_mmo_soft.cuh", "include/fss/dpf.cuh"]
-            for name in relative:
-                path = root / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(name)
-            args = argparse.Namespace(libraries="fss,torchcsprng", platform="cpu")
-            with mock.patch.object(bench, "ROOT", root):
-                hashes = bench.benchmark_source_hashes(args)
-                original = hashes[relative[0]]
-                (root / relative[0]).write_text("changed harness")
-                changed = bench.benchmark_source_hashes(args)
-            self.assertEqual(set(hashes), set(relative))
-            self.assertNotEqual(original, changed[relative[0]])
+    def test_declared_version_labels_unreleased_working_tree(self):
+        declared = bench.declared_version("fss")
+        declared_in_cmake = bench.re.search(
+            r"project\(\s*fss\b[^)]*VERSION\s+(\d+\.\d+\.\d+)",
+            (bench.ROOT / "CMakeLists.txt").read_text()).group(1)
+        self.assertEqual(declared, declared_in_cmake + "-unreleased")
+        self.assertEqual(bench.declared_version("main"), declared)
+        self.assertEqual(bench.declared_version("fss_v060"), "0.6.0")
+        self.assertEqual(bench.declared_version("fss_v070"), "0.7.0")
+
+    def test_third_party_versions_stay_unknown_instead_of_guessed(self):
+        for name in ("libdpf", "libfss", "google_dpf", "gpu_dpf", "ezpc",
+                     "mastic", "plasma", "sycret", "dpf-cpp", "torchcsprng"):
+            self.assertIsNone(bench.declared_version(name))
 
     def test_cargo_does_not_receive_duplicate_criterion_bench_flag(self):
         (bench.ROOT / "build").mkdir(exist_ok=True)
@@ -704,21 +703,6 @@ class RunnerSelectionTest(unittest.TestCase):
             self.assertEqual(bench.main(), 0)
         plan = json.loads(output.getvalue())
         self.assertTrue(all(command["filter"] == "only-this" for command in plan["commands"]))
-
-    def test_source_hashes_cover_policy_and_native_work_header(self):
-        (bench.ROOT / "build").mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=bench.ROOT / "build") as temp:
-            root = Path(temp)
-            relative = ["CMakeLists.txt", "third_party/CMakeLists.txt", "third_party/bench.py",
-                        "third_party/figure_bench.py", "third_party/benchmark_policy.py",
-                        "src/benchmark_work.h", "src/bench_cpu.cu"]
-            for name in relative:
-                path = root / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(name)
-            with mock.patch.object(bench, "ROOT", root):
-                hashes = bench.benchmark_source_hashes(argparse.Namespace(libraries="main", platform="cpu"))
-            self.assertEqual(set(hashes), set(relative))
 
     def test_historic_targets_are_split_by_group_and_scheme(self):
         args = argparse.Namespace(gpu="0", jobs=2, cuda_arch="120")

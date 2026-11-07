@@ -7,7 +7,6 @@ Run `list` for exact cases. The domain endpoint is run first as a cost pilot.
 import argparse
 import csv
 import datetime
-import hashlib
 from functools import lru_cache
 import json
 import math
@@ -18,7 +17,9 @@ import re
 import shutil
 import signal
 import statistics
+import subprocess
 import sys
+import time
 
 sys.dont_write_bytecode = True
 
@@ -39,13 +40,6 @@ FSS_GPU_OPERATIONS = {
 }
 FSS_CPU_OPERATIONS = {scheme: ("EvalAll",) if scheme == "PackedHalfTreeDPF" else ("Gen", "Eval", "EvalAll") for scheme in FSS_GPU_OPERATIONS}
 GPU_POINT_SCHEMES = tuple(scheme for scheme, ops in FSS_GPU_OPERATIONS.items() if "Eval" in ops)
-# These preserved wrappers use one key and kN queries, with fixed 256-thread
-# kernels. Their raw receipts predate explicit batch counters. The hashes were
-# verified against e25a42c and 84b93e5, respectively.
-LEGACY_BATCH_WRAPPERS = {
-    "2e9a30754964d05df3522d72a30c3174d6b57a6f8c683375c3facd638b52c534",
-    "e09d80c6f73f093847b3d6b6d154df5aa2920b60bb02318e177790dd3fdf9049",
-}
 CPU_LIBRARIES = ("fss", "libdpf", "libfss", "google_dpf", "gpu_dpf", "fss_v060", "fss_v070", "servan_vdpf",
                  "mastic", "plasma", "dpf-cpp", "dpfplusplus")
 TARGETS = {"fss": "bench_fss", "libfss": "bench_dpf_libfss", "gpu_dpf": "bench_dpf_gpu_dpf",
@@ -258,6 +252,20 @@ def executables(args, case):
     return [cache / "cmake" / ("bench_dpf_gpu_dpf_full" if name == "gpu_dpf" and device == "gpu" else "bench")]
 
 
+def list_benchmarks(binary, selected_filter, *, cwd, env):
+    try:
+        result = subprocess.run([str(binary), f"--benchmark_filter={selected_filter}",
+                                 "--benchmark_list_tests=true"],
+                                cwd=cwd, env=env, capture_output=True, text=True)
+    except OSError as error:
+        raise RuntimeError(f"cannot list benchmarks of {binary}: {error}") from error
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(f"benchmark list_tests of {binary} exited with status "
+                           f"{result.returncode}" + (f": {detail}" if detail else ""))
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def parse_google(path):
     values = json.loads(path.read_text())["benchmarks"]
     grouped, failures = {}, []
@@ -282,14 +290,17 @@ def parse_google(path):
             for name, group in grouped.items()], failures
 
 
-def normalize(case, name, time, raw, sources, status="ok", error=None):
+def normalize(case, name, time, raw, status="ok", error=None):
     if "/Prepare" in name:
         case = dict(case, requested_operation=case["operation"], operation="Prepare")
     if case["library"] == "google_dpf":
         case = dict(case, google_dcf_group="additive_mod_2^128")
     row = dict(case, benchmark=name, status=status, median_ns=time, time_ns=time,
                ns_per_key=time / case["num_keys"] if time is not None else None,
-               raw_result=str(raw), source_sha256=sources, error=error)
+               raw_result=str(raw), error=error)
+    version = bench.declared_version(case["library"])
+    if version is not None:
+        row["library_version"] = version
     scheme = ("PackedHalfTreeDPF" if "PackedHalfTree" in name else "GrottoDCF" if "GrottoDCF" in name else
               "VDPF" if "VDPF" in name else "VDMPF" if "VDMPF" in name else "DMPF" if "DMPF" in name else
               "HalfTreeDPF" if "HalfTree" in name else "DCF" if "DCF" in name else "DPF")
@@ -387,17 +398,14 @@ def normalize(case, name, time, raw, sources, status="ok", error=None):
 
 
 @lru_cache(maxsize=1024)
-def native_receipts(raw, expected_hash):
+def native_receipts(raw):
     path = Path(raw)
     if not path.is_file() and "/build/" in raw:
         path = ROOT / "build" / raw.split("/build/", 1)[1]
     if not path.is_file():
         return {}
-    content = path.read_bytes()
-    if expected_hash and hashlib.sha256(content).hexdigest() != expected_hash:
-        raise ValueError(f"raw result hash mismatch: {path}")
     try:
-        values = json.loads(content).get("benchmarks", [])
+        values = json.loads(path.read_bytes()).get("benchmarks", [])
     except (ValueError, UnicodeDecodeError):
         return {}
     return {value.get("run_name", value["name"]): value for value in values
@@ -433,9 +441,9 @@ def unified_counters(value):
 
 
 def measurement_metadata(row):
-    """Recover work quantities from receipts and documented wrapper contracts."""
+    """Recover work quantities from receipts and recorded wrapper contracts."""
     row = dict(row)
-    receipt = native_receipts(str(row.get("raw_result", "")), row.get("raw_result_sha256")).get(row.get("benchmark"), {})
+    receipt = native_receipts(str(row.get("raw_result", ""))).get(row.get("benchmark"), {})
     schema = receipt.get("work_schema_version")
     if schema is not None:
         if schema != 1:
@@ -453,8 +461,10 @@ def measurement_metadata(row):
         row["threads_per_block"] = counters["threads_per_block"]
         row["launch_metadata_source"] = "raw_counter"
     batch = row["library"] == "fss" and row["platform"] == "gpu" and row.get("scheme") in ("DMPF", "VDMPF")
-    legacy_batch = row.get("source_sha256", {}).get("third_party/fss/bench.cu") in LEGACY_BATCH_WRAPPERS
-    if batch and legacy_batch and not counters.get("threads_per_block"):
+    # Legacy wrapper rows predate receipt counters and record their fixed 256-thread kernels.
+    wrapper_row = (row.get("quantity_source") == "verified_wrapper_source"
+                   or row.get("launch_metadata_source") == "verified_wrapper_source")
+    if batch and wrapper_row and not counters.get("threads_per_block"):
         row.update(threads_per_block=256, launch_metadata_source="verified_wrapper_source")
     if batch:
         row["block_size_tunable"] = False
@@ -464,7 +474,7 @@ def measurement_metadata(row):
     if keys is None:
         keys = 1 if row["operation"] == "EvalAll" or row["platform"] == "cpu" else row.get("num_keys", 1)
     if batch:
-        if counters.get("key_count", counters.get("keys_per_launch")) == 1 or legacy_batch:
+        if counters.get("key_count", counters.get("keys_per_launch")) == 1 or wrapper_row:
             keys = 1
             row["quantity_source"] = "raw_counter" if counters.get("key_count", counters.get("keys_per_launch")) else "verified_wrapper_source"
             if row.get("metadata_status") == "requires_recollection":
@@ -477,7 +487,7 @@ def measurement_metadata(row):
     op = row["operation"]
     query_count = counters.get("query_count")
     if query_count is None:
-        query_count = (row.get("configured_num_keys", row.get("num_keys", 1)) if batch else keys) if op == "Eval" else row["domain_size"] if batch and row.get("scheme") == "VDMPF" and op == "EvalAll" and legacy_batch else 0
+        query_count = (row.get("configured_num_keys", row.get("num_keys", 1)) if batch else keys) if op == "Eval" else row["domain_size"] if batch and row.get("scheme") == "VDMPF" and op == "EvalAll" and wrapper_row else 0
     row["query_count"] = query_count
     row["domain_output_count"] = counters.get("domain_outputs", keys * row["domain_size"] if op == "EvalAll" else 0)
     row["ns_per_domain_output"] = row.get("median_ns", row.get("time_ns")) / row["domain_output_count"] if row.get("median_ns", row.get("time_ns")) is not None and row["domain_output_count"] else None
@@ -528,7 +538,8 @@ def failure_metadata(row):
 
 def polish_metadata(row):
     """Refresh descriptive fields without changing preserved measurements."""
-    row = failure_metadata(dict(row))
+    row = dict(row)
+    row = failure_metadata(row)
     if row.get("failure_scope") == "case":
         return row
     library, device, operation = row["library"], row["platform"], row["operation"]
@@ -557,16 +568,10 @@ def polish_metadata(row):
     if library == "google_dpf" and scheme == "DPF":
         row.update(group="xor_128", logical_output_bits=128, storage_output_bits=128)
     if library == "google_dpf" and scheme == "DCF":
-        # Never reinterpret an explicitly historical XOR measurement. A matching
-        # measured source hash proves that a legacy generic label used this adapter.
+        # Never reinterpret an explicitly historical XOR measurement.
         group = str(row.get("group", "native"))
-        relative = "third_party/distributed_point_functions/bench.cc"
-        source = ROOT / relative
-        recorded_hash = row.get("source_sha256", {}).get(relative)
-        corrected_source = source.exists() and "DCF uses additive uint128 output" in source.read_text()
-        same_source = corrected_source and recorded_hash == hashlib.sha256(source.read_bytes()).hexdigest()
         configured = row.get("config", {}).get("google_dcf_group") == "additive_mod_2^128"
-        if "xor" not in group.lower() and (group == "additive_mod_2^128" or same_source or configured):
+        if "xor" not in group.lower() and (group == "additive_mod_2^128" or configured):
             row.update(group="additive_mod_2^128", logical_output_bits=128, storage_output_bits=128)
     if library == "libfss" and scheme == "DCF":
         row.update(group="additive_mod_2^64", logical_output_bits=64, storage_output_bits=64,
@@ -704,7 +709,7 @@ def validate_native_configuration(case, raw):
             raise ValueError(f"benchmark {field} {value[field]} does not match configured {expected}")
 
 
-def collect(args, case, directory, sources):
+def collect(args, case, directory):
     directory.mkdir(parents=True, exist_ok=True)
     env = environment(args, case)
     pin = ["taskset", "-c", str(args.cpu)]
@@ -747,10 +752,10 @@ def collect(args, case, directory, sources):
                     all_values.setdefault(name, []).append(value)
             if failure:
                 rows.append(normalize(case, exact_id or f"{case['library']}/CPU/{group}/{operation}", None,
-                                      directory, sources, "known_failure", failure))
+                                      directory, "known_failure", failure))
                 continue
             for name, values in all_values.items():
-                row = normalize(case, name, statistics.median(values), directory, sources)
+                row = normalize(case, name, statistics.median(values), directory)
                 row.update(statistic="median_of_process_medians", process_medians_ns=values,
                            criterion_sample_size=20, criterion_warmup_s=.2, criterion_measurement_s=.2)
                 rows.append(row)
@@ -771,16 +776,27 @@ def collect(args, case, directory, sources):
             if native_interleaving:
                 command.append(native_interleaving)
             (directory / f"command-{index}.json").write_text(json.dumps(command) + "\n")
+            listed = list_benchmarks(binary, selected_filter,
+                                     cwd=bench.source(case["library"]), env=env)
             process_error = None
+            returncode = None
+            completed = False
+            started = time.monotonic()
             try:
-                bench.execute(command, cwd=bench.source(case["library"]), env=env, log=directory / f"run-{index}.log")
+                try:
+                    bench.execute(command, cwd=bench.source(case["library"]), env=env, log=directory / f"run-{index}.log")
+                    completed = True
+                    returncode = 0
+                finally:
+                    native_ended = time.monotonic()
             except RuntimeError as error:
                 process_error = str(error)
+                returncode = error.returncode
                 log_text = (directory / f"run-{index}.log").read_text()
                 if "too many resources requested for launch" in log_text:
                     exact_point = "^fss/GPU/DPF-bytes/AesSoft/Eval(/|$)"
                     name = "fss/GPU/DPF-bytes/AesSoft/Eval" if selected_filter == exact_point else selected_filter
-                    row = normalize(case, name, None, raw, sources, "unsupported", "too many resources requested for launch")
+                    row = normalize(case, name, None, raw, "unsupported", "too many resources requested for launch")
                     row["failure_kind"] = "kernel_resources_exhausted"
                     row["command"] = command
                     row["log"] = str(directory / f"run-{index}.log")
@@ -788,10 +804,22 @@ def collect(args, case, directory, sources):
                     continue
                 if not raw.exists():
                     raise
+            except OSError as error:
+                process_error = f"cannot launch {binary}: {error}"
+                raise
+            finally:
+                receipt = {"command": command, "benchmark_filter": selected_filter,
+                           "binary": str(binary),
+                           "listed_benchmarks": listed, "raw_result": str(raw),
+                           "returncode": returncode,
+                           "process_wall_seconds": round(native_ended - started, 3),
+                           "status": "ok" if completed else "failed",
+                           "error": process_error}
+                (directory / f"native-{index}.json").write_text(json.dumps(receipt, indent=2) + "\n")
             validate_native_configuration(case, raw)
             values, failures = parse_google(raw)
-            rows.extend(normalize(case, name, value, raw, sources, "failed" if process_error else "ok", process_error) for name, value in values)
-            rows.extend(normalize(case, name, None, raw, sources,
+            rows.extend(normalize(case, name, value, raw, "failed" if process_error else "ok", process_error) for name, value in values)
+            rows.extend(normalize(case, name, None, raw,
                                   "unsupported" if "kernel resources" in error or "too many resources requested for launch" in error else "known_failure", error)
                         for name, error in failures)
     if not rows:
@@ -802,9 +830,6 @@ def collect(args, case, directory, sources):
         interleaving = bench.resolved_interleaving(args, case["library"])
         if interleaving is not None:
             row["interleaving"] = interleaving
-        path = Path(row["raw_result"])
-        if path.is_file():
-            row["raw_result_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
     return rows
 
 
@@ -816,9 +841,29 @@ def export(directory):
     return write_export(directory, manifest, rows)
 
 
+# Retired result provenance fingerprint fields; results are identified by library version instead.
+RETIRED_PROVENANCE_FIELDS = frozenset((
+    "source_sha256", "runner_sha256", "raw_result_sha256", "lockfile_sha256",
+    "binary_sha256", "timed_runner_sha256", "post_collection_normalizer_sha256",
+    "sha256", "git_revision", "git_commit", "upstream_commit", "git_status",
+    "post_timing_source_delta",
+))
+
+
+def strip_retired_provenance(value):
+    """Drop retired provenance fields from any nested dict or list."""
+    if isinstance(value, dict):
+        return {key: strip_retired_provenance(item) for key, item in value.items()
+                if key not in RETIRED_PROVENANCE_FIELDS}
+    if isinstance(value, list):
+        return [strip_retired_provenance(item) for item in value]
+    return value
+
+
 def write_export(directory, metadata, rows):
     directory.mkdir(parents=True, exist_ok=True)
-    rows = [polish_metadata(row) for row in rows]
+    rows = [strip_retired_provenance(polish_metadata(row)) for row in rows]
+    metadata = strip_retired_provenance(metadata)
     output = dict(schema_version=1, metadata=metadata, records=rows)
     (directory / "chart-data.json").write_text(json.dumps(output, indent=2) + "\n")
     fields = sorted(set().union(*(row.keys() for row in rows))) if rows else ["status"]
@@ -842,8 +887,7 @@ def merge(directory, inputs, retry_inputs=(), drops=()):
         data = json.loads(source.read_text())
         if data.get("schema_version") != 1 or "records" not in data:
             raise ValueError("unsupported chart-data schema")
-        runs.append(dict(source=str(source.resolve()), sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                         metadata=data["metadata"], retry=is_retry))
+        runs.append(dict(source=str(source.resolve()), metadata=data["metadata"], retry=is_retry))
         records = data["records"]
         if drop_specs:
             for row in records:
@@ -964,21 +1008,16 @@ def main(argv=None):
     if platform.system() != "Linux" or args.cpu not in os.sched_getaffinity(0):
         raise RuntimeError("runs require Linux and an allowed CPU affinity")
     directory.mkdir(parents=True, exist_ok=False)
-    hashes_args = argparse.Namespace(libraries=",".join(dict.fromkeys(c["library"] for c in selected)), platform=args.platform)
     manifest = dict(schema_version=1, started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     arguments=vars(args) | {"directory": str(directory)}, policy=policy, cases=selected,
-                    source_sha256=bench.benchmark_source_hashes(hashes_args),
-                    runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                    library_versions={name: bench.declared_version(name)
+                                      for name in dict.fromkeys(case["library"] for case in selected)},
                     excluded_variants=[] if args.include_uint else [dict(library="fss_v060", variant="DCF-uint",
                         reason="original algorithm fails equal-alpha reconstruction correctness check")],
                     host=platform.node(), cpu_model=bench.capture(["lscpu"]), gpu_model=bench.capture(["nvidia-smi"]),
-                    git_revision=bench.capture(["git", "rev-parse", "HEAD"]),
-                    git_status=bench.capture(["git", "status", "--porcelain"]),
                     toolchain_versions={name: bench.capture(command) for name, command in
                                         {"cmake": ["cmake", "--version"], "nvcc": ["nvcc", "--version"],
-                                         "cxx": ["c++", "--version"], "cargo": ["cargo", "--version"]}.items()},
-                    lockfile_sha256={str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                                     for name in bench.RUST for path in [bench.source(name) / "Cargo.lock"] if path.exists()})
+                                         "cxx": ["c++", "--version"], "cargo": ["cargo", "--version"]}.items()})
     try:
         with bench.governor(args.cpu, args.governor) as active:
             manifest["governor"] = active
@@ -986,15 +1025,15 @@ def main(argv=None):
                 data = directory / case_id(case)
                 data.mkdir()
                 if case["library"] == "fss_v070" and case["operation"] == "EvalAll":
-                    rows = [normalize(case, "", None, data, manifest["source_sha256"], "unsupported", "upstream has no full-domain API")]
+                    rows = [normalize(case, "", None, data, "unsupported", "upstream has no full-domain API")]
                     (data / "case.json").write_text(json.dumps(dict(case=case, rows=rows), indent=2) + "\n")
                     continue
                 try:
                     if not args.no_build:
                         build_case(args, case)
-                    rows = collect(args, case, data, manifest["source_sha256"])
+                    rows = collect(args, case, data)
                 except (RuntimeError, OSError, ValueError) as error:
-                    rows = [normalize(case, "", None, data, manifest["source_sha256"], "failed", str(error))]
+                    rows = [normalize(case, "", None, data, "failed", str(error))]
                 (data / "case.json").write_text(json.dumps(dict(case=case, rows=rows), indent=2) + "\n")
     finally:
         (directory / "run.json").write_text(json.dumps(manifest, indent=2) + "\n")

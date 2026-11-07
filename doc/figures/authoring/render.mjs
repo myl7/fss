@@ -171,7 +171,7 @@ export function renderFigures(d3, figures, metadata) {
       : figure.id.startsWith('gpu') ? 'Logarithmic time axis. CUDA-event-timed native GPU calls.'
         : 'Log time. Gen: µs/key. Prepare: ns/key. Eval: µs/query. EvalAll: ms/key. One CPU thread.';
     svg.append('text').attr('data-name', 'timing-note').attr('x', left).attr('y', H - 31).attr('font-size', 12).attr('fill', '#555')
-      .text(figure.isSpeedup ? 'Paired source hashes and configuration match. Reference: direct Eval. Preparation is excluded from prepared query timing.' : metadata.figure_timing_note ?? defaultNote);
+      .text(figure.isSpeedup ? 'Paired from the same raw receipt with matching configuration. Reference: direct Eval. Preparation is excluded from prepared query timing.' : metadata.figure_timing_note ?? defaultNote);
     svg.append('text').attr('data-name', 'methodology-note').attr('x', left).attr('y', H - 13).attr('font-size', 12).attr('fill', '#555')
       .text('Counts, native outputs, PRGs, and timing boundaries: doc/bench_figures.md. Variants: supplementary figures and comparison site.');
   }
