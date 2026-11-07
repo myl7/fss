@@ -22,15 +22,15 @@ void CheckSweep() {
   int4 s0s[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444440},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
   for (uint32_t alpha = 0; alpha < n; ++alpha) {
-    typename Scheme::Key k0, k1;
+    fss_test::ComponentKey<Scheme, In> k0, k1;
     fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), static_cast<In>(alpha));
     for (uint32_t x = 0; x < n; ++x) {
       In xi = static_cast<In>(x);
       bool y0 = fss_test::EvalKey(dcf, false, k0, xi);
       bool y1 = fss_test::EvalKey(dcf, true, k1, xi);
       ASSERT_EQ(y0 != y1, alpha <= x) << "in_bits=" << InBits << " alpha=" << alpha << " x=" << x;
-      bool eq0 = DpfType::Extract(fss_test::EvalKey(dpf, false, k0, xi), xi) != 0;
-      bool eq1 = DpfType::Extract(fss_test::EvalKey(dpf, true, k1, xi), xi) != 0;
+      bool eq0 = DpfType::Extract(dpf.Eval(false, s0s[0], fss_test::KeyCws(k0), xi), xi) != 0;
+      bool eq1 = DpfType::Extract(dpf.Eval(true, s0s[1], fss_test::KeyCws(k1), xi), xi) != 0;
       ASSERT_EQ(eq0 != eq1, x == alpha) << "in_bits=" << InBits << " alpha=" << alpha << " x=" << x;
     }
   }
@@ -60,7 +60,7 @@ void CheckWide() {
     int4 s0s[2] = {{static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng())},
         {static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng())}};
     In alpha = random_in();
-    typename Scheme::Key k0, k1;
+    fss_test::ComponentKey<Scheme, In> k0, k1;
     fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
     const In last_tree_bit = static_cast<In>(static_cast<In>(1) << (InBits - Scheme::kDepth));
     const In top_bit = static_cast<In>(static_cast<In>(1) << (InBits - 1));
@@ -87,13 +87,15 @@ TEST(HalfTreeGrottoDcf, PackedPreprocessingAndFullDomainShares) {
   Scheme scheme{Hash{kNonce0, kNonce1}, {1, 2, 3, 4}};
   const int4 seeds[2] = {{1, 2, 3, 4}, {5, 6, 7, 8}};
   for (int alpha : {0, 127, 128, 255}) {
-    Scheme::Cw cws[Scheme::kDepth + 1];
-    scheme.Gen(cws, seeds, static_cast<uint8_t>(alpha));
+    int4 cws[Scheme::kDepth + 1];
+    scheme.Gen(cuda::std::span<int4>(cws, Scheme::kDepth + 1),
+        cuda::std::span<const int4, 2>(seeds, 2), static_cast<uint8_t>(alpha));
+    const auto key = cuda::std::span<const int4>(cws, Scheme::kDepth + 1);
     bool shares[2][256];
     for (int party = 0; party < 2; ++party) {
-      auto tree = scheme.PreprocessOwned(party != 0, seeds[party], cws);
+      auto tree = scheme.PreprocessOwned(party != 0, seeds[party], key);
       bool raw[256];
-      scheme.EvalAll(party != 0, seeds[party], cws, raw);
+      scheme.EvalAll(party != 0, seeds[party], key, raw);
       Scheme::EvalAll(tree.View(), shares[party]);
       for (int x = 0; x < 256; ++x) {
         EXPECT_EQ(shares[party][x], raw[x]);
@@ -110,9 +112,10 @@ namespace {
 
 constexpr int4 kSplitSentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
 
-// Checks the split Cws API against the Cw array forms for one configuration:
-// every Cw entry, every Eval share, the packed leaves, the parity tree,
-// the owned tree, every EvalAll share, and the two-party reconstruction.
+// Checks the strided split API against the dense split form for one
+// configuration: every correction entry, every Eval share, the packed leaves,
+// the parity tree, the owned tree, every EvalAll share, and the two-party
+// reconstruction.
 // stride == 0 selects the default-argument call. The construction carries no
 // control bits, so there is no packed-control parameter.
 template <int in_bits, typename In>
@@ -133,8 +136,8 @@ void CheckHalfTreeGrottoSplit(In alpha, size_t stride) {
   const size_t used = static_cast<size_t>(kDepth) * level_stride + 1;
   constexpr size_t kExtra = 3;
 
-  typename Scheme::Cw ref[kDepth + 1];
-  scheme.Gen(ref, seeds, alpha);
+  std::vector<int4> dense(kDepth + 1);
+  scheme.Gen(cuda::std::span<int4>(dense.data(), dense.size()), seed_span, alpha);
   std::vector<int4> cws(used + kExtra, kSplitSentinel);
   const auto cws_out = cuda::std::span<int4>(cws.data(), cws.size());
   if (default_stride) scheme.Gen(cws_out, seed_span, alpha);
@@ -142,7 +145,7 @@ void CheckHalfTreeGrottoSplit(In alpha, size_t stride) {
 
   for (int l = 0; l <= kDepth; ++l) {
     const size_t index = static_cast<size_t>(l) * level_stride;
-    EXPECT_EQ(memcmp(&cws[index], &ref[l].s, sizeof(int4)), 0) << "cws layer " << l;
+    EXPECT_EQ(memcmp(&cws[index], &dense[l], sizeof(int4)), 0) << "cws layer " << l;
   }
   // Only the described prefix is written: gap entries and trailing capacity keep the sentinel.
   for (size_t i = 0; i < cws.size(); ++i) {
@@ -157,7 +160,7 @@ void CheckHalfTreeGrottoSplit(In alpha, size_t stride) {
     const int4 s0 = seeds[party];
     for (size_t x = 0; x < kDomain; ++x) {
       const In xi = static_cast<In>(x);
-      const bool expected = scheme.Eval(b, s0, ref, xi);
+      const bool expected = scheme.Eval(b, s0, cuda::std::span<const int4>(dense.data(), dense.size()), xi);
       const bool actual = default_stride
           ? scheme.Eval(b, s0, split_cws, xi)
           : scheme.Eval(b, s0, split_cws, xi, stride);
@@ -168,7 +171,8 @@ void CheckHalfTreeGrottoSplit(In alpha, size_t stride) {
     // preprocessing, and the owned tree exposes the same entries.
     std::vector<int4> expected_blocks(kBlocks, kSplitSentinel);
     auto expected_tree = std::make_unique<bool[]>(kTreeSize);
-    scheme.Preprocess(b, s0, ref, expected_blocks.data(), expected_tree.get());
+    scheme.Preprocess(b, s0, cuda::std::span<const int4>(dense.data(), dense.size()),
+        expected_blocks.data(), expected_tree.get());
     std::vector<int4> actual_blocks(kBlocks, kSplitSentinel);
     auto actual_tree = std::make_unique<bool[]>(kTreeSize);
     if (default_stride) {
@@ -194,7 +198,7 @@ void CheckHalfTreeGrottoSplit(In alpha, size_t stride) {
 
     auto expected_all = std::make_unique<bool[]>(kDomain);
     split_all[party] = std::make_unique<bool[]>(kDomain);
-    scheme.EvalAll(b, s0, ref, expected_all.get());
+    scheme.EvalAll(b, s0, cuda::std::span<const int4>(dense.data(), dense.size()), expected_all.get());
     if (default_stride) scheme.EvalAll(b, s0, split_cws, split_all[party].get());
     else scheme.EvalAll(b, s0, split_cws, split_all[party].get(), 0, stride);
     for (size_t x = 0; x < kDomain; ++x) {
@@ -311,8 +315,10 @@ void CheckHalfTreeGrottoSplitGpuLaunches() {
   const uint16_t alpha = 107;
   constexpr size_t kStride = 2;
 
-  typename Scheme::Cw ref[kDepth + 1];
-  scheme.Gen(ref, seeds, alpha);
+  std::vector<int4> dense(kDepth + 1);
+  scheme.Gen(cuda::std::span<int4>(dense.data(), dense.size()),
+      cuda::std::span<const int4, 2>(seeds, 2), alpha);
+  const auto dense_span = cuda::std::span<const int4>(dense.data(), dense.size());
   std::vector<int4> cws((kDepth + 1) * kStride + 2, kSplitSentinel);
   scheme.Gen(cuda::std::span<int4>(cws.data(), cws.size()),
       cuda::std::span<const int4, 2>(seeds, 2), alpha, kStride);
@@ -344,7 +350,7 @@ void CheckHalfTreeGrottoSplitGpuLaunches() {
     // EvalAllGpu() and EvalAll() take the same leaf-prefix route, so their shares
     // are comparable. Scalar Eval() takes the other route and its shares are not.
     auto expected_all = std::make_unique<bool[]>(kDomain);
-    scheme.EvalAll(b, seeds[party], ref, expected_all.get());
+    scheme.EvalAll(b, seeds[party], dense_span, expected_all.get());
     for (size_t x = 0; x < kDomain; ++x) {
       EXPECT_EQ(actual[x], expected_all[x]) << "x=" << x;
       if (party == 0) {
@@ -356,7 +362,7 @@ void CheckHalfTreeGrottoSplitGpuLaunches() {
 
     std::vector<int4> expected_blocks(kBlocks, kSplitSentinel);
     auto expected_tree = std::make_unique<bool[]>(kTreeSize);
-    scheme.Preprocess(b, seeds[party], ref, expected_blocks.data(), expected_tree.get());
+    scheme.Preprocess(b, seeds[party], dense_span, expected_blocks.data(), expected_tree.get());
     std::vector<int4> actual_blocks(kBlocks, kSplitSentinel);
     auto actual_tree = std::make_unique<bool[]>(kTreeSize);
     ASSERT_EQ((scheme.template PreprocessGpu<8, 16>(b, seeds[party], span_cws,

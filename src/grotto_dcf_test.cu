@@ -18,7 +18,7 @@ protected:
   using GrottoDcfType = fss::GrottoDcf<kAlphaBits, fss::prg::ChaCha<2>, uint16_t>;
 
   int4 s0s[2];
-  GrottoDcfType::Key k0, k1;
+  fss_test::ComponentKey<GrottoDcfType> k0, k1;
   fss::prg::ChaCha<2> prg;
 
   GrottoDcfChaChaTest() : prg(kNonce0, kNonce1) {}
@@ -97,7 +97,7 @@ TEST_F(GrottoDcfChaChaTest, EdgeAlphaZero) {
   GrottoDcfType dcf{prg};
   constexpr size_t N = 1ULL << kAlphaBits;
 
-  GrottoDcfType::Key edge_k0, edge_k1;
+  fss_test::ComponentKey<GrottoDcfType> edge_k0, edge_k1;
   fss_test::GenPair(dcf, edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2),
       static_cast<uint16_t>(0));
 
@@ -118,7 +118,7 @@ TEST_F(GrottoDcfChaChaTest, EdgeAlphaMax) {
   constexpr size_t N = 1ULL << kAlphaBits;
 
   uint16_t alpha_max = static_cast<uint16_t>(N - 1);
-  GrottoDcfType::Key edge_k0, edge_k1;
+  fss_test::ComponentKey<GrottoDcfType> edge_k0, edge_k1;
   fss_test::GenPair(dcf, edge_k0, edge_k1, cuda::std::span<const int4, 2>(s0s, 2), alpha_max);
 
   auto ys0 = std::make_unique<bool[]>(N);
@@ -144,7 +144,7 @@ void CheckSinglePathSweep() {
   int4 s0s[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444440},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
   for (uint32_t alpha = 0; alpha < n; ++alpha) {
-    typename Gdcf::Key k0, k1;
+    fss_test::ComponentKey<Gdcf> k0, k1;
     fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), static_cast<uint8_t>(alpha));
     for (uint32_t x = 0; x < n; ++x) {
       bool y0 = fss_test::EvalKey(dcf, false, k0, static_cast<uint8_t>(x));
@@ -181,7 +181,7 @@ void CheckSinglePathWide() {
     int4 s0s[2] = {{static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng())},
         {static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng()), static_cast<int>(rng())}};
     In alpha = random_in();
-    typename Gdcf::Key k0, k1;
+    fss_test::ComponentKey<Gdcf, In> k0, k1;
     fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha);
     const In top_bit = static_cast<In>(static_cast<In>(1) << (InBits - 1));
     const In xs[] = {alpha, static_cast<In>((alpha - 1) & mask), static_cast<In>((alpha + 1) & mask),
@@ -218,7 +218,7 @@ void CheckGrottoGenHalf() {
   fss_test::PrgCallCounts calls;
   Scheme scheme{Prg(aes.Backend(), calls)};
   int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
-  typename Scheme::Key keys[2];
+  fss_test::ComponentKey<Scheme> keys[2];
   fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13});
   EXPECT_EQ(calls.full, 2 * bits);
   EXPECT_EQ(calls.half, 0);
@@ -261,22 +261,22 @@ void CheckGrottoSplit(In alpha, size_t stride) {
   constexpr size_t kDomain = size_t{1} << in_bits;
   constexpr size_t kTreeSize = 2 * kDomain - 1;
 
-  typename Scheme::Cw ref[in_bits + 1];
-  scheme.Gen(ref, seeds, alpha);
+  std::vector<int4> ref_cws(in_bits + 1);
+  In ref_tr = 0;
+  scheme.Gen(cuda::std::span<int4>(ref_cws.data(), ref_cws.size()), ref_tr, seed_span, alpha);
+  const auto dense_cws = cuda::std::span<const int4>(ref_cws.data(), ref_cws.size());
   std::vector<int4> cws(used + kExtra, kSplitSentinel);
   const auto cws_out = cuda::std::span<int4>(cws.data(), cws.size());
   In tr = 0;
   if (default_stride) scheme.Gen(cws_out, tr, seed_span, alpha);
   else scheme.Gen(cws_out, tr, seed_span, alpha, stride);
 
-  In expected_tr = 0;
   for (int l = 0; l < in_bits; ++l) {
     const size_t index = static_cast<size_t>(l) * level_stride;
-    EXPECT_EQ(memcmp(&cws[index], &ref[l].s, sizeof(int4)), 0) << "cws layer " << l;
-    if (ref[l].tr) expected_tr |= static_cast<In>(static_cast<In>(1) << l);
+    EXPECT_EQ(memcmp(&cws[index], &ref_cws[l], sizeof(int4)), 0) << "cws layer " << l;
   }
-  EXPECT_EQ(tr, expected_tr) << "packed right-control bits";
-  EXPECT_EQ(memcmp(&cws[used - 1], &ref[in_bits].s, sizeof(int4)), 0) << "cws terminal";
+  EXPECT_EQ(tr, ref_tr) << "packed right-control bits";
+  EXPECT_EQ(memcmp(&cws[used - 1], &ref_cws[in_bits], sizeof(int4)), 0) << "cws terminal";
   // Only the described prefix is written: gap entries and trailing capacity keep the sentinel.
   for (size_t i = 0; i < cws.size(); ++i) {
     if (i % level_stride == 0 && i / level_stride <= static_cast<size_t>(in_bits)) continue;
@@ -290,17 +290,17 @@ void CheckGrottoSplit(In alpha, size_t stride) {
     const int4 s0 = seeds[party];
     for (size_t x = 0; x < kDomain; ++x) {
       const In xi = static_cast<In>(x);
-      const bool expected = scheme.Eval(b, s0, ref, xi);
+      const bool expected = scheme.Eval(b, s0, dense_cws, ref_tr, xi);
       const bool actual = default_stride
           ? scheme.Eval(b, s0, split_cws, tr, xi)
           : scheme.Eval(b, s0, split_cws, tr, xi, stride);
       EXPECT_EQ(actual, expected) << "Eval party=" << party << " x=" << x;
     }
 
-    // The split preprocessing produces the same tree as the Cw preprocessing.
+    // The strided preprocessing produces the same tree as the dense layout.
     auto expected_tree = std::make_unique<bool[]>(kTreeSize);
     auto actual_tree = std::make_unique<bool[]>(kTreeSize);
-    scheme.Preprocess(b, s0, ref, expected_tree.get());
+    scheme.Preprocess(b, s0, dense_cws, ref_tr, expected_tree.get());
     if (default_stride) scheme.Preprocess(b, s0, split_cws, tr, actual_tree.get());
     else scheme.Preprocess(b, s0, split_cws, tr, actual_tree.get(), 0, stride);
     for (size_t j = 0; j < kTreeSize; ++j) {
@@ -316,7 +316,7 @@ void CheckGrottoSplit(In alpha, size_t stride) {
 
     auto expected_all = std::make_unique<bool[]>(kDomain);
     split_all[party] = std::make_unique<bool[]>(kDomain);
-    scheme.EvalAll(b, s0, ref, expected_all.get());
+    scheme.EvalAll(b, s0, dense_cws, ref_tr, expected_all.get());
     if (default_stride) scheme.EvalAll(b, s0, split_cws, tr, split_all[party].get());
     else scheme.EvalAll(b, s0, split_cws, tr, split_all[party].get(), 0, stride);
     for (size_t x = 0; x < kDomain; ++x) {
@@ -408,7 +408,7 @@ TEST(GrottoDcfCwsTest, AbortsOnInvalidLowLevelInputsInDebug) {
 #endif  // NDEBUG
 
 // The GPU split launches are compile-verified here and executed only on a
-// machine with a free device, comparing against the host Cw-form outputs.
+// machine with a free device, comparing against the host dense-split outputs.
 namespace {
 
 void CheckGrottoSplitGpuLaunches() {
@@ -427,12 +427,18 @@ void CheckGrottoSplitGpuLaunches() {
   const uint16_t alpha = 107;
   constexpr size_t kStride = 2;
 
-  typename Scheme::Cw ref[kBits + 1];
-  scheme.Gen(ref, seeds, alpha);
+  std::vector<int4> dense(kBits + 1);
+  uint16_t dense_tr = 0;
+  scheme.Gen(cuda::std::span<int4>(dense.data(), dense.size()), dense_tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha);
   std::vector<int4> cws((kBits + 1) * kStride + 2, kSplitSentinel);
   uint16_t tr = 0;
   scheme.Gen(cuda::std::span<int4>(cws.data(), cws.size()), tr,
       cuda::std::span<const int4, 2>(seeds, 2), alpha, kStride);
+  for (int i = 0; i <= kBits; ++i) {
+    EXPECT_EQ(memcmp(&cws[static_cast<size_t>(i) * kStride], &dense[i], sizeof(int4)), 0) << "layer " << i;
+  }
+  EXPECT_EQ(tr, dense_tr) << "packed right-control bits";
 
   int4 *device_cws = nullptr;
   bool *device_ys = nullptr;
@@ -459,7 +465,8 @@ void CheckGrottoSplitGpuLaunches() {
     // EvalAllGpu() and EvalAll() take the same leaf-prefix route, so their shares
     // are comparable. Scalar Eval() takes the other route and its shares are not.
     auto expected_all = std::make_unique<bool[]>(kDomain);
-    scheme.EvalAll(b, seeds[party], ref, expected_all.get());
+    scheme.EvalAll(b, seeds[party], cuda::std::span<const int4>(dense.data(), dense.size()), dense_tr,
+        expected_all.get());
     for (size_t x = 0; x < kDomain; ++x) {
       EXPECT_EQ(actual[x], expected_all[x]) << "x=" << x;
       if (party == 0) {
@@ -470,7 +477,8 @@ void CheckGrottoSplitGpuLaunches() {
     }
 
     auto expected_tree = std::make_unique<bool[]>(kTreeSize);
-    scheme.Preprocess(b, seeds[party], ref, expected_tree.get());
+    scheme.Preprocess(b, seeds[party], cuda::std::span<const int4>(dense.data(), dense.size()), dense_tr,
+        expected_tree.get());
     auto actual_tree = std::make_unique<bool[]>(kTreeSize);
     ASSERT_EQ((scheme.template PreprocessGpu<8, 16>(b, seeds[party], span_cws, tr,
         cuda::std::span<bool>(device_tree, kTreeSize), stream, kStride)), cudaSuccess);

@@ -265,7 +265,7 @@ __global__ void DmpfBatchKernel(void *scheme_storage, bool b,
   for (int k = 0; k < kChoices; ++k) {
     auto location = hasher.Locate(key.sigma, xs[omega], k,
         __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt, kChoices);
-    int4 value = inner.Eval(b, key.s0s[location.bucket],
+    int4 value = fss::detail::SchemeAccess::DpfEvalCw(inner, b, key.s0s[location.bucket],
         cws + static_cast<size_t>(location.bucket) * (Descriptor::kBucketBits + 1), location.index);
     sum = sum + Group::From(value);
   }
@@ -293,7 +293,7 @@ __global__ void VdmpfBatchLeavesKernel(void *scheme_storage, bool b,
         __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt, kChoices);
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
-    auto corrected = inner.Eval(b, key.s0s[bucket],
+    auto corrected = fss::detail::SchemeAccess::VdpfEvalCw(inner, b, key.s0s[bucket],
         cuda::std::span<const Cw>(cws + bucket * (Descriptor::kBucketBits + 1),
             Descriptor::kBucketBits + 1),
         cuda::std::span<const int4, 4>(key.cs + bucket * 4, 4), location.index, value);

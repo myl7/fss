@@ -12,24 +12,27 @@ using Proof = cuda::std::array<int4, 4>;
 using VdpfLaunchDescriptor = fss::gpu::detail::VdpfGpuKernelDescriptor<kInBits,
     typename fss::detail::GpuGroupTag<GroupType>::Type, PrgType, XorHashType, HashType, InType>;
 
+// The key components are device addresses; the kernel loads the packed
+// control where the split entry point expects a value.
 template <typename Descriptor>
 __global__ void EvalKernel(void *scheme_storage, bool b, const int4 *seed,
-    const void *cws_storage, const int4 *cs, InType x, int4 *y, Proof *pi) {
+    const int4 *cws, const InType *tr, const int4 *cs, InType x, int4 *y, Proof *pi) {
   using S = typename Descriptor::Scheme;
   S *scheme = static_cast<S *>(scheme_storage);
-  const typename S::Cw *cws = static_cast<const typename S::Cw *>(cws_storage);
-  *pi = scheme->Eval(b, *seed, {cws, kInBits + 1}, cuda::std::span<const int4,4>(cs,4), x, *y);
+  *pi = scheme->Eval(b, seed[0], {cws, kInBits + 1}, tr[0],
+      cuda::std::span<const int4,4>(cs,4), x, *y);
 }
 
 template <typename S = SchemeType>
 int Gen(NativeState &state, Tensor cws, Tensor cs, Tensor seeds,
     py::int_ a, Tensor beta) {
   CheckSameDevice({cws, cs, seeds, beta});
-  auto *words = CwPtr(cws, kInBits + 1);
+  auto key = KeyPtr(cws);
   CheckBlocks(cs, 4); CheckBlocks(seeds, 2); CheckBlocks(beta, 1);
   InType alpha = ReadIn(a);
   if (cws.is_cpu()) {
-    return state.Cpu().Gen(words, cuda::std::span<int4,4>(Blocks(cs),4),
+    return state.Cpu().Gen(cuda::std::span<int4>(key.arrays, kInBits + 1), *key.control,
+        cuda::std::span<int4,4>(Blocks(cs),4),
         cuda::std::span<const int4,2>(ConstBlocks(seeds),2), alpha, *ConstBlocks(beta));
   }
   if constexpr (kGpuSupported) {
@@ -37,7 +40,8 @@ int Gen(NativeState &state, Tensor cws, Tensor cs, Tensor seeds,
     auto stream = CurrentStream();
     auto status = at::empty({}, cws.options().dtype(at::kInt));
     CheckCuda(fss::gpu::GenGpu<S>(state.template Device<kGpuSupported, S>(stream),
-        cuda::std::span<typename S::Cw,kInBits+1>(words,kInBits+1),
+        cuda::std::span<int4,kInBits+1>(key.arrays,kInBits+1),
+        key.control,
         cuda::std::span<int4,4>(Blocks(cs),4),
         cuda::std::span<const int4,2>(ConstBlocks(seeds),2),
         alpha, FetchBlock(beta), status.data_ptr<int>(), stream));
@@ -54,17 +58,18 @@ Tensor Eval(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
     py::int_ x, Tensor y) {
   CheckSameDevice({seed, cws, cs, y});
   CheckBlocks(seed, 1); CheckBlocks(cs, 4); CheckBlocks(y, 1);
-  auto *words = ConstCwPtr(cws, kInBits + 1);
+  auto key = KeyPtr(cws);
   auto pi = at::empty({4, 4}, y.options());
   auto *proof = reinterpret_cast<Proof *>(Blocks(pi));
   InType input = ReadIn(x);
   if (y.is_cpu()) *proof = state.Cpu().Eval(b, *ConstBlocks(seed),
-      {words, kInBits + 1}, cuda::std::span<const int4,4>(ConstBlocks(cs),4), input, *Blocks(y));
+      {key.arrays, kInBits + 1}, *key.control,
+      cuda::std::span<const int4,4>(ConstBlocks(cs),4), input, *Blocks(y));
   else if constexpr (kGpuSupported) {
     c10::cuda::CUDAGuard guard(y.device()); auto stream = CurrentStream();
     EvalKernel<VdpfLaunchDescriptor><<<1, 1, 0, stream>>>(
         state.template Device<kGpuSupported, S>(stream), b, ConstBlocks(seed),
-        words, ConstBlocks(cs), input, Blocks(y), proof);
+        key.arrays, key.control, ConstBlocks(cs), input, Blocks(y), proof);
     CheckCuda(cudaGetLastError()); state.RecordUse(stream);
     RecordTensors({seed, cws, cs, y, pi}, stream);
   } else TORCH_CHECK(false, "configured backends do not support CUDA evaluation");
@@ -100,7 +105,7 @@ void Full(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
   CheckSameDevice({seed, cws, cs, ys, pi});
   CheckBlocks(seed, 1); CheckBlocks(cs, 4); CheckBlocks(pi, 4);
   CheckBlocks(ys, AddressableCount(kInBits));
-  auto *words = ConstCwPtr(cws, kInBits + 1);
+  auto key = KeyPtr(cws);
   if constexpr (fss::detail::FitsFullDomain<int4, kInBits>()) {
     if (ys.is_cpu()) {
       state.CheckCpuParallel(par_depth, merkle
@@ -108,20 +113,25 @@ void Full(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
           : NativeState::kPrgRole);
       if (merkle) {
         if constexpr (fss::detail::FitsFullDomain<Proof, kInBits>()) {
-          static_cast<S &>(state.Cpu()).EvalAllMerkle(b, *ConstBlocks(seed), {words, kInBits + 1},
+          static_cast<S &>(state.Cpu()).EvalAllMerkle(b, *ConstBlocks(seed),
+              {key.arrays, kInBits + 1}, *key.control,
               cuda::std::span<const int4,4>(ConstBlocks(cs),4), {Blocks(ys), size_t(ys.numel()/4)}, cuda::std::span<int4,4>(Blocks(pi),4), par_depth);
         } else TORCH_CHECK(false, "full-domain proof scratch size overflows");
       } else {
-        static_cast<S &>(state.Cpu()).EvalAll(b, *ConstBlocks(seed), {words, kInBits + 1},
+        static_cast<S &>(state.Cpu()).EvalAll(b, *ConstBlocks(seed),
+            {key.arrays, kInBits + 1}, *key.control,
             cuda::std::span<const int4,4>(ConstBlocks(cs),4), {Blocks(ys), size_t(ys.numel()/4)}, cuda::std::span<int4,4>(Blocks(pi),4), par_depth);
       }
     } else if constexpr (kGpuSupported && ValidCoreGpuLaunch<kInBits, kInBits, true>()) {
       TORCH_CHECK(merkle, "chain full evaluation is a CPU operation; use eval_all_merkle for CUDA");
       c10::cuda::CUDAGuard guard(ys.device()); auto stream = CurrentStream();
       auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-      CheckCuda(core.template EvalAllMerkleGpu<kFrontierDepth, kThreadsPerBlock>(b,
-          FetchBlock(seed), {words, kInBits + 1}, cuda::std::span<const int4,4>(ConstBlocks(cs),4),
-          {Blocks(ys), size_t(ys.numel()/4)}, cuda::std::span<int4,4>(Blocks(pi),4), stream));
+      CheckCuda(fss::gpu::detail::VdpfEvalAllMerkleGpuDeviceKey<kInBits, GroupType, PrgType,
+          XorHashType, HashType, InType, kFrontierDepth, kThreadsPerBlock>(b,
+          ConstBlocks(seed), key.arrays, kInBits + 1, key.control, 1, ConstBlocks(cs),
+          Blocks(ys), size_t(ys.numel()/4), Blocks(pi),
+          fss::detail::SchemeAccess::GetPrg(core), fss::detail::SchemeAccess::GetXorHash(core),
+          fss::detail::SchemeAccess::GetHash(core), stream));
       state.RecordUse(stream); RecordTensors({seed, cws, cs, ys, pi}, stream);
     } else TORCH_CHECK(false, "configured full-domain CUDA evaluation is unavailable");
   } else TORCH_CHECK(false, "full domain does not fit a tensor allocation");
@@ -136,7 +146,7 @@ void Range(NativeState &state, bool b, const py::int_ &first, const py::int_ &la
   const InType right = ReadIn(last);
   const int64_t count = RangeBlockCount(left, right);
   CheckBlockCapacity(ys, count);
-  const auto *words = ConstCwPtr(cws, kInBits + 1);
+  auto key = KeyPtr(cws);
   if (ys.is_cpu()) {
     if constexpr (merkle) {
       constexpr size_t max_bytes = std::numeric_limits<size_t>::max();
@@ -154,11 +164,13 @@ void Range(NativeState &state, bool b, const py::int_ &first, const py::int_ &la
     auto &core = static_cast<S &>(state.Cpu());
     if constexpr (merkle) {
       core.EvalRangeMerkle(b, left, right, *ConstBlocks(seed),
-          {words, kInBits + 1}, cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+          {key.arrays, kInBits + 1}, *key.control,
+          cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
           {Blocks(ys), static_cast<size_t>(count)}, cuda::std::span<int4, 4>(Blocks(pi), 4), par_depth);
     } else {
       core.EvalRange(b, left, right, *ConstBlocks(seed),
-          {words, kInBits + 1}, cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+          {key.arrays, kInBits + 1}, *key.control,
+          cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
           {Blocks(ys), static_cast<size_t>(count)}, cuda::std::span<int4, 4>(Blocks(pi), 4), par_depth);
     }
   } else if constexpr (!merkle) {
@@ -167,10 +179,12 @@ void Range(NativeState &state, bool b, const py::int_ &first, const py::int_ &la
     c10::cuda::CUDAGuard guard(ys.device());
     auto stream = CurrentStream();
     auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-    CheckCuda(core.template EvalRangeMerkleGpu<kFrontierDepth, kThreadsPerBlock>(b,
-        left, right, FetchBlock(seed), {words, kInBits + 1},
-        cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
-        {Blocks(ys), static_cast<size_t>(count)}, cuda::std::span<int4, 4>(Blocks(pi), 4), stream));
+    CheckCuda(fss::gpu::detail::VdpfEvalRangeMerkleGpuDeviceKey<kInBits, GroupType, PrgType,
+        XorHashType, HashType, InType, kFrontierDepth, kThreadsPerBlock>(b, left, right,
+        ConstBlocks(seed), key.arrays, kInBits + 1, key.control, 1, ConstBlocks(cs),
+        Blocks(ys), static_cast<size_t>(count), Blocks(pi),
+        fss::detail::SchemeAccess::GetPrg(core), fss::detail::SchemeAccess::GetXorHash(core),
+        fss::detail::SchemeAccess::GetHash(core), stream));
     state.RecordUse(stream); RecordTensors({seed, cws, cs, ys, pi}, stream);
   } else {
     throw py::value_error("configured backend or GPU launch shape is unavailable; check frontier_depth and threads_per_block");
@@ -185,14 +199,16 @@ void Batch(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
   const int64_t count = InputCount<InType>(xs);
   TORCH_CHECK(count > 0, "xs must be nonempty");
   CheckBlocks(ys, count);
-  const auto *words = ConstCwPtr(cws, kInBits + 1);
+  auto key = KeyPtr(cws);
   if (ys.is_cpu()) {
     CheckCpuInputsInDomain<InType>(xs, kInBits);
-    if (merkle) state.Cpu().BatchEvalMerkle(b, *ConstBlocks(seed), {words, kInBits + 1},
+    if (merkle) state.Cpu().BatchEvalMerkle(b, *ConstBlocks(seed),
+        {key.arrays, kInBits + 1}, *key.control,
         cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
         {ConstInPtr(xs), size_t(count)}, {Blocks(ys), size_t(count)},
         cuda::std::span<int4, 4>(Blocks(pi), 4));
-    else state.Cpu().BatchEval(b, *ConstBlocks(seed), {words, kInBits + 1},
+    else state.Cpu().BatchEval(b, *ConstBlocks(seed),
+        {key.arrays, kInBits + 1}, *key.control,
         cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
         {ConstInPtr(xs), size_t(count)}, {Blocks(ys), size_t(count)},
         cuda::std::span<int4, 4>(Blocks(pi), 4));
@@ -203,10 +219,12 @@ void Batch(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
     c10::cuda::CUDAGuard guard(ys.device());
     auto stream = CurrentStream();
     auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-    CheckCuda(core.template BatchEvalMerkleGpu<kThreadsPerBlock>(b, FetchBlock(seed),
-        {words, kInBits + 1}, cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
-        {ConstInPtr(xs), size_t(count)}, {Blocks(ys), size_t(count)},
-        cuda::std::span<int4, 4>(Blocks(pi), 4), stream));
+    CheckCuda(fss::gpu::detail::VdpfBatchEvalMerkleGpuDeviceKey<kInBits, GroupType, PrgType,
+        XorHashType, HashType, InType, kThreadsPerBlock>(b, ConstBlocks(seed),
+        key.arrays, kInBits + 1, key.control, 1, ConstBlocks(cs),
+        ConstInPtr(xs), size_t(count), Blocks(ys), size_t(count), Blocks(pi),
+        fss::detail::SchemeAccess::GetPrg(core), fss::detail::SchemeAccess::GetXorHash(core),
+        fss::detail::SchemeAccess::GetHash(core), stream));
     state.RecordUse(stream); RecordTensors({seed, cws, cs, xs, ys, pi}, stream);
   } else {
     throw py::value_error("configured backend or GPU launch shape is unavailable; check threads_per_block");

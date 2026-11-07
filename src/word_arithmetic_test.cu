@@ -407,8 +407,8 @@ TEST(WordArithmetic, ParallelChaChaDpfFullDomainMatchesPoint) {
   Scheme scheme{fss::prg::ChaCha<2>{1, 2}};
   int4 seeds[2] = {{967459772, 685770617, 5688182, 142619765},
       {1958864317, -1157351853, 618433185, -451532952}};
-  Scheme::Key k0, k1;
-  fss_test::GenPair(scheme, k0, k1, seeds, 7, {604, 0, 0, 0});
+  fss_test::ComponentKey<Scheme> k0, k1;
+  fss_test::GenPair(scheme, k0, k1, seeds, 7, int4{604, 0, 0, 0});
   std::vector<int4> full(256);
   for (bool party : {false, true}) {
     const auto &key = party ? k1 : k0;

@@ -48,24 +48,29 @@ int main() {
   }
 
   // Key generation (done by a trusted dealer)
-  Dpf::Cw cws[Dpf::kDepth + 1];
-  dpf.Gen(cws, seeds, alpha, beta);
+  int4 cws[Dpf::kDepth + 1];
+  dpf.Gen(cuda::std::span<int4>(cws, Dpf::kDepth + 1),
+      cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
 
   // Evaluation: Eval returns the block containing x, Extract reads x's lane
-  int4 diff = fss::util::Xor(dpf.Eval(false, seeds[0], cws, alpha), dpf.Eval(true, seeds[1], cws, alpha));
+  int4 diff = fss::util::Xor(
+      dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, Dpf::kDepth + 1), alpha),
+      dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, Dpf::kDepth + 1), alpha));
   printf("  Eval(x=%d == alpha): reconstruct == beta? %s\n", alpha,
       Dpf::Extract(diff, alpha) == beta ? "yes" : "NO");
 
   In x = 100;  // Different block from alpha
-  diff = fss::util::Xor(dpf.Eval(false, seeds[0], cws, x), dpf.Eval(true, seeds[1], cws, x));
+  diff = fss::util::Xor(
+      dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, Dpf::kDepth + 1), x),
+      dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, Dpf::kDepth + 1), x));
   printf("  Eval(x=%d != alpha): reconstruct == 0?    %s\n", x,
       Dpf::Extract(diff, x) == 0 ? "yes" : "NO");
 
   // Full-domain evaluation: 2^8 inputs in 2^4 blocks
   int4 ys0[1 << Dpf::kDepth];
   int4 ys1[1 << Dpf::kDepth];
-  dpf.EvalAll(false, seeds[0], cws, ys0);
-  dpf.EvalAll(true, seeds[1], cws, ys1);
+  dpf.EvalAll(false, seeds[0], cuda::std::span<const int4>(cws, Dpf::kDepth + 1), ys0);
+  dpf.EvalAll(true, seeds[1], cuda::std::span<const int4>(cws, Dpf::kDepth + 1), ys1);
 
   int mismatches = 0;
   for (int i = 0; i < (1 << kInBits); ++i) {

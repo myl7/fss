@@ -46,6 +46,66 @@ using Cw = typename SchemeType::Cw;
 inline constexpr size_t kNativeCwCount = CwCount<SchemeType>();
 inline constexpr size_t kNativeCwRows = CwRows<SchemeType>();
 
+// Single-point schemes store the split key components in one opaque block of
+// 16-byte records: the strided-form correction array(s) Gen() writes from
+// record zero, plus one final record holding the packed control In value at
+// its start when the scheme has one. The DCF value components occupy the
+// records after the seed components. Bucket schemes keep their Cw records.
+inline constexpr bool kComponentKey = kSchemeKind >= 1 && kSchemeKind <= 7;
+inline constexpr size_t kNativeArrayRecords = CwCount<SchemeType>();
+inline constexpr bool kNativeValueArray = kSchemeKind == 2;
+inline constexpr bool kNativeControl = kComponentKey && kSchemeKind != 4 && kSchemeKind != 6;
+inline constexpr size_t kNativeKeyRecords = kNativeValueArray
+    ? 2 * kNativeArrayRecords + 1
+    : (kNativeControl ? kNativeArrayRecords + 1 : kNativeArrayRecords);
+inline constexpr size_t kNativeControlRecord = kNativeValueArray
+    ? 2 * kNativeArrayRecords
+    : kNativeArrayRecords;
+
+// Parsed view of one caller-allocated component key block. The control slot
+// aliases the last record of the block; schemes without packed control leave
+// it null.
+struct ComponentKey {
+  int4 *arrays;
+  int4 *values;
+  InType *control;
+};
+
+inline ComponentKey KeyAt(int4 *base, size_t index) {
+  int4 *block = base + index * kNativeKeyRecords;
+  return {block, kNativeValueArray ? block + kNativeArrayRecords : nullptr,
+      kNativeControl ? reinterpret_cast<InType *>(block + kNativeControlRecord) : nullptr};
+}
+
+// Single-key entry points own a [records, 16] block. Batch entry points own a
+// key-major [keys, records, 16] block whose key count may be zero, one, or
+// more; a one-key batch stays three-dimensional.
+inline int4 *KeyBase(const Tensor &tensor) {
+  CheckTensor(tensor);
+  TORCH_CHECK(tensor.scalar_type() == at::kByte, "the correction words must use uint8 native bytes");
+  const int64_t records = static_cast<int64_t>(kNativeKeyRecords);
+  TORCH_CHECK(tensor.dim() == 2 && tensor.size(0) == records && tensor.size(1) == sizeof(int4),
+      "the correction words have the wrong native shape");
+  CheckAlignment(tensor, alignof(int4));
+  return reinterpret_cast<int4 *>(tensor.data_ptr<uint8_t>());
+}
+
+inline int4 *KeyBaseBatch(const Tensor &tensor, int64_t expected_keys) {
+  CheckTensor(tensor);
+  TORCH_CHECK(tensor.scalar_type() == at::kByte, "the correction words must use uint8 native bytes");
+  const int64_t records = static_cast<int64_t>(kNativeKeyRecords);
+  TORCH_CHECK(expected_keys >= 0, "the key count must be nonnegative");
+  TORCH_CHECK(tensor.dim() == 3 && tensor.size(0) == expected_keys &&
+          tensor.size(1) == records && tensor.size(2) == sizeof(int4),
+      "the correction words have the wrong key-major shape");
+  CheckAlignment(tensor, alignof(int4));
+  return reinterpret_cast<int4 *>(tensor.data_ptr<uint8_t>());
+}
+
+inline ComponentKey KeyPtr(const Tensor &tensor) {
+  return KeyAt(KeyBase(tensor), 0);
+}
+
 inline Cw *CwPtr(const Tensor &tensor, int64_t expected_words = -1) {
   CheckTensor(tensor);
   TORCH_CHECK(tensor.scalar_type() == at::kByte, "the correction words must use uint8 native bytes");
@@ -320,10 +380,16 @@ void AddDimensions(py::module_ &module, py::class_<NativeState> &cls) {
 inline py::class_<NativeState> BindNative(py::module_ &module) {
   py::class_<NativeState> cls(module, "NativeScheme", py::module_local());
   cls.def(py::init<const py::dict &, const py::object &>(), py::arg("backends"), py::arg("instance_seed") = py::none());
-  cls.def_property_readonly("cw_count", [](const NativeState &) { return kNativeCwCount; });
+  if constexpr (kComponentKey) {
+    cls.def_property_readonly("cw_count", [](const NativeState &) { return kNativeKeyRecords; });
+    cls.def_property_readonly("cw_size", [](const NativeState &) { return sizeof(int4); });
+    cls.def_property_readonly("cw_alignment", [](const NativeState &) { return alignof(int4); });
+  } else {
+    cls.def_property_readonly("cw_count", [](const NativeState &) { return kNativeCwCount; });
+    cls.def_property_readonly("cw_size", [](const NativeState &) { return sizeof(Cw); });
+    cls.def_property_readonly("cw_alignment", [](const NativeState &) { return alignof(Cw); });
+  }
   cls.def_property_readonly("cw_rows", [](const NativeState &) { return kNativeCwRows; });
-  cls.def_property_readonly("cw_size", [](const NativeState &) { return sizeof(Cw); });
-  cls.def_property_readonly("cw_alignment", [](const NativeState &) { return alignof(Cw); });
   AddDimensions<SchemeType>(module, cls);
   return cls;
 }

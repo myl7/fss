@@ -10,10 +10,15 @@
 
 namespace fss::python {
 
-template <typename Scheme>
+// The key components are device addresses; the kernel loads the packed
+// control where the split entry point expects a value.
+template <typename Scheme, bool HasControl>
 __global__ void GrottoScalarKernel(Scheme *scheme, bool b, const int4 *s0,
-    const typename Scheme::Cw *cws, InType x, bool *result) {
-  result[0] = scheme->Eval(b, s0[0], cws, x);
+    const int4 *cws, const InType *tr, InType x, bool *result) {
+  if constexpr (HasControl)
+    result[0] = scheme->Eval(b, s0[0], {cws, kNativeArrayRecords}, tr[0], x);
+  else
+    result[0] = scheme->Eval(b, s0[0], {cws, kNativeArrayRecords}, x);
 }
 
 template <typename Scheme>
@@ -46,10 +51,11 @@ struct GrottoBinding {
   static int64_t TreeLeaves() { return AddressableCount(kTreeBits); }
   static int64_t TreeEntries() { return TreeLeaves() + (TreeLeaves() - 1); }
 
-  static void CheckKey(const Tensor &s0, const Tensor &cws) {
+  static ComponentKey CheckKey(const Tensor &s0, const Tensor &cws) {
     CheckBlocks(s0, 1);
-    ConstCwPtr(cws, kCws);
+    auto key = KeyPtr(cws);
     CheckSameDevice({s0, cws});
+    return key;
   }
 
   static void CheckTreeStorage(const Tensor &blocks, const Tensor &p) {
@@ -89,7 +95,7 @@ struct GrottoBinding {
   };
 
   static void Gen(NativeState &state, Tensor cws, Tensor s0s, py::int_ a) {
-    auto *words = CwPtr(cws, kCws);
+    auto key = KeyPtr(cws);
     CheckBlocks(s0s, 2);
     CheckSameDevice({cws, s0s});
     auto input = ReadIn(a);
@@ -98,27 +104,33 @@ struct GrottoBinding {
         c10::cuda::CUDAGuard guard(s0s.device());
         auto stream = CurrentStream();
         CheckCuda(gpu::GenGpu(state.Device(stream),
-            cuda::std::span<typename Scheme::Cw, kCws>(words, kCws),
+            cuda::std::span<int4, kCws>(key.arrays, kCws), key.control,
             cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), input, stream));
         state.RecordUse(stream);
         RecordTensors({cws, s0s}, stream);
       } else throw py::type_error("configured backend does not support CUDA generation");
     } else {
       CheckCpu({cws, s0s});
-      state.Cpu().Gen(words, ConstBlocks(s0s), input);
+      const auto seeds = cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2);
+      // Route the call through the template parameter so the discarded
+      // Packed branch stays dependent; state.Cpu() alone exposes the global
+      // SchemeType, which checks both branches against one scheme type.
+      Scheme &scheme = state.Cpu();
+      if constexpr (Packed) scheme.Gen({key.arrays, kCws}, seeds, input);
+      else scheme.Gen({key.arrays, kCws}, *key.control, seeds, input);
     }
   }
 
   static bool Eval(NativeState &state, bool b, Tensor s0, Tensor cws, py::int_ x) {
-    CheckKey(s0, cws);
+    auto key = CheckKey(s0, cws);
     auto input = ReadIn(x);
     if (s0.is_cuda()) {
       if constexpr (kGpuSupported) {
         c10::cuda::CUDAGuard guard(s0.device());
         auto stream = CurrentStream();
         auto result = at::empty({}, s0.options().dtype(at::kBool));
-        GrottoScalarKernel<Scheme><<<1, 1, 0, stream>>>(state.Device(stream), b,
-            ConstBlocks(s0), ConstCwPtr(cws), input, result.data_ptr<bool>());
+        GrottoScalarKernel<Scheme, !Packed><<<1, 1, 0, stream>>>(state.Device(stream), b,
+            ConstBlocks(s0), key.arrays, key.control, input, result.data_ptr<bool>());
         CheckCuda(cudaGetLastError());
         state.RecordUse(stream);
         RecordTensors({s0, cws, result}, stream);
@@ -126,13 +138,17 @@ struct GrottoBinding {
       } else throw py::type_error("configured backend does not support CUDA evaluation");
     }
     CheckCpu({s0, cws});
-    return state.Cpu().Eval(b, ConstBlocks(s0)[0], ConstCwPtr(cws), input);
+    Scheme &scheme = state.Cpu();
+    if constexpr (Packed)
+      return scheme.Eval(b, ConstBlocks(s0)[0], {key.arrays, kCws}, input);
+    else
+      return scheme.Eval(b, ConstBlocks(s0)[0], {key.arrays, kCws}, *key.control, input);
   }
 
   static void EvalAll(NativeState &state, bool b, Tensor s0, Tensor cws, Tensor ys, int par_depth) {
     TORCH_CHECK(ys.is_cuda() || par_depth >= 0, "par_depth must be nonnegative");
     if constexpr (kFullOutputAddressable) {
-      CheckKey(s0, cws);
+      auto key = CheckKey(s0, cws);
       CheckBool(ys, AddressableCount(kInBits));
       CheckSameDevice({s0, cws, ys});
       if (s0.is_cuda()) {
@@ -141,9 +157,16 @@ struct GrottoBinding {
           auto stream = CurrentStream();
           if constexpr (ValidCoreGpuLaunch<kTreeBits>()) {
             auto &core = static_cast<Scheme &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-            CheckCuda(core.template EvalAllGpu<kFrontierDepth, kThreadsPerBlock>(b,
-                FetchBlock(s0), cuda::std::span<const typename Scheme::Cw>(ConstCwPtr(cws), kCws),
-                cuda::std::span<bool>(Bools(ys), ys.numel()), stream));
+            if constexpr (Packed) {
+              CheckCuda(core.template EvalAllGpu<kFrontierDepth, kThreadsPerBlock>(b,
+                  FetchBlock(s0), cuda::std::span<const int4>(key.arrays, kCws),
+                  cuda::std::span<bool>(Bools(ys), ys.numel()), stream));
+            } else {
+              CheckCuda(gpu::detail::GrottoEvalAllGpuDeviceKey<kInBits, PrgType, InType,
+                  kFrontierDepth, kThreadsPerBlock>(b, ConstBlocks(s0), key.arrays, kCws,
+                  key.control, 1, Bools(ys), ys.numel(),
+                  fss::detail::SchemeAccess::GetPrg(core), stream));
+            }
           } else throw py::value_error("GPU launch shape is unavailable; check frontier_depth and threads_per_block");
           state.RecordUse(stream);
           RecordTensors({s0, cws, ys}, stream);
@@ -151,7 +174,12 @@ struct GrottoBinding {
       } else {
         CheckCpu({s0, cws, ys});
         state.CheckCpuParallel(par_depth);
-        state.Cpu().EvalAll(b, ConstBlocks(s0)[0], ConstCwPtr(cws), Bools(ys), par_depth);
+        Scheme &scheme = state.Cpu();
+        if constexpr (Packed)
+          scheme.EvalAll(b, ConstBlocks(s0)[0], {key.arrays, kCws}, Bools(ys), par_depth);
+        else
+          scheme.EvalAll(b, ConstBlocks(s0)[0], {key.arrays, kCws}, *key.control,
+              Bools(ys), par_depth);
       }
     } else throw py::value_error("full-domain output is not addressable as a tensor");
   }
@@ -160,7 +188,7 @@ struct GrottoBinding {
       Tensor blocks, Tensor p, int par_depth) {
     TORCH_CHECK(p.is_cuda() || par_depth >= 0, "par_depth must be nonnegative");
     if constexpr (kTreeAddressable) {
-      CheckKey(s0, cws);
+      auto key = CheckKey(s0, cws);
       Tree(blocks, p);
       CheckSameDevice({s0, cws, p});
       if (s0.is_cuda()) {
@@ -169,14 +197,18 @@ struct GrottoBinding {
           auto stream = CurrentStream();
           if constexpr (ValidCoreGpuLaunch<kTreeBits>()) {
             auto &core = static_cast<Scheme &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-            auto words = cuda::std::span<const typename Scheme::Cw>(ConstCwPtr(cws), kCws);
             if constexpr (Packed) {
               CheckCuda(core.template PreprocessGpu<kFrontierDepth, kThreadsPerBlock>(b,
-                  FetchBlock(s0), words, cuda::std::span<int4>(Blocks(blocks), TreeLeaves()),
+                  FetchBlock(s0), cuda::std::span<const int4>(key.arrays, kCws),
+                  cuda::std::span<int4>(Blocks(blocks), TreeLeaves()),
                   cuda::std::span<bool>(Bools(p), p.numel()), stream));
               RecordTensors({blocks}, stream);
-            } else CheckCuda(core.template PreprocessGpu<kFrontierDepth, kThreadsPerBlock>(b,
-                FetchBlock(s0), words, cuda::std::span<bool>(Bools(p), p.numel()), stream));
+            } else {
+              CheckCuda(gpu::detail::GrottoPreprocessGpuDeviceKey<kInBits, PrgType, InType,
+                  kFrontierDepth, kThreadsPerBlock>(b, ConstBlocks(s0), key.arrays, kCws,
+                  key.control, 1, Bools(p), p.numel(),
+                  fss::detail::SchemeAccess::GetPrg(core), stream));
+            }
           } else throw py::value_error("GPU launch shape is unavailable; check frontier_depth and threads_per_block");
           state.RecordUse(stream);
           RecordTensors({s0, cws, p}, stream);
@@ -185,19 +217,24 @@ struct GrottoBinding {
         CheckCpu({s0, cws, p});
         state.CheckCpuParallel(par_depth);
         Scheme &core = state.Cpu();
-        if constexpr (Packed) core.Preprocess(b, ConstBlocks(s0)[0], ConstCwPtr(cws), Blocks(blocks), Bools(p), par_depth);
-        else core.Preprocess(b, ConstBlocks(s0)[0], ConstCwPtr(cws), Bools(p), par_depth);
+        if constexpr (Packed) core.Preprocess(b, ConstBlocks(s0)[0], {key.arrays, kCws}, Blocks(blocks), Bools(p), par_depth);
+        else core.Preprocess(b, ConstBlocks(s0)[0], {key.arrays, kCws}, *key.control, Bools(p), par_depth);
       }
     } else throw py::value_error("parity-tree storage is not addressable as a tensor");
   }
 
   static py::object PreprocessOwned(NativeState &state, bool b, Tensor s0, Tensor cws, int par_depth) {
     if constexpr (kTreeAddressable) {
-      CheckKey(s0, cws);
+      auto key = CheckKey(s0, cws);
       CheckCpu({s0, cws});
       state.CheckCpuParallel(par_depth);
       Scheme &core = state.Cpu();
-      auto native_owner = core.PreprocessOwned(b, ConstBlocks(s0)[0], ConstCwPtr(cws), par_depth);
+      auto native_owner = [&] {
+        if constexpr (Packed)
+          return core.PreprocessOwned(b, ConstBlocks(s0)[0], {key.arrays, kCws}, par_depth);
+        else
+          return core.PreprocessOwned(b, ConstBlocks(s0)[0], {key.arrays, kCws}, *key.control, par_depth);
+      }();
       using Owner = decltype(native_owner);
       auto owner = std::make_shared<Owner>(std::move(native_owner));
       auto view = owner->View();

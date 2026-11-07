@@ -12,7 +12,8 @@ class HalfTreeDpf(_Scheme):
     contiguous ``torch.int32`` tensors with a final dimension of four words.
     ``s0s`` contains two blocks, ``s0`` and ``b_buf`` contain one, and ``eval_all`` output
     ``ys`` contains exactly ``2**in_bits`` blocks. Allocate ``cws`` as a contiguous
-    uint8 tensor with ``cws_shape``, including the terminal correction word.
+    uint8 tensor with ``cws_shape``: 16-byte component rows holding the seed
+    corrections, including the terminal, and the packed control.
     """
 
     def __init__(self, in_bits: int, group, hash, instance_seed, *,

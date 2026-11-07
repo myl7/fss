@@ -555,7 +555,8 @@ inline int Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda
       }
 
       const int4 seeds[2] = {s0s[i], s0s[size_t{kBucketCount} + i]};
-      inner_dpf.Gen(cws.data() + static_cast<size_t>(i) * (bucket_bits + 1),
+      fss::detail::SchemeAccess::DpfGenCw(inner_dpf,
+          cws.data() + static_cast<size_t>(i) * (bucket_bits + 1),
           seeds, a_prime, b_buf_prime);
     }
 
@@ -629,7 +630,8 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
   InnerDpf inner_dpf{prg_};
   for (int i = 0; i < kBucketCount; ++i) {
     for (auto &[j, omega] : inputs[i]) {
-      int4 y = inner_dpf.Eval(b, s0s[i], cws.data() + static_cast<size_t>(i) * (bucket_bits + 1), j);
+      int4 y = fss::detail::SchemeAccess::DpfEvalCw(inner_dpf, b, s0s[i],
+          cws.data() + static_cast<size_t>(i) * (bucket_bits + 1), j);
 
       // Accumulate output.
       ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();
@@ -712,7 +714,8 @@ inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambd
   InnerDpf inner_dpf{prg_};
   std::vector<int4> bucket_ys(bucket_size, {0, 0, 0, 0});
   for (int i = 0; i < bucket_count; ++i) {
-    inner_dpf.EvalAll(b, s0s[i], cws.data() + static_cast<size_t>(i) * (bucket_bits + 1), bucket_ys.data(), par_depth);
+    fss::detail::SchemeAccess::DpfEvalAllCw(inner_dpf, b, s0s[i],
+        cws.data() + static_cast<size_t>(i) * (bucket_bits + 1), bucket_ys.data(), par_depth);
 
     // merge
     for (auto &[j, omega] : inputs[i]) {
@@ -766,7 +769,7 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   if (status != cudaSuccess) return status;
   auto *bucket_ys = bucket_storage.Get<int4>();
   InnerDpf inner{prg_};
-  status = inner.template EvalAllGpuBatch<frontier_depth, threads_per_block>(b,
+  status = fss::detail::SchemeAccess::DpfEvalAllGpuBatchCw<frontier_depth, threads_per_block>(inner, b,
       s0s.first(bucket_count), cws.first(bucket_count * kCwPerBucket),
       cuda::std::span<int4>(bucket_ys, bucket_count * kBucketOutputs), stream);
   if (status != cudaSuccess) return status;

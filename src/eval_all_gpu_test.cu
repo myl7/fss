@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <vector>
 #include <fss/group/bytes.cuh>
@@ -90,8 +91,7 @@ void CheckFullEvaluation() {
   using Types = SchemeType<bits, Group, half_tree, In>;
   using Scheme = typename Types::Type;
   using Prg = typename Types::Prg;
-  using Cw = typename Scheme::Cw;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
   const int4 hash_key = {11, 22, 33, 44};
@@ -101,19 +101,26 @@ void CheckFullEvaluation() {
     else return Scheme{prg};
   };
   Scheme scheme = make_scheme(Prg(0x12345678, static_cast<int>(0x9abcdef0u)));
-  std::vector<Cw> cws(keys * stride);
+  // Dense level-major layout the batch entry consumes: layer i of key k is
+  // cws[i * keys + k], with the packed control in trs[k].
+  std::vector<int4> cws(keys * stride);
+  std::vector<In> trs(keys);
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
   for (int key = 0; key < keys; ++key) {
     seeds[2 * key] = {11 + key, 22, 33, 44};
     seeds[2 * key + 1] = {55 + key, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[key], keys1[key], cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), 42 + key, beta);
-    for (int i = 0; i < stride; ++i) cws[key * stride + i] = keys0[key].cws[i];
+    scheme.Gen(cuda::std::span<int4>(cws.data() + key, static_cast<size_t>(bits) * keys + 1),
+        trs[key], cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), 42 + key, beta, keys);
   }
-  DeviceBuffer<Cw> device_cws;
+  DeviceBuffer<int4> device_cws;
+  DeviceBuffer<In> device_tr;
   DeviceBuffer<int4> device_seeds, device_outputs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
+  ASSERT_EQ(device_tr.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Upload(trs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_outputs.Allocate(keys * n), cudaSuccess);
   std::vector<int4> actual(keys * n), first(keys * n), host_ys(large ? n : 0);
@@ -124,10 +131,11 @@ void CheckFullEvaluation() {
     if constexpr (keys > 1) {
       ASSERT_EQ((scheme.template EvalAllGpuBatch<z, threads>(
           party, {device_seeds.data(), keys}, {device_cws.data(), cws.size()},
-          {device_outputs.data(), keys * n})), cudaSuccess);
+          {device_tr.data(), keys}, {device_outputs.data(), keys * n})), cudaSuccess);
     } else {
       ASSERT_EQ((scheme.template EvalAllGpu<z, threads>(
-          party, party_seeds[0], {device_cws.data(), stride}, {device_outputs.data(), n})), cudaSuccess);
+          party, party_seeds[0], {device_cws.data(), stride}, trs[0],
+          {device_outputs.data(), n})), cudaSuccess);
     }
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -193,6 +201,99 @@ TEST(EvalAllGpu, HalfTreeWideInUint16) {
   CheckFullEvaluation<8, 7, 128, 1, fss::group::Bytes, true, false, uint16_t>();
 }
 
+// The device-key full-domain launchers serve the Python binding with its
+// default launch shape (frontier 16, threads 256). They must cap the frontier
+// below the leaf level like the public launcher; a frontier at the full depth
+// makes the tail convert a leaf pair per frontier thread and doubles the rows.
+TEST(EvalAllGpu, HalfTreeDeviceKeyDefaultFrontierMatchesHost) {
+  int devices = 0;
+  const cudaError_t status = cudaGetDeviceCount(&devices);
+  if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver || (status == cudaSuccess && devices == 0)) {
+    GTEST_SKIP() << "no CUDA device available";
+  }
+  ASSERT_EQ(status, cudaSuccess);
+  using Prg = fss_test::TestCcrHash;
+  using Hash = fss_test::CcrBackend<Prg>;
+  using Scheme = fss::HalfTreeDpf<16, fss::group::Bytes, Hash, uint16_t>;
+  using Key = fss_test::ComponentKey<Scheme, uint16_t>;
+  constexpr size_t n = size_t{1} << 16;
+  constexpr size_t key_records = Scheme::kCwCount + 1;
+  const int4 instance_seed = {11, 22, 33, 44};
+  const int4 beta = {7, 19, 23, 42};
+  Hash hash = fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u)));
+  Scheme scheme{hash, instance_seed};
+  Key key0, key1;
+  const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  fss_test::GenPair(scheme, key0, key1, cuda::std::span<const int4, 2>(seeds, 2), 107, beta);
+
+  // Key-major blocks: the key's seed components then one record holding the
+  // packed control at its start, the layout the binding allocates.
+  auto make_block = [&](const Key &key) {
+    std::vector<int4> block(key_records, int4{0, 0, 0, 0});
+    std::memcpy(block.data(), key.cws, Scheme::kCwCount * sizeof(int4));
+    std::memcpy(block.data() + Scheme::kCwCount, &key.tr, sizeof(uint16_t));
+    return block;
+  };
+  const std::vector<int4> single_block = make_block(key0);
+  std::vector<int4> batch_blocks = make_block(key0);
+  const std::vector<int4> second_block = make_block(key1);
+  batch_blocks.insert(batch_blocks.end(), second_block.begin(), second_block.end());
+
+  DeviceBuffer<int4> device_single, device_batch, device_s0s, device_ys;
+  ASSERT_EQ(device_single.Allocate(key_records), cudaSuccess);
+  ASSERT_EQ(device_single.Upload(single_block.data(), key_records), cudaSuccess);
+  ASSERT_EQ(device_batch.Allocate(2 * key_records), cudaSuccess);
+  ASSERT_EQ(device_batch.Upload(batch_blocks.data(), 2 * key_records), cudaSuccess);
+  const int4 s0s[2] = {seeds[0], seeds[1]};
+  ASSERT_EQ(device_s0s.Allocate(2), cudaSuccess);
+  ASSERT_EQ(device_s0s.Upload(s0s, 2), cudaSuccess);
+  ASSERT_EQ(device_ys.Allocate(n), cudaSuccess);
+  std::vector<int4> host_ys(n);
+  fss_test::EvalAllKey<0>(scheme, false, key0, cuda::std::span<int4>(host_ys.data(), n));
+  cudaStream_t stream;
+  ASSERT_EQ(cudaStreamCreate(&stream), cudaSuccess);
+  const auto *single_tr = reinterpret_cast<const uint16_t *>(device_single.data() + Scheme::kCwCount);
+  // Public host-value path on the same component key, as a fixture reference.
+  {
+    SCOPED_TRACE("public host-value path");
+    DeviceBuffer<int4> public_ys;
+    ASSERT_EQ(public_ys.Allocate(n), cudaSuccess);
+    ASSERT_EQ((scheme.template EvalAllGpu<16, 256>(false, seeds[0],
+        cuda::std::span<const int4>(device_single.data(), Scheme::kCwCount), key0.tr,
+        cuda::std::span<int4>(public_ys.data(), n), stream)), cudaSuccess);
+    std::vector<int4> public_actual(n);
+    ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(public_actual.data(), public_ys.data(), n * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+    for (size_t x = 0; x < n; ++x) ExpectOutput(public_actual[x], host_ys[x], x);
+  }
+  ASSERT_EQ((fss::gpu::detail::HalfTreeDpfEvalAllGpuDeviceKey<16, fss::group::Bytes, Hash,
+      uint16_t, 16, 256>(false, device_s0s.data(), device_single.data(), key_records,
+      single_tr, 1, device_ys.data(), n, instance_seed, hash, stream)), cudaSuccess);
+  std::vector<int4> actual(n);
+  SCOPED_TRACE("device-key single path");
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data(), n * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+  for (size_t x = 0; x < n; ++x) ExpectOutput(actual[x], host_ys[x], x);
+
+  DeviceBuffer<int4> batch_ys;
+  ASSERT_EQ(batch_ys.Allocate(2 * n), cudaSuccess);
+  ASSERT_EQ((fss::gpu::detail::HalfTreeDpfEvalAllGpuBatchDeviceKey<16, fss::group::Bytes, Hash,
+      uint16_t, 16, 256>(false, device_s0s.data(), 2, device_batch.data(), 2 * key_records,
+      key_records, Scheme::kCwCount, batch_ys.data(), 2 * n, instance_seed, hash, stream)),
+      cudaSuccess);
+  ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+  ASSERT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+  std::vector<int4> batch_actual(2 * n);
+  ASSERT_EQ(cudaMemcpy(batch_actual.data(), batch_ys.data(), 2 * n * sizeof(int4), cudaMemcpyDeviceToHost), cudaSuccess);
+  // Both batch rows share the party index; the second key keeps its own seed.
+  std::vector<int4> host1_ys(n);
+  fss_test::EvalAllKey<0>(scheme, false, key1, cuda::std::span<int4>(host1_ys.data(), n));
+  for (size_t x = 0; x < n; ++x) {
+    ExpectOutput(batch_actual[x], host_ys[x], x);
+    ExpectOutput(batch_actual[n + x], host1_ys[x], x);
+  }
+}
+
 template <int bits, int z, int threads, typename In = uint, int par_depth = 0>
 void CheckVdpfGpu() {
   int devices = 0;
@@ -205,7 +306,6 @@ void CheckVdpfGpu() {
   using Blake3 = fss::hash::Blake3;
   using Group = Uint127Group;
   using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>;
-  using Cw = typename Scheme::Cw;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
   // Blake3 copies the IV by value at construction.
@@ -215,9 +315,9 @@ void CheckVdpfGpu() {
   const In alpha = 42;
   const int4 beta = {7, 19, 23, 42};
   int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme, In> k0, k1;
   ASSERT_EQ(fss_test::GenPair(scheme, k0, k1, cuda::std::span<int4, 2>(seeds, 2), alpha, beta), 0);
-  DeviceBuffer<Cw> device_cws;
+  DeviceBuffer<int4> device_cws;
   DeviceBuffer<int4> device_ys, device_cs;
   DeviceBuffer<int4> device_pi;
   ASSERT_EQ(device_cws.Allocate(stride), cudaSuccess);
@@ -231,10 +331,10 @@ void CheckVdpfGpu() {
   cuda::std::array<int4, 4> pi_cpu, gpu_pi[2];
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
-    const typename Scheme::Key &key = party == 0 ? k0 : k1;
+    const fss_test::ComponentKey<Scheme, In> &key = party == 0 ? k0 : k1;
     fss_test::EvalAllMerkleKey<par_depth>(scheme, party, key, cuda::std::span<int4>(host_ys.data(), n), pi_cpu);
     ASSERT_EQ((scheme.template EvalAllMerkleGpu<z, threads>(
-        party, key.s0, {device_cws.data(), stride},
+        party, key.s0, {device_cws.data(), stride}, key.tr,
         cuda::std::span<const int4, 4>(device_cs.data(), 4), {device_ys.data(), n},
         cuda::std::span<int4, 4>(device_pi.data(), 4))), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
@@ -270,8 +370,7 @@ void CheckPackedGpu() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss_test::TestCcrHash;
   using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, fss_test::CcrBackend<Prg>, In>;
-  using Cw = typename Scheme::Cw;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   constexpr int kDepth = Scheme::kDepth;
   constexpr int kLanes = Scheme::kLanes;
   constexpr size_t n = size_t{1} << bits;
@@ -279,16 +378,19 @@ void CheckPackedGpu() {
   const int4 hash_key = {11, 22, 33, 44};
   Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), hash_key};
   const uint64_t beta = 1;
-  std::vector<Cw> cws(keys * (kDepth + 1));
+  // Dense level-major layout the batch entry consumes: layer i of key k is
+  // cws[i * keys + k] and the final correction word is the tail row.
+  std::vector<int4> cws(keys * (kDepth + 1));
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
   for (int key = 0; key < keys; ++key) {
     seeds[2 * key] = {11 + key, 22, 33, 44};
     seeds[2 * key + 1] = {55 + key, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[key], keys1[key], cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), 42 + key, beta);
-    for (int i = 0; i <= kDepth; ++i) cws[key * (kDepth + 1) + i] = keys0[key].cws[i];
+    scheme.Gen(cuda::std::span<int4>(cws.data() + key, static_cast<size_t>(kDepth) * keys + 1),
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), 42 + key, beta, keys);
   }
-  DeviceBuffer<Cw> device_cws;
+  DeviceBuffer<int4> device_cws;
   DeviceBuffer<int4> device_seeds, device_outputs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
@@ -339,25 +441,35 @@ void CheckDcfGpu() {
   }
   ASSERT_EQ(status, cudaSuccess);
   using Scheme = fss::Dcf<bits, Group, fss::prg::ChaCha<4>, In, pred>;
-  using Cw = typename Scheme::Cw;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
   Scheme scheme{fss::prg::ChaCha<4>(0x12345678, static_cast<int>(0x9abcdef0u))};
   const int4 beta = {7, 19, 23, 42};
-  std::vector<Cw> cws(keys * stride);
+  // Dense level-major layout the batch entry consumes: layer i of key k is
+  // cws[i * keys + k] and vws[i * keys + k], with the packed control in trs[k].
+  std::vector<int4> cws(keys * stride), vws(keys * stride);
+  std::vector<In> trs(keys);
   std::vector<Key> keys0(keys), keys1(keys);
   std::vector<int4> seeds(2 * keys), party_seeds(keys);
   for (int key = 0; key < keys; ++key) {
     seeds[2 * key] = {11 + key, 22, 33, 44};
     seeds[2 * key + 1] = {55 + key, 66, 77, 88};
     fss_test::GenPair(scheme, keys0[key], keys1[key], cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), static_cast<In>(alpha + key), beta);
-    for (int i = 0; i < stride; ++i) cws[key * stride + i] = keys0[key].cws[i];
+    scheme.Gen(cuda::std::span<int4>(cws.data() + key, static_cast<size_t>(bits) * keys + 1),
+        cuda::std::span<int4>(vws.data() + key, static_cast<size_t>(bits) * keys + 1), trs[key],
+        cuda::std::span<const int4, 2>(seeds.data() + 2 * key, 2), static_cast<In>(alpha + key),
+        beta, keys);
   }
-  DeviceBuffer<Cw> device_cws;
+  DeviceBuffer<int4> device_cws, device_vws;
+  DeviceBuffer<In> device_tr;
   DeviceBuffer<int4> device_seeds, device_outputs;
   ASSERT_EQ(device_cws.Allocate(cws.size()), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(cws.data(), cws.size()), cudaSuccess);
+  ASSERT_EQ(device_vws.Allocate(vws.size()), cudaSuccess);
+  ASSERT_EQ(device_vws.Upload(vws.data(), vws.size()), cudaSuccess);
+  ASSERT_EQ(device_tr.Allocate(keys), cudaSuccess);
+  ASSERT_EQ(device_tr.Upload(trs.data(), keys), cudaSuccess);
   ASSERT_EQ(device_seeds.Allocate(keys), cudaSuccess);
   ASSERT_EQ(device_outputs.Allocate(keys * n), cudaSuccess);
   std::vector<int4> actual(keys * n), first(keys * n), host_ys(large ? n : 0);
@@ -368,10 +480,12 @@ void CheckDcfGpu() {
     if constexpr (keys > 1) {
       ASSERT_EQ((scheme.template EvalAllGpuBatch<z, threads>(
           party, {device_seeds.data(), keys}, {device_cws.data(), cws.size()},
+          {device_vws.data(), vws.size()}, {device_tr.data(), keys},
           {device_outputs.data(), keys * n})), cudaSuccess);
     } else {
       ASSERT_EQ((scheme.template EvalAllGpu<z, threads>(
-          party, party_seeds[0], {device_cws.data(), stride}, {device_outputs.data(), n})), cudaSuccess);
+          party, party_seeds[0], {device_cws.data(), stride}, {device_vws.data(), stride}, trs[0],
+          {device_outputs.data(), n})), cudaSuccess);
     }
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -408,15 +522,14 @@ void CheckGrottoGpu() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
   using Scheme = fss::GrottoDcf<bits, Prg, In>;
-  using Cw = typename Scheme::Cw;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   const uint alpha = 42;
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme, In> k0, k1;
   fss_test::GenPair(scheme, k0, k1, cuda::std::span<const int4, 2>(seeds), alpha);
-  DeviceBuffer<Cw> device_cws;
+  DeviceBuffer<int4> device_cws;
   ASSERT_EQ(device_cws.Allocate(stride), cudaSuccess);
   ASSERT_EQ(device_cws.Upload(k0.cws, stride), cudaSuccess);
 
@@ -427,10 +540,10 @@ void CheckGrottoGpu() {
   ASSERT_EQ(device_ys.Allocate(n), cudaSuccess);
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party);
-    const typename Scheme::Key &key = party == 0 ? k0 : k1;
+    const fss_test::ComponentKey<Scheme, In> &key = party == 0 ? k0 : k1;
     auto host_tree = fss_test::PreprocessKey<par_depth>(scheme, static_cast<bool>(party), key);
     ASSERT_EQ((scheme.template PreprocessGpu<z, threads>(
-        static_cast<bool>(party), key.s0, {device_cws.data(), stride},
+        static_cast<bool>(party), key.s0, {device_cws.data(), stride}, key.tr,
         {device_p.data(), 2 * n - 1})), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
@@ -441,7 +554,8 @@ void CheckGrottoGpu() {
 
     fss_test::EvalAllKey<par_depth>(scheme, static_cast<bool>(party), key, cuda::std::span<bool>(host_ys.get(), n));
     ASSERT_EQ((scheme.template EvalAllGpu<z, threads>(
-        static_cast<bool>(party), key.s0, {device_cws.data(), stride}, {device_ys.data(), n})), cudaSuccess);
+        static_cast<bool>(party), key.s0, {device_cws.data(), stride}, key.tr,
+        {device_ys.data(), n})), cudaSuccess);
     ASSERT_EQ(cudaGetLastError(), cudaSuccess);
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     auto actual_ys = std::make_unique<bool[]>(n);

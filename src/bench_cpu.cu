@@ -116,7 +116,7 @@ static void BM_DpfGen(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
@@ -153,7 +153,7 @@ static void BM_DpfEval(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   uint x = 100;
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
@@ -208,14 +208,14 @@ static void BM_DpfEvalPoint(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   uint x = 100;
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<2>>) {
     RawAesCtx<2> ctx;
     DpfType dpf{ctx.prg};
     fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
-    const PointKey pk = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, uint>(k0);
+    const PointKey pk = fss::detail::cpu::DpfPackPoint<in_bits>(k0);
     for (auto _ : state) {
       int4 y = fss::detail::cpu::DpfEvalPoint<in_bits, Group, Prg, uint>(false, (pk).s0, (pk).cws, (pk).tr, x, ctx.prg);
       benchmark::DoNotOptimize(y);
@@ -224,7 +224,7 @@ static void BM_DpfEvalPoint(benchmark::State &state) {
     Prg prg(kNonce0, kNonce1);
     DpfType dpf{prg};
     fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
-    const PointKey pk = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, uint>(k0);
+    const PointKey pk = fss::detail::cpu::DpfPackPoint<in_bits>(k0);
     for (auto _ : state) {
       int4 y = fss::detail::cpu::DpfEvalPoint<in_bits, Group, Prg, uint>(false, (pk).s0, (pk).cws, (pk).tr, x, prg);
       benchmark::DoNotOptimize(y);
@@ -244,7 +244,7 @@ static void BM_DpfEvalAll(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
 
   constexpr size_t n = size_t{1} << in_bits;
   std::vector<int4> ys(n);
@@ -292,7 +292,7 @@ static void BM_DcfGen(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename DcfType::Key k0, k1;
+  fss_test::ComponentKey<DcfType> k0, k1;
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
     RawAesCtx<4> ctx;
@@ -322,7 +322,7 @@ static void BM_DcfEval(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename DcfType::Key k0, k1;
+  fss_test::ComponentKey<DcfType> k0, k1;
   uint x = 100;
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<4>>) {
@@ -356,7 +356,7 @@ static void BM_DcfEvalAll(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename DcfType::Key k0, k1;
+  fss_test::ComponentKey<DcfType> k0, k1;
 
   constexpr size_t n = size_t{1} << in_bits;
   std::vector<int4> ys(n);
@@ -395,7 +395,7 @@ static void BM_VdpfGen(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename VdpfType::Key k0, k1;
+  fss_test::ComponentKey<VdpfType> k0, k1;
 
   auto xor_hash = MakeHash<XorHash>();
   auto hash_ = MakeHash<Hash>();
@@ -434,7 +434,7 @@ static void BM_VdpfEval(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename VdpfType::Key k0, k1;
+  fss_test::ComponentKey<VdpfType> k0, k1;
   uint x = 100;
 
   auto xor_hash = MakeHash<XorHash>();
@@ -483,7 +483,7 @@ static void BM_VdpfProve(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename VdpfType::Key k0, k1;
+  fss_test::ComponentKey<VdpfType> k0, k1;
   uint x = 100;
 
   auto xor_hash = MakeHash<XorHash>();
@@ -516,7 +516,7 @@ static void BM_VdpfEvalAll(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename VdpfType::Key k0, k1;
+  fss_test::ComponentKey<VdpfType> k0, k1;
 
   constexpr size_t n = size_t{1} << in_bits;
   std::vector<int4> ys(n);
@@ -565,7 +565,7 @@ static void BM_VdpfEvalAllMerkle(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename VdpfType::Key k0, k1;
+  fss_test::ComponentKey<VdpfType> k0, k1;
 
   constexpr size_t n = size_t{1} << in_bits;
   std::vector<int4> ys(n);
@@ -616,7 +616,7 @@ static void BM_HalfTreeDpfGen(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename HtDpfType::Key k0, k1;
+  fss_test::ComponentKey<HtDpfType> k0, k1;
 
   AesCtx<1> ctx;
   auto hash = fss_test::Ccr(ctx.prg);
@@ -638,7 +638,7 @@ static void BM_HalfTreeDpfEval(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename HtDpfType::Key k0, k1;
+  fss_test::ComponentKey<HtDpfType> k0, k1;
   uint x = 100;
 
   AesCtx<1> ctx;
@@ -664,7 +664,7 @@ static void BM_HalfTreeDpfEvalPoint(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename HtDpfType::Key k0, k1;
+  fss_test::ComponentKey<HtDpfType> k0, k1;
   uint x = 100;
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128MmoRaw<1>>) {
@@ -672,7 +672,7 @@ static void BM_HalfTreeDpfEvalPoint(benchmark::State &state) {
     auto hash = fss_test::Ccr(ctx.prg);
     HtDpfType dpf{hash, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
     fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-    const PointKey pk = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, uint>(k0);
+    const PointKey pk = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits>(k0);
     for (auto _ : state) {
       int4 y = fss::detail::cpu::HalfTreeDpfEvalPoint<in_bits, Group, fss_test::CcrBackend<Prg>, uint>(false, (pk).s0, (pk).cws, (pk).lcw1, x, hash, int4{0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0});
       benchmark::DoNotOptimize(y);
@@ -682,7 +682,7 @@ static void BM_HalfTreeDpfEvalPoint(benchmark::State &state) {
     auto hash = fss_test::Ccr(prg);
     HtDpfType dpf{hash, {0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0}};
     fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, beta);
-    const PointKey pk = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, uint>(k0);
+    const PointKey pk = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits>(k0);
     for (auto _ : state) {
       int4 y = fss::detail::cpu::HalfTreeDpfEvalPoint<in_bits, Group, fss_test::CcrBackend<Prg>, uint>(false, (pk).s0, (pk).cws, (pk).lcw1, x, hash, int4{0x12345678, static_cast<int>(0x9abcdef0u), 0x13572468, 0x2468ace0});
       benchmark::DoNotOptimize(y);
@@ -702,7 +702,7 @@ static void BM_HalfTreeDpfEvalAll(benchmark::State &state) {
   };
   uint alpha = 42;
   int4 beta = {7, 0, 0, 0};
-  typename HtDpfType::Key k0, k1;
+  fss_test::ComponentKey<HtDpfType> k0, k1;
 
   constexpr size_t n = size_t{1} << in_bits;
   std::vector<int4> ys(n);
@@ -742,7 +742,7 @@ static void BM_PackedHalfTreeDpfEvalAll(benchmark::State &state) {
   };
   uint alpha = 42;
   uint64_t beta = 1;
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
 
   constexpr size_t n = size_t{1} << in_bits;
   constexpr size_t blocks = n / DpfType::kLanes;
@@ -781,7 +781,7 @@ static void BM_GrottoDcfEval(benchmark::State &state) {
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
   };
   uint alpha = 42;
-  typename GdcfType::Key k0, k1;
+  fss_test::ComponentKey<GdcfType> k0, k1;
 
   uint x = 100;
 
@@ -808,7 +808,7 @@ static void BM_GrottoDcfPreprocess(benchmark::State &state) {
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
   };
   uint alpha = 42;
-  typename GdcfType::Key k0, k1;
+  fss_test::ComponentKey<GdcfType> k0, k1;
 
   if constexpr (std::is_same_v<Prg, fss::prg::Aes128Mmo<2>>) {
     AesCtx<2> ctx;
@@ -839,7 +839,7 @@ static void BM_GrottoDcfPreprocessEvalAll(benchmark::State &state) {
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)},
   };
   uint alpha = 42;
-  typename GdcfType::Key k0, k1;
+  fss_test::ComponentKey<GdcfType> k0, k1;
 
   constexpr size_t N = size_t{1} << in_bits;
 

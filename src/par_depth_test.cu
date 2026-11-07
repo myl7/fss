@@ -199,7 +199,7 @@ void RunDpfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &y
 
   int4 s0s[2];
   FillSeeds(s0s);
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
 
   ys0.resize(size_t{1} << in_bits);
@@ -216,7 +216,7 @@ void RunDcfEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4> &y
 
   int4 s0s[2];
   FillSeeds(s0s);
-  typename DcfType::Key k0, k1;
+  fss_test::ComponentKey<DcfType> k0, k1;
   fss_test::GenPair(dcf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
 
   ys0.resize(size_t{1} << in_bits);
@@ -233,7 +233,7 @@ void RunHalfTreeEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int
 
   int4 s0s[2];
   FillSeeds(s0s);
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, kBeta);
 
   ys0.resize(size_t{1} << in_bits);
@@ -250,7 +250,7 @@ void RunPackedEvalAll(CallCounters &c, std::vector<int4> &ys0, std::vector<int4>
 
   int4 s0s[2];
   FillSeeds(s0s);
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, 1);
 
   constexpr size_t blocks = size_t{1} << DpfType::kDepth;
@@ -273,7 +273,7 @@ void RunVdpfEvalAllMerkle(CallCounters &prg_c, CallCounters &xhash_c, CallCounte
 
   int4 s0s[2];
   FillSeeds(s0s);
-  typename VdpfType::Key k0, k1;
+  fss_test::ComponentKey<VdpfType> k0, k1;
   ASSERT_EQ(fss_test::GenPair(vdpf, k0, k1, cuda::std::span<int4, 2>(s0s, 2), alpha, kBeta), 0);
 
   ys0.resize(size_t{1} << in_bits);
@@ -521,7 +521,7 @@ TEST(ParDepthTest, GrottoPreprocessAndEvalAllStayOnCallingThread) {
   using Scheme = fss::GrottoDcf<8, CountingPrg<2>, uint16_t>;
   CallCounters counters;
   Scheme scheme{CountingPrg<2>{counters}};
-  Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme> k0, k1;
   int4 seeds[2] = {kSeed0, kSeed1};
   fss_test::GenPair(scheme, k0, k1, seeds, 107);
   auto tree0 = fss_test::PreprocessKey(scheme, false, k0);
@@ -542,7 +542,7 @@ TEST(ParDepthTest, VdpfChainStaysOnCallingThread) {
   using Scheme = fss::Vdpf<8, BytesGroup, CountingPrg<2>, CountingXorHash, CountingHash, uint16_t>;
   CallCounters prg, xor_hash, hash;
   Scheme scheme{CountingPrg<2>{prg}, CountingXorHash{xor_hash}, CountingHash{hash}};
-  Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme> k0, k1;
   int4 seeds[2] = {kSeed0, kSeed1};
   ASSERT_EQ(fss_test::GenPair(scheme, k0, k1, seeds, 107, kBeta), 0);
   std::vector<int4> ys0(256), ys1(256);

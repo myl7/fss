@@ -31,7 +31,7 @@ protected:
   using VdpfType = fss::Vdpf<kAlphaBits, Group, Prg, XorHash, Hash, uint16_t>;
 
   int4 s0s[2];
-  typename VdpfType::Key k0, k1;
+  fss_test::ComponentKey<VdpfType> k0, k1;
   Prg prg;
   int4 hash_iv[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444444},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888888u)}};
@@ -208,7 +208,9 @@ protected:
       // EvalRange writing to y[1 : count]
       fss_test::EvalRangeKey(vdpf, false, L, R, k0, cuda::std::span<int4>(ys0.data() + 1, count), pi0);
 
-      vdpf.EvalRange(true, L, R, k1.s0, k1.cws, k1.cs, cuda::std::span<int4>(ys1.data() + 1, count), pi1);
+      vdpf.EvalRange(true, L, R, k1.s0, fss_test::KeyCws(k1), k1.tr,
+          cuda::std::span<const int4, 4>(k1.cs, 4),
+          cuda::std::span<int4>(ys1.data() + 1, count), pi1);
 
       // 1. no writes outside the requested output span.
       EXPECT_EQ(std::memcmp(&ys0.front(), &flag, sizeof(int4)), 0);
@@ -371,24 +373,28 @@ protected:
       std::vector<int4> ys0(n), ys1(n);
       cuda::std::array<int4, 4> pi0, pi1;
 
+      const auto cs0_span = cuda::std::span<const int4, 4>(k0.cs, 4);
+      const auto cs1_span = cuda::std::span<const int4, 4>(k1.cs, 4);
       if (merkle) {
-        vdpf.BatchEvalMerkle(false, k0.s0, k0.cws, k0.cs, cuda::std::span<const uint16_t>(xs),
-            cuda::std::span<int4>(ys0), pi0);
-        vdpf.BatchEvalMerkle(true, k1.s0, k1.cws, k1.cs, cuda::std::span<const uint16_t>(xs),
-            cuda::std::span<int4>(ys1), pi1);
+        vdpf.BatchEvalMerkle(false, k0.s0, fss_test::KeyCws(k0), k0.tr, cs0_span,
+            cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0), pi0);
+        vdpf.BatchEvalMerkle(true, k1.s0, fss_test::KeyCws(k1), k1.tr, cs1_span,
+            cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1), pi1);
       } else {
-        vdpf.BatchEval(false, k0.s0, k0.cws, k0.cs, cuda::std::span<const uint16_t>(xs),
-            cuda::std::span<int4>(ys0), pi0);
-        vdpf.BatchEval(true, k1.s0, k1.cws, k1.cs, cuda::std::span<const uint16_t>(xs),
-            cuda::std::span<int4>(ys1), pi1);
+        vdpf.BatchEval(false, k0.s0, fss_test::KeyCws(k0), k0.tr, cs0_span,
+            cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys0), pi0);
+        vdpf.BatchEval(true, k1.s0, fss_test::KeyCws(k1), k1.tr, cs1_span,
+            cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys1), pi1);
       }
 
       // Pointwise reference: Eval per input, then Prove or ProveMerkle.
       std::vector<cuda::std::array<int4, 4>> pi_tildes0(n), pi_tildes1(n);
       std::vector<int4> ref0(n), ref1(n);
       for (size_t i = 0; i < n; ++i) {
-        pi_tildes0[i] = vdpf.Eval(false, k0.s0, k0.cws, k0.cs, xs[i], ref0[i]);
-        pi_tildes1[i] = vdpf.Eval(true, k1.s0, k1.cws, k1.cs, xs[i], ref1[i]);
+        pi_tildes0[i] = vdpf.Eval(false, k0.s0, fss_test::KeyCws(k0), k0.tr,
+            cuda::std::span<const int4, 4>(k0.cs, 4), xs[i], ref0[i]);
+        pi_tildes1[i] = vdpf.Eval(true, k1.s0, fss_test::KeyCws(k1), k1.tr,
+            cuda::std::span<const int4, 4>(k1.cs, 4), xs[i], ref1[i]);
       }
       for (size_t i = 0; i < n; ++i) {
         EXPECT_EQ(memcmp(&ys0[i], &ref0[i], sizeof(int4)), 0) << "party 0 share at index " << i;
@@ -528,7 +534,7 @@ void CheckRangeMerkle(In first, In last, bool gpu, Prg prg = Prg{kNonce0, kNonce
   const int4 guard = {23, 45, 67, 88};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{prg, hash, hash};
-  typename Scheme::Key keys[2];
+  fss_test::ComponentKey<Scheme, In> keys[2];
   ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, first, beta), 0);
   cuda::std::array<int4, 4> proofs[2];
   for (int party = 0; party < 2; ++party) {
@@ -537,13 +543,14 @@ void CheckRangeMerkle(In first, In last, bool gpu, Prg prg = Prg{kNonce0, kNonce
     std::vector<int4> expected(count);
     std::vector<cuda::std::array<int4, 4>> material(count);
     for (size_t j = 0; j < count; ++j)
-      material[j] = scheme.Eval(party, key.s0, key.cws, key.cs,
-          static_cast<In>(first + j), expected[j]);
-    scheme.ProveMerkle(material, key.cs, proofs[party]);
+      material[j] = scheme.Eval(party, key.s0, fss_test::KeyCws(key), key.tr,
+          cuda::std::span<const int4, 4>(key.cs, 4), static_cast<In>(first + j), expected[j]);
+    scheme.ProveMerkle(material, cuda::std::span<const int4, 4>(key.cs, 4), proofs[party]);
     for (int par_depth : {0, 2}) {
       std::vector<int4> actual(count + 2, guard);
       cuda::std::array<int4, 4> proof;
-      scheme.EvalRangeMerkle(party, first, last, key.s0, key.cws, key.cs,
+      scheme.EvalRangeMerkle(party, first, last, key.s0, fss_test::KeyCws(key), key.tr,
+          cuda::std::span<const int4, 4>(key.cs, 4),
           cuda::std::span<int4>(actual.data() + 1, count + 1), proof, par_depth);
       ExpectMerkleBlock(actual.front(), guard);
       ExpectMerkleBlock(actual.back(), guard);
@@ -551,7 +558,7 @@ void CheckRangeMerkle(In first, In last, bool gpu, Prg prg = Prg{kNonce0, kNonce
       for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proof[j], proofs[party][j]);
     }
     if (!gpu) continue;
-    MerkleRangeDeviceBuffer<typename Scheme::Cw> device_cws;
+    MerkleRangeDeviceBuffer<int4> device_cws;
     MerkleRangeDeviceBuffer<int4> device_cs, device_ys, device_pi;
     ASSERT_EQ(device_cws.Allocate(bits + 1), cudaSuccess);
     ASSERT_EQ(device_cs.Allocate(4), cudaSuccess);
@@ -566,12 +573,16 @@ void CheckRangeMerkle(In first, In last, bool gpu, Prg prg = Prg{kNonce0, kNonce
     const cudaError_t launch = [&] {
       if constexpr (frontier == 16 && threads == 256) {
         return scheme.EvalRangeMerkleGpu(party, first, last, key.s0,
-            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
-            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+            cuda::std::span<const int4>(device_cws.data, bits + 1), key.tr,
+            cuda::std::span<const int4, 4>(device_cs.data, 4),
+            cuda::std::span<int4>(device_ys.data + 1, count + 1),
+            cuda::std::span<int4, 4>(device_pi.data, 4), stream);
       } else {
         return scheme.template EvalRangeMerkleGpu<frontier, threads>(party, first, last, key.s0,
-            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
-            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+            cuda::std::span<const int4>(device_cws.data, bits + 1), key.tr,
+            cuda::std::span<const int4, 4>(device_cs.data, 4),
+            cuda::std::span<int4>(device_ys.data + 1, count + 1),
+            cuda::std::span<int4, 4>(device_pi.data, 4), stream);
       }
     }();
     EXPECT_EQ(launch, cudaSuccess);
@@ -676,28 +687,30 @@ void CheckBatchMerkle(const std::vector<In> &xs, bool gpu, Prg prg = Prg{kNonce0
   const int4 guard = {23, 45, 67, 88};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{prg, hash, hash};
-  typename Scheme::Key keys[2];
+  fss_test::ComponentKey<Scheme, In> keys[2];
   ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, In{7}, beta), 0);
   cuda::std::array<int4, 4> proofs[2];
   for (int party = 0; party < 2; ++party) {
     SCOPED_TRACE(::testing::Message() << "party " << party << " count " << count);
     const auto &key = keys[party];
     std::vector<int4> expected(count + 2, guard);
-    scheme.BatchEvalMerkle(party, key.s0, key.cws, key.cs, cuda::std::span<const In>(xs),
+    scheme.BatchEvalMerkle(party, key.s0, fss_test::KeyCws(key), key.tr,
+        cuda::std::span<const int4, 4>(key.cs, 4), cuda::std::span<const In>(xs),
         cuda::std::span<int4>(expected.data() + 1, count + 1), proofs[party]);
     // Pointwise reference for both the shares and the proof.
     std::vector<int4> pointwise(count);
     std::vector<cuda::std::array<int4, 4>> material(count);
     for (size_t j = 0; j < count; ++j)
-      material[j] = scheme.Eval(party, key.s0, key.cws, key.cs, xs[j], pointwise[j]);
+      material[j] = scheme.Eval(party, key.s0, fss_test::KeyCws(key), key.tr,
+          cuda::std::span<const int4, 4>(key.cs, 4), xs[j], pointwise[j]);
     cuda::std::array<int4, 4> reference;
-    scheme.ProveMerkle(material, key.cs, reference);
+    scheme.ProveMerkle(material, cuda::std::span<const int4, 4>(key.cs, 4), reference);
     for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proofs[party][j], reference[j]);
     ExpectMerkleBlock(expected.front(), guard);
     ExpectMerkleBlock(expected.back(), guard);
     for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(expected[j + 1], pointwise[j]);
     if (!gpu) continue;
-    MerkleRangeDeviceBuffer<typename Scheme::Cw> device_cws;
+    MerkleRangeDeviceBuffer<int4> device_cws;
     MerkleRangeDeviceBuffer<int4> device_cs, device_ys, device_pi;
     MerkleRangeDeviceBuffer<In> device_xs;
     ASSERT_EQ(device_cws.Allocate(bits + 1), cudaSuccess);
@@ -714,14 +727,18 @@ void CheckBatchMerkle(const std::vector<In> &xs, bool gpu, Prg prg = Prg{kNonce0
     const cudaError_t launch = [&] {
       if constexpr (threads == 256) {
         return scheme.BatchEvalMerkleGpu(party, key.s0,
-            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
+            cuda::std::span<const int4>(device_cws.data, bits + 1), key.tr,
+            cuda::std::span<const int4, 4>(device_cs.data, 4),
             cuda::std::span<const In>(device_xs.data, count),
-            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+            cuda::std::span<int4>(device_ys.data + 1, count + 1),
+            cuda::std::span<int4, 4>(device_pi.data, 4), stream);
       } else {
         return scheme.template BatchEvalMerkleGpu<threads>(party, key.s0,
-            {device_cws.data, bits + 1}, cuda::std::span<const int4, 4>(device_cs.data, 4),
+            cuda::std::span<const int4>(device_cws.data, bits + 1), key.tr,
+            cuda::std::span<const int4, 4>(device_cs.data, 4),
             cuda::std::span<const In>(device_xs.data, count),
-            {device_ys.data + 1, count + 1}, cuda::std::span<int4, 4>(device_pi.data, 4), stream);
+            cuda::std::span<int4>(device_ys.data + 1, count + 1),
+            cuda::std::span<int4, 4>(device_pi.data, 4), stream);
       }
     }();
     EXPECT_EQ(launch, cudaSuccess);
@@ -782,24 +799,28 @@ TEST(VdpfBatchMerkle, GpuRejectsInvalidBatchArguments) {
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{Prg{kNonce0, kNonce1}, hash, hash};
-  typename Scheme::Cw cws[129];
+  int4 cws[129];
+  const __uint128_t tr = 0;
   int4 cs[4], ys[4], pi[4];
   const __uint128_t xs[4] = {0, 1, 2, 3};
   // Empty query sequence.
-  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs,
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, {cws, 129}, tr, cs,
       cuda::std::span<const __uint128_t>(), {ys, 4}, pi), cudaErrorInvalidValue);
   // Output storage shorter than the query sequence.
-  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs, {xs, 4},
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, {cws, 129}, tr, cs, {xs, 4},
       cuda::std::span<int4>(ys, 3), pi), cudaErrorInvalidValue);
   // Too few correction words.
   EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{},
-      cuda::std::span<const typename Scheme::Cw>(cws, 128), cs, {xs, 4}, {ys, 4},
+      cuda::std::span<const int4>(cws, 128), tr, cs, {xs, 4}, {ys, 4},
       pi), cudaErrorInvalidValue);
+  // Zero stride.
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, {cws, 129}, tr, cs, {xs, 4}, {ys, 4},
+      pi, 0, 0), cudaErrorInvalidValue);
   // Null buffers.
-  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs, {xs, 4},
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, {cws, 129}, tr, cs, {xs, 4},
       cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{4}),
       pi), cudaErrorInvalidValue);
-  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, cws, cs, {xs, 4}, {ys, 4},
+  EXPECT_EQ(scheme.BatchEvalMerkleGpu(false, int4{}, {cws, 129}, tr, cs, {xs, 4}, {ys, 4},
       cuda::std::span<int4, 4>(static_cast<int4 *>(nullptr), 4)), cudaErrorInvalidValue);
 }
 
@@ -829,7 +850,8 @@ TEST(VdpfXorHashContract, WideCoordinateAndClampedSeed) {
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   Scheme scheme{XorHashContractPrg{}, XorHashContractObserver{&messages},
       fss::hash::Blake3{cuda::std::span<const int4, 2>(iv, 2)}};
-  const Scheme::Cw cws[129]{};
+  const int4 cws[129]{};
+  const __uint128_t tr = 0;
   const int4 cs[4] = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
   const int4 initial_seed = {11, 22, 33, 45};
   const int4 expected_seed = {0x12345678, 0x23456789, 0x3456789a, 0x456789aa};
@@ -852,7 +874,7 @@ TEST(VdpfXorHashContract, WideCoordinateAndClampedSeed) {
           << " coordinate high word " << test_case.coordinate.w);
       messages.clear();
       int4 y;
-      scheme.Eval(party != 0, initial_seed, cws,
+      scheme.Eval(party != 0, initial_seed, {cws, 129}, tr,
           cuda::std::span<const int4, 4>(cs, 4), test_case.x, y);
       ASSERT_FALSE(messages.empty());
       for (const auto &message : messages) {
@@ -878,8 +900,11 @@ void CheckFixedBit96CaseRejects(bool merkle) {
 
   // Frozen trial 2 from 010c0d2. All remaining corrections, including the
   // terminal, are zero. Keep the original cs when changing the hash encoding.
-  const Scheme::Cw cws[98] = {
-      {{1715251663, 1119711520, static_cast<int>(4107019318u), 1095222437}, true}};
+  // The layer-0 Cw carried its right-control bit, which is bit 0 of the packed
+  // control in the split layout.
+  const int4 cws[98] = {
+      {1715251663, 1119711520, static_cast<int>(4107019318u), 1095222437}};
+  const Input tr = 1;
   const int4 cs[4] = {
       {static_cast<int>(2323156350u), 1254992691, 377754959, static_cast<int>(2978946471u)},
       {583504993, 39867407, static_cast<int>(2754790639u), static_cast<int>(2786589795u)},
@@ -892,17 +917,17 @@ void CheckFixedBit96CaseRejects(bool merkle) {
     nonzero_cs |= (block.x | block.y | block.z | block.w) != 0;
   ASSERT_TRUE(nonzero_cs);
   const int4 initial_seed = {2, 0, 0, 0};
-  const cuda::std::span<const Scheme::Cw> common_cws(cws, 98);
+  const cuda::std::span<const int4> common_cws(cws, 98);
   const cuda::std::span<const int4, 4> common_cs(cs, 4);
   const cuda::std::span<const Input> common_inputs(xs, 2);
   int4 outputs[2][2];
   cuda::std::array<int4, 4> proofs[2];
   for (int party = 0; party < 2; ++party) {
     if (merkle) {
-      scheme.BatchEvalMerkle(party != 0, initial_seed, common_cws, common_cs,
+      scheme.BatchEvalMerkle(party != 0, initial_seed, common_cws, tr, common_cs,
           common_inputs, cuda::std::span<int4>(outputs[party], 2), proofs[party]);
     } else {
-      scheme.BatchEval(party != 0, initial_seed, common_cws, common_cs,
+      scheme.BatchEval(party != 0, initial_seed, common_cws, tr, common_cs,
           common_inputs, cuda::std::span<int4>(outputs[party], 2), proofs[party]);
     }
   }
@@ -984,12 +1009,13 @@ TEST(VdpfRangeMerkle, CpuDefaultDepthUsesCallerForAllBackends) {
   MerkleRangeObservedHash xor_hash{fss::hash::Blake3{iv}, &xor_execution};
   MerkleRangeObservedHash hash{fss::hash::Blake3{iv}, &hash_execution};
   Scheme scheme{prg, xor_hash, hash};
-  typename Scheme::Key keys[2];
+  fss_test::ComponentKey<Scheme> keys[2];
   const int4 seeds[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, 42, int4{42, 12, 24, 36}), 0);
   std::vector<int4> ys(65);
   cuda::std::array<int4, 4> pi;
-  scheme.EvalRangeMerkle(false, 3, 67, keys[0].s0, keys[0].cws, keys[0].cs, ys, pi);
+  scheme.EvalRangeMerkle(false, 3, 67, keys[0].s0, fss_test::KeyCws(keys[0]), keys[0].tr,
+      cuda::std::span<const int4, 4>(keys[0].cs, 4), ys, pi);
   for (auto *execution : {&prg_execution, &xor_execution, &hash_execution}) {
     EXPECT_GT(execution->calls.load(), 0);
     EXPECT_EQ(execution->active.load(), 0);
@@ -1048,10 +1074,12 @@ TEST(VdpfRangeMerkle, GpuRejectsInvalidRangeAndStorage) {
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{Prg{kNonce0, kNonce1}, hash, hash};
-  typename Scheme::Cw cws[129];
+  int4 cws[129];
+  const __uint128_t tr = 0;
   int4 cs[4], ys[4], pi[4];
   auto check = [&](auto first, auto last, size_t capacity) {
-    return scheme.EvalRangeMerkleGpu(false, first, last, int4{}, cws, cs, {ys, capacity}, pi);
+    return scheme.EvalRangeMerkleGpu(false, first, last, int4{}, {cws, 129}, tr, cs,
+        {ys, capacity}, pi);
   };
   EXPECT_EQ(check(__uint128_t{2}, __uint128_t{1}, 4), cudaErrorInvalidValue);
   EXPECT_EQ(check(__uint128_t{0}, ~__uint128_t{0}, 4), cudaErrorInvalidValue);
@@ -1059,15 +1087,18 @@ TEST(VdpfRangeMerkle, GpuRejectsInvalidRangeAndStorage) {
   const size_t scratch_overflow = size_t(-1) / 32;
   EXPECT_EQ(check(__uint128_t{0}, static_cast<__uint128_t>(scratch_overflow - 1),
       scratch_overflow), cudaErrorInvalidValue);
-  EXPECT_EQ(scheme.EvalRangeMerkleGpu(false, 0, 0, int4{}, cws, cs,
+  EXPECT_EQ(scheme.EvalRangeMerkleGpu(false, 0, 0, int4{}, {cws, 129}, tr, cs,
       cuda::std::span<int4>(static_cast<int4 *>(nullptr), size_t{1}), pi), cudaErrorInvalidValue);
+  EXPECT_EQ(scheme.EvalRangeMerkleGpu(false, 0, 0, int4{}, {cws, 129}, tr, cs, {ys, 1}, pi, 0, 0),
+      cudaErrorInvalidValue);
   const size_t grid_overflow = static_cast<size_t>(INT_MAX) * 256 * 2 + 1;
   EXPECT_EQ(check(__uint128_t{0}, static_cast<__uint128_t>(grid_overflow - 1),
       grid_overflow), cudaErrorInvalidConfiguration);
   using Small = fss::Vdpf<4, BytesGroup, Prg, Hash, Hash, uint16_t>;
   Small small{Prg{kNonce0, kNonce1}, hash, hash};
-  typename Small::Cw small_cws[5];
-  EXPECT_EQ(small.EvalRangeMerkleGpu(false, 15, 16, int4{}, small_cws, cs, ys, pi), cudaErrorInvalidValue);
+  int4 small_cws[5];
+  EXPECT_EQ(small.EvalRangeMerkleGpu(false, 15, 16, int4{}, {small_cws, 5}, uint16_t{0}, cs, ys,
+      pi), cudaErrorInvalidValue);
 }
 
 }  // namespace
@@ -1091,8 +1122,8 @@ void CheckVdpfGenHalf() {
   FullScheme reference{FullPrg(aes.Backend(), full_calls), hash, hash};
   int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
   int4 beta = {42, 6, 8, 10};
-  typename Scheme::Key keys[2];
-  typename FullScheme::Key full_keys[2];
+  fss_test::ComponentKey<Scheme> keys[2];
+  fss_test::ComponentKey<FullScheme> full_keys[2];
   ASSERT_EQ(fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13}, beta), 0);
   ASSERT_EQ(fss_test::GenPair(reference, full_keys[0], full_keys[1], seeds, uint8_t{13}, beta), 0);
   EXPECT_EQ(calls.full, 2 * bits);
@@ -1150,13 +1181,13 @@ TEST(VdpfGenHalf, GpuAesSoftSelectedRangeProof) {
 
 namespace {
 
-// Checks the split Gen and Eval against the Cw form on the same seeds.
+// Checks the strided split Gen and Eval against the dense split form on the
+// same seeds.
 template <int bits, typename In, typename Group>
 void CheckVdpfSplitForm(In alpha) {
   using Prg = fss::prg::ChaCha<2>;
   using Hash = fss::hash::Blake3;
   using Scheme = fss::Vdpf<bits, Group, Prg, Hash, Hash, In>;
-  using Cw = typename Scheme::Cw;
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{Prg(kNonce0, kNonce1), hash, hash};
@@ -1169,31 +1200,33 @@ void CheckVdpfSplitForm(In alpha) {
   for (size_t stride : {size_t{1}, size_t{7}}) {
     SCOPED_TRACE(::testing::Message() << "stride " << stride);
     const size_t extent = static_cast<size_t>(bits) * stride + 1;
-    Cw cws[bits + 1];
-    cuda::std::array<int4, 4> cs, split_cs;
-    std::vector<int4> split(extent, guard);
-    In split_tr = 0;
+    std::vector<int4> split(extent, guard), dense(bits + 1, guard);
+    cuda::std::array<int4, 4> cs, dense_cs;
+    In split_tr = 0, dense_tr = 0;
     int4 seeds[2] = {{0, 22, 33, 44}, {55, 66, 77, 88}};
     int rc = 1;
     for (int attempt = 0; attempt < 64; ++attempt) {
       seeds[0].x = attempt;
-      const int cw_rc = scheme.Gen(cws, cuda::std::span<int4, 4>(cs.data(), 4),
-          cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+      const int dense_rc = scheme.Gen(cuda::std::span<int4>(dense.data(), bits + 1), dense_tr,
+          cuda::std::span<int4, 4>(dense_cs.data(), 4), cuda::std::span<const int4, 2>(seeds, 2),
+          alpha, beta);
       const int split_rc = scheme.Gen(cuda::std::span<int4>(split.data(), extent), split_tr,
-          cuda::std::span<int4, 4>(split_cs.data(), 4), cuda::std::span<const int4, 2>(seeds, 2), alpha, beta, stride);
-      // Both forms share the generation core, so they agree on the retry decision too.
-      EXPECT_EQ(split_rc, cw_rc) << "attempt " << attempt;
-      rc = cw_rc;
+          cuda::std::span<int4, 4>(cs.data(), 4), cuda::std::span<const int4, 2>(seeds, 2), alpha,
+          beta, stride);
+      // Both layouts share the generation core, so they agree on the retry decision too.
+      EXPECT_EQ(split_rc, dense_rc) << "attempt " << attempt;
+      rc = dense_rc;
       if (rc == 0) break;
     }
     ASSERT_EQ(rc, 0);
 
-    for (int i = 0; i < 4; ++i) EXPECT_EQ(memcmp(&split_cs[i], &cs[i], sizeof(int4)), 0) << "cs block " << i;
+    for (int i = 0; i < 4; ++i) EXPECT_EQ(memcmp(&cs[i], &dense_cs[i], sizeof(int4)), 0) << "cs block " << i;
     for (int i = 0; i < bits; ++i) {
-      EXPECT_EQ(memcmp(&split[static_cast<size_t>(i) * stride], &cws[i].s, sizeof(int4)), 0) << "layer " << i;
-      EXPECT_EQ(((split_tr >> i) & 1) != 0, cws[i].tr) << "layer " << i;
+      EXPECT_EQ(memcmp(&split[static_cast<size_t>(i) * stride], &dense[i], sizeof(int4)), 0) << "layer " << i;
+      EXPECT_EQ(((split_tr >> i) & 1) != 0, ((dense_tr >> i) & 1) != 0) << "layer " << i;
     }
-    EXPECT_EQ(memcmp(&split[static_cast<size_t>(bits) * stride], &cws[bits].s, sizeof(int4)), 0) << "terminal";
+    EXPECT_EQ(memcmp(&split[static_cast<size_t>(bits) * stride], &dense[bits], sizeof(int4)), 0) << "terminal";
+    EXPECT_EQ(split_tr, dense_tr) << "packed right-control bits";
     if constexpr (bits < sizeof(In) * 8) {
       EXPECT_EQ(static_cast<In>(split_tr >> bits), In{0}) << "unused control bits";
     }
@@ -1205,13 +1238,15 @@ void CheckVdpfSplitForm(In alpha) {
     for (int party = 0; party < 2; ++party) {
       for (In x : xs) {
         SCOPED_TRACE(::testing::Message() << "party " << party << " x " << static_cast<uint64_t>(x));
-        int4 y_cw, y_split;
-        const auto hash_cw = scheme.Eval(party != 0, seeds[party], cws, cuda::std::span<const int4, 4>(cs.data(), 4),
-            x, y_cw);
-        const auto hash_split = scheme.Eval(party != 0, seeds[party], cuda::std::span<const int4>(split.data(), extent),
-            split_tr, cuda::std::span<const int4, 4>(split_cs.data(), 4), x, y_split, stride);
-        EXPECT_EQ(memcmp(&y_split, &y_cw, sizeof(int4)), 0);
-        EXPECT_EQ(memcmp(hash_split.data(), hash_cw.data(), sizeof(cuda::std::array<int4, 4>)), 0);
+        int4 y_dense, y_split;
+        const auto hash_dense = scheme.Eval(party != 0, seeds[party],
+            cuda::std::span<const int4>(dense.data(), bits + 1), dense_tr,
+            cuda::std::span<const int4, 4>(dense_cs.data(), 4), x, y_dense);
+        const auto hash_split = scheme.Eval(party != 0, seeds[party],
+            cuda::std::span<const int4>(split.data(), extent), split_tr,
+            cuda::std::span<const int4, 4>(cs.data(), 4), x, y_split, stride);
+        EXPECT_EQ(memcmp(&y_split, &y_dense, sizeof(int4)), 0);
+        EXPECT_EQ(memcmp(hash_split.data(), hash_dense.data(), sizeof(cuda::std::array<int4, 4>)), 0);
       }
     }
   }
@@ -1235,6 +1270,254 @@ TEST(VdpfSplitForm, WideUint128Uint127Group) {
   CheckVdpfSplitForm<128, __uint128_t, Uint127Group>((static_cast<__uint128_t>(1) << 127) + 7);
 }
 
+namespace {
+
+// Every component operation must treat a padded correction array as the same
+// key as the dense layout: identical outputs, identical proofs, untouched
+// padding, and party proofs that still verify. Covers the CPU chain and Merkle
+// range/full/batch operations and, when a device exists, the three Merkle GPU
+// launches with the same padded device array.
+template <int bits, typename In, typename Group>
+void CheckVdpfPaddedStrideMatchesDense(In first, In last, bool gpu) {
+  using Prg = fss::prg::ChaCha<2>;
+  using Hash = fss::hash::Blake3;
+  using Scheme = fss::Vdpf<bits, Group, Prg, Hash, Hash, In>;
+  constexpr size_t kStride = 7;
+  const size_t extent = static_cast<size_t>(bits) * kStride + 1;
+  const size_t count = static_cast<size_t>(last - first) + 1;
+  constexpr size_t kDomain = size_t{1} << bits;
+  const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};
+  const int4 beta = {7, 19, 23, 42};
+  const int4 guard = {23, 45, 67, 88};
+  const In xs[4] = {static_cast<In>(first + 1), first, static_cast<In>(first + 3),
+      static_cast<In>(first + 2)};
+  Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
+  Scheme scheme{Prg(kNonce0, kNonce1), hash, hash};
+
+  std::vector<int4> dense(bits + 1), padded(extent, guard);
+  cuda::std::array<int4, 4> cs;
+  In tr_dense = 0, tr_padded = 0;
+  int4 seeds[2] = {{0, 22, 33, 44}, {55, 66, 77, 88}};
+  int rc = 1;
+  for (int attempt = 0; attempt < 64; ++attempt) {
+    seeds[0].x = attempt;
+    rc = scheme.Gen(cuda::std::span<int4>(dense.data(), bits + 1), tr_dense,
+        cuda::std::span<int4, 4>(cs.data(), 4), cuda::std::span<const int4, 2>(seeds, 2), first,
+        beta);
+    if (rc == 0) break;
+  }
+  ASSERT_EQ(rc, 0);
+  rc = scheme.Gen(cuda::std::span<int4>(padded.data(), extent), tr_padded,
+      cuda::std::span<int4, 4>(cs.data(), 4), cuda::std::span<const int4, 2>(seeds, 2), first,
+      beta, kStride);
+  ASSERT_EQ(rc, 0);
+  ASSERT_EQ(tr_padded, tr_dense);
+  for (int i = 0; i <= bits; ++i)
+    EXPECT_EQ(memcmp(&padded[static_cast<size_t>(i) * kStride], &dense[i], sizeof(int4)), 0)
+        << "layer " << i;
+
+  cuda::std::array<int4, 4> chain_range_pi[2], chain_full_pi[2], chain_batch_pi[2];
+  cuda::std::array<int4, 4> merkle_range_pi[2], merkle_full_pi[2], merkle_batch_pi[2];
+
+  for (int party = 0; party < 2; ++party) {
+    const bool b = party != 0;
+    const int4 *party_seed = &seeds[party];
+    const cuda::std::span<const int4, 4> cs_view(cs.data(), 4);
+    SCOPED_TRACE(::testing::Message() << "party " << party);
+
+    // Chain range proof, sequential and parallel, dense versus padded.
+    for (int par_depth : {0, 2}) {
+      std::vector<int4> ys_d(count), ys_p(count);
+      cuda::std::array<int4, 4> dense_pi;
+      scheme.EvalRange(b, first, last, *party_seed,
+          cuda::std::span<const int4>(dense.data(), bits + 1), tr_dense, cs_view,
+          cuda::std::span<int4>(ys_d.data(), count), dense_pi, par_depth);
+      scheme.EvalRange(b, first, last, *party_seed,
+          cuda::std::span<const int4>(padded.data(), extent), tr_padded, cs_view,
+          cuda::std::span<int4>(ys_p.data(), count), chain_range_pi[party], par_depth,
+          kStride);
+      for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(ys_p[j], ys_d[j]);
+      for (int j = 0; j < 4; ++j)
+        ExpectMerkleBlock(chain_range_pi[party][j], dense_pi[j]);
+    }
+    // Chain full-domain proof.
+    {
+      std::vector<int4> ys_d(kDomain), ys_p(kDomain);
+      cuda::std::array<int4, 4> dense_pi;
+      scheme.EvalAll(b, *party_seed, cuda::std::span<const int4>(dense.data(), bits + 1),
+          tr_dense, cs_view, cuda::std::span<int4>(ys_d.data(), kDomain), dense_pi);
+      scheme.EvalAll(b, *party_seed, cuda::std::span<const int4>(padded.data(), extent),
+          tr_padded, cs_view, cuda::std::span<int4>(ys_p.data(), kDomain),
+          chain_full_pi[party], 0, kStride);
+      for (size_t j = 0; j < kDomain; ++j) ExpectMerkleBlock(ys_p[j], ys_d[j]);
+      for (int j = 0; j < 4; ++j)
+        ExpectMerkleBlock(chain_full_pi[party][j], dense_pi[j]);
+    }
+    // Chain batch proof over an unordered query sequence.
+    {
+      std::vector<int4> ys_d(4), ys_p(4);
+      cuda::std::array<int4, 4> dense_pi;
+      scheme.BatchEval(b, *party_seed, cuda::std::span<const int4>(dense.data(), bits + 1),
+          tr_dense, cs_view, cuda::std::span<const In>(xs, 4),
+          cuda::std::span<int4>(ys_d.data(), 4), dense_pi);
+      scheme.BatchEval(b, *party_seed, cuda::std::span<const int4>(padded.data(), extent),
+          tr_padded, cs_view, cuda::std::span<const In>(xs, 4),
+          cuda::std::span<int4>(ys_p.data(), 4), chain_batch_pi[party], kStride);
+      for (int j = 0; j < 4; ++j) ExpectMerkleBlock(ys_p[j], ys_d[j]);
+      for (int j = 0; j < 4; ++j)
+        ExpectMerkleBlock(chain_batch_pi[party][j], dense_pi[j]);
+    }
+    // Merkle range proof, sequential and parallel.
+    for (int par_depth : {0, 2}) {
+      std::vector<int4> ys_d(count), ys_p(count);
+      cuda::std::array<int4, 4> dense_pi;
+      scheme.EvalRangeMerkle(b, first, last, *party_seed,
+          cuda::std::span<const int4>(dense.data(), bits + 1), tr_dense, cs_view,
+          cuda::std::span<int4>(ys_d.data(), count), dense_pi, par_depth);
+      scheme.EvalRangeMerkle(b, first, last, *party_seed,
+          cuda::std::span<const int4>(padded.data(), extent), tr_padded, cs_view,
+          cuda::std::span<int4>(ys_p.data(), count), merkle_range_pi[party], par_depth,
+          kStride);
+      for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(ys_p[j], ys_d[j]);
+      for (int j = 0; j < 4; ++j)
+        ExpectMerkleBlock(merkle_range_pi[party][j], dense_pi[j]);
+    }
+    // Merkle full-domain and batch proofs.
+    {
+      std::vector<int4> ys_d(kDomain), ys_p(kDomain);
+      cuda::std::array<int4, 4> dense_pi;
+      scheme.EvalAllMerkle(b, *party_seed, cuda::std::span<const int4>(dense.data(), bits + 1),
+          tr_dense, cs_view, cuda::std::span<int4>(ys_d.data(), kDomain), dense_pi);
+      scheme.EvalAllMerkle(b, *party_seed, cuda::std::span<const int4>(padded.data(), extent),
+          tr_padded, cs_view, cuda::std::span<int4>(ys_p.data(), kDomain),
+          merkle_full_pi[party], 0, kStride);
+      for (size_t j = 0; j < kDomain; ++j) ExpectMerkleBlock(ys_p[j], ys_d[j]);
+      for (int j = 0; j < 4; ++j)
+        ExpectMerkleBlock(merkle_full_pi[party][j], dense_pi[j]);
+    }
+    {
+      std::vector<int4> ys_d(4), ys_p(4);
+      cuda::std::array<int4, 4> dense_pi;
+      scheme.BatchEvalMerkle(b, *party_seed, cuda::std::span<const int4>(dense.data(), bits + 1),
+          tr_dense, cs_view, cuda::std::span<const In>(xs, 4),
+          cuda::std::span<int4>(ys_d.data(), 4), dense_pi);
+      scheme.BatchEvalMerkle(b, *party_seed, cuda::std::span<const int4>(padded.data(), extent),
+          tr_padded, cs_view, cuda::std::span<const In>(xs, 4),
+          cuda::std::span<int4>(ys_p.data(), 4), merkle_batch_pi[party], kStride);
+      for (int j = 0; j < 4; ++j) ExpectMerkleBlock(ys_p[j], ys_d[j]);
+      for (int j = 0; j < 4; ++j)
+        ExpectMerkleBlock(merkle_batch_pi[party][j], dense_pi[j]);
+    }
+
+    if (!gpu) continue;
+    // The three Merkle GPU launches consume the same padded device array with
+    // the explicit stride and must reproduce the dense host results exactly.
+    MerkleRangeDeviceBuffer<int4> device_cws, device_cs, device_ys, device_pi;
+    MerkleRangeDeviceBuffer<In> device_xs;
+    ASSERT_EQ(device_cws.Allocate(extent), cudaSuccess);
+    ASSERT_EQ(device_cs.Allocate(4), cudaSuccess);
+    ASSERT_EQ(device_xs.Allocate(4), cudaSuccess);
+    ASSERT_EQ(device_pi.Allocate(4), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_cws.data, padded.data(), extent * sizeof(int4),
+        cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_cs.data, cs.data(), sizeof(cs), cudaMemcpyHostToDevice),
+        cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(device_xs.data, xs, sizeof(xs), cudaMemcpyHostToDevice), cudaSuccess);
+    cudaStream_t stream;
+    ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
+
+    std::vector<int4> expected(count), actual(count);
+    cuda::std::array<int4, 4> proof;
+    scheme.EvalRangeMerkle(b, first, last, *party_seed,
+        cuda::std::span<const int4>(dense.data(), bits + 1), tr_dense, cs_view,
+        cuda::std::span<int4>(expected.data(), count), proof);
+    ASSERT_EQ(device_ys.Allocate(count), cudaSuccess);
+    EXPECT_EQ(scheme.EvalRangeMerkleGpu(b, first, last, *party_seed,
+        cuda::std::span<const int4>(device_cws.data, extent), tr_padded,
+        cuda::std::span<const int4, 4>(device_cs.data, 4),
+        cuda::std::span<int4>(device_ys.data, count),
+        cuda::std::span<int4, 4>(device_pi.data, 4), stream, kStride), cudaSuccess);
+    EXPECT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(actual.data(), device_ys.data, count * sizeof(int4),
+        cudaMemcpyDeviceToHost), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(proof.data(), device_pi.data, sizeof(proof), cudaMemcpyDeviceToHost),
+        cudaSuccess);
+    for (size_t j = 0; j < count; ++j) ExpectMerkleBlock(actual[j], expected[j]);
+    for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proof[j], merkle_range_pi[party][j]);
+
+    std::vector<int4> expected_all(kDomain);
+    scheme.EvalAllMerkle(b, *party_seed, cuda::std::span<const int4>(dense.data(), bits + 1),
+        tr_dense, cs_view, cuda::std::span<int4>(expected_all.data(), kDomain), proof);
+    cudaError_t launch = cudaSuccess;
+    {
+      MerkleRangeDeviceBuffer<int4> device_ys_all;
+      ASSERT_EQ(device_ys_all.Allocate(kDomain), cudaSuccess);
+      launch = scheme.EvalAllMerkleGpu(b, *party_seed,
+          cuda::std::span<const int4>(device_cws.data, extent), tr_padded,
+          cuda::std::span<const int4, 4>(device_cs.data, 4),
+          cuda::std::span<int4>(device_ys_all.data, kDomain),
+          cuda::std::span<int4, 4>(device_pi.data, 4), stream, kStride);
+      EXPECT_EQ(launch, cudaSuccess);
+      EXPECT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+      std::vector<int4> actual_all(kDomain);
+      ASSERT_EQ(cudaMemcpy(actual_all.data(), device_ys_all.data, kDomain * sizeof(int4),
+          cudaMemcpyDeviceToHost), cudaSuccess);
+      ASSERT_EQ(cudaMemcpy(proof.data(), device_pi.data, sizeof(proof), cudaMemcpyDeviceToHost),
+          cudaSuccess);
+      for (size_t j = 0; j < kDomain; ++j) ExpectMerkleBlock(actual_all[j], expected_all[j]);
+      for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proof[j], merkle_full_pi[party][j]);
+    }
+    {
+      MerkleRangeDeviceBuffer<int4> device_ys_batch;
+      ASSERT_EQ(device_ys_batch.Allocate(4), cudaSuccess);
+      launch = scheme.BatchEvalMerkleGpu(b, *party_seed,
+          cuda::std::span<const int4>(device_cws.data, extent), tr_padded,
+          cuda::std::span<const int4, 4>(device_cs.data, 4),
+          cuda::std::span<const In>(device_xs.data, 4),
+          cuda::std::span<int4>(device_ys_batch.data, 4),
+          cuda::std::span<int4, 4>(device_pi.data, 4), stream, kStride);
+      EXPECT_EQ(launch, cudaSuccess);
+      EXPECT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+      std::vector<int4> actual_batch(4);
+      ASSERT_EQ(cudaMemcpy(actual_batch.data(), device_ys_batch.data, 4 * sizeof(int4),
+          cudaMemcpyDeviceToHost), cudaSuccess);
+      ASSERT_EQ(cudaMemcpy(proof.data(), device_pi.data, sizeof(proof), cudaMemcpyDeviceToHost),
+          cudaSuccess);
+      std::vector<int4> expected_batch(4);
+      cuda::std::array<int4, 4> proof_host;
+      scheme.BatchEvalMerkle(b, *party_seed, cuda::std::span<const int4>(dense.data(), bits + 1),
+          tr_dense, cs_view, cuda::std::span<const In>(xs, 4),
+          cuda::std::span<int4>(expected_batch.data(), 4), proof_host);
+      for (int j = 0; j < 4; ++j) ExpectMerkleBlock(actual_batch[j], expected_batch[j]);
+      for (int j = 0; j < 4; ++j) ExpectMerkleBlock(proof[j], proof_host[j]);
+    }
+    EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
+  }
+
+  EXPECT_TRUE(Scheme::Verify(chain_range_pi[0], chain_range_pi[1]));
+  EXPECT_TRUE(Scheme::Verify(chain_full_pi[0], chain_full_pi[1]));
+  EXPECT_TRUE(Scheme::Verify(chain_batch_pi[0], chain_batch_pi[1]));
+  EXPECT_TRUE(Scheme::Verify(merkle_range_pi[0], merkle_range_pi[1]));
+  EXPECT_TRUE(Scheme::Verify(merkle_full_pi[0], merkle_full_pi[1]));
+  EXPECT_TRUE(Scheme::Verify(merkle_batch_pi[0], merkle_batch_pi[1]));
+
+  for (size_t i = 0; i < extent; ++i) {
+    const bool written = i % kStride == 0 && i / kStride <= static_cast<size_t>(bits);
+    if (!written) ExpectMerkleBlock(padded[i], guard);
+  }
+}
+
+}  // namespace
+
+TEST(VdpfPaddedStride, CpuChainAndMerkleMatchDense) {
+  CheckVdpfPaddedStrideMatchesDense<16, uint16_t, BytesGroup>(3, 9, false);
+}
+
+TEST(VdpfPaddedStride, GpuMerkleMatchesHostDense) {
+  if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
+  CheckVdpfPaddedStrideMatchesDense<16, uint16_t, BytesGroup>(3, 9, true);
+}
+
 TEST(VdpfPreconditionTest, RejectsInvalidHostInputs) {
   using Scheme = fss::Vdpf<8, BytesGroup, fss::prg::ChaCha<2>, fss::hash::Blake3,
       fss::hash::Blake3, uint16_t>;
@@ -1243,53 +1526,60 @@ TEST(VdpfPreconditionTest, RejectsInvalidHostInputs) {
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::hash::Blake3(iv_span),
       fss::hash::Blake3(iv_span)};
   constexpr int kInBits = 8;
-  std::vector<typename Scheme::Cw> cws(kInBits + 1);
+  std::vector<int4> cws(kInBits + 1);
+  const uint16_t tr = 0;
   int4 cs[4] = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}};
   const auto cs_span = cuda::std::span<const int4, 4>(cs, 4);
+  const auto key = cuda::std::span<const int4>(cws);
   std::vector<int4> ys(size_t{1} << kInBits);
   cuda::std::array<int4, 4> pi{};
   const int4 s0 = {0, 0, 0, 0};
 
-  EXPECT_THROW((void)scheme.EvalRange(false, 3, 2, s0, cuda::std::span<const typename Scheme::Cw>(cws),
+  EXPECT_THROW((void)scheme.EvalRange(false, 3, 2, s0, key, tr,
                         cs_span, cuda::std::span<int4>(ys), pi),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.EvalRange(false, 0, uint16_t{300}, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        key, tr, cs_span, cuda::std::span<int4>(ys), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0,
+                        cuda::std::span<const int4>(cws.data(), 1), tr, cs_span,
                         cuda::std::span<int4>(ys), pi),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), cs_span,
-                        cuda::std::span<int4>(ys), pi),
+                        key, tr, cs_span, cuda::std::span<int4>(ys.data(), 7), pi),
       std::invalid_argument);
-  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
-                        cuda::std::span<int4>(ys.data(), 7), pi),
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0, key, tr, cs_span,
+                        cuda::std::span<int4>(ys), pi, 0, 0),
       std::invalid_argument);
 
   std::vector<uint16_t> xs(1, 0);
   EXPECT_THROW((void)scheme.BatchEval(false, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), cs_span,
+                        cuda::std::span<const int4>(cws.data(), 1), tr, cs_span,
                         cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys), pi),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.BatchEval(false, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        key, tr, cs_span,
                         cuda::std::span<const uint16_t>(), cuda::std::span<int4>(ys), pi),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.BatchEval(false, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        key, tr, cs_span,
                         cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(), pi),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.BatchEvalMerkle(false, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws.data(), 1), cs_span,
+                        cuda::std::span<const int4>(cws.data(), 1), tr, cs_span,
                         cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys), pi),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.BatchEvalMerkle(false, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        key, tr, cs_span,
                         cuda::std::span<const uint16_t>(), cuda::std::span<int4>(ys), pi),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.BatchEvalMerkle(false, s0,
-                        cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                        key, tr, cs_span,
                         cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(), pi),
+      std::invalid_argument);
+  EXPECT_THROW((void)scheme.BatchEvalMerkle(false, s0,
+                        key, tr, cs_span,
+                        cuda::std::span<const uint16_t>(xs), cuda::std::span<int4>(ys), pi, 0),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.ProveMerkle(
                         cuda::std::span<const cuda::std::array<int4, 4>>(), cs_span, pi),
@@ -1307,22 +1597,24 @@ TEST(VdpfPreconditionTest, AbortsOnBadTerminalInDebug) {
   const cuda::std::span<const int4, 2> iv_span(iv, 2);
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::hash::Blake3(iv_span),
       fss::hash::Blake3(iv_span)};
-  std::vector<typename Scheme::Cw> cws(9);
+  std::vector<int4> cws(9);
+  const uint16_t tr = 0;
   int4 cs[4] = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}};
   const auto cs_span = cuda::std::span<const int4, 4>(cs, 4);
+  const auto key = cuda::std::span<const int4>(cws);
   std::vector<int4> ys(size_t{1} << 8);
   cuda::std::array<int4, 4> pi{};
   const int4 s0 = {0, 0, 0, 0};
-  cws[8].s.w = 1;
+  cws[8].w = 1;
   EXPECT_DEATH((void)scheme.EvalRange(false, 0, uint16_t{7}, s0,
-                       cuda::std::span<const typename Scheme::Cw>(cws), cs_span,
+                       key, tr, cs_span,
                        cuda::std::span<int4>(ys), pi),
       "Assertion.*failed");
-  EXPECT_DEATH((void)scheme.EvalAll(false, s0, cuda::std::span<const typename Scheme::Cw>(cws),
+  EXPECT_DEATH((void)scheme.EvalAll(false, s0, key, tr,
                        cs_span, cuda::std::span<int4>(ys), pi),
       "Assertion.*failed");
   EXPECT_DEATH((void)scheme.EvalAllMerkle(false, s0,
-                       cuda::std::span<const typename Scheme::Cw>(cws),
+                       key, tr,
                        cs_span, cuda::std::span<int4>(ys), pi),
       "Assertion.*failed");
 }
@@ -1336,7 +1628,8 @@ TEST(VdpfPreconditionTest, GenKeyStillEvaluatesAndVerifies) {
   const cuda::std::span<const int4, 2> iv_span(iv, 2);
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1), fss::hash::Blake3(iv_span),
       fss::hash::Blake3(iv_span)};
-  Scheme::Cw cws[2];
+  int4 cws[2];
+  uint8_t tr = 0;
   int4 cs[4];
   int4 seeds[2] = {{0, 0, 0, 0}, {0, 0, 0, 0}};
   constexpr uint8_t kAlpha = 1;
@@ -1344,20 +1637,20 @@ TEST(VdpfPreconditionTest, GenKeyStillEvaluatesAndVerifies) {
   int rc = 1;
   for (int attempt = 0; attempt < 64; ++attempt) {
     seeds[0].x = attempt;
-    rc = scheme.Gen(cws, cuda::std::span<int4, 4>(cs, 4),
+    rc = scheme.Gen(cuda::std::span<int4>(cws, 2), tr, cuda::std::span<int4, 4>(cs, 4),
         cuda::std::span<const int4, 2>(seeds, 2), kAlpha, kBeta);
     if (rc == 0) break;
   }
   ASSERT_EQ(rc, 0);
 
-  const auto cws_span = cuda::std::span<const Scheme::Cw>(cws, 2);
+  const auto cws_span = cuda::std::span<const int4>(cws, 2);
   const auto cs_span = cuda::std::span<const int4, 4>(cs, 4);
   int4 shares[2][2];
   cuda::std::array<int4, 4> pi_tildes[2][2];
   cuda::std::array<int4, 4> chain[2], merkle[2];
   for (int party = 0; party < 2; ++party) {
     for (int x = 0; x < 2; ++x) {
-      pi_tildes[party][x] = scheme.Eval(party != 0, seeds[party], cws_span, cs_span,
+      pi_tildes[party][x] = scheme.Eval(party != 0, seeds[party], cws_span, tr, cs_span,
           static_cast<uint8_t>(x), shares[party][x]);
     }
     const auto leaves = cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes[party], 2);

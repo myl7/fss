@@ -838,7 +838,7 @@ __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_siz
         __uint128_t{1} << in_bits, bucket_size, choices);
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
-    auto corrected = inner.Eval(b, s0s[bucket],
+    auto corrected = fss::detail::SchemeAccess::VdpfEvalCw(inner, b, s0s[bucket],
         cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
     // Stable sorting by bucket preserves this outer-input, candidate order.
@@ -874,7 +874,7 @@ __global__ void VdmpfBatchLeavesKernel(bool b, int4 sigma, __uint128_t bucket_si
         __uint128_t{1} << in_bits, bucket_size, choices);
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
-    auto corrected = inner.Eval(b, s0s[bucket],
+    auto corrected = fss::detail::SchemeAccess::VdpfEvalCw(inner, b, s0s[bucket],
         cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
     // Stable sorting by bucket preserves this outer-query, candidate order.
@@ -1458,7 +1458,8 @@ inline int Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Pr
     }
 
     const int4 seeds[2] = {s0s[i], s0s[size_t{kBucketCount} + i]};
-    ret = inner_vdpf.Gen(cws.data() + static_cast<size_t>(i) * (bucket_bits + 1),
+    ret = fss::detail::SchemeAccess::VdpfGenCw(inner_vdpf,
+        cws.data() + static_cast<size_t>(i) * (bucket_bits + 1),
         cuda::std::span<int4, 4>(cs.data() + static_cast<size_t>(i) * 4, 4),
         cuda::std::span<const int4, 2>(seeds, 2), a_prime, b_buf_prime);
     if (ret != 0) return 2;
@@ -1515,7 +1516,8 @@ Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_l
   for (int i = 0; i < count; ++i) {
     const LocatedCandidate &candidate = located[i];
     int4 value;
-    proof[candidate.candidate] = inner_vdpf.Eval(b, s0s[candidate.bucket],
+    proof[candidate.candidate] = fss::detail::SchemeAccess::VdpfEvalCw(inner_vdpf, b,
+        s0s[candidate.bucket],
         cuda::std::span<const Cw>(cws.data() + static_cast<size_t>(candidate.bucket) * (bucket_bits + 1),
             bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs.data() + static_cast<size_t>(candidate.bucket) * 4, 4),
@@ -1842,7 +1844,8 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
 
     for (auto &[j, omega] : inputs[i]) {
       int4 y;
-      auto pi_tilde = inner_vdpf.Eval(b, s0s[i], cuda::std::span<const Cw>(bucket_cws, bucket_bits + 1),
+      auto pi_tilde = fss::detail::SchemeAccess::VdpfEvalCw(inner_vdpf, b, s0s[i],
+          cuda::std::span<const Cw>(bucket_cws, bucket_bits + 1),
           cuda::std::span<const int4, 4>(bucket_cs, 4), j, y);
 
       // Accumulate output.
@@ -1925,7 +1928,8 @@ inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, P
     nodes.reserve(inputs[i].size());
     for (auto [j, omega] : inputs[i]) {
       int4 y;
-      auto pi_tilde = inner_vdpf.Eval(b, s0s[i], cuda::std::span<const Cw>(bucket_cws, bucket_bits + 1),
+      auto pi_tilde = fss::detail::SchemeAccess::VdpfEvalCw(inner_vdpf, b, s0s[i],
+          cuda::std::span<const Cw>(bucket_cws, bucket_bits + 1),
           cuda::std::span<const int4, 4>(bucket_cs, 4), j, y);
       ys[omega] = (Group::From(ys[omega]) + Group::From(y)).Into();
       nodes.push_back(hash_.Hash(cuda::std::span<const int4, 4>(pi_tilde)));

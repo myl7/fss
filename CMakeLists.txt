@@ -66,6 +66,39 @@ if(BUILD_TESTING)
     target_link_libraries(vdpf_test GTest::gtest_main fss)
     gtest_discover_tests(vdpf_test)
 
+    add_executable(api_contract_test src/api_contract_test.cu)
+    target_link_libraries(api_contract_test GTest::gtest_main fss)
+    gtest_discover_tests(api_contract_test)
+
+    # Every removed public Cw overload argument sequence must fail to compile.
+    # One direct-nvcc case per sequence; see cmake/ApiRemovedCwCheck.cmake.
+    if(CMAKE_CUDA_COMPILER)
+        set(api_removed_cw_cases
+            DPF_GEN DPF_EVAL DPF_EVALALL DPF_RANGE DPF_RANGE_GPU DPF_EVALALL_GPU DPF_BATCH
+            DCF_GEN DCF_EVAL DCF_EVALALL DCF_RANGE DCF_RANGE_GPU DCF_EVALALL_GPU DCF_BATCH
+            HT_GEN HT_EVAL HT_EVALALL HT_RANGE HT_RANGE_GPU HT_EVALALL_GPU HT_BATCH
+            PHT_GEN PHT_EVAL PHT_EVALALL PHT_RANGE PHT_EVALALL_GPU PHT_BATCH
+            GROTTO_GEN GROTTO_EVAL GROTTO_PREPROCESS GROTTO_PREPROCESSOWNED
+            GROTTO_EVALALL GROTTO_PREPROCESS_GPU GROTTO_EVALALL_GPU
+            HTG_GEN HTG_EVAL HTG_PREPROCESS HTG_PREPROCESSOWNED
+            HTG_EVALALL HTG_PREPROCESS_GPU HTG_EVALALL_GPU
+            VDPF_GEN VDPF_EVAL VDPF_EVALALL VDPF_RANGE VDPF_BATCH
+            VDPF_BATCH_MERKLE VDPF_EVALALL_MERKLE VDPF_RANGE_MERKLE
+            VDPF_EVALALL_MERKLE_GPU VDPF_RANGE_MERKLE_GPU VDPF_BATCH_MERKLE_GPU)
+        foreach(case IN LISTS api_removed_cw_cases)
+            string(TOLOWER ${case} case_lower)
+            add_test(NAME api_removed_cw_${case_lower}_fails
+                COMMAND ${CMAKE_COMMAND}
+                -DNVCC=${CMAKE_CUDA_COMPILER}
+                -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/src/api_removed_cw_compile_fail.cu
+                -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/api_removed_cw_${case_lower}.o
+                "-DINCLUDE_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/include"
+                -DARCH=${CMAKE_CUDA_ARCHITECTURES}
+                -DCASE=FSS_API_REMOVED_CW_${case}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ApiRemovedCwCheck.cmake)
+        endforeach()
+    endif()
+
     add_executable(eval_all_gpu_test src/eval_all_gpu_test.cu)
     target_link_libraries(eval_all_gpu_test GTest::gtest_main fss)
     gtest_discover_tests(eval_all_gpu_test)

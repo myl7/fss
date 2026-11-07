@@ -105,15 +105,10 @@ class GrottoDcf {
 public:
   using Cw = typename DpfType::Cw;  ///< Correction-word type of the underlying DPF.
 
-  /**
-     * A party's key: the correction words plus the party's initial seed.
-     * Both parties share the same correction words and differ in the seed.
-     * @ingroup fss_api
-     */
-  struct Key {
-    Cw cws[in_bits + 1];  ///< Correction words of the underlying DPF with beta equal to zero.
-    int4 s0;  ///< This party's initial seed.
-  };
+  /// Seed-component count Gen() writes at stride 1: in_bits layers plus the terminal.
+  static constexpr int kCwCount = in_bits + 1;
+
+  using Input = In;  ///< The caller-facing input-domain type.
 
   /**
    * Configure the pseudorandom generator.
@@ -121,16 +116,6 @@ public:
    * @param prg Backend used throughout generation and evaluation.
    */
   __host__ __device__ explicit GrottoDcf(Prg prg);
-
-  /**
-   * Generate shared DPF correction words with beta equal to zero.
-   *
-   * @param cws Output array of in_bits + 1 correction words.
-   * @param s0s Two initial seeds, retained by the caller.
-   * @param a The secret comparison threshold.
-   * @pre a is in [0, 2^in_bits).
-   */
-  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a);
 
   /**
    * Generate split DPF correction words with beta equal to zero.
@@ -157,18 +142,6 @@ public:
    */
   __host__ __device__ void Gen(cuda::std::span<int4> cws, In &tr,
       cuda::std::span<const int4, 2> s0s, In a, size_t stride = 1);
-
-  /**
-   * Evaluate a comparison share along x's path without preprocessing.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed from generation.
-   * @param cws Correction words returned by Gen().
-   * @param x Query point.
-   * @return This party's XOR share of the predicate alpha <= x.
-   * @pre x is in [0, 2^in_bits).
-   */
-  __host__ __device__ bool Eval(bool b, int4 s0, const Cw cws[], In x);
 
   /**
    * Evaluate a comparison share along x's path from split correction words.
@@ -217,26 +190,6 @@ public:
   };
 
   /**
-   * Expand leaf control bits and build a parity tree in caller-owned host storage.
-   *
-   * Uses O(N) PRG calls and O(N) XOR operations, where N = 2^in_bits.
-   * Allocate 2*N-1 bool entries for p, using (2*N-1) * sizeof(bool) bytes
-   * per party. This is the same level-order layout as ParityTreeView.
-   * Compute the element count and byte count without overflow before allocation.
-   * Use PreprocessOwned() for allocating convenience.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed from generation.
-   * @param cws Correction words returned by Gen().
-   * @param p Output buffer of at least 2^(in_bits+1)-1 writable bool entries.
-   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
-   * Positive depths require backends that support concurrent calls.
-   * @pre The parity-tree element count and byte size fit size_t.
-   * @post ParityTreeView{p} can be queried through Eval() and EvalAll().
-   */
-  void Preprocess(bool b, int4 s0, const Cw cws[], bool p[], int par_depth = 0);
-
-  /**
    * Expand split leaf control bits and build a parity tree in caller-owned host storage.
    *
    * Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride].
@@ -262,25 +215,6 @@ public:
    */
   void Preprocess(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
       bool p[], int par_depth = 0, size_t stride = 1);
-
-  /**
-   * Allocate and populate a parity tree in host storage.
-   *
-   * The returned owner holds independent storage; this instance keeps no key
-   * or preprocessed tree. Its View() is accepted by Eval() and EvalAll().
-   * The owned array contains 2*N-1 bool entries, where N = 2^in_bits.
-   * Its payload is (2*N-1) * sizeof(bool) bytes per party, excluding
-   * the owner object and allocator overhead.
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed from generation.
-   * @param cws Correction words returned by Gen().
-   * @param par_depth Nonnegative CPU split depth for this call. Zero runs sequentially.
-   * Positive depths require backends that support concurrent calls.
-   * @return Move-only owner of the populated host storage.
-   * @pre All allocated element counts and byte sizes fit size_t.
-   */
-  OwnedParityTree<GrottoDcf> PreprocessOwned(
-      bool b, int4 s0, const Cw cws[], int par_depth = 0);
 
   /**
    * Allocate and populate a parity tree from split correction words in host storage.
@@ -329,23 +263,6 @@ public:
   static void EvalAll(ParityTreeView pt, bool ys[]);
 
   /**
-   * Evaluate comparison shares for the full domain on the host.
-   *
-   * Expands leaves directly into ys and scans them in place with O(N) PRG and
-   * XOR work. No parity-tree storage or preprocessing is required.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed from generation.
-   * @param cws Correction words returned by Gen().
-   * @param ys Output array of at least 2^in_bits bool entries.
-   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
-   * Positive depths require backends that support concurrent calls.
-   * @pre The output element count and byte size fit size_t.
-   * @post ys[x] contains this party's XOR share of alpha <= x.
-   */
-  void EvalAll(bool b, int4 s0, const Cw cws[], bool ys[], int par_depth = 0);
-
-  /**
    * Evaluate comparison shares for the full domain from split correction words.
    *
    * Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride].
@@ -373,35 +290,6 @@ public:
       bool ys[], int par_depth = 0, size_t stride = 1);
 
   /**
-   * Build a parity tree on the GPU in caller-owned device storage.
-   *
-   * Called on a host-accessible instance. The PRG value is passed to the
-   * kernel; any resources it references must already be device-accessible.
-   * The PRG must support device execution and concurrent use.
-   * No allocation, upload, deep copy, or synchronization is performed.
-   * @tparam frontier_depth Frontier depth, capped at in_bits. Defaults to 16.
-   * @tparam threads_per_block Power-of-two block size in [1,1024], capped at
-   * the frontier width. Defaults to 256. At most eight tail levels may remain.
-   * The block-root depth is derived from these dimensions and must be at most 30.
-   * @param b Party index.
-   * @param s0 This party's initial seed, passed by value to the kernel.
-   * @param cws Device storage of at least in_bits+1 correction words.
-   * @param tree Device output of at least 2^(in_bits+1)-1 bool entries.
-   * Its array payload is (2*N-1) * sizeof(bool) bytes per party, where N = 2^in_bits.
-   * @param stream Stream on the device owning the referenced resources.
-   * @pre Tree element counts and byte counts fit size_t.
-   * @pre Buffers and backend resources remain valid until queued work completes.
-   * @return Immediate CUDA status. Invalid buffers or unaddressable counts
-   * return cudaErrorInvalidValue; oversized grids return cudaErrorInvalidConfiguration.
-   * Work remains asynchronous, and execution errors are observed on the stream.
-   */
-  template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t PreprocessGpu(bool b, int4 s0,
-      cuda::std::span<const Cw> cws, cuda::std::span<bool> tree,
-      cudaStream_t stream = 0) const
-    requires(in_bits < sizeof(size_t) * 8);
-
-  /**
    * Build a parity tree on the GPU from split device correction words.
    *
    * Layer l is read from cws[l*stride] and tr carries the right-control
@@ -426,34 +314,6 @@ public:
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t PreprocessGpu(bool b, int4 s0, cuda::std::span<const int4> cws,
       In tr, cuda::std::span<bool> tree, cudaStream_t stream = 0, size_t stride = 1) const
-    requires(in_bits < sizeof(size_t) * 8);
-
-  /**
-   * Evaluate all comparison shares on the GPU without building a parity tree.
-   *
-   * Follows the leaf-prefix route, the same route as EvalAll(). Per-party shares
-   * are not comparable across routes.
-   *
-   * The host instance passes its PRG value to the expansion kernel. Referenced
-   * backend resources must already be device-accessible and permit concurrent use.
-   * Temporary scan storage is queried, allocated, and released on stream.
-   * No backend upload, deep copy, synchronization, or event management occurs.
-   * @tparam frontier_depth Frontier depth, capped at in_bits. Defaults to 16.
-   * @tparam threads_per_block Power-of-two block size in [1,1024], capped at
-   * the frontier width. Defaults to 256. At most eight tail levels may remain.
-   * @param b Party index.
-   * @param s0 This party's seed, passed by value.
-   * @param cws Device storage of at least in_bits+1 correction words.
-   * @param ys Device output of at least 2^in_bits bool entries, in input order.
-   * @param stream Stream used for expansion, scanning, and temporary storage.
-   * @pre Buffers and referenced backend resources remain valid until work completes.
-   * @return The first immediate CUDA failure, including allocation or release.
-   * Invalid buffers/counts return cudaErrorInvalidValue. Work is asynchronous.
-   */
-  template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t EvalAllGpu(bool b, int4 s0,
-      cuda::std::span<const Cw> cws, cuda::std::span<bool> ys,
-      cudaStream_t stream = 0) const
     requires(in_bits < sizeof(size_t) * 8);
 
   /**
@@ -564,7 +424,6 @@ private:
 
 // -----------------------------------------------------------------------------
 
-
 namespace gpu::detail {
 
 template <int tree_depth, int frontier_depth, int threads_per_block>
@@ -611,77 +470,13 @@ inline cudaError_t GrottoUnpackGrid(size_t count, int threads, int &grid) {
   return cudaSuccess;
 }
 
-template <int input_bits, int frontier_depth, int block_root_depth, typename Dpf, typename Prg>
-__global__ void GrottoLeafBitsKernel(bool party, int4 s0, const typename Dpf::Cw *cws,
-    bool *leaves, Prg prg) {
-  constexpr int kTailDepth = input_bits - frontier_depth;
-  constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
-  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  __shared__ int4 shared_frontier[1 << kBlockSubtreeDepth];
-  if (threadIdx.x == 0) {
-    int4 state = util::SetLsb(s0, party);
-#pragma unroll
-    for (int level = 0; level < block_root_depth; ++level) {
-      bool take_right = (blockIdx.x >> (block_root_depth - 1 - level)) & 1;
-      auto node_prg = prg;
-      state = fss::detail::SchemeAccess::DpfPathStep<Dpf>(
-          node_prg, state, cws[level].s, cws[level].tr, take_right);
-    }
-    shared_frontier[0] = state;
-  }
-  __syncthreads();
-
-#pragma unroll
-  for (int level = 0; level < kBlockSubtreeDepth; ++level) {
-    const bool active = threadIdx.x < (1 << (level + 1));
-    int4 state = {0, 0, 0, 0};
-    if (active) state = shared_frontier[threadIdx.x >> 1];
-    __syncthreads();
-    if (active) {
-      int4 left, right;
-      {
-        auto node_prg = prg;
-        fss::detail::SchemeAccess::DpfExpandNode<Dpf>(node_prg, state,
-            cws[block_root_depth + level].s, cws[block_root_depth + level].tr, left, right);
-      }
-      shared_frontier[threadIdx.x] = (threadIdx.x & 1) ? right : left;
-    }
-    __syncthreads();
-  }
-
-  int4 nodes[1 << kTailDepth];
-  nodes[0] = shared_frontier[threadIdx.x];
-  int count = 1;
-#pragma unroll
-  for (int level = frontier_depth; level < input_bits; ++level) {
-#pragma unroll
-    for (int i = count - 1; i >= 0; --i) {
-      int4 left, right;
-      {
-        auto node_prg = prg;
-        fss::detail::SchemeAccess::DpfExpandNode<Dpf>(node_prg, nodes[i],
-            cws[level].s, cws[level].tr, left, right);
-      }
-      nodes[2 * i] = left;
-      nodes[2 * i + 1] = right;
-    }
-    count *= 2;
-  }
-
-  const size_t output_offset = static_cast<size_t>(thread_index) << kTailDepth;
-#pragma unroll
-  for (int i = 0; i < count; ++i) leaves[output_offset + i] = util::GetLsb(nodes[i]);
-}
-
-// Split-layout counterpart of GrottoLeafBitsKernel. The correction buffer
+// Split-layout leaf-bits kernel. The correction buffer
 // arrives type-erased and the boundary view reconstructs the per-layer Cw
 // entries, so the traversal stays identical on both paths.
 template <int input_bits, int frontier_depth, int block_root_depth, typename Dpf, typename Prg,
     typename Cws>
-__global__ void GrottoSplitLeafBitsKernel(bool party, int4 s0, const void *cws_buf,
-    typename Cws::Control packed_tr, size_t stride, bool *leaves, Prg prg) {
-  const auto *cws = static_cast<const int4 *>(cws_buf);
-  const Cws view{cws, packed_tr, stride};
+__device__ void GrottoSplitLeafBitsWork(bool party, int4 s0, const Cws &view, bool *leaves,
+    Prg prg) {
   constexpr int kTailDepth = input_bits - frontier_depth;
   constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
   const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -741,6 +536,26 @@ __global__ void GrottoSplitLeafBitsKernel(bool party, int4 s0, const void *cws_b
 #pragma unroll
   for (int i = 0; i < count; ++i) leaves[output_offset + i] = util::GetLsb(nodes[i]);
 }
+template <int input_bits, int frontier_depth, int block_root_depth, typename Dpf, typename Prg,
+    typename Cws>
+__global__ void GrottoSplitLeafBitsKernel(bool party, int4 s0, const void *cws_buf,
+    typename Cws::Control packed_tr, size_t stride, bool *leaves, Prg prg) {
+  const auto *cws = static_cast<const int4 *>(cws_buf);
+  GrottoSplitLeafBitsWork<input_bits, frontier_depth, block_root_depth, Dpf, Prg, Cws>(
+      party, s0, Cws{cws, packed_tr, stride}, leaves, prg);
+}
+
+// Device-key counterpart: the party seed and the packed control are loaded
+// from caller device storage; the shared traversal is unchanged.
+template <int input_bits, int frontier_depth, int block_root_depth, typename Dpf, typename Prg,
+    typename Cws>
+__global__ void GrottoSplitLeafBitsDeviceKeyKernel(bool party, const int4 *s0,
+    const void *cws_buf, const typename Cws::Control *tr, size_t stride, bool *leaves, Prg prg) {
+  const auto *cws = static_cast<const int4 *>(cws_buf);
+  GrottoSplitLeafBitsWork<input_bits, frontier_depth, block_root_depth, Dpf, Prg, Cws>(
+      party, s0[0], Cws{cws, tr[0], stride}, leaves, prg);
+}
+
 
 static __global__ void GrottoParityLevelKernel(bool *tree, size_t count) {
   size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -801,24 +616,11 @@ __host__ __device__ inline GrottoDcf<in_bits, Prg, In>::GrottoDcf(Prg prg)
 
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-__host__ __device__ inline void GrottoDcf<in_bits, Prg, In>::Gen(Cw cws[], const int4 s0s[2], In a) {
-  DpfType dpf{prg_};
-  dpf.Gen(cws, s0s, a, int4{0, 0, 0, 0});
-}
-
-template <int in_bits, typename Prg, typename In>
-  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 __host__ __device__ inline void GrottoDcf<in_bits, Prg, In>::Gen(cuda::std::span<int4> cws,
     In &tr, cuda::std::span<const int4, 2> s0s, In a, size_t stride) {
   // The key is the underlying DPF key, so the split layout is Dpf's and the
   // underlying generator owns the stride, span and control-bit packing guards.
   DpfType{prg_}.Gen(cws, tr, s0s, a, int4{0, 0, 0, 0}, stride);
-}
-
-template <int in_bits, typename Prg, typename In>
-  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-__host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::Eval(bool b, int4 s0, const Cw cws[], In x) {
-  return EvalCws(b, s0, cws, x);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -843,12 +645,6 @@ __host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::EvalCws(
   detail::GrottoTurns turns;
   int4 leaf = DpfType{prg_}.Walk(b, s0, cws, x, turns);
   return turns.PointLeaf(util::GetLsb(leaf));
-}
-
-template <int in_bits, typename Prg, typename In>
-  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-inline void GrottoDcf<in_bits, Prg, In>::Preprocess(bool b, int4 s0, const Cw cws[], bool p[], int par_depth) {
-  PreprocessCws(b, s0, cws, p, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -916,12 +712,6 @@ inline void GrottoDcf<in_bits, Prg, In>::EvalAll(ParityTreeView pt, bool ys[]) {
     prefix ^= pt.p[n - 1 + x];
     ys[x] = prefix;
   }
-}
-
-template <int in_bits, typename Prg, typename In>
-  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-inline void GrottoDcf<in_bits, Prg, In>::EvalAll(bool b, int4 s0, const Cw cws[], bool ys[], int par_depth) {
-  EvalAllCws(b, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -1039,38 +829,6 @@ template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 template <int frontier_depth, int threads_per_block>
 __host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::PreprocessGpu(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
-    cuda::std::span<bool> tree, cudaStream_t stream) const
-  requires(in_bits < sizeof(size_t) * 8) {
-#if defined(__CUDACC__)
-  using LaunchShape = gpu::detail::GrottoGpuLaunchShape<in_bits, frontier_depth, threads_per_block>;
-  constexpr size_t kLeaves = size_t{1} << in_bits;
-  constexpr size_t kTreeSize = kLeaves + (kLeaves - 1);
-  if (!detail::FitsBinaryTree<bool, in_bits>() || cws.size() < in_bits + 1 ||
-      tree.size() < kTreeSize || cws.data() == nullptr || tree.data() == nullptr)
-    return cudaErrorInvalidValue;
-  constexpr size_t kParityWidth = kLeaves / 2;
-  constexpr size_t kParityBlocks = kParityWidth / LaunchShape::kThreadsPerBlock +
-      (kParityWidth % LaunchShape::kThreadsPerBlock != 0);
-  if (kParityBlocks > static_cast<size_t>(std::numeric_limits<int>::max()))
-    return cudaErrorInvalidConfiguration;
-  gpu::detail::GrottoLeafBitsKernel<in_bits, LaunchShape::kFrontierDepth,
-      LaunchShape::kBlockRootDepth, DpfType>
-      <<<LaunchShape::kBlocks, LaunchShape::kThreadsPerBlock, 0, stream>>>(
-          b, s0, cws.data(), tree.data() + kLeaves - 1, prg_);
-  cudaError_t status = cudaGetLastError();
-  if (status != cudaSuccess) return status;
-  return gpu::detail::BuildGrottoParityTree<in_bits, LaunchShape>(tree.data(), stream);
-#else
-  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
-  return cudaErrorNotSupported;
-#endif
-}
-
-template <int in_bits, typename Prg, typename In>
-  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <int frontier_depth, int threads_per_block>
-__host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::PreprocessGpu(
     bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<bool> tree, cudaStream_t stream, size_t stride) const
   requires(in_bits < sizeof(size_t) * 8) {
@@ -1096,43 +854,6 @@ __host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::PreprocessGpu(
   cudaError_t status = cudaGetLastError();
   if (status != cudaSuccess) return status;
   return gpu::detail::BuildGrottoParityTree<in_bits, LaunchShape>(tree.data(), stream);
-#else
-  static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
-  return cudaErrorNotSupported;
-#endif
-}
-
-
-template <int in_bits, typename Prg, typename In>
-  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-template <int frontier_depth, int threads_per_block>
-__host__ inline cudaError_t GrottoDcf<in_bits, Prg, In>::EvalAllGpu(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
-    cuda::std::span<bool> ys, cudaStream_t stream) const
-  requires(in_bits < sizeof(size_t) * 8) {
-#if defined(__CUDACC__)
-  using LaunchShape = gpu::detail::GrottoGpuLaunchShape<in_bits, frontier_depth, threads_per_block>;
-  constexpr size_t kOutputs = size_t{1} << in_bits;
-  if (!detail::FitsFullDomain<bool, in_bits>() ||
-      kOutputs > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-      cws.size() < in_bits + 1 || ys.size() < kOutputs ||
-      cws.data() == nullptr || ys.data() == nullptr) return cudaErrorInvalidValue;
-  size_t bytes = 0;
-  cudaError_t status = cub::DeviceScan::InclusiveScan(nullptr, bytes,
-      ys.data(), ys.data(), gpu::detail::GrottoGpuBoolXor{}, static_cast<int64_t>(kOutputs), stream);
-  if (status != cudaSuccess) return status;
-  gpu::detail::DeviceScratch scan_storage(stream);
-  status = scan_storage.Allocate<unsigned char>(bytes == 0 ? 1 : bytes);
-  if (status != cudaSuccess) return status;
-  gpu::detail::GrottoLeafBitsKernel<in_bits, LaunchShape::kFrontierDepth,
-      LaunchShape::kBlockRootDepth, DpfType>
-      <<<LaunchShape::kBlocks, LaunchShape::kThreadsPerBlock, 0, stream>>>(
-          b, s0, cws.data(), ys.data(), prg_);
-  status = cudaGetLastError();
-  if (status != cudaSuccess) return status;
-  status = cub::DeviceScan::InclusiveScan(scan_storage.Get<unsigned char>(), bytes,
-      ys.data(), ys.data(), gpu::detail::GrottoGpuBoolXor{}, static_cast<int64_t>(kOutputs), stream);
-  return gpu::detail::ReleaseScratch(status, {&scan_storage});
 #else
   static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
   return cudaErrorNotSupported;
@@ -1211,13 +932,6 @@ inline OwnedParityTree<Scheme>::OwnedParityTree(std::unique_ptr<bool[]> p)
 template <typename Scheme>
 inline typename Scheme::ParityTreeView OwnedParityTree<Scheme>::View() const & {
   return {p_.get()};
-}
-
-template <int in_bits, typename Prg, typename In>
-  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
-inline OwnedParityTree<GrottoDcf<in_bits, Prg, In>> GrottoDcf<in_bits, Prg, In>::PreprocessOwned(
-    bool b, int4 s0, const Cw cws[], int par_depth) {
-  return PreprocessOwnedCws(b, s0, cws, par_depth);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -1355,6 +1069,72 @@ void GrottoDcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std:
     throw std::invalid_argument("GrottoDcfEvalPointGpu: seeds, tr, xs, and ys must cover nkeys entries");
   GrottoDcfEvalPointLaunch<unroll, in_bits, Prg, In, Query>(b, seeds.data(), cws.data(), tr.data(), xs.data(), ys,
       nkeys, fss::detail::SchemeAccess::GetPrg(dcf), stream);
+}
+
+// Host launchers for the device-key kernels. The Prg arrives by value from a
+// host mirror of the device scheme, matching the public launch methods.
+template <int in_bits, typename Prg, typename In, int frontier_depth = 16,
+    int threads_per_block = 256>
+__host__ inline cudaError_t GrottoPreprocessGpuDeviceKey(bool b, const int4 *s0,
+    const int4 *cws, size_t cws_count, const In *tr, size_t stride, bool *tree,
+    size_t tree_count, const Prg &prg, cudaStream_t stream) {
+  using LaunchShape = GrottoGpuLaunchShape<in_bits, frontier_depth, threads_per_block>;
+  using DpfType = fss::Dpf<in_bits, fss::group::Bytes, Prg, In>;
+  using CwsView = fss::detail::GrottoDcfCwsView<typename DpfType::Cw, In>;
+  constexpr size_t kLeaves = size_t{1} << in_bits;
+  constexpr size_t kTreeSize = kLeaves + (kLeaves - 1);
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  if (!fss::detail::FitsBinaryTree<bool, in_bits>() || stride == 0 ||
+      stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws_count < static_cast<size_t>(in_bits) * stride + 1 ||
+      tree_count < kTreeSize || s0 == nullptr || cws == nullptr || tr == nullptr ||
+      tree == nullptr) return cudaErrorInvalidValue;
+  constexpr size_t kParityWidth = kLeaves / 2;
+  constexpr size_t kParityBlocks = kParityWidth / LaunchShape::kThreadsPerBlock +
+      (kParityWidth % LaunchShape::kThreadsPerBlock != 0);
+  if (kParityBlocks > static_cast<size_t>(std::numeric_limits<int>::max()))
+    return cudaErrorInvalidConfiguration;
+  GrottoSplitLeafBitsDeviceKeyKernel<in_bits, LaunchShape::kFrontierDepth,
+      LaunchShape::kBlockRootDepth, DpfType, Prg, CwsView>
+      <<<LaunchShape::kBlocks, LaunchShape::kThreadsPerBlock, 0, stream>>>(
+          b, s0, cws, tr, stride, tree + kLeaves - 1, prg);
+  cudaError_t status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  return BuildGrottoParityTree<in_bits, LaunchShape>(tree, stream);
+}
+
+template <int in_bits, typename Prg, typename In, int frontier_depth = 16,
+    int threads_per_block = 256>
+__host__ inline cudaError_t GrottoEvalAllGpuDeviceKey(bool b, const int4 *s0,
+    const int4 *cws, size_t cws_count, const In *tr, size_t stride, bool *ys,
+    size_t ys_count, const Prg &prg, cudaStream_t stream) {
+  using LaunchShape = GrottoGpuLaunchShape<in_bits, frontier_depth, threads_per_block>;
+  using DpfType = fss::Dpf<in_bits, fss::group::Bytes, Prg, In>;
+  using CwsView = fss::detail::GrottoDcfCwsView<typename DpfType::Cw, In>;
+  constexpr size_t kOutputs = size_t{1} << in_bits;
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  if (!fss::detail::FitsFullDomain<bool, in_bits>() || stride == 0 ||
+      stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      kOutputs > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+      cws_count < static_cast<size_t>(in_bits) * stride + 1 || ys_count < kOutputs ||
+      s0 == nullptr || cws == nullptr || tr == nullptr || ys == nullptr)
+    return cudaErrorInvalidValue;
+  size_t bytes = 0;
+  cudaError_t status = cub::DeviceScan::InclusiveScan(nullptr, bytes,
+      ys, ys, gpu::detail::GrottoGpuBoolXor{}, static_cast<int64_t>(kOutputs), stream);
+  if (status != cudaSuccess) return status;
+  DeviceScratch scan_storage(stream);
+  status = scan_storage.Allocate<unsigned char>(bytes == 0 ? 1 : bytes);
+  if (status != cudaSuccess) return status;
+  GrottoSplitLeafBitsDeviceKeyKernel<in_bits, LaunchShape::kFrontierDepth,
+      LaunchShape::kBlockRootDepth, DpfType, Prg, CwsView>
+      <<<LaunchShape::kBlocks, LaunchShape::kThreadsPerBlock, 0, stream>>>(
+          b, s0, cws, tr, stride, ys, prg);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  status = cub::DeviceScan::InclusiveScan(scan_storage.Get<unsigned char>(), bytes,
+      ys, ys, gpu::detail::GrottoGpuBoolXor{}, static_cast<int64_t>(kOutputs), stream);
+  return ReleaseScratch(status, {&scan_storage});
 }
 
 #endif  // defined(__CUDACC__)

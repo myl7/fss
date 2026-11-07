@@ -11,7 +11,8 @@ class PackedHalfTreeDpf(_Scheme):
     ``instance_seed`` supplies the four 32-bit words of S. int4 storage uses
     contiguous ``torch.int32`` tensors with a final dimension of four words.
     ``s0s`` contains two blocks and ``s0`` contains one. Allocate ``cws`` as a
-    contiguous uint8 tensor with ``cws_shape``, including the terminal correction word.
+    contiguous uint8 tensor with ``cws_shape``: 16-byte component rows holding
+    the seed and packed-output corrections, including the terminal.
     Full-domain output retains exactly ``2**kDepth`` packed int4 blocks.
     """
 

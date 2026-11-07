@@ -57,27 +57,29 @@ int main() {
   }
 
   // Key generation (done by a trusted dealer)
-  HtDpf::Cw cws[kInBits + 1];
-  dpf.Gen(cws, seeds, alpha, beta);
+  int4 cws[kInBits + 1];
+  In tr = 0;
+  dpf.Gen(cuda::std::span<int4>(cws, kInBits + 1), tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
 
   // Evaluation
   int4 zero = {0, 0, 0, 0};
-  int4 y0 = dpf.Eval(false, seeds[0], cws, alpha);
-  int4 y1 = dpf.Eval(true, seeds[1], cws, alpha);
+  int4 y0 = dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, alpha);
+  int4 y1 = dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, alpha);
   int4 sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
 
   In x = 100;
-  y0 = dpf.Eval(false, seeds[0], cws, x);
-  y1 = dpf.Eval(true, seeds[1], cws, x);
+  y0 = dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, x);
+  y1 = dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, x);
   sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, Equal(sum, zero) ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
   int4 ys1[1 << kInBits];
-  dpf.EvalAll(false, seeds[0], cws, ys0);
-  dpf.EvalAll(true, seeds[1], cws, ys1);
+  dpf.EvalAll(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, ys0);
+  dpf.EvalAll(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, ys1);
 
   int mismatches = 0;
   for (int i = 0; i < (1 << kInBits); ++i) {

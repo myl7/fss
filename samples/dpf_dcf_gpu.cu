@@ -39,7 +39,22 @@ constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
 // --- DPF Kernels ---
 
-__global__ void DpfGenKernel(Dpf::Key *k0s, Dpf::Key *k1s, const int4 *seeds, const In *alphas, const int4 *betas) {
+// True when the scheme's correction words carry a separate group-value word
+// (DCF); its component Gen and evaluation calls take the second array.
+template <typename Scheme>
+inline constexpr bool kHasValueWords = requires { std::declval<typename Scheme::Cw &>().v; };
+
+// A device-resident key in the split layout: correction words plus the packed
+// control value.
+template <int Bits, typename Input>
+struct DeviceKey {
+  int4 cws[Bits + 1];
+  Input tr;
+  int4 s0;
+};
+
+__global__ void DpfGenKernel(DeviceKey<kInBits, In> *k0s, DeviceKey<kInBits, In> *k1s,
+    const int4 *seeds, const In *alphas, const int4 *betas) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
@@ -47,25 +62,38 @@ __global__ void DpfGenKernel(Dpf::Key *k0s, Dpf::Key *k1s, const int4 *seeds, co
   Dpf dpf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  dpf.Gen(k0s[tid].cws, s, alphas[tid], betas[tid]);
+  dpf.Gen(cuda::std::span<int4>(k0s[tid].cws, kInBits + 1), k0s[tid].tr,
+      cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
   k0s[tid].s0 = s[0];
   k1s[tid].s0 = s[1];
+  k1s[tid].tr = k0s[tid].tr;
   for (int i = 0; i <= kInBits; ++i) k1s[tid].cws[i] = k0s[tid].cws[i];
 }
 
-__global__ void DpfEvalKernel(int4 *ys, bool party, const Dpf::Key *keys, const In *xs) {
+__global__ void DpfEvalKernel(int4 *ys, bool party, const DeviceKey<kInBits, In> *keys, const In *xs) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
   DpfPrg prg(kNonce0, kNonce1);
   Dpf dpf{prg};
 
-  ys[tid] = dpf.Eval(party, keys[tid].s0, keys[tid].cws, xs[tid]);
+  ys[tid] = dpf.Eval(party, keys[tid].s0, cuda::std::span<const int4>(keys[tid].cws, kInBits + 1),
+      keys[tid].tr, xs[tid]);
 }
 
 // --- DCF Kernels ---
 
-__global__ void DcfGenKernel(Dcf::Key *k0s, Dcf::Key *k1s, const int4 *seeds, const In *alphas, const int4 *betas) {
+// A DCF device key adds the value components after the seed components.
+template <int Bits, typename Input>
+struct DcfDeviceKey {
+  int4 cws[Bits + 1];
+  int4 vws[Bits + 1];
+  Input tr;
+  int4 s0;
+};
+
+__global__ void DcfGenKernel(DcfDeviceKey<kInBits, In> *k0s, DcfDeviceKey<kInBits, In> *k1s,
+    const int4 *seeds, const In *alphas, const int4 *betas) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
@@ -73,20 +101,27 @@ __global__ void DcfGenKernel(Dcf::Key *k0s, Dcf::Key *k1s, const int4 *seeds, co
   Dcf dcf{prg};
 
   int4 s[2] = {seeds[tid * 2], seeds[tid * 2 + 1]};
-  dcf.Gen(k0s[tid].cws, s, alphas[tid], betas[tid]);
+  dcf.Gen(cuda::std::span<int4>(k0s[tid].cws, kInBits + 1),
+      cuda::std::span<int4>(k0s[tid].vws, kInBits + 1), k0s[tid].tr,
+      cuda::std::span<const int4, 2>(s, 2), alphas[tid], betas[tid]);
   k0s[tid].s0 = s[0];
   k1s[tid].s0 = s[1];
-  for (int i = 0; i <= kInBits; ++i) k1s[tid].cws[i] = k0s[tid].cws[i];
+  k1s[tid].tr = k0s[tid].tr;
+  for (int i = 0; i <= kInBits; ++i) {
+    k1s[tid].cws[i] = k0s[tid].cws[i];
+    k1s[tid].vws[i] = k0s[tid].vws[i];
+  }
 }
 
-__global__ void DcfEvalKernel(int4 *ys, bool party, const Dcf::Key *keys, const In *xs) {
+__global__ void DcfEvalKernel(int4 *ys, bool party, const DcfDeviceKey<kInBits, In> *keys, const In *xs) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= kN) return;
 
   DcfPrg prg(kNonce0, kNonce1);
   Dcf dcf{prg};
 
-  ys[tid] = dcf.Eval(party, keys[tid].s0, keys[tid].cws, xs[tid]);
+  ys[tid] = dcf.Eval(party, keys[tid].s0, cuda::std::span<const int4>(keys[tid].cws, kInBits + 1),
+      cuda::std::span<const int4>(keys[tid].vws, kInBits + 1), keys[tid].tr, xs[tid]);
 }
 
 // --- Host helpers ---
@@ -137,10 +172,11 @@ static void DpfSample() {
   In *d_xs = ToDevice(h_xs, kN);
 
   // Allocate output buffers
-  Dpf::Key *d_k0s, *d_k1s;
+  using DpfKey = DeviceKey<kInBits, In>;
+  DpfKey *d_k0s, *d_k1s;
   int4 *d_ys;
-  CUDA_CHECK(cudaMalloc(&d_k0s, sizeof(Dpf::Key) * kN));
-  CUDA_CHECK(cudaMalloc(&d_k1s, sizeof(Dpf::Key) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k0s, sizeof(DpfKey) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k1s, sizeof(DpfKey) * kN));
   CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * kN));
 
   int blocks = (kN + kThreadsPerBlock - 1) / kThreadsPerBlock;
@@ -209,10 +245,11 @@ static void DcfSample() {
   In *d_xs = ToDevice(h_xs, kN);
 
   // Allocate output buffers
-  Dcf::Key *d_k0s, *d_k1s;
+  using DcfKey = DcfDeviceKey<kInBits, In>;
+  DcfKey *d_k0s, *d_k1s;
   int4 *d_ys;
-  CUDA_CHECK(cudaMalloc(&d_k0s, sizeof(Dcf::Key) * kN));
-  CUDA_CHECK(cudaMalloc(&d_k1s, sizeof(Dcf::Key) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k0s, sizeof(DcfKey) * kN));
+  CUDA_CHECK(cudaMalloc(&d_k1s, sizeof(DcfKey) * kN));
   CUDA_CHECK(cudaMalloc(&d_ys, sizeof(int4) * kN));
 
   int blocks = (kN + kThreadsPerBlock - 1) / kThreadsPerBlock;
@@ -263,29 +300,57 @@ static void FullDomainSample(Scheme scheme, const char *name, bool comparison) {
     fprintf(stderr, "seed generation failed\n");
     exit(1);
   }
-  typename Scheme::Cw cws[kKeys][kCwPerKey];
+  // The batch entry consumes the dense level-major layout: layer i of key k is
+  // cws[i * kKeys + k], with the packed control per key in trs[k].
+  int4 cws[kKeys][kCwPerKey];
+  int4 vws[kKeys][kCwPerKey];
+  In trs[kKeys];
   int4 party0[kKeys], party1[kKeys];
   const int4 beta = {7, 0, 0, 0};
   for (int i = 0; i < kKeys; ++i) {
-    scheme.Gen(cws[i], seeds[i], static_cast<In>(42 + i), beta);
+    if constexpr (kHasValueWords<Scheme>) {
+      scheme.Gen(cuda::std::span<int4>(cws[i], kCwPerKey), cuda::std::span<int4>(vws[i], kCwPerKey),
+          trs[i], cuda::std::span<const int4, 2>(seeds[i], 2), static_cast<In>(42 + i), beta, kKeys);
+    } else {
+      scheme.Gen(cuda::std::span<int4>(cws[i], kCwPerKey), trs[i],
+          cuda::std::span<const int4, 2>(seeds[i], 2), static_cast<In>(42 + i), beta, kKeys);
+    }
     party0[i] = seeds[i][0];
     party1[i] = seeds[i][1];
   }
   auto *device_cws = ToDevice(&cws[0][0], kKeys * kCwPerKey);
+  auto *device_vws = ToDevice(&vws[0][0], kKeys * kCwPerKey);
+  auto *device_trs = ToDevice(trs, kKeys);
   auto *device_seeds = ToDevice(party0, kKeys);
   int4 *device_y0, *device_y1;
   CUDA_CHECK(cudaMalloc(&device_y0, kKeys * kOutputs * sizeof(int4)));
   CUDA_CHECK(cudaMalloc(&device_y1, kKeys * kOutputs * sizeof(int4)));
 
-  // Cws and outputs are key-major; the party is shared by the batch.
-  CUDA_CHECK(scheme.EvalAllGpuBatch(false,
-      cuda::std::span<const int4>(device_seeds, kKeys),
-      cuda::std::span<const typename Scheme::Cw>(device_cws, kKeys * kCwPerKey),
-      cuda::std::span<int4>(device_y0, kKeys * kOutputs)));
-  for (int i = 0; i < kKeys; ++i) {
-    CUDA_CHECK(scheme.EvalAllGpu(true, party1[i],
-        cuda::std::span<const typename Scheme::Cw>(device_cws + i * kCwPerKey, kCwPerKey),
-        cuda::std::span<int4>(device_y1 + i * kOutputs, kOutputs)));
+  // Outputs are key-major; the party is shared by the batch.
+  if constexpr (kHasValueWords<Scheme>) {
+    CUDA_CHECK(scheme.EvalAllGpuBatch(false,
+        cuda::std::span<const int4>(device_seeds, kKeys),
+        cuda::std::span<const int4>(device_cws, kKeys * kCwPerKey),
+        cuda::std::span<const int4>(device_vws, kKeys * kCwPerKey),
+        cuda::std::span<const In>(device_trs, kKeys),
+        cuda::std::span<int4>(device_y0, kKeys * kOutputs), 0, kKeys));
+    for (int i = 0; i < kKeys; ++i) {
+      CUDA_CHECK(scheme.EvalAllGpu(true, party1[i],
+          cuda::std::span<const int4>(device_cws + i, kKeys * kCwPerKey - i),
+          cuda::std::span<const int4>(device_vws + i, kKeys * kCwPerKey - i), trs[i],
+          cuda::std::span<int4>(device_y1 + i * kOutputs, kOutputs), 0, kKeys));
+    }
+  } else {
+    CUDA_CHECK(scheme.EvalAllGpuBatch(false,
+        cuda::std::span<const int4>(device_seeds, kKeys),
+        cuda::std::span<const int4>(device_cws, kKeys * kCwPerKey),
+        cuda::std::span<const In>(device_trs, kKeys),
+        cuda::std::span<int4>(device_y0, kKeys * kOutputs), 0, kKeys));
+    for (int i = 0; i < kKeys; ++i) {
+      CUDA_CHECK(scheme.EvalAllGpu(true, party1[i],
+          cuda::std::span<const int4>(device_cws + i, kKeys * kCwPerKey - i), trs[i],
+          cuda::std::span<int4>(device_y1 + i * kOutputs, kOutputs), 0, kKeys));
+    }
   }
   CUDA_CHECK(cudaDeviceSynchronize());
   std::vector<int4> y0(kKeys * kOutputs), y1(kKeys * kOutputs);

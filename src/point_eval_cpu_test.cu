@@ -131,11 +131,11 @@ bool RunDpfEquivalence(In alpha, uint64_t tag) {
   int4 s0s[2] = {MakeSeed(gen), MakeSeed(gen)};
   Prg prg = MakePrg<Prg>();
   fss::Dpf<in_bits, Group, Prg, In> dpf{prg};
-  typename fss::Dpf<in_bits, Group, Prg, In>::Key k0, k1;
+  fss_test::ComponentKey<fss::Dpf<in_bits, Group, Prg, In>, In> k0, k1;
   int4 b_buf = MakeBBuf();
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
-  const fss::detail::cpu::DpfPointKey<in_bits> pk0 = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k0);
-  const fss::detail::cpu::DpfPointKey<in_bits> pk1 = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k1);
+  const fss::detail::cpu::DpfPointKey<in_bits> pk0 = fss::detail::cpu::DpfPackPoint<in_bits>(k0);
+  const fss::detail::cpu::DpfPointKey<in_bits> pk1 = fss::detail::cpu::DpfPackPoint<in_bits>(k1);
 
   const int4 beta_g = Group::From(b_buf).Into();
   const int4 zero = {0, 0, 0, 0};
@@ -171,11 +171,11 @@ bool RunHalfTreeEquivalence(In alpha, uint64_t tag) {
   Prg prg = MakePrg<Prg>();
   auto hash = fss_test::Ccr(prg);
   fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<Prg>, In> dpf{hash, hash_key};
-  typename fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<Prg>, In>::Key k0, k1;
+  fss_test::ComponentKey<fss::HalfTreeDpf<in_bits, Group, fss_test::CcrBackend<Prg>, In>, In> k0, k1;
   int4 b_buf = MakeBBuf();
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), alpha, b_buf);
-  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk0 = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(k0);
-  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk1 = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(k1);
+  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk0 = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits>(k0);
+  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk1 = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits>(k1);
 
   const int4 beta_g = Group::From(b_buf).Into();
   const int4 zero = {0, 0, 0, 0};
@@ -263,9 +263,9 @@ void TimeDpfPoint(int iters) {
   DpfType dpf{prg};
   int4 s0s[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444440},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType, In> k0, k1;
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), 42, MakeBBuf());
-  const fss::detail::cpu::DpfPointKey<in_bits> pk = fss::detail::cpu::DpfPackPoint<in_bits, Group, Prg, In>(k0);
+  const fss::detail::cpu::DpfPointKey<in_bits> pk = fss::detail::cpu::DpfPackPoint<in_bits>(k0);
   In x = 100;
 
   int4 acc = {0, 0, 0, 0};
@@ -309,9 +309,9 @@ void TimeHalfTreeDpfPoint(int iters) {
   DpfType dpf{hash, hash_key};
   int4 s0s[2] = {{0x11111111, 0x22222222, 0x33333333, 0x44444440},
       {0x55555555, 0x66666666, 0x77777777, static_cast<int>(0x88888880u)}};
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType, In> k0, k1;
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), 42, MakeBBuf());
-  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits, Group, fss_test::CcrBackend<Prg>, In>(k0);
+  const fss::detail::cpu::HalfTreeDpfPointKey<in_bits> pk = fss::detail::cpu::HalfTreeDpfPackPoint<in_bits>(k0);
   In x = 100;
 
   int4 acc = {0, 0, 0, 0};

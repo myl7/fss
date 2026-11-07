@@ -132,17 +132,10 @@ public:
   // For only 1 and aligned memory access on GPU
   static_assert(sizeof(Cw) == 32);
 
-  /**
-   * A party's key: combined tree and output correction words, correction seeds, and its initial seed.
-   * Both parties share the same cws and cs and differ in the seed.
-   *
-   * @ingroup fss_api
-   */
-  struct Key {
-    Cw cws[in_bits + 1];  ///< Tree correction words followed by the output correction word in the final s field.
-    int4 cs[4];  ///< Shared correction seed for verifiable evaluation.
-    int4 s0;  ///< This party's initial seed.
-  };
+  /// Seed-component count Gen() writes at stride 1: in_bits layers plus the terminal.
+  static constexpr int kCwCount = in_bits + 1;
+
+  using Input = In;  ///< The caller-facing input-domain type.
 
   /**
    * Construct a scheme with configured backends.
@@ -154,46 +147,22 @@ public:
   __host__ __device__ explicit Vdpf(Prg prg, XorHash xor_hash, Hash hash);
 
   /**
-   * Generate shared correction words in one attempt without modifying the seeds.
+   * Generate correction words in a caller-strided layout and packed control bits.
    *
-   * @param cws Pre-allocated array of Cw as returns. The array size must be in_bits + 1, including the output correction word.
-   * @param cs Correction seed output ($4\lambda$ bits).
-   * @param s0s Two independent uniformly random initial seed blocks from a
-   * cryptographically secure random generator. Gen clears their control bits
-   * internally without modifying this input storage.
-   * @param a Secret point in [0, 2^in_bits).
-   * @param b_buf Payload, clamped and converted to the group element.
+   * Layer i is stored at cws[i*stride] and the terminal at cws[in_bits*stride].
+   * tr receives root-order packed right-control bits: bit 0 is the root layer,
+   * bit i belongs to layer i, and bits at or above in_bits are zero.
+   * The layer LSB keeps the left-control correction.
+   * The terminal is stored unchanged as a plain int4.
+   * The default stride of 1 stores the correction words contiguously.
    *
    * @par Retrying a failed attempt
    * On return 1, draw two fresh independent uniformly random seed blocks from
    * a cryptographically secure random generator, replace both s0s entries, and
    * call Gen again with the same a and b_buf. Incrementing seed words is not
    * resampling. The caller chooses the attempt limit and handles exhaustion.
-   * Reuse of the output buffers is allowed, but discard all cws and cs values
-   * from a failed attempt. Only outputs from a successful call form a key.
-   *
-   * @return 0 on success, 1 if cs is all zeros or $t_0 = t_1$ at the end (caller should resample seeds and retry).
-   * @post The input seeds are unchanged. Correction-word outputs are unspecified on failure.
-   *
-   * The key for party i consists of cws + cs + s0s[i].
-   * cws[in_bits].s holds the output correction word and cws[in_bits].tr is false.
-   * Evaluation ignores that final tr bit.
-   */
-  __host__ __device__ int Gen(
-      Cw cws[], cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf);
-
-  /**
-   * Generate correction words in a caller-strided layout and packed control bits.
-   *
-   * Layer i is stored at cws[i*stride] and the terminal at cws[in_bits*stride].
-   * tr receives root-order packed right-control bits: bit 0 is the root layer,
-   * bit i belongs to layer i, and bits at or above in_bits are zero.
-   * The layer LSB keeps the left-control correction exactly as the Cw form does.
-   * The terminal is stored unchanged as a plain int4.
-   * The default stride of 1 stores the correction words contiguously.
-   *
-   * @par Retrying a failed attempt
-   * See Gen(Cw[], ...).
+   * Reuse of the output buffers is allowed, but discard all cws, tr, and cs
+   * values from a failed attempt. Only outputs from a successful call form a key.
    *
    * @param cws Output storage; its capacity includes in_bits*stride+1 elements.
    * @param tr Output packed right-control bits, with unused bits zero.
@@ -221,21 +190,6 @@ public:
    */
   __host__ __device__ int Gen(cuda::std::span<int4> cws, In &tr, cuda::std::span<int4, 4> cs,
       cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride = 1);
-
-  /**
-   * Evaluate one input from a caller-owned key.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
-   * @param cs Shared correction seed returned by Gen().
-   * @param x Input in the scheme's domain.
-   * @param y Output share for this input.
-   * @return Corrected per-point hash for Prove() or ProveMerkle().
-   * @pre The four cs blocks are not jointly all zero.
-   */
-  __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0, cuda::std::span<const Cw> cws,
-      cuda::std::span<const int4, 4> cs, In x, int4 &y);
 
   /**
    * Evaluate one input from separate correction components.
@@ -295,58 +249,73 @@ public:
   __host__ __device__ static bool Verify(cuda::std::span<const int4, 4> pi0, cuda::std::span<const int4, 4> pi1);
 
   /**
-   * Evaluate the full domain and produce a chain proof from a caller-owned key.
+   * Evaluate the full domain and produce a chain proof from split correction words.
    *
-   * The tree traversal supports OpenMP. Zero runs sequentially, and
-   * positive depths split the traversal into 2^par_depth subtrees.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cws Correction words, layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
    * @param cs Shared correction seed returned by Gen().
    * @param ys Output shares in input order, with at least 2^in_bits entries.
    * @param pi Borrowed output storage for four chain-proof blocks.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
+   * @param stride Positive element stride between correction-word entries.
    * @pre The full-domain output count and byte size fit size_t.
    * @pre The four cs blocks are not jointly all zero.
-   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
-   * Debug builds and is undefined behavior in Release builds.
-   * @throws std::invalid_argument if cws is shorter than in_bits+1 or ys is too
-   * short.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds before any traversal and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if stride is zero or too large, cws is shorter
+   * than in_bits*stride+1, or ys is too short.
    */
-  void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws,
-      cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
+  void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
+      cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
+      int par_depth = 0, size_t stride = 1);
 
   /**
-   * Evaluate the inclusive range [first, last] and produce a chain proof.
+   * Evaluate the inclusive range [first, last] and produce a chain proof from
+   * split correction words.
    *
    * Under the VDPF security assumptions, successful verification guarantees
    * at most one nonzero reconstructed output within this range, except with
    * negligible probability. It makes no guarantee outside the range.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    *
    * @param b Party index, false for party 0 and true for party 1.
    * @param first First input, included in evaluation.
    * @param last Last input, included in evaluation.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cws Correction words, layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
    * @param cs Shared correction seed returned by Gen().
    * @param ys Output shares in input order, with at least last - first + 1 entries.
    * @param pi Borrowed output storage for four chain-proof blocks for this range.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
+   * @param stride Positive element stride between correction-word entries.
    * @pre first <= last < 2^in_bits. The range output count and byte size fit size_t.
    * A small range is supported even when the full input domain cannot be
    * materialized in addressable storage.
    * @pre The four cs blocks are not jointly all zero.
-   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
-   * Debug builds and is undefined behavior in Release builds.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds before any traversal and is undefined behavior in Release builds.
    * @throws std::invalid_argument if first > last, last is outside the input
-   * domain, the interval does not fit size_t, cws is shorter than in_bits+1,
-   * or ys is too short.
+   * domain, the interval does not fit size_t, stride is zero or too large,
+   * cws is shorter than in_bits*stride+1, or ys is too short.
    */
-  void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
-      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
+  void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws,
+      In tr, cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
+      cuda::std::span<int4, 4> pi, int par_depth = 0, size_t stride = 1);
 
   /**
    * Proof accumulation method (Merkle fold).
@@ -371,7 +340,8 @@ public:
       cuda::std::span<int4, 4> pi, int par_depth = 0);
 
   /**
-   * Evaluate an arbitrary ordered query sequence and produce a chain proof.
+   * Evaluate an arbitrary ordered query sequence and produce a chain proof from
+   * split correction words.
    *
    * One call over xs: Eval() for every input in the order given, then Prove()
    * over the corrected per-point hashes in the same order. The result is
@@ -394,25 +364,33 @@ public:
    * Any verification guarantee is restricted to the evaluated input values
    * and requires the scheme's security assumptions.
    * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    *
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
    * @pre The four cs blocks are not jointly all zero.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cws Correction words, layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
    * @param cs Shared correction seed returned by Gen().
    * @param xs Ordered input sequence; it may be sparse, unsorted, and contain duplicates.
    * @param ys Output shares in xs order, with at least xs.size() entries.
    * @param pi Borrowed output storage for four chain-proof blocks.
-   * @throws std::invalid_argument if cws is shorter than in_bits+1, xs is
-   * empty, or ys is too short.
+   * @param stride Positive element stride between correction-word entries.
+   * @throws std::invalid_argument if stride is zero or too large, cws is shorter
+   * than in_bits*stride+1, xs is empty, or ys is too short.
    */
-  void BatchEval(bool b, int4 s0, cuda::std::span<const Cw> cws,
+  void BatchEval(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
       cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
-      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi);
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, size_t stride = 1);
 
   /**
-   * Evaluate an arbitrary ordered query sequence and produce a Merkle proof.
+   * Evaluate an arbitrary ordered query sequence and produce a Merkle proof from
+   * split correction words.
    *
    * Same evaluation and ordering contract as BatchEval(), with the proof coming
    * from ProveMerkle() over the corrected per-point hashes in xs order:
@@ -436,58 +414,78 @@ public:
    * and requires the scheme's security assumptions.
    * See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits.
    * Each occurrence of a repeated input contributes its own leaf.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    *
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
    * @pre The four cs blocks are not jointly all zero.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cws Correction words, layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
    * @param cs Shared correction seed returned by Gen().
    * @param xs Ordered input sequence; it may be sparse, unsorted, and contain duplicates.
    * @param ys Output shares in xs order, with at least xs.size() entries.
    * @param pi Borrowed output storage for four Merkle-proof blocks.
-   * @throws std::invalid_argument if cws is shorter than in_bits+1, xs is
-   * empty, or ys is too short.
+   * @param stride Positive element stride between correction-word entries.
+   * @throws std::invalid_argument if stride is zero or too large, cws is shorter
+   * than in_bits*stride+1, xs is empty, or ys is too short.
    */
-  void BatchEvalMerkle(bool b, int4 s0, cuda::std::span<const Cw> cws,
+  void BatchEvalMerkle(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
       cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
-      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi);
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, size_t stride = 1);
 
   /**
-   * Full domain evaluation method with the Merkle-fold proof.
+   * Full-domain evaluation with the Merkle-fold proof from split correction words.
    *
    * Same output shares as EvalAll(); the proof comes from ProveMerkle() over the corrected
    * per-point hashes. The conversion phase and every fold level are OpenMP parallel honoring
    * par_depth, unlike EvalAll()'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    *
    * @param b Party index. False for 0 and true for 1. $i$.
    * @param s0 This party's initial seed.
-   * @param cws At least in_bits + 1 correction words returned by Gen(), including the final output correction word.
+   * @param cws Correction words, layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
    * @param cs Shared correction seed returned by Gen().
    * @param ys Pre-allocated output array. Its size must be at least 2 ** in_bits.
    * @param pi Borrowed output storage for four proof blocks.
    * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
+   * @param stride Positive element stride between correction-word entries.
    * @pre The full-domain output count, output bytes, and per-point proof
    * scratch bytes fit size_t.
    * @pre The four cs blocks are not jointly all zero.
-   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
-   * Debug builds and is undefined behavior in Release builds.
-   * @throws std::invalid_argument if cws is shorter than in_bits+1, ys is too
-   * short, or the proof scratch does not fit size_t.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds before any traversal and is undefined behavior in Release builds.
+   * @throws std::invalid_argument if stride is zero or too large, cws is shorter
+   * than in_bits*stride+1, ys is too short, or the proof scratch does not fit
+   * size_t.
    */
-  void EvalAllMerkle(bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
-      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
-
+  void EvalAllMerkle(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
+      cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
+      int par_depth = 0, size_t stride = 1);
 
   /**
-   * Launch full-domain CUDA evaluation with the canonical Merkle-fold proof.
+   * Launch full-domain CUDA evaluation with the canonical Merkle-fold proof
+   * from split device arrays.
    *
    * Uses this host instance's backend values as kernel arguments. The caller
    * prepares device-accessible key/output buffers and every resource referenced
    * by the backends. Temporary block roots are allocated and released in the
    * supplied stream. No backend upload, deep copy, or synchronization is
    * performed. Group, Prg, XorHash, and Hash must support device execution.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    *
    * @tparam frontier_depth Frontier depth, capped at in_bits. Defaults to 16.
    * @tparam threads_per_block Power-of-two block size in [1, 1024], capped at
@@ -496,51 +494,63 @@ public:
    * number of block roots must not exceed the resolved threads per block.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed, passed by value to the kernel.
-   * @param cws Device storage with at least in_bits + 1 shared correction words.
+   * @param cws Device correction words, layer i at index i*stride and
+   * the terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
    * @param cs Device storage containing the four shared correction-seed blocks.
    * @param ys Device output storage with at least 2^in_bits int4 blocks.
    * @param pi Device output storage for the four-block Merkle proof.
    * @param stream Stream on the device owning the referenced resources.
+   * @param stride Positive element stride between correction-word entries.
+   * @pre stride > 0 and cws holds at least in_bits*stride+1 elements.
    * @pre this is host-accessible. Buffers and backend resources remain valid
    * until work completes and permit the kernel's concurrent backend calls.
    * @pre The four cs blocks are not jointly all zero.
    * @return The first immediate CUDA allocation, launch, or release status.
-   * Invalid buffers or unaddressable output storage return cudaErrorInvalidValue.
-   * Execution is
+   * Invalid buffers, strides, or unaddressable output storage return
+   * cudaErrorInvalidValue. Execution is
    * asynchronous; the caller observes execution errors when synchronizing.
    */
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t EvalAllMerkleGpu(bool b, int4 s0,
-      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<const int4> cws, In tr, cuda::std::span<const int4, 4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
-      cudaStream_t stream = 0) const
+      cudaStream_t stream = 0, size_t stride = 1) const
     requires(in_bits < sizeof(size_t) * 8);
 
-
   /**
-   * Evaluate [first, last] and apply ProveMerkle to its ordered corrected hashes.
+   * Evaluate [first, last] and apply ProveMerkle to its ordered corrected hashes,
+   * from split correction words.
    *
    * ys[j] is the share for first + j. Extra output capacity is unchanged.
    * The proof tree covers this sequence, with odd nodes carried unchanged.
    * Both parties must agree on the range, order, and accumulator externally.
    * For M = last - first + 1, proof scratch payload is at most
    * 96*M + 32*ceil(M/2) bytes, plus 16*M output bytes and allocator overhead.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
+   *
    * @pre first <= last < 2^in_bits. Output and proof scratch bytes fit size_t.
    * @pre The four cs blocks are not jointly all zero.
-   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
-   * Debug builds and is undefined behavior in Release builds.
+   * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic in
+   * Debug builds before any traversal and is undefined behavior in Release builds.
    * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
    * Positive depths require backends that support concurrent calls.
+   * @param stride Positive element stride between correction-word entries.
    * @throws std::invalid_argument if first > last, last is outside the input
-   * domain, the output or proof scratch does not fit size_t, cws is shorter
-   * than in_bits+1, or ys is too short.
+   * domain, the output or proof scratch does not fit size_t, stride is zero or
+   * too large, cws is shorter than in_bits*stride+1, or ys is too short.
    */
   void EvalRangeMerkle(bool b, In first, In last, int4 s0,
-      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
-      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0);
+      cuda::std::span<const int4> cws, In tr, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth = 0,
+      size_t stride = 1);
 
   /**
-   * Launch range evaluation and the canonical ordered-sequence Merkle fold.
+   * Launch range evaluation and the canonical ordered-sequence Merkle fold from
+   * split device arrays.
    *
    * Uses caller-owned device arrays and backend resources. Internal scratch
    * is allocated and released on stream. No upload or synchronization occurs.
@@ -556,23 +566,41 @@ public:
    * The leaf kernel keeps a bounded depth-first pending-sibling stack of at
    * most eight int4 states per thread and threads_per_block int4 shared
    * frontier states per block.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    * The proof uses actual inputs in increasing order and carries odd nodes.
    * Both parties must agree on the range, order, and Merkle mode externally.
+   *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input in the interval.
+   * @param last Last input in the interval, included in the output.
+   * @param s0 This party's initial seed, passed by value to the kernel.
+   * @param cws Device correction words, layer i at index i*stride and
+   * the terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
+   * @param cs Device storage containing the four shared correction-seed blocks.
+   * @param ys Device output storage. Entry x-first receives this party's share at x.
+   * @param pi Device output storage for the four-block Merkle proof.
+   * @param stream Stream on the device owning the referenced resources.
+   * @param stride Positive element stride between correction-word entries.
+   * @pre stride > 0 and cws holds at least in_bits*stride+1 elements.
    * @pre The four cs blocks are not jointly all zero.
-   * @return First immediate CUDA error. Invalid endpoints, buffers, or byte
-   * counts return cudaErrorInvalidValue. An oversized grid returns
+   * @return First immediate CUDA error. Invalid endpoints, buffers, strides, or
+   * byte counts return cudaErrorInvalidValue. An oversized grid returns
    * cudaErrorInvalidConfiguration. Execution errors are observed by the caller
    * when synchronizing stream.
    */
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t EvalRangeMerkleGpu(bool b, In first, In last, int4 s0,
-      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<const int4> cws, In tr, cuda::std::span<const int4, 4> cs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
-      cudaStream_t stream = 0) const;
+      cudaStream_t stream = 0, size_t stride = 1) const;
 
   /**
    * Launch batch evaluation of an arbitrary ordered query sequence with the
-   * Merkle-fold proof.
+   * Merkle-fold proof, from split device arrays.
    *
    * The outputs and proof match host BatchEvalMerkle() bit for bit on the same
    * ordered xs, for any query sequence: sparse, unsorted, or duplicated. The
@@ -585,7 +613,11 @@ public:
    * That is why this entry takes no frontier_depth. Group, Prg, XorHash, and
    * Hash must support device execution.
    *
-   * Takes the raw key components s0, cws, and cs as Gen() returned them.
+   * Takes the raw key components s0, cws, tr, and cs as Gen() returned them.
+   * Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride].
+   * Packed bit i of tr is the right-control correction at layer i, and the
+   * left-control correction is the LSB of the layer's cws entry, exactly as the
+   * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    * Uses caller-owned device arrays and backend resources. Temporary node buffers
    * with 32*(M + ceil(M/2)) scratch bytes for M inputs are allocated and
    * released on stream. No upload, deep copy, or synchronization occurs.
@@ -605,26 +637,30 @@ public:
    * @tparam threads_per_block Power-of-two block size in [1, 1024]. Defaults to 256.
    * @param b Party index, false for party 0 and true for party 1.
    * @param s0 This party's initial seed, passed by value to the kernel.
-   * @param cws Device storage with at least in_bits + 1 shared correction words.
+   * @param cws Device correction words, layer i at index i*stride and
+   * the terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
    * @param cs Device storage containing the four shared correction-seed blocks.
    * @param xs Device storage of the ordered input sequence; it may be sparse,
    * unsorted, and contain duplicates.
    * @param ys Device output storage with at least xs.size() int4 blocks.
    * @param pi Device output storage for the four-block Merkle proof.
    * @param stream Stream on the device owning the referenced resources.
+   * @param stride Positive element stride between correction-word entries.
    * @pre xs is nonempty and xs[i] < 2^in_bits for every i.
+   * @pre stride > 0 and cws holds at least in_bits*stride+1 elements.
    * @pre The four cs blocks are not jointly all zero.
-   * @return First immediate CUDA error. Invalid buffers or empty xs return
-   * cudaErrorInvalidValue. An oversized grid returns
+   * @return First immediate CUDA error. Invalid buffers, strides, or empty xs
+   * return cudaErrorInvalidValue. An oversized grid returns
    * cudaErrorInvalidConfiguration. Execution errors are observed by the caller
    * when synchronizing stream.
    */
   template <int threads_per_block = 256>
   __host__ cudaError_t BatchEvalMerkleGpu(bool b, int4 s0,
-      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<const int4> cws, In tr, cuda::std::span<const int4, 4> cs,
       cuda::std::span<const In> xs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
-      cudaStream_t stream = 0) const;
+      cudaStream_t stream = 0, size_t stride = 1) const;
 
 private:
   friend class detail::SchemeAccess;
@@ -688,10 +724,31 @@ private:
   __host__ __device__ cuda::std::array<int4, 4> EvalCws(
       bool b, int4 s0, Cws cws, cuda::std::span<const int4, 4> cs, In x, int4 &y);
 
-  void EvalTree(
-      int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_);
+  // Shared range evaluation over the Cw array or the split view. Reads the
+  // terminal and checks its Debug precondition before any traversal.
+  template <typename Cws>
+  void EvalRangeCws(bool b, In first, In last, int4 s0, Cws cws,
+      cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
+      cuda::std::span<int4, 4> pi, int par_depth);
 
-  void EvalPrunedTree(int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, In l, In r, int i,
+  // Shared Merkle range evaluation over the Cw array or the split view. Reads
+  // the terminal and checks its Debug precondition before any traversal.
+  template <typename Cws>
+  void EvalRangeMerkleCws(bool b, In first, In last, int4 s0, Cws cws,
+      cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
+      cuda::std::span<int4, 4> pi, int par_depth);
+
+  // Shared batch evaluation over the Cw array or the split view.
+  template <bool merkle, typename Cws>
+  void EvalBatchCws(bool b, int4 s0, Cws cws, cuda::std::span<const int4, 4> cs,
+      cuda::std::span<const In> xs, cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi);
+
+  template <typename Cws>
+  void EvalTree(
+      int4 st, Cws cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_);
+
+  template <typename Cws>
+  void EvalPrunedTree(int4 st, Cws cws, cuda::std::span<int4> ys, In l, In r, int i,
       int par_depth_, In first, In last);
 };
 
@@ -728,15 +785,27 @@ struct VdpfGpuKernelDescriptor {
 
 #if defined(__CUDACC__)
 
+// Strided correction-word readers shared by the split VDPF kernels: layer i is
+// cws[i*stride] with right-control bit i of packed_tr, and the terminal is the
+// plain int4 at cws[in_bits*stride].
+__device__ inline int4 VdpfCwSeed(const int4 *cws, size_t stride, int level) {
+  return cws[static_cast<size_t>(level) * stride];
+}
+
+template <typename In>
+__device__ inline bool VdpfCwRight(const In &packed_tr, int level) {
+  return ((packed_tr >> level) & 1) != 0;
+}
+
 template <int in_bits, int threads_per_block, typename Descriptor>
-__global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputType first, int subtree_depth,
-    int frontier_depth, int block_root_depth, int4 s0, const void *cws_bytes, const int4 *cs,
+__device__ void VdpfRangeMerkleLeavesWork(bool b, typename Descriptor::InputType first,
+    int subtree_depth, int frontier_depth, int block_root_depth, int4 s0, const int4 *cws,
+    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
     int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
     typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
   using MathScheme = typename Descriptor::MathScheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
   const int root_depth = in_bits - subtree_depth;
   const int block_subtree_depth = frontier_depth - block_root_depth;
   const int tail_depth = subtree_depth - frontier_depth;
@@ -746,12 +815,13 @@ __global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputTy
     for (int level = 0; level < root_depth; ++level) {
       const bool right = (first >> (in_bits - level - 1)) & 1;
       st = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(
-          prg, st, cws[level].s, cws[level].tr, right);
+          prg, st, VdpfCwSeed(cws, stride, level), VdpfCwRight(packed_tr, level), right);
     }
     for (int level = 0; level < block_root_depth; ++level) {
       const bool right = (blockIdx.x >> (block_root_depth - level - 1)) & 1;
-      st = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(
-          prg, st, cws[root_depth + level].s, cws[root_depth + level].tr, right);
+      st = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(prg, st,
+          VdpfCwSeed(cws, stride, root_depth + level),
+          VdpfCwRight(packed_tr, root_depth + level), right);
     }
     frontier[0] = st;
   }
@@ -764,8 +834,8 @@ __global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputTy
     if (active) {
       int4 left, right;
       const int cw_index = root_depth + block_root_depth + level;
-      fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(
-          prg, st, cws[cw_index].s, cws[cw_index].tr, left, right);
+      fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(prg, st,
+          VdpfCwSeed(cws, stride, cw_index), VdpfCwRight(packed_tr, cw_index), left, right);
       frontier[threadIdx.x] = (threadIdx.x & 1) ? right : left;
     }
     __syncthreads();
@@ -777,12 +847,12 @@ __global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputTy
   const int count = 1 << tail_depth;
   const size_t thread_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const size_t offset = thread_index << tail_depth;
-  const auto cw = Group::From(cws[in_bits].s);
+  const auto cw = Group::From(cws[static_cast<size_t>(in_bits) * stride]);
   for (int i = 0; i < count; ++i) {
     while (level < in_bits) {
       int4 left, right;
-      fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(
-          prg, node, cws[level].s, cws[level].tr, left, right);
+      fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(prg, node,
+          VdpfCwSeed(cws, stride, level), VdpfCwRight(packed_tr, level), left, right);
       pending[level - frontier_level] = right;
       node = left;
       ++level;
@@ -810,6 +880,30 @@ __global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputTy
     }
   }
 }
+template <int in_bits, int threads_per_block, typename Descriptor>
+__global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputType first, int subtree_depth,
+    int frontier_depth, int block_root_depth, int4 s0, const int4 *cws,
+    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
+    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
+  VdpfRangeMerkleLeavesWork<in_bits, threads_per_block, Descriptor>(b, first, subtree_depth,
+      frontier_depth, block_root_depth, s0, cws, packed_tr, stride, cs, ys, leaves, prg,
+      xor_hash, hash);
+}
+
+// Device-key counterpart: the party seed and the packed control are loaded
+// from caller device storage; the shared traversal is unchanged.
+template <int in_bits, int threads_per_block, typename Descriptor>
+__global__ void VdpfRangeMerkleLeavesDeviceKeyKernel(bool b, typename Descriptor::InputType first,
+    int subtree_depth, int frontier_depth, int block_root_depth, const int4 *s0,
+    const int4 *cws, const typename Descriptor::InputType *tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
+    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
+  VdpfRangeMerkleLeavesWork<in_bits, threads_per_block, Descriptor>(b, first, subtree_depth,
+      frontier_depth, block_root_depth, s0[0], cws, tr[0], stride, cs, ys, leaves, prg,
+      xor_hash, hash);
+}
+
 
 template <typename Hash>
 __global__ void VdpfRangeMerkleFoldKernel(const cuda::std::array<int4, 2> *nodes,
@@ -831,16 +925,16 @@ __global__ void VdpfRangeMerkleProofKernel(const Node *root,
 // One thread per query: walks the raw-key path of xs[index] from the root and
 // writes the output share and the hashed corrected per-point hash as the leaf
 // of the batch Merkle fold. The same per-point math as Vdpf::Eval, fed by the
-// raw Cw layout.
+// split cws/packed-tr layout.
 template <int in_bits, typename Descriptor>
-__global__ void VdpfBatchMerkleLeavesKernel(bool b, int4 s0, const void *cws_bytes, const int4 *cs,
+__device__ void VdpfBatchMerkleLeavesWork(bool b, int4 s0, const int4 *cws,
+    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
     const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
     typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
     typename Descriptor::HashBackend hash) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
   using MathScheme = typename Descriptor::MathScheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
   const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= count) return;
   const In x = xs[index];
@@ -848,12 +942,12 @@ __global__ void VdpfBatchMerkleLeavesKernel(bool b, int4 s0, const void *cws_byt
   for (int level = 0; level < in_bits; ++level) {
     const bool right = (x >> (in_bits - level - 1)) & 1;
     node = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(
-        prg, node, cws[level].s, cws[level].tr, right);
+        prg, node, VdpfCwSeed(cws, stride, level), VdpfCwRight(packed_tr, level), right);
   }
   const bool t = util::GetLsb(node);
   const int4 seed = util::SetLsb(node, false);
   auto value = Group::From(seed);
-  const auto cw = Group::From(cws[in_bits].s);
+  const auto cw = Group::From(cws[static_cast<size_t>(in_bits) * stride]);
   if (t) value = value + cw;
   if (b) value = -value;
   ys[index] = value.Into();
@@ -862,15 +956,36 @@ __global__ void VdpfBatchMerkleLeavesKernel(bool b, int4 s0, const void *cws_byt
       cuda::std::span<const int4, 4>(cs, 4));
   leaves[index] = hash.Hash(cuda::std::span<const int4, 4>(corrected));
 }
+template <int in_bits, typename Descriptor>
+__global__ void VdpfBatchMerkleLeavesKernel(bool b, int4 s0, const int4 *cws,
+    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
+    const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
+    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
+    typename Descriptor::HashBackend hash) {
+  VdpfBatchMerkleLeavesWork<in_bits, Descriptor>(b, s0, cws, packed_tr, stride, cs, xs, ys,
+      leaves, count, prg, xor_hash, hash);
+}
+
+// Device-key counterpart of the batch leaves kernel; see above.
+template <int in_bits, typename Descriptor>
+__global__ void VdpfBatchMerkleLeavesDeviceKeyKernel(bool b, const int4 *s0, const int4 *cws,
+    const typename Descriptor::InputType *tr, size_t stride, const int4 *cs,
+    const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves,
+    size_t count, typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
+    typename Descriptor::HashBackend hash) {
+  VdpfBatchMerkleLeavesWork<in_bits, Descriptor>(b, s0[0], cws, tr[0], stride, cs, xs, ys,
+      leaves, count, prg, xor_hash, hash);
+}
+
 
 template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
-__global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *cws_bytes, const int4 *cs,
+__device__ void VdpfMerkleFrontierWork(bool b, int4 s0, const int4 *cws,
+    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
     int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
     typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
   using Group = typename Descriptor::Group;
   using In = typename Descriptor::InputType;
   using MathScheme = typename Descriptor::MathScheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
   constexpr int kTailDepth = in_bits - frontier_depth;
   constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
   const int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -886,7 +1001,7 @@ __global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *cws_bytes,
       {
         auto node_prg = prg;
         st = fss::detail::SchemeAccess::DpfPathStep<MathScheme>(
-            node_prg, st, cws[i].s, cws[i].tr, x_bit);
+            node_prg, st, VdpfCwSeed(cws, stride, i), VdpfCwRight(packed_tr, i), x_bit);
       }
     }
     shared_frontier[0] = st;
@@ -905,8 +1020,9 @@ __global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *cws_bytes,
       int4 left, right;
       {
         auto node_prg = prg;
-        fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(
-            node_prg, n, cws[block_root_depth + i].s, cws[block_root_depth + i].tr, left, right);
+        fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(node_prg, n,
+            VdpfCwSeed(cws, stride, block_root_depth + i),
+            VdpfCwRight(packed_tr, block_root_depth + i), left, right);
       }
       shared_frontier[threadIdx.x] = (threadIdx.x & 1) ? right : left;
     }
@@ -926,8 +1042,8 @@ __global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *cws_bytes,
       int4 left, right;
       {
         auto node_prg = prg;
-        fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(
-            node_prg, nodes[k], cws[lev].s, cws[lev].tr, left, right);
+        fss::detail::SchemeAccess::DpfExpandNode<MathScheme>(node_prg, nodes[k],
+            VdpfCwSeed(cws, stride, lev), VdpfCwRight(packed_tr, lev), left, right);
       }
       nodes[2 * k] = left;
       nodes[2 * k + 1] = right;
@@ -935,7 +1051,7 @@ __global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *cws_bytes,
     count *= 2;
   }
 
-  auto ocw_group = Group::From(cws[in_bits].s);
+  auto ocw_group = Group::From(cws[static_cast<size_t>(in_bits) * stride]);
   const int output_offset = thread_index << kTailDepth;
   cuda::std::array<int4, 2> stack[kTailDepth + 1];
 #pragma unroll
@@ -989,6 +1105,25 @@ __global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const void *cws_bytes,
   }
   if (threadIdx.x == 0) roots[blockIdx.x] = s_node[0];
 }
+template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
+__global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const int4 *cws,
+    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
+    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
+  VdpfMerkleFrontierWork<in_bits, frontier_depth, block_root_depth, Descriptor>(
+      b, s0, cws, packed_tr, stride, cs, ys, roots, prg, xor_hash, hash);
+}
+
+// Device-key counterpart of the frontier kernel; see above.
+template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
+__global__ void VdpfMerkleFrontierDeviceKeyKernel(bool b, const int4 *s0, const int4 *cws,
+    const typename Descriptor::InputType *tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
+    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
+  VdpfMerkleFrontierWork<in_bits, frontier_depth, block_root_depth, Descriptor>(
+      b, s0[0], cws, tr[0], stride, cs, ys, roots, prg, xor_hash, hash);
+}
+
 
 // Folds the per-block subtree roots into the final 64B proof. The root count
 // is (1 << frontier_depth) / threads_per_block = 2^block_root_depth, at most one block wide; only the first nroots
@@ -1134,6 +1269,180 @@ void VdpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span
   }
 }
 
+// Shared Merkle fold: reduce the paired node buffer to one root and write the
+// four-block proof from the correction seed.
+template <int threads_per_block, typename Hash>
+__host__ inline cudaError_t VdpfFoldNodesToProof(cuda::std::array<int4, 2> *nodes,
+    cuda::std::array<int4, 2> *next, size_t count, const int4 *cs, int4 *pi, const Hash &hash,
+    cudaStream_t stream, DeviceScratch *first, DeviceScratch *second) {
+  cudaError_t status = cudaSuccess;
+  while (count > 1) {
+    const size_t next_count = count / 2 + count % 2;
+    const size_t blocks = next_count / threads_per_block + (next_count % threads_per_block != 0);
+    if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+    VdpfRangeMerkleFoldKernel<<<static_cast<int>(blocks), threads_per_block, 0, stream>>>(
+        nodes, count, next, hash);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) return status;
+    auto *previous = nodes;
+    nodes = next;
+    next = previous;
+    count = next_count;
+  }
+  VdpfRangeMerkleProofKernel<<<1, 1, 0, stream>>>(nodes, cs, pi);
+  return ReleaseScratch(cudaGetLastError(), {first, second});
+}
+
+// Host launchers for the device-key kernels. The party seed and the packed
+// control are device addresses loaded by the kernels; the backends arrive by
+// value from a host mirror of the device scheme, matching the public methods.
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename In, int frontier_depth = 16, int threads_per_block = 256>
+__host__ inline cudaError_t VdpfEvalAllMerkleGpuDeviceKey(bool b, const int4 *s0,
+    const int4 *cws, size_t cws_count, const In *tr, size_t stride, const int4 *cs,
+    int4 *ys, size_t ys_count, int4 *pi, const Prg &prg, const XorHash &xor_hash,
+    const Hash &hash, cudaStream_t stream) {
+  constexpr size_t kOutputCount = size_t{1} << in_bits;
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  constexpr int kFrontierDepth = frontier_depth < in_bits ? frontier_depth : in_bits;
+  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
+  static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  static_assert(in_bits - kFrontierDepth <= 8,
+      "gpu frontier leaves more than eight tail levels; specify a larger frontier_depth");
+  constexpr int kThreadsPerBlockLog2 = [] {
+    int requested_log2 = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++requested_log2;
+    return requested_log2 < kFrontierDepth ? requested_log2 : kFrontierDepth;
+  }();
+  constexpr int kThreadsPerBlock = 1 << kThreadsPerBlockLog2;
+  constexpr int kBlockRootDepth = kFrontierDepth - kThreadsPerBlockLog2;
+  static_assert(kBlockRootDepth <= 30, "gpu block index exceeds the signed-int range");
+  constexpr size_t kBlockCount = size_t{1} << kBlockRootDepth;
+  static_assert(kBlockCount <= kThreadsPerBlock,
+      "merkle block roots must fit within one final block");
+  if (stride == 0 || stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws_count < static_cast<size_t>(in_bits) * stride + 1 || ys_count < kOutputCount ||
+      !fss::detail::FitsElementCount<int4>(kOutputCount) ||
+      !fss::detail::FitsElementCount<cuda::std::array<int4, 2>>(kBlockCount) ||
+      s0 == nullptr || cws == nullptr || tr == nullptr || cs == nullptr || ys == nullptr ||
+      pi == nullptr) return cudaErrorInvalidValue;
+  DeviceScratch roots_storage(stream);
+  cudaError_t status = roots_storage.Allocate<cuda::std::array<int4, 2>>(kBlockCount);
+  if (status != cudaSuccess) return status;
+  auto *block_roots = roots_storage.Get<cuda::std::array<int4, 2>>();
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
+  VdpfMerkleFrontierDeviceKeyKernel<in_bits, kFrontierDepth, kBlockRootDepth, Descriptor>
+      <<<kBlockCount, kThreadsPerBlock, 0, stream>>>(
+          b, s0, cws, tr, stride, cs, ys, block_roots, prg, xor_hash, hash);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  VdpfMerkleFinalizeKernel<kThreadsPerBlock, Hash>
+      <<<1, kThreadsPerBlock, 0, stream>>>(
+          block_roots, static_cast<int>(kBlockCount), cs, pi, hash);
+  return ReleaseScratch(cudaGetLastError(), {&roots_storage});
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename In, int frontier_depth = 16, int threads_per_block = 256>
+__host__ inline cudaError_t VdpfEvalRangeMerkleGpuDeviceKey(bool b, In first, In last,
+    const int4 *s0, const int4 *cws, size_t cws_count, const In *tr, size_t stride,
+    const int4 *cs, int4 *ys, size_t ys_count, int4 *pi, const Prg &prg,
+    const XorHash &xor_hash, const Hash &hash, cudaStream_t stream) {
+  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
+  static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  using Node = cuda::std::array<int4, 2>;
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  size_t count = 0;
+  if (!fss::detail::RangeOutputCount<in_bits>(first, last, ys_count, count) || stride == 0 ||
+      stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws_count < static_cast<size_t>(in_bits) * stride + 1 ||
+      s0 == nullptr || cws == nullptr || tr == nullptr || cs == nullptr ||
+      ys == nullptr || pi == nullptr) return cudaErrorInvalidValue;
+  const size_t second_count = count / 2 + count % 2;
+  constexpr size_t kMaxNodes = size_t(-1) / sizeof(Node);
+  if (count > kMaxNodes || second_count > kMaxNodes - count) return cudaErrorInvalidValue;
+  constexpr int kThreadBits = [] {
+    int bits = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
+    return bits;
+  }();
+  constexpr int kTailCap = frontier_depth < 30 + kThreadBits ? frontier_depth : 30 + kThreadBits;
+  constexpr int kChunkDepth = kTailCap + 8 < 30 + kThreadBits ? kTailCap + 8 : 30 + kThreadBits;
+  const size_t fold_count = count / 2 + count % 2;
+  const size_t fold_blocks = fold_count / threads_per_block + (fold_count % threads_per_block != 0);
+  if (fold_blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+  DeviceScratch first_storage(stream), second_storage(stream);
+  cudaError_t status = first_storage.Allocate<Node>(count);
+  if (status != cudaSuccess) return status;
+  status = second_storage.Allocate<Node>(second_count);
+  if (status != cudaSuccess) return status;
+  auto *nodes = first_storage.Get<Node>();
+  auto *next = second_storage.Get<Node>();
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
+  status = fss::detail::ForEachAlignedRange<in_bits>(first, last, kChunkDepth,
+      [&](In chunk_first, int depth, size_t offset, size_t) {
+        const int frontier = depth < frontier_depth ? depth : frontier_depth;
+        const int thread_bits = frontier < kThreadBits ? frontier : kThreadBits;
+        const int block_root_depth = frontier - thread_bits;
+        const size_t blocks = size_t{1} << block_root_depth;
+        if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+        VdpfRangeMerkleLeavesDeviceKeyKernel<in_bits, threads_per_block, Descriptor>
+            <<<blocks, 1 << thread_bits, 0, stream>>>(b, chunk_first, depth,
+                frontier, block_root_depth, s0, cws, tr, stride, cs,
+                ys + offset, nodes + offset, prg, xor_hash, hash);
+        return cudaGetLastError();
+      });
+  if (status != cudaSuccess) return status;
+  return VdpfFoldNodesToProof<threads_per_block>(nodes, next, count, cs, pi, hash,
+      stream, &first_storage, &second_storage);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename In, int threads_per_block = 256>
+__host__ inline cudaError_t VdpfBatchEvalMerkleGpuDeviceKey(bool b, const int4 *s0,
+    const int4 *cws, size_t cws_count, const In *tr, size_t stride, const int4 *cs,
+    const In *xs, size_t xs_count, int4 *ys, size_t ys_count, int4 *pi, const Prg &prg,
+    const XorHash &xor_hash, const Hash &hash, cudaStream_t stream) {
+  static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  using Node = cuda::std::array<int4, 2>;
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  const size_t count = xs_count;
+  if (count == 0 || ys_count < count || stride == 0 ||
+      stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws_count < static_cast<size_t>(in_bits) * stride + 1 ||
+      s0 == nullptr || cws == nullptr || tr == nullptr || cs == nullptr ||
+      xs == nullptr || ys == nullptr || pi == nullptr) return cudaErrorInvalidValue;
+  const size_t second_count = count / 2 + count % 2;
+  constexpr size_t kMaxNodes = size_t(-1) / sizeof(Node);
+  if (count > kMaxNodes || second_count > kMaxNodes - count) return cudaErrorInvalidValue;
+  const size_t leaf_blocks = count / threads_per_block + (count % threads_per_block != 0);
+  if (leaf_blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
+  DeviceScratch first_storage(stream), second_storage(stream);
+  cudaError_t status = first_storage.Allocate<Node>(count);
+  if (status != cudaSuccess) return status;
+  status = second_storage.Allocate<Node>(second_count);
+  if (status != cudaSuccess) return status;
+  auto *nodes = first_storage.Get<Node>();
+  auto *next = second_storage.Get<Node>();
+  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
+  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
+  VdpfBatchMerkleLeavesDeviceKeyKernel<in_bits, Descriptor>
+      <<<static_cast<int>(leaf_blocks), threads_per_block, 0, stream>>>(
+          b, s0, cws, tr, stride, cs, xs, ys, nodes, count, prg, xor_hash, hash);
+  status = cudaGetLastError();
+  if (status != cudaSuccess) return status;
+  return VdpfFoldNodesToProof<threads_per_block>(nodes, next, count, cs, pi, hash,
+      stream, &first_storage, &second_storage);
+}
+
 #endif
 
 }  // namespace gpu::detail
@@ -1143,15 +1452,6 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline __host__ __device__ Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Vdpf(Prg prg, XorHash xor_hash, Hash hash)
     : prg_(prg), xor_hash_(xor_hash), hash_(hash) {}
-
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
-inline __host__ __device__ cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Eval(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
-    cuda::std::span<const int4, 4> cs, In x, int4 &y) {
-  return EvalCws(b, s0, cws.data(), cs, x, y);
-}
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
@@ -1251,17 +1551,36 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAll(
-    bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth) {
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr, cuda::std::span<const int4, 4> cs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth, size_t stride) {
   assert(par_depth >= 0);
   constexpr size_t kOutputCount = detail::FullDomainSize<int4, in_bits>();
-  EvalRange(b, In{0}, static_cast<In>(kOutputCount - 1), s0, cws, cs, ys, pi, par_depth);
+  EvalRange(b, In{0}, static_cast<In>(kOutputCount - 1), s0, cws, tr, cs, ys, pi, par_depth, stride);
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
-    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+    bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws, In tr,
+    cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
+    cuda::std::span<int4, 4> pi, int par_depth, size_t stride) {
+  if (stride == 0) throw std::invalid_argument("Vdpf::EvalRange: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Vdpf::EvalRange: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("Vdpf::EvalRange: cws must hold in_bits*stride+1 elements");
+  EvalRangeCws(b, first, last, s0, CwsView{cws.data(), tr, stride}, cs, ys, pi, par_depth);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <typename Cws>
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeCws(
+    bool b, In first, In last, int4 s0, Cws cws, cuda::std::span<const int4, 4> cs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth) {
   assert(par_depth >= 0);
   In max_input = static_cast<In>(~In{0});
@@ -1276,10 +1595,16 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
   if (distance >= static_cast<size_t>(-1) / sizeof(int4))
     throw std::invalid_argument("Vdpf::EvalRange: the interval is too large for size_t");
   const size_t num_inputs = static_cast<size_t>(distance) + 1;
-  if (cws.size() < size_t{in_bits} + 1)
-    throw std::invalid_argument("Vdpf::EvalRange: cws must hold in_bits+1 correction words");
   if (ys.size() < num_inputs)
     throw std::invalid_argument("Vdpf::EvalRange: ys must hold last-first+1 entries");
+
+  // The terminal LSB is a caller precondition. Read it and check it before any
+  // traversal, so a Debug violation aborts on the calling thread; Release
+  // builds do not check it.
+  int4 ocw = cws[in_bits].s;
+  util::RequireArg((ocw.w & 1) == 0,
+      "Vdpf::EvalRange: the terminal group value must have a zero LSB");
+  auto ocw_group = Group::From(ocw);
 
   const int4 st = util::SetLsb(s0, b);
   const int par_depth_ = fss::detail::ResolveParDepth(par_depth, in_bits);
@@ -1300,10 +1625,6 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRange(
   pi[2] = cs[2];
   pi[3] = cs[3];
 
-  int4 ocw = cws[in_bits].s;
-  util::RequireArg((ocw.w & 1) == 0,
-      "Vdpf::EvalRange: the terminal group value must have a zero LSB");
-  auto ocw_group = Group::From(ocw);
   for (size_t offset = 0; offset < num_inputs; ++offset) {
     const In x = static_cast<In>(first + offset);
     int4 sj = ys[offset];
@@ -1398,17 +1719,35 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAllMerkle(
-    bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
-    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth) {
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr, cuda::std::span<const int4, 4> cs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, int par_depth, size_t stride) {
   constexpr size_t kOutputCount = detail::FullDomainSize<cuda::std::array<int4, 4>, in_bits>();
-  EvalRangeMerkle(b, In{0}, static_cast<In>(kOutputCount - 1), s0, cws, cs, ys, pi, par_depth);
+  EvalRangeMerkle(b, In{0}, static_cast<In>(kOutputCount - 1), s0, cws, tr, cs, ys, pi, par_depth, stride);
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
-    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
+    bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws, In tr,
+    cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
+    cuda::std::span<int4, 4> pi, int par_depth, size_t stride) {
+  if (stride == 0) throw std::invalid_argument("Vdpf::EvalRangeMerkle: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("Vdpf::EvalRangeMerkle: cws must hold in_bits*stride+1 elements");
+  EvalRangeMerkleCws(b, first, last, s0, CwsView{cws.data(), tr, stride}, cs, ys, pi, par_depth);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <typename Cws>
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkleCws(
+    bool b, In first, In last, int4 s0, Cws cws,
     cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi, int par_depth) {
   assert(par_depth >= 0);
@@ -1433,12 +1772,18 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
       (sizeof(cuda::std::array<int4, 4>) + sizeof(cuda::std::array<int4, 2>));
   if (next_count > (kMaxBytes - initial_bytes) / sizeof(cuda::std::array<int4, 2>))
     throw std::invalid_argument("Vdpf::EvalRangeMerkle: the proof scratch is too large for size_t");
-  const int4 st = util::SetLsb(s0, b);
-  if (cws.size() < size_t{in_bits} + 1)
-    throw std::invalid_argument("Vdpf::EvalRangeMerkle: cws must hold in_bits+1 correction words");
   if (ys.size() < kOutputCount)
     throw std::invalid_argument("Vdpf::EvalRangeMerkle: ys must hold last-first+1 entries");
 
+  // The terminal LSB is a caller precondition. Read it and check it before any
+  // traversal, so a Debug violation aborts on the calling thread; Release
+  // builds do not check it.
+  int4 ocw = cws[in_bits].s;
+  util::RequireArg((ocw.w & 1) == 0,
+      "Vdpf::EvalRangeMerkle: the terminal group value must have a zero LSB");
+  auto ocw_group = Group::From(ocw);
+
+  const int4 st = util::SetLsb(s0, b);
   int par_depth_ = fss::detail::ResolveParDepth(par_depth, in_bits);
 
   // Traversal stores the packed seed and control bit in output storage temporarily.
@@ -1452,10 +1797,6 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkle(
   }
 
   const size_t n = kOutputCount;
-  int4 ocw = cws[in_bits].s;
-  util::RequireArg((ocw.w & 1) == 0,
-      "Vdpf::EvalRangeMerkle: the terminal group value must have a zero LSB");
-  auto ocw_group = Group::From(ocw);
   std::vector<cuda::std::array<int4, 4>> leaves(n);
   fss::detail::ParallelFor(par_depth, n, [&](size_t j) {
     int4 sj = ys[j];
@@ -1483,48 +1824,58 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEval(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, size_t stride) {
+  if (stride == 0) throw std::invalid_argument("Vdpf::BatchEval: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Vdpf::BatchEval: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("Vdpf::BatchEval: cws must hold in_bits*stride+1 elements");
+  EvalBatchCws<false>(b, s0, CwsView{cws.data(), tr, stride}, cs, xs, ys, pi);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <bool merkle, typename Cws>
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalBatchCws(
+    bool b, int4 s0, Cws cws, cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
-  if (cws.size() < size_t{in_bits} + 1)
-    throw std::invalid_argument("Vdpf::BatchEval: cws must hold in_bits+1 correction words");
   if (xs.empty())
-    throw std::invalid_argument("Vdpf::BatchEval: xs must not be empty");
+    throw std::invalid_argument(merkle ? "Vdpf::BatchEvalMerkle: xs must not be empty"
+                                       : "Vdpf::BatchEval: xs must not be empty");
   if (ys.size() < xs.size())
-    throw std::invalid_argument("Vdpf::BatchEval: ys must hold xs.size() entries");
+    throw std::invalid_argument(merkle ? "Vdpf::BatchEvalMerkle: ys must hold xs.size() entries"
+                                       : "Vdpf::BatchEval: ys must hold xs.size() entries");
   std::vector<cuda::std::array<int4, 4>> pi_tildes(xs.size());
   for (size_t i = 0; i < xs.size(); ++i) {
-    pi_tildes[i] = Eval(b, s0, cws, cs, xs[i], ys[i]);
+    pi_tildes[i] = EvalCws(b, s0, cws, cs, xs[i], ys[i]);
   }
-  Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes), cs, pi);
+  if constexpr (merkle) {
+    ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes), cs, pi);
+  } else {
+    Prove(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes), cs, pi);
+  }
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEvalMerkle(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
-    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi) {
-  if (cws.size() < size_t{in_bits} + 1)
-    throw std::invalid_argument("Vdpf::BatchEvalMerkle: cws must hold in_bits+1 correction words");
-  if (xs.empty())
-    throw std::invalid_argument("Vdpf::BatchEvalMerkle: xs must not be empty");
-  if (ys.size() < xs.size())
-    throw std::invalid_argument("Vdpf::BatchEvalMerkle: ys must hold xs.size() entries");
-  std::vector<cuda::std::array<int4, 4>> pi_tildes(xs.size());
-  for (size_t i = 0; i < xs.size(); ++i) {
-    pi_tildes[i] = Eval(b, s0, cws, cs, xs[i], ys[i]);
-  }
-  ProveMerkle(cuda::std::span<const cuda::std::array<int4, 4>>(pi_tildes), cs, pi);
-}
-
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
-inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen(
-    Cw cws[], cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
-  return Generate(AosWriter{cws}, cs, s0s.data(), a, b_buf);
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, size_t stride) {
+  if (stride == 0) throw std::invalid_argument("Vdpf::BatchEvalMerkle: stride must be positive");
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride > (kMaxElements - 1) / static_cast<size_t>(in_bits))
+    throw std::invalid_argument("Vdpf::BatchEvalMerkle: stride exceeds the correction array limit");
+  const size_t required = static_cast<size_t>(in_bits) * stride + 1;
+  if (cws.size() < required)
+    throw std::invalid_argument("Vdpf::BatchEvalMerkle: cws must hold in_bits*stride+1 elements");
+  EvalBatchCws<true>(b, s0, CwsView{cws.data(), tr, stride}, cs, xs, ys, pi);
 }
 
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
@@ -1633,8 +1984,9 @@ inline __host__ __device__ int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <typename Cws>
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalTree(
-    int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_) {
+    int4 st, Cws cws, cuda::std::span<int4> ys, size_t l, size_t r, int i, int par_depth_) {
   if (i == in_bits) {
     assert(l + 1 == r);
     ys[l] = st;
@@ -1687,8 +2039,9 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalTree(
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+template <typename Cws>
 inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalPrunedTree(
-    int4 st, cuda::std::span<const Cw> cws, cuda::std::span<int4> ys, In l, In r, int i,
+    int4 st, Cws cws, cuda::std::span<int4> ys, In l, In r, int i,
     int par_depth_, In first, In last) {
   // this subtree is outside the range [first, last]
   if (r < first || l > last) {
@@ -1759,7 +2112,6 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalPrunedTree(
   }
 }
 
-
 template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
@@ -1790,13 +2142,15 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 template <int frontier_depth, int threads_per_block>
 __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAllMerkleGpu(
-    bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
-    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream) const
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr, cuda::std::span<const int4, 4> cs,
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream, size_t stride) const
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
   constexpr size_t kOutputCount = size_t{1} << in_bits;
-  if (cws.size() < in_bits + 1 || ys.size() < kOutputCount ||
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
+  if (stride == 0 || stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws.size() < static_cast<size_t>(in_bits) * stride + 1 || ys.size() < kOutputCount ||
       !detail::FitsElementCount<int4>(kOutputCount) ||
       !detail::FitsElementCount<cuda::std::array<int4, 2>>(LaunchShape::kBlockCount) ||
       cws.data() == nullptr || cs.data() == nullptr || ys.data() == nullptr ||
@@ -1810,7 +2164,7 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAl
   gpu::detail::VdpfMerkleFrontierKernel<in_bits, LaunchShape::kFrontierDepth,
       LaunchShape::kBlockRootDepth, Descriptor>
       <<<LaunchShape::kBlockCount, LaunchShape::kThreadsPerBlock, 0, stream>>>(
-          b, s0, cws.data(), cs.data(), ys.data(), block_roots, prg_, xor_hash_, hash_);
+          b, s0, cws.data(), tr, stride, cs.data(), ys.data(), block_roots, prg_, xor_hash_, hash_);
   status = cudaGetLastError();
   if (status != cudaSuccess) return status;
   gpu::detail::VdpfMerkleFinalizeKernel<LaunchShape::kThreadsPerBlock, Hash>
@@ -1828,18 +2182,21 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 template <int frontier_depth, int threads_per_block>
 __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRangeMerkleGpu(
-    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
+    bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<const int4, 4> cs, cuda::std::span<int4> ys,
-    cuda::std::span<int4, 4> pi, cudaStream_t stream) const {
+    cuda::std::span<int4, 4> pi, cudaStream_t stream, size_t stride) const {
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
       "gpu block size must be a power of two in [1,1024]");
 #if defined(__CUDACC__)
   using Node = cuda::std::array<int4, 2>;
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
   size_t count = 0;
-  if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) ||
-      cws.size() < in_bits + 1 || cws.data() == nullptr || cs.data() == nullptr ||
+  if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) || stride == 0 ||
+      stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
+      cws.data() == nullptr || cs.data() == nullptr ||
       ys.data() == nullptr || pi.data() == nullptr) return cudaErrorInvalidValue;
   const size_t second_count = count / 2 + count % 2;
   constexpr size_t kMaxNodes = size_t(-1) / sizeof(Node);
@@ -1872,25 +2229,13 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRa
         if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
         gpu::detail::VdpfRangeMerkleLeavesKernel<in_bits, threads_per_block, Descriptor>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, chunk_first, depth,
-                frontier, block_root_depth, s0, cws.data(), cs.data(),
+                frontier, block_root_depth, s0, cws.data(), tr, stride, cs.data(),
                 ys.data() + offset, nodes + offset, prg_, xor_hash_, hash_);
         return cudaGetLastError();
       });
   if (status != cudaSuccess) return status;
-  while (count > 1) {
-    const size_t next_count = count / 2 + count % 2;
-    const size_t blocks = next_count / threads_per_block + (next_count % threads_per_block != 0);
-    gpu::detail::VdpfRangeMerkleFoldKernel<<<blocks, threads_per_block, 0, stream>>>(
-        nodes, count, next, hash_);
-    status = cudaGetLastError();
-    if (status != cudaSuccess) return status;
-    auto *previous = nodes;
-    nodes = next;
-    next = previous;
-    count = next_count;
-  }
-  gpu::detail::VdpfRangeMerkleProofKernel<<<1, 1, 0, stream>>>(nodes, cs.data(), pi.data());
-  return gpu::detail::ReleaseScratch(cudaGetLastError(), {&first_storage, &second_storage});
+  return gpu::detail::VdpfFoldNodesToProof<threads_per_block>(nodes, next, count, cs.data(),
+      pi.data(), hash_, stream, &first_storage, &second_storage);
 #else
   static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
   return cudaErrorNotSupported;
@@ -1902,16 +2247,19 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 template <int threads_per_block>
 __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchEvalMerkleGpu(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
+    bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<const int4, 4> cs, cuda::std::span<const In> xs,
-    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream) const {
+    cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream, size_t stride) const {
   static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
       "gpu block size must be a power of two in [1,1024]");
 #if defined(__CUDACC__)
   using Node = cuda::std::array<int4, 2>;
+  constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
   const size_t count = xs.size();
-  if (count == 0 || ys.size() < count || cws.size() < size_t{in_bits} + 1 ||
+  if (count == 0 || ys.size() < count || stride == 0 ||
+      stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
       cws.data() == nullptr || cs.data() == nullptr || xs.data() == nullptr ||
       ys.data() == nullptr || pi.data() == nullptr) return cudaErrorInvalidValue;
   const size_t second_count = count / 2 + count % 2;
@@ -1930,25 +2278,12 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchE
   using Descriptor = gpu::detail::VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   gpu::detail::VdpfBatchMerkleLeavesKernel<in_bits, Descriptor>
       <<<static_cast<int>(leaf_blocks), threads_per_block, 0, stream>>>(
-          b, s0, cws.data(), cs.data(), xs.data(), ys.data(), nodes, count, prg_, xor_hash_, hash_);
+          b, s0, cws.data(), tr, stride, cs.data(), xs.data(), ys.data(), nodes, count,
+          prg_, xor_hash_, hash_);
   status = cudaGetLastError();
   if (status != cudaSuccess) return status;
-  size_t folded = count;
-  while (folded > 1) {
-    const size_t next_count = folded / 2 + folded % 2;
-    const size_t blocks = next_count / threads_per_block + (next_count % threads_per_block != 0);
-    if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
-    gpu::detail::VdpfRangeMerkleFoldKernel<<<static_cast<int>(blocks), threads_per_block, 0, stream>>>(
-        nodes, folded, next, hash_);
-    status = cudaGetLastError();
-    if (status != cudaSuccess) return status;
-    auto *previous = nodes;
-    nodes = next;
-    next = previous;
-    folded = next_count;
-  }
-  gpu::detail::VdpfRangeMerkleProofKernel<<<1, 1, 0, stream>>>(nodes, cs.data(), pi.data());
-  return gpu::detail::ReleaseScratch(cudaGetLastError(), {&first_storage, &second_storage});
+  return gpu::detail::VdpfFoldNodesToProof<threads_per_block>(nodes, next, count, cs.data(),
+      pi.data(), hash_, stream, &first_storage, &second_storage);
 #else
   static_assert(sizeof(Prg) == 0, "gpu launch requires a CUDA compiler");
   return cudaErrorNotSupported;

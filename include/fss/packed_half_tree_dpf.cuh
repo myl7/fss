@@ -160,15 +160,10 @@ public:
   };
   static_assert(sizeof(Cw) == 16);
 
-  /**
-   * A party's key: shared correction words, including the final output correction word, and
-   * the party's initial seed.
-   * @ingroup fss_api
-   */
-  struct Key {
-    Cw cws[kDepth + 1];  ///< Tree correction words followed by the packed-output correction word.
-    int4 s0;  ///< This party's initial seed.
-  };
+  /// Seed-component count Gen() writes at stride 1: kDepth levels plus the packed-output terminal.
+  static constexpr int kCwCount = kDepth + 1;
+
+  using Input = In;  ///< The caller-facing input-domain type.
 
   /**
    * Configure the CCR hash and public instance seed S.
@@ -177,18 +172,6 @@ public:
    * @param instance_seed Uniformly sampled public seed S, fixed for this instance.
    */
   __host__ __device__ explicit PackedHalfTreeDpf(Hash hash, int4 instance_seed);
-
-  /**
-   * Generate shared correction words for the packed point function.
-   *
-   * @param cws Output array of kDepth + 1 shared correction words, including the output correction word.
-   * @param s0s Two initial seeds, retained by the caller.
-   * @param a The secret point. Its low log2(kLanes) bits select the packed lane.
-   * @param beta Output value, which must fit in out_bits bits.
-   * @pre a is in [0, 2^in_bits).
-   * @post cws[kDepth].s holds the final packed-output correction word.
-   */
-  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, uint64_t beta);
 
   /**
    * Generate split Cws for the packed point function.
@@ -220,21 +203,6 @@ public:
    */
   __host__ __device__ void Gen(cuda::std::span<int4> cws,
       cuda::std::span<const int4, 2> s0s, In a, uint64_t beta, size_t stride = 1);
-
-  /**
-   * Evaluate the packed output block containing x.
-   *
-   * The result contains kLanes consecutive shares, not only x's share.
-   * Extract(result, x) reads x's share using the original input x.
-   * It is the same packed block as ys[x / kLanes] from EvalAll().
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's initial seed.
-   * @param cws The kDepth + 1 shared correction words returned by Gen().
-   * @param x Input in [0, 2^in_bits).
-   * @return This party's block of kLanes output shares. Extract() reads x's lane.
-   */
-  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
 
   /**
    * Evaluate the packed output block containing x from split Cws.
@@ -280,27 +248,6 @@ public:
   static __host__ __device__ uint64_t Extract(int4 block, In x);
 
   /**
-   * Evaluate all packed output blocks on the host.
-   *
-   * The output has exactly B = 2^kDepth = 2^in_bits / kLanes blocks.
-   * Its array payload uses B * sizeof(int4) bytes per party.
-   * Two parties' output arrays use twice that amount.
-   * Cws, seeds, and any temporary storage are separate.
-   * For in_bits = 8 and out_bits = 8, B = 16, so ys has 16 int4 entries
-   * rather than 256 entries. Extract(ys[x / kLanes], x) reads input x.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's initial seed.
-   * @param cws The kDepth + 1 shared correction words returned by Gen().
-   * @param ys Pre-allocated output array of at least 2^kDepth blocks, in input order.
-   * Block j covers inputs j * kLanes through (j + 1) * kLanes - 1.
-   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
-   * Positive depths require backends that support concurrent calls.
-   * @pre The packed output element count and byte size fit size_t, and ys is allocated.
-   */
-  void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
-
-  /**
    * Evaluate all packed output blocks from split Cws on the host.
    *
    * Layer l is read from cws[l*stride] and the packed-output correction word from
@@ -326,27 +273,6 @@ public:
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, int4 ys[],
       int par_depth = 0, size_t stride = 1);
-
-  /**
-   * Evaluate the closed input interval [first, last] on the host.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param first First input in the interval, inclusive.
-   * @param last Last input in the interval, inclusive.
-   * @param s0 This party's initial seed.
-   * @param cws The kDepth + 1 shared correction words returned by Gen().
-   * @param ys Output storage for ceil((last - first + 1) / kLanes) blocks.
-   * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
-   * Positive depths require backends that support concurrent calls.
-   * @pre first <= last and both endpoints belong to the input domain.
-   * @pre The output block count and byte size fit size_t, and used pointers are nonnull.
-   * @throws std::invalid_argument if cws is null, first > last, an endpoint is
-   * outside the input domain, the interval does not fit size_t, or ys is too short.
-   * @post Extract(ys[j / kLanes], j) is this party's share at first + j.
-   * Unused lanes in the last output block are zero. Extra capacity is untouched.
-   */
-  void EvalRange(bool b, In first, In last, int4 s0, const Cw cws[],
-      cuda::std::span<int4> ys, int par_depth = 0);
 
   /**
    * Evaluate the closed input interval [first, last] from split Cws.
@@ -379,34 +305,6 @@ public:
   void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws,
       cuda::std::span<int4> ys, int par_depth = 0, size_t stride = 1);
 
-
-  /**
-   * Launch full-domain CUDA evaluation from this host-accessible instance.
-   *
-   * Hash values and the instance seed are passed as kernel arguments. The caller
-   * prepares device buffers and any device resources referenced by Hash, and
-   * keeps them alive until stream completes. Hash and output operations must
-   * support concurrent device execution. No allocation, upload or synchronization
-   * is performed. The scheme itself must be accessible on the host.
-   * @tparam frontier_depth Frontier depth, capped at kDepth. Defaults to 16.
-   * @tparam threads_per_block A power of two in [1,1024], capped at the frontier width.
-   * Defaults to 256. Block-root depth is derived from the effective frontier and
-   * block size. At most eight output levels may remain below the frontier, and
-   * the block-root depth must be at most 30. These are fixed correctness caps.
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed, passed by value as a kernel argument.
-   * @param cws Device storage containing at least kDepth + 1 correction words.
-   * @param ys Device storage containing at least 2^kDepth packed output blocks.
-   * @param stream Stream on the device owning the referenced resources.
-   * @return Immediate CUDA launch status. Invalid buffer dimensions, null used
-   * buffers, or unaddressable byte sizes return cudaErrorInvalidValue. Execution
-   * remains asynchronous; the caller observes completion errors through stream.
-   */
-  template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t EvalAllGpu(bool b, int4 s0, cuda::std::span<const Cw> cws,
-      cuda::std::span<int4> ys, cudaStream_t stream = 0) const
-    requires(kDepth < sizeof(size_t) * 8);
-
   /**
    * Launch full-domain CUDA evaluation from split device Cws.
    *
@@ -431,28 +329,6 @@ public:
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t EvalAllGpu(bool b, int4 s0, cuda::std::span<const int4> cws,
       cuda::std::span<int4> ys, cudaStream_t stream = 0, size_t stride = 1) const
-    requires(kDepth < sizeof(size_t) * 8);
-
-  /**
-   * Launch full-domain evaluation for s0s.size() keys with this configuration.
-   *
-   * Uses the same execution, resource and tuning rules as EvalAllGpu().
-   * Seeds, correction words and outputs are device-accessible buffers. Cws
-   * and outputs are key-major rows, with kDepth + 1 correction words and
-   * 2^kDepth packed output blocks per key. The key count comes from s0s.size().
-   * @param b Party index shared by the batch.
-   * @param s0s Device storage containing one seed per key.
-   * @param cws Flat device rows of Cws.
-   * @param ys Flat device output rows.
-   * @param stream Stream on the device owning the referenced resources.
-   * @return Immediate CUDA status. Empty batches succeed without reading buffers.
-   * Invalid dimensions, null used buffers, or unaddressable counts and bytes
-   * return cudaErrorInvalidValue. Oversized grids return cudaErrorInvalidConfiguration.
-   */
-  template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t EvalAllGpuBatch(bool b, cuda::std::span<const int4> s0s,
-      cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
-      cudaStream_t stream = 0) const
     requires(kDepth < sizeof(size_t) * 8);
 
   /**
@@ -508,19 +384,6 @@ private:
   // Split Cws view over the caller's array. The host methods and the
   // split GPU kernels share this one view; see detail::PackedHalfTreeCwsView.
   using CwsView = detail::PackedHalfTreeCwsView<Cw>;
-
-  // Writes Cw slots in the key array layout.
-  struct AosWriter {
-    Cw *cws;
-
-    __host__ __device__ void Write(int i, int4 s_cw) const {
-      cws[i] = {s_cw};
-    }
-
-    __host__ __device__ void Finish(int4 terminal) const {
-      cws[kDepth] = {terminal};
-    }
-  };
 
   // Writes the strided Cw slots.
   struct CwsWriter {
@@ -658,14 +521,6 @@ template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 __host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Gen(
-    Cw cws[], const int4 s0s[2], In a, uint64_t beta) {
-  Generate(AosWriter{cws}, s0s, a, beta);
-}
-
-template <int in_bits, int out_bits, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-__host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Gen(
     cuda::std::span<int4> cws, cuda::std::span<const int4, 2> s0s, In a, uint64_t beta,
     size_t stride) {
   util::RequireArg(stride > 0, "PackedHalfTreeDpf::Gen: stride must be positive");
@@ -736,14 +591,6 @@ template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 __host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval(
-    bool b, int4 s0, const Cw cws[], In x) {
-  return EvalCws(b, s0, cws, x);
-}
-
-template <int in_bits, int out_bits, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-__host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval(
     bool b, int4 s0, cuda::std::span<const int4> cws, In x, size_t stride) {
   util::RequireArg(stride > 0, "PackedHalfTreeDpf::Eval: stride must be positive");
   constexpr size_t kMaxElements = SIZE_MAX / sizeof(int4);
@@ -787,14 +634,6 @@ template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAll(
-    bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth) {
-  EvalAllCws(b, s0, cws, ys, par_depth);
-}
-
-template <int in_bits, int out_bits, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAll(
     bool b, int4 s0, cuda::std::span<const int4> cws, int4 ys[], int par_depth,
     size_t stride) {
   if (stride == 0) throw std::invalid_argument("PackedHalfTreeDpf::EvalAll: stride must be positive");
@@ -827,17 +666,6 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllCws(
       ys[j] = EvalCws(b, s0, cws, static_cast<In>(j * kLanes));
     });
   }
-}
-
-template <int in_bits, int out_bits, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalRange(
-    bool b, In first, In last, int4 s0, const Cw cws[],
-    cuda::std::span<int4> ys, int par_depth) {
-  if (cws == nullptr)
-    throw std::invalid_argument("PackedHalfTreeDpf::EvalRange: cws must not be null");
-  EvalRangeCws(b, first, last, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, int out_bits, typename Hash, typename In>
@@ -1159,6 +987,69 @@ __global__ void PackedHalfTreeSplitEvalAllBatchKernel(bool b, const int4 *s0s,
       subtree_block_index, thread_index, shared_frontier);
 }
 
+// Key-major batch counterpart: key k's components occupy its whole block of
+// records with a unit stride.
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void PackedHalfTreeSplitEvalAllBatchDeviceKeyKernel(bool b, const int4 *s0s,
+    const void *cws_buffer, size_t key_records, size_t key_count, int4 *ys, int4 instance_seed,
+    typename Descriptor::Backend hash) {
+  using Scheme = typename Descriptor::Scheme;
+  using Cws = fss::detail::PackedHalfTreeCwsView<typename Scheme::Cw>;
+  const auto *cws = static_cast<const int4 *>(cws_buffer);
+  constexpr int kBlocksPerKey = 1 << block_root_depth;
+  constexpr size_t kOutputsPerKey = size_t{1} << HalfTreeGpuTraits<Scheme>::kOutputBits;
+  const int key_index = blockIdx.x / kBlocksPerKey;
+  const int subtree_block_index = blockIdx.x - key_index * kBlocksPerKey;
+  const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
+  if (thread_index >= (1LL << frontier_depth)) return;
+  const int4 *key = cws + static_cast<size_t>(key_index) * key_records;
+  int4 *key_outputs = ys + static_cast<size_t>(key_index) * kOutputsPerKey;
+  __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
+  HalfTreeEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
+      Cws{key, 1}, key_outputs, instance_seed, hash,
+      subtree_block_index, thread_index, shared_frontier);
+}
+
+// Host launcher for the key-major batch kernel; the hash backend and instance
+// seed arrive by value from a host mirror of the device scheme.
+template <int in_bits, int out_bits, typename Hash, typename In, int frontier_depth = 16,
+    int threads_per_block = 256>
+__host__ inline cudaError_t PackedHalfTreeDpfEvalAllGpuBatchDeviceKey(bool b, const int4 *s0s,
+    size_t key_count, const int4 *cws, size_t cws_count, size_t key_records, int4 *ys,
+    size_t ys_count, int4 instance_seed, const Hash &hash, cudaStream_t stream) {
+  using Scheme = PackedHalfTreeDpf<in_bits, out_bits, Hash, In>;
+  constexpr int kDepth = Scheme::kDepth;
+  using Descriptor = PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
+  constexpr size_t kOutputsPerKey = size_t{1} << kDepth;
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
+  constexpr int kFrontierDepth = frontier_depth < kDepth ? frontier_depth : kDepth;
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  static_assert(kDepth - kFrontierDepth <= 8,
+      "gpu frontier leaves more than eight tail levels; specify a larger frontier_depth");
+  constexpr int kThreadsPerBlockLog2 = [] {
+    int requested_log2 = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++requested_log2;
+    return requested_log2 < kFrontierDepth ? requested_log2 : kFrontierDepth;
+  }();
+  constexpr int kBlockRootDepth = kFrontierDepth - kThreadsPerBlockLog2;
+  constexpr int kBlocksPerKey = 1 << kBlockRootDepth;
+  if (key_count == 0) return cudaSuccess;
+  if (key_count > kMaxElements ||
+      key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
+      key_count > kMaxAddressableSize / key_records / sizeof(int4) ||
+      cws_count < key_count * key_records || ys_count < key_count * kOutputsPerKey ||
+      s0s == nullptr || cws == nullptr || ys == nullptr) return cudaErrorInvalidValue;
+  if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / kBlocksPerKey)
+    return cudaErrorInvalidConfiguration;
+  PackedHalfTreeSplitEvalAllBatchDeviceKeyKernel<Descriptor, kFrontierDepth, kBlockRootDepth>
+      <<<key_count * kBlocksPerKey, 1 << kThreadsPerBlockLog2, 0, stream>>>(
+          b, s0s, cws, key_records, key_count, ys, instance_seed, hash);
+  return cudaGetLastError();
+}
+
 #endif  // defined(__CUDACC__)
 
 #if defined(__CUDACC__)
@@ -1281,33 +1172,6 @@ template <int in_bits, int out_bits, typename Hash, typename In>
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 template <int frontier_depth, int threads_per_block>
 __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllGpu(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
-    cuda::std::span<int4> ys, cudaStream_t stream) const
-  requires(kDepth < sizeof(size_t) * 8) {
-#if defined(__CUDACC__)
-  using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
-  using Descriptor = gpu::detail::PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
-  constexpr size_t kOutputsPerKey = size_t{1} << kDepth;
-  constexpr size_t kCwPerKey = kDepth + 1;
-  constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
-  if (cws.size() < kCwPerKey || ys.size() < kOutputsPerKey ||
-      cws.data() == nullptr || ys.data() == nullptr ||
-      kOutputsPerKey > kMaxAddressableSize / sizeof(int4)) return cudaErrorInvalidValue;
-  gpu::detail::HalfTreeEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
-      <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
-          b, s0, cws.data(), ys.data(), instance_seed_, hash_);
-  return cudaGetLastError();
-#else
-  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
-  return cudaErrorNotSupported;
-#endif
-}
-
-template <int in_bits, int out_bits, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <int frontier_depth, int threads_per_block>
-__host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllGpu(
     bool b, int4 s0, cuda::std::span<const int4> cws, cuda::std::span<int4> ys,
     cudaStream_t stream, size_t stride) const
   requires(kDepth < sizeof(size_t) * 8) {
@@ -1327,39 +1191,6 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
       LaunchShape::kBlockRootDepth>
       <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), stride, ys.data(), instance_seed_, hash_);
-  return cudaGetLastError();
-#else
-  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
-  return cudaErrorNotSupported;
-#endif
-}
-
-template <int in_bits, int out_bits, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
-template <int frontier_depth, int threads_per_block>
-__host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllGpuBatch(
-    bool b, cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
-    cuda::std::span<int4> ys, cudaStream_t stream) const
-  requires(kDepth < sizeof(size_t) * 8) {
-#if defined(__CUDACC__)
-  using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
-  using Descriptor = gpu::detail::PackedHalfTreeGpuKernelDescriptor<in_bits, out_bits, Hash, In>;
-  constexpr size_t kOutputsPerKey = size_t{1} << kDepth;
-  constexpr size_t kCwPerKey = kDepth + 1;
-  constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
-  const size_t key_count = s0s.size();
-  if (key_count == 0) return cudaSuccess;
-  if (key_count > kMaxAddressableSize / kCwPerKey / sizeof(Cw) ||
-      key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
-      cws.size() < key_count * kCwPerKey || ys.size() < key_count * kOutputsPerKey ||
-      s0s.data() == nullptr || cws.data() == nullptr || ys.data() == nullptr)
-    return cudaErrorInvalidValue;
-  if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
-    return cudaErrorInvalidConfiguration;
-  gpu::detail::HalfTreeEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
-      <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
-          b, s0s.data(), cws.data(), ys.data(), instance_seed_, hash_);
   return cudaGetLastError();
 #else
   static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");

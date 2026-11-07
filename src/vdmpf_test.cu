@@ -258,8 +258,11 @@ protected:
             if (bucket >= key.m_rt) continue;
             int4 share;
             const auto &bucket_key = key.bks[bucket];
-            auto corrected = inner.Eval(party != 0, bucket_key.s0, bucket_key.cws,
-                bucket_key.cs, index, share);
+            auto corrected = fss::detail::SchemeAccess::VdpfEvalCw(inner, party != 0,
+                bucket_key.s0,
+                cuda::std::span<const typename VdmpfType::Cw>(bucket_key.cws,
+                    kBucketBits + 1),
+                cuda::std::span<const int4, 4>(bucket_key.cs, 4), index, share);
             reference_ys[omega] = (Group::From(reference_ys[omega]) + Group::From(share)).Into();
             leaves[bucket].push_back(hash_.Hash(cuda::std::span<const int4, 4>(corrected)));
           }

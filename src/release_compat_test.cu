@@ -41,12 +41,14 @@ void ExpectInt4(int4 actual, int4 expected) {
   EXPECT_EQ(actual.w, expected.w);
 }
 
-template <typename Cw>
-void ExpectCw(const Cw &actual, const Cw &expected) {
-  ExpectInt4(actual.s, expected.s);
-  if constexpr (requires { actual.v; }) ExpectInt4(actual.v, expected.v);
-  if constexpr (requires { actual.tr; }) EXPECT_EQ(actual.tr, expected.tr);
-  if constexpr (requires { actual.extra; }) EXPECT_EQ(actual.extra, expected.extra);
+// Split keys are compared component-wise: seed words, optional value words,
+// and the packed control.
+void ExpectSplitKey(const int4 *actual_cws, const int4 *actual_vws, uint16_t actual_tr,
+    const int4 *expected_cws, const int4 *expected_vws, uint16_t expected_tr, int words) {
+  for (int i = 0; i < words; ++i) ExpectInt4(actual_cws[i], expected_cws[i]);
+  if (actual_vws != nullptr)
+    for (int i = 0; i < words; ++i) ExpectInt4(actual_vws[i], expected_vws[i]);
+  EXPECT_EQ(actual_tr, expected_tr);
 }
 
 // Test-only backends deliberately force generation failure without invoking
@@ -94,14 +96,14 @@ void CheckConfiguredPackers() {
   Dpf dpf{dpf_prg};
   auto half_hash = fss_test::TestCcrHash{1, 2};
   Half half{half_hash, kHashKey};
-  typename Dpf::Key dk0, dk1;
-  typename Half::Key hk0, hk1;
+  fss_test::ComponentKey<Dpf> dk0, dk1;
+  fss_test::ComponentKey<Half> hk0, hk1;
   fss_test::GenPair(dpf, dk0, dk1, kSeeds, 107, kBeta);
   fss_test::GenPair(half, hk0, hk1, kSeeds, 107, kBeta);
   // Packing selects the same explicit scheme configuration as key generation.
-  auto dp = fss::detail::cpu::DpfPackPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(dk0);
-  auto hp = fss::detail::cpu::HalfTreeDpfPackPoint<8, Bytes, fss_test::CcrBackend<fss_test::TestCcrHash>, uint16_t>(hk0);
-  auto dp_explicit = fss::detail::cpu::DpfPackPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(dk0);
+  auto dp = fss::detail::cpu::DpfPackPoint<8>(dk0);
+  auto hp = fss::detail::cpu::HalfTreeDpfPackPoint<8>(hk0);
+  auto dp_explicit = fss::detail::cpu::DpfPackPoint<8>(dk0);
   ExpectInt4(dp_explicit.s0, dp.s0);
   for (int x = 0; x < 256; ++x) {
     auto dy = fss::detail::cpu::DpfEvalPoint<8, Bytes, fss::prg::ChaCha<2>, uint16_t>(false, (dp).s0, (dp).cws, (dp).tr, x, dpf_prg);
@@ -113,28 +115,27 @@ void CheckConfiguredPackers() {
 
 }  // namespace
 
-TEST(ReleaseCompatibility, RawDpfAndDcfKeepCwsAndOutputOrder) {
+TEST(ReleaseCompatibility, RawDpfAndDcfKeepSplitOutputsAndOrder) {
   using Dpf = fss::Dpf<8, Bytes, fss::prg::ChaCha<2>, uint16_t>;
   using Dcf = fss::Dcf<8, Bytes, fss::prg::ChaCha<4>, uint16_t, fss::DcfPred::kLt>;
   auto dpf_prg = fss::prg::ChaCha<2>{1, 2};
   Dpf dpf{dpf_prg};
   Dcf dcf{fss::prg::ChaCha<4>{1, 2}};
-  Dpf::Cw dcws[9];
-  Dcf::Cw ccws[9];
-  Dpf::Key dk0, dk1;
-  Dcf::Key ck0, ck1;
-  dpf.Gen(dcws, kSeeds, 107, kBeta);
-  dcf.Gen(ccws, kSeeds, 107, kBeta);
+  int4 dcws[9], dcvws[9], ccws[9], ccvws[9];
+  uint16_t dtr = 0, ctr = 0;
+  fss_test::ComponentKey<Dpf> dk0, dk1;
+  fss_test::ComponentKey<Dcf> ck0, ck1;
+  dpf.Gen(cuda::std::span<int4>(dcws, 9), dtr, kSeeds, 107, kBeta);
+  dcf.Gen(cuda::std::span<int4>(ccws, 9), cuda::std::span<int4>(ccvws, 9), ctr, kSeeds, 107, kBeta);
   fss_test::GenPair(dpf, dk0, dk1, kSeeds, 107, kBeta);
   fss_test::GenPair(dcf, ck0, ck1, kSeeds, 107, kBeta);
-  for (int i = 0; i < 9; ++i) {
-    ExpectCw(dcws[i], dk0.cws[i]);
-    ExpectCw(ccws[i], ck0.cws[i]);
-  }
+  ExpectSplitKey(dcws, nullptr, dtr, dk0.cws, nullptr, dk0.tr, 9);
+  ExpectSplitKey(ccws, ccvws, ctr, ck0.cws, ck0.vws, ck0.tr, 9);
   int4 dy[256], cy[256];
   for (bool party : {false, true}) {
-    dpf.EvalAll(party, kSeeds[party], dcws, dy);
-    dcf.EvalAll(party, kSeeds[party], ccws, cy);
+    dpf.EvalAll(party, kSeeds[party], cuda::std::span<const int4>(dcws, 9), dtr, dy);
+    dcf.EvalAll(party, kSeeds[party], cuda::std::span<const int4>(ccws, 9),
+        cuda::std::span<const int4>(ccvws, 9), ctr, cy);
     for (int x = 0; x < 256; ++x) {
       ExpectInt4(dy[x], fss_test::EvalKey(dpf, party, party ? dk1 : dk0, x));
       ExpectInt4(cy[x], fss_test::EvalKey(dcf, party, party ? ck1 : ck0, x));
@@ -146,27 +147,30 @@ TEST(ReleaseCompatibility, RawHalfTreeAndCallerOwnedGrotto) {
   using Half = fss::HalfTreeDpf<8, Bytes, fss_test::CcrBackend<fss_test::TestCcrHash>, uint16_t>;
   auto half_hash = fss_test::TestCcrHash{1, 2};
   Half half{half_hash, kHashKey};
-  Half::Key k0, k1;
-  Half::Cw cws[9];
-  half.Gen(cws, kSeeds, 107, kBeta);
+  fss_test::ComponentKey<Half> k0, k1;
+  int4 cws[9];
+  uint16_t tr = 0;
+  half.Gen(cuda::std::span<int4>(cws, 9), tr, kSeeds, 107, kBeta);
   fss_test::GenPair(half, k0, k1, kSeeds, 107, kBeta);
-  for (int i = 0; i < 9; ++i) ExpectCw(cws[i], k0.cws[i]);
-  EXPECT_FALSE(cws[8].extra);
+  ExpectSplitKey(cws, nullptr, tr, k0.cws, nullptr, k0.tr, 9);
+  EXPECT_EQ(static_cast<uint16_t>(tr >> 8), 0) << "unused control bits";
   int4 ys[256];
-  half.EvalAll(false, kSeeds[0], cws, ys);
+  half.EvalAll(false, kSeeds[0], cuda::std::span<const int4>(cws, 9), tr, ys);
   for (int x = 0; x < 256; ++x) ExpectInt4(ys[x], fss_test::EvalKey(half, false, k0, x));
 
   using Grotto = fss::GrottoDcf<8, fss::prg::ChaCha<2>, uint16_t>;
   Grotto grotto{fss::prg::ChaCha<2>{1, 2}};
-  Grotto::Cw gcws[9];
-  Grotto::Key g0, g1;
-  grotto.Gen(gcws, kSeeds, 107);
+  int4 gcws[9];
+  uint16_t gtr = 0;
+  fss_test::ComponentKey<Grotto> g0, g1;
+  grotto.Gen(cuda::std::span<int4>(gcws, 9), gtr, kSeeds, 107);
   fss_test::GenPair(grotto, g0, g1, kSeeds, 107);
+  ExpectSplitKey(gcws, nullptr, gtr, g0.cws, nullptr, g0.tr, 9);
   bool storage[511], raw_ys[256];
-  grotto.Preprocess(false, kSeeds[0], gcws, storage);
+  grotto.Preprocess(false, kSeeds[0], cuda::std::span<const int4>(gcws, 9), gtr, storage);
   Grotto::ParityTreeView view{storage};
   auto owned = fss_test::PreprocessKey(grotto, false, g0);
-  grotto.EvalAll(false, kSeeds[0], gcws, raw_ys);
+  grotto.EvalAll(false, kSeeds[0], cuda::std::span<const int4>(gcws, 9), gtr, raw_ys);
   for (int x = 0; x < 256; ++x) {
     EXPECT_EQ(grotto.Eval(view, x), grotto.Eval(owned.View(), x));
     EXPECT_EQ(raw_ys[x], grotto.Eval(view, x));
@@ -177,22 +181,26 @@ TEST(ReleaseCompatibility, RawVdpfPreservesChainProofAndConstSeeds) {
   using Hash = fss::hash::Blake3;
   using Scheme = fss::Vdpf<8, Bytes, fss::prg::ChaCha<2>, Hash, Hash, uint16_t>;
   Scheme scheme{fss::prg::ChaCha<2>{1, 2}, Hash{kIv}, Hash{kIv}};
-  Scheme::Key k0, k1;
-  Scheme::Cw cws[9];
+  fss_test::ComponentKey<Scheme> k0, k1;
+  int4 cws[9];
+  uint16_t tr = 0;
   cuda::std::array<int4, 4> cs;
   int4 effective[2] = {kSeeds[0], kSeeds[1]};
   ASSERT_EQ(fss_test::GenPair(scheme, k0, k1, effective, 107, kBeta), 0);
   const int4 seeds[2] = {effective[0], effective[1]};
-  ASSERT_EQ(scheme.Gen(cws, cs, seeds, 107, kBeta), 0);
-  for (int i = 0; i < 9; ++i) ExpectCw(cws[i], k0.cws[i]);
+  ASSERT_EQ(scheme.Gen(cuda::std::span<int4>(cws, 9), tr, cuda::std::span<int4, 4>(cs), seeds, 107, kBeta), 0);
+  ExpectSplitKey(cws, nullptr, tr, k0.cws, nullptr, k0.tr, 9);
+  for (int i = 0; i < 4; ++i) ExpectInt4(cs[i], k0.cs[i]);
   int4 raw_ys[256], new_ys[256];
   cuda::std::array<int4, 4> raw_pi, new_pi;
-  scheme.EvalAll(false, seeds[0], cws, cs, raw_ys, raw_pi);
+  scheme.EvalAll(false, seeds[0], cuda::std::span<const int4>(cws, 9), tr,
+      cuda::std::span<const int4, 4>(cs), raw_ys, raw_pi);
   fss_test::EvalAllKey(scheme, false, k0, new_ys, new_pi);
   for (int i = 0; i < 4; ++i) ExpectInt4(raw_pi[i], new_pi[i]);
   for (int x = 0; x < 256; ++x) {
     int4 y;
-    auto point_pi = scheme.Eval(false, seeds[0], cws, cs, x, y);
+    auto point_pi = scheme.Eval(false, seeds[0], cuda::std::span<const int4>(cws, 9), tr,
+        cuda::std::span<const int4, 4>(cs), x, y);
     auto result = fss_test::EvalKey(scheme, false, k0, x);
     ExpectInt4(y, result.y);
     ExpectInt4(raw_ys[x], new_ys[x]);

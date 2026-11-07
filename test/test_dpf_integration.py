@@ -86,3 +86,18 @@ class TestDpfEvalAllCuda:
             gpu = evaluate_all(dpf, party=party, s0=s0s[party].to('cuda'), cws=cws.to('cuda'), frontier_depth=17)
             assert gpu.device.type == 'cuda'
             assert torch.equal(cpu, gpu.cpu())
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA required')
+    def test_gpu_batch_matches_cpu_for_one_and_two_keys(self, dpf, s0s, beta):
+        # A one-key batch stays three-dimensional; its key-major cws block must
+        # not be mistaken for a single-key two-dimensional tensor.
+        count = 1 << dpf.in_bits
+        for keys in (1, 2):
+            stacked_s0s = s0s[:keys].to('cuda')
+            stacked_cws = generate_point(dpf, s0s, alpha=107, beta=beta) \
+                .unsqueeze(0).repeat(keys, 1, 1).to('cuda')
+            ys = torch.empty((keys, count, 4), dtype=torch.int32, device='cuda')
+            dpf.eval_all_gpu_batch(0, stacked_s0s, stacked_cws, ys)
+            for k in range(keys):
+                cpu = evaluate_all(dpf, party=0, s0=s0s[k], cws=stacked_cws[k].cpu())
+                assert torch.equal(ys[k].cpu(), cpu)

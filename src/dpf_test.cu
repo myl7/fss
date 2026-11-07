@@ -57,7 +57,7 @@ protected:
   using DpfType = fss::Dpf<kAlphaBits, Group, Prg, uint16_t>;
 
   int4 s0s[2];
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   Prg prg;
 
   DpfTestBase(Prg p) : prg(p) {}
@@ -179,7 +179,7 @@ protected:
   using DpfType = fss::Dpf<kAlphaBits, Group, Prg, uint16_t>;
 
   int4 s0s[2];
-  DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   cuda::std::array<EVP_CIPHER_CTX *, 2> ctxs;
 
   void SetUp() override {
@@ -331,7 +331,7 @@ protected:
   };
 
   int4 s0s[2];
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   Prg prg;
 
   DpfAesRawTestBase() : prg(kKeys) {}
@@ -451,7 +451,7 @@ protected:
   using DpfType = fss::Dpf<kAlphaBits, Group, Prg, uint16_t>;
 
   int4 s0s[2];
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   uint8_t aes_key[2][16] = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
       {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}};
 
@@ -520,7 +520,7 @@ TEST(DpfSmallDomainTest, EvalAllChaChaBelowBatchDepth) {
 
   int4 b_buf = {static_cast<int>(kBeta & 0xFFFFFFFF), static_cast<int>((kBeta >> 32) & 0xFFFFFFFF),
       static_cast<int>((kBeta >> 64) & 0xFFFFFFFF), static_cast<int>((kBeta >> 96) & 0xFFFFFFFE)};
-  typename DpfType::Key k0, k1;
+  fss_test::ComponentKey<DpfType> k0, k1;
   fss_test::GenPair(dpf, k0, k1, cuda::std::span<const int4, 2>(s0s, 2), kAlpha5, b_buf);
 
   constexpr size_t n = 1ULL << 5;
@@ -549,24 +549,26 @@ template <int bits, typename Group, typename Prg, typename In>
 void CheckDpfRange(Prg prg, In first, In last, In alpha, int par_depth) {
   using Scheme = fss::Dpf<bits, Group, Prg, In>;
   Scheme scheme(prg);
-  typename Scheme::Cw cws[bits + 1];
+  fss_test::ComponentKey<Scheme, In> key;
   const int4 seeds[2] = {{0x12345678, 0x1234abcd, 0x13579bdf, 0x2468ace0},
       {0x7abc1234, 0x01bc3456, 0x4567abcd, 0x76892344}};
   const int4 beta = Group::From(make_int4(0x5abc0123, 0x44556677, 0x12345678, 0x6abc1234)).Into();
-  scheme.Gen(cws, seeds, alpha, beta);
+  scheme.Gen(cuda::std::span<int4>(key.cws, fss_test::ComponentKey<Scheme, In>::kCwWords),
+      key.tr, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
   const size_t count = static_cast<size_t>(static_cast<__uint128_t>(last) - first) + 1;
   const int4 sentinel = make_int4(0x9876, 0x1234, 0x5678, 0xabcd);
   std::vector<int4> outputs[2] = {
       std::vector<int4>(count + 3, sentinel), std::vector<int4>(count + 3, sentinel)};
+  const auto cws = cuda::std::span<const int4>(key.cws, fss_test::ComponentKey<Scheme, In>::kCwWords);
   for (int party = 0; party < 2; ++party) {
-    scheme.EvalRange(party, first, last, seeds[party], cws,
+    scheme.EvalRange(party, first, last, seeds[party], cws, key.tr,
         cuda::std::span<int4>(outputs[party].data() + 1, count + 2), par_depth);
     EXPECT_EQ(memcmp(&outputs[party][0], &sentinel, sizeof(int4)), 0);
     EXPECT_EQ(memcmp(&outputs[party][count + 1], &sentinel, sizeof(int4)), 0);
     EXPECT_EQ(memcmp(&outputs[party][count + 2], &sentinel, sizeof(int4)), 0);
     for (size_t offset = 0; offset < count; ++offset) {
       const In point = first + static_cast<In>(offset);
-      const int4 scalar = scheme.Eval(party, seeds[party], cws, point);
+      const int4 scalar = scheme.Eval(party, seeds[party], cws, key.tr, point);
       EXPECT_EQ(memcmp(&outputs[party][offset + 1], &scalar, sizeof(int4)), 0)
           << "party=" << party << " offset=" << offset << " par_depth=" << par_depth;
     }
@@ -740,8 +742,8 @@ void CheckDpfGenHalf() {
   FullScheme reference{FullPrg(backend, full_calls)};
   int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
   int4 beta = {42, 6, 8, 10};
-  typename Scheme::Key keys[2];
-  typename FullScheme::Key full_keys[2];
+  fss_test::ComponentKey<Scheme> keys[2];
+  fss_test::ComponentKey<FullScheme> full_keys[2];
   fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13}, beta);
   fss_test::GenPair(reference, full_keys[0], full_keys[1], seeds, uint8_t{13}, beta);
   EXPECT_EQ(calls.full, 2 * bits);
@@ -810,22 +812,12 @@ void CheckComponentEval(const std::vector<In> &queries, In alpha, int4 beta,
   using Scheme = fss::Dpf<bits, Group, Prg, In>;
 
   Scheme scheme{Prg(kNonce0, kNonce1)};
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme, In> k0, k1;
   fss_test::GenPair(scheme, k0, k1, kComponentSeeds, alpha, beta);
 
-  std::vector<int4> cws_s(static_cast<size_t>(bits) + 1);
-  std::vector<char> cws_tr(static_cast<size_t>(bits) + 1);
-  for (int i = 0; i <= bits; ++i) {
-    cws_s[i] = k0.cws[i].s;
-    cws_tr[i] = k0.cws[i].tr;
-  }
-
-  const int4 terminal = cws_s[bits];
+  const int4 terminal = k0.cws[bits];
   ASSERT_EQ(terminal.w & 1, 0);
-  In packed_tr = 0;
-  for (int i = 0; i < bits; ++i) {
-    if (cws_tr[i]) packed_tr |= static_cast<In>(In{1} << i);
-  }
+  In packed_tr = k0.tr;
   // Bits at and above the domain depth are outside the packed correction word.
   constexpr int kInBits = static_cast<int>(sizeof(In) * 8);
   if constexpr (bits < kInBits) {
@@ -833,6 +825,8 @@ void CheckComponentEval(const std::vector<In> &queries, In alpha, int4 beta,
       packed_tr |= static_cast<In>(In{1} << i);
     }
   }
+  std::vector<int4> key_copy(k0.cws, k0.cws + bits + 1);
+  const In key_tr_copy = k0.tr;
 
   const size_t level_stride = use_default_stride ? 1 : stride;
   const size_t used = static_cast<size_t>(bits) * level_stride + 1;
@@ -840,8 +834,8 @@ void CheckComponentEval(const std::vector<In> &queries, In alpha, int4 beta,
   std::vector<int4> storage(used + kExtra, kComponentSentinel);
   std::vector<int4> expected_storage = storage;
   for (int i = 0; i < bits; ++i) {
-    storage[static_cast<size_t>(i) * level_stride] = cws_s[i];
-    expected_storage[static_cast<size_t>(i) * level_stride] = cws_s[i];
+    storage[static_cast<size_t>(i) * level_stride] = k0.cws[i];
+    expected_storage[static_cast<size_t>(i) * level_stride] = k0.cws[i];
   }
   storage[static_cast<size_t>(bits) * level_stride] = terminal;
   expected_storage[static_cast<size_t>(bits) * level_stride] = terminal;
@@ -849,24 +843,19 @@ void CheckComponentEval(const std::vector<In> &queries, In alpha, int4 beta,
   const cuda::std::span<const int4> extra(storage.data(), used + kExtra);
 
   for (const In x : queries) {
-    int4 aos[2];
     int4 got_exact[2];
     int4 got_extra[2];
     for (int party = 0; party < 2; ++party) {
       const bool is_party1 = party != 0;
       const int4 s = is_party1 ? k1.s0 : k0.s0;
-      aos[party] = scheme.Eval(is_party1, s, k0.cws, x);
       auto eval = [&](cuda::std::span<const int4> cw_s) {
         if (use_default_stride) return scheme.Eval(is_party1, s, cw_s, packed_tr, x);
         return scheme.Eval(is_party1, s, cw_s, packed_tr, x, stride);
       };
       got_exact[party] = eval(exact);
       got_extra[party] = eval(extra);
-      EXPECT_EQ(memcmp(&aos[party], &got_exact[party], sizeof(int4)), 0)
+      EXPECT_EQ(memcmp(&got_exact[party], &got_extra[party], sizeof(int4)), 0)
           << "party=" << party << " x=" << static_cast<uint64_t>(x) << " stride=" << level_stride;
-      EXPECT_EQ(memcmp(&aos[party], &got_extra[party], sizeof(int4)), 0)
-          << "party=" << party << " x=" << static_cast<uint64_t>(x)
-          << " stride=" << level_stride << " extra";
     }
     const int4 sum = (Group::From(got_exact[0]) + Group::From(got_exact[1])).Into();
     const int4 truth = x == alpha ? Group::From(beta).Into() : Group{}.Into();
@@ -879,10 +868,10 @@ void CheckComponentEval(const std::vector<In> &queries, In alpha, int4 beta,
         << "component storage changed at " << i << " stride=" << level_stride;
   }
   for (int i = 0; i <= bits; ++i) {
-    EXPECT_EQ(memcmp(&k0.cws[i].s, &cws_s[i], sizeof(int4)), 0)
-        << "AoS s changed at " << i << " stride=" << level_stride;
-    EXPECT_EQ(k0.cws[i].tr, cws_tr[i] != 0) << "AoS tr changed at " << i;
+    EXPECT_EQ(memcmp(&k0.cws[i], &key_copy[i], sizeof(int4)), 0)
+        << "key correction word changed at " << i << " stride=" << level_stride;
   }
+  EXPECT_EQ(k0.tr, key_tr_copy) << "key packed control bits changed";
 }
 
 template <typename Group, int bits, typename In>
@@ -925,7 +914,7 @@ TEST(DpfComponentEval, LargeStrideDepthOne) {
   using Scheme = fss::Dpf<1, BytesGroup, Prg, uint8_t>;
   Scheme scheme{Prg(kNonce0, kNonce1)};
   const uint8_t alpha = 1;
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme> k0, k1;
   fss_test::GenPair(scheme, k0, k1, kComponentSeeds, alpha, kComponentBeta);
 
   // The terminal sits at cws[in_bits*stride], so a legal stride needs real
@@ -934,21 +923,24 @@ TEST(DpfComponentEval, LargeStrideDepthOne) {
   // Strides past the guard are rejected by the debug test.
   constexpr size_t kStride = size_t{1} << 20;
   std::vector<int4> storage(kStride + 1, kComponentSentinel);
-  storage[0] = k0.cws[0].s;
-  storage[kStride] = k0.cws[1].s;
-  uint8_t packed_tr = k0.cws[0].tr ? 1 : 0;
+  storage[0] = k0.cws[0];
+  storage[kStride] = k0.cws[1];
+  uint8_t packed_tr = static_cast<uint8_t>(k0.tr);
   for (int i = 1; i < 8; ++i) packed_tr |= static_cast<uint8_t>(1u << i);
   const cuda::std::span<const int4> exact(storage.data(), storage.size());
 
-  for (int party = 0; party < 2; ++party) {
-    const bool is_party1 = party != 0;
-    const int4 s = is_party1 ? k1.s0 : k0.s0;
-    for (int x = 0; x < 2; ++x) {
-      const uint8_t point = static_cast<uint8_t>(x);
-      const int4 aos = scheme.Eval(is_party1, s, k0.cws, point);
-      const int4 got = scheme.Eval(is_party1, s, exact, packed_tr, point, kStride);
-      EXPECT_EQ(memcmp(&aos, &got, sizeof(int4)), 0) << "party=" << party << " x=" << x;
+  for (int x = 0; x < 2; ++x) {
+    const uint8_t point = static_cast<uint8_t>(x);
+    int4 got[2];
+    for (int party = 0; party < 2; ++party) {
+      const bool is_party1 = party != 0;
+      const int4 s = is_party1 ? k1.s0 : k0.s0;
+      got[party] = scheme.Eval(is_party1, s, exact, packed_tr, point, kStride);
     }
+    const int4 sum = (BytesGroup::From(got[0]) + BytesGroup::From(got[1])).Into();
+    const int4 truth = point == alpha ? BytesGroup::From(kComponentBeta).Into() : BytesGroup{}.Into();
+    EXPECT_EQ(memcmp(&sum, &truth, GroupCompareSize<BytesGroup>()), 0)
+        << "sum x=" << x;
   }
 }
 
@@ -957,48 +949,55 @@ TEST(DpfComponentEval, AsymmetricPackedRightControls) {
   using Scheme = fss::Dpf<3, BytesGroup, Prg, uint8_t>;
   Scheme scheme{Prg(kNonce0, kNonce1)};
   const uint8_t alpha = 5;
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme> k0, k1;
   fss_test::GenPair(scheme, k0, k1, kComponentSeeds, alpha, kComponentBeta);
 
   // 110 is not a palindrome, so reading root-order bits backwards is observable.
   const bool tr_pattern[3] = {true, true, false};
   const bool tl_pattern[3] = {true, false, true};
+  k0.tr = 0;
   for (int i = 0; i < 3; ++i) {
-    k0.cws[i].tr = k1.cws[i].tr = tr_pattern[i];
-    k0.cws[i].s = k1.cws[i].s = fss::util::SetLsb(k0.cws[i].s, tl_pattern[i]);
+    if (tr_pattern[i]) k0.tr |= static_cast<uint8_t>(1u << i);
+    k0.cws[i] = fss::util::SetLsb(k0.cws[i], tl_pattern[i]);
   }
   const int4 terminal = make_int4(0x0f1e2d3c, 0x4b5a6978, 0x07162534, 0x0a0b0c0e);
   ASSERT_EQ(terminal.w & 1, 0);
   for (int i = 0; i < 3; ++i) {
-    ASSERT_NE(memcmp(&terminal, &k0.cws[i].s, sizeof(int4)), 0);
+    ASSERT_NE(memcmp(&terminal, &k0.cws[i], sizeof(int4)), 0);
   }
-  k0.cws[3].s = terminal;
-  k0.cws[3].tr = false;
-  k1.cws[3].s = terminal;
-  k1.cws[3].tr = false;
+  k0.cws[3] = terminal;
 
-  uint8_t packed_tr = 0;
-  for (int i = 0; i < 3; ++i) {
-    if (k0.cws[i].tr) packed_tr |= static_cast<uint8_t>(1u << i);
-  }
+  uint8_t packed_tr = static_cast<uint8_t>(k0.tr);
   EXPECT_EQ(static_cast<uint8_t>(packed_tr & 0x7), uint8_t{0x3});
   for (int i = 3; i < 8; ++i) packed_tr |= static_cast<uint8_t>(1u << i);
 
   std::vector<int4> cw_s(4, kComponentSentinel);
-  for (int i = 0; i < 3; ++i) cw_s[i] = k0.cws[i].s;
+  for (int i = 0; i < 3; ++i) cw_s[i] = k0.cws[i];
   cw_s[3] = terminal;
   const cuda::std::span<const int4> cw_span(cw_s.data(), cw_s.size());
+
+  bool differs_from_reversed = false;
+  uint8_t reversed_tr = 0;
+  for (int i = 0; i < 3; ++i) {
+    if (tr_pattern[2 - i]) reversed_tr |= static_cast<uint8_t>(1u << i);
+  }
+  for (int i = 3; i < 8; ++i) reversed_tr |= static_cast<uint8_t>(1u << i);
 
   for (int party = 0; party < 2; ++party) {
     const bool is_party1 = party != 0;
     const int4 s = is_party1 ? k1.s0 : k0.s0;
     for (int x = 0; x < 8; ++x) {
       const uint8_t point = static_cast<uint8_t>(x);
-      const int4 aos = scheme.Eval(is_party1, s, k0.cws, point);
       const int4 got = scheme.Eval(is_party1, s, cw_span, packed_tr, point);
-      EXPECT_EQ(memcmp(&aos, &got, sizeof(int4)), 0) << "party=" << party << " x=" << x;
+      const int4 got_extra = scheme.Eval(is_party1, s,
+          cuda::std::span<const int4>(cw_s.data(), cw_s.size() + 1), packed_tr, point);
+      EXPECT_EQ(memcmp(&got, &got_extra, sizeof(int4)), 0) << "party=" << party << " x=" << x;
+      const int4 reversed = scheme.Eval(is_party1, s, cw_span, reversed_tr, point);
+      if (memcmp(&got, &reversed, sizeof(int4)) != 0) differs_from_reversed = true;
     }
   }
+  EXPECT_TRUE(differs_from_reversed)
+      << "root-order packing is not observable: reversed bits produced identical shares";
 }
 
 namespace {
@@ -1080,20 +1079,18 @@ void CheckComponentEvalBackendCalls() {
     EXPECT_EQ(counts.live, 1);
 
     constexpr uint8_t kX = 3;
-    typename Scheme::Key k0, k1;
+    fss_test::ComponentKey<Scheme> k0, k1;
     fss_test::GenPair(scheme, k0, k1, kComponentSeeds, kX, kComponentBeta);
     EXPECT_EQ(counts.live, 1);
     EXPECT_EQ(counts.full, 2 * bits);
     EXPECT_EQ(counts.half, 0);
 
-    std::vector<int4> cw_s(static_cast<size_t>(bits) + 1);
-    uint8_t packed_tr = 0;
-    for (int i = 0; i < bits; ++i) {
-      cw_s[i] = k0.cws[i].s;
-      if (k0.cws[i].tr) packed_tr |= static_cast<uint8_t>(1u << i);
-    }
+    const cuda::std::span<const int4> key_span(k0.cws,
+        fss_test::ComponentKey<Scheme>::kCwWords);
+    std::vector<int4> cw_s(static_cast<size_t>(bits) + 1, kComponentSentinel);
+    uint8_t packed_tr = static_cast<uint8_t>(k0.tr);
     for (int i = bits; i < 8; ++i) packed_tr |= static_cast<uint8_t>(1u << i);
-    cw_s[bits] = k0.cws[bits].s;
+    for (int i = 0; i <= bits; ++i) cw_s[i] = k0.cws[i];
     const cuda::std::span<const int4> cw_span(cw_s.data(), cw_s.size());
 
     for (int method = 0; method < 2; ++method) {
@@ -1104,7 +1101,7 @@ void CheckComponentEvalBackendCalls() {
         const int live_before = counts.live;
         int4 y;
         if (method == 0) {
-          y = scheme.Eval(is_party1, s, k0.cws, kX);
+          y = scheme.Eval(is_party1, s, key_span, k0.tr, kX);
         } else {
           y = scheme.Eval(is_party1, s, cw_span, packed_tr, kX);
         }
@@ -1163,15 +1160,13 @@ using ComponentGpuScheme = fss::Dpf<bits, BytesGroup, fss::prg::ChaCha<2>, In>;
 
 template <int bits, typename In>
 __global__ void ComponentEvalGpuKernel(bool b, int4 seed,
-    const typename ComponentGpuScheme<bits, In>::Cw *cws, const int4 *cw_s, size_t cw_s_count,
-    In packed_tr, const In *queries, int4 *aos, int4 *component, int query_count,
-    size_t level_stride) {
+    const int4 *cw_s, size_t cw_s_count, In packed_tr, const In *queries,
+    int4 *component, int query_count, size_t level_stride) {
   const int index = static_cast<int>(threadIdx.x);
   if (index >= query_count) return;
   using Scheme = ComponentGpuScheme<bits, In>;
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
   const In x = queries[index];
-  aos[index] = scheme.Eval(b, seed, cws, x);
   component[index] = scheme.Eval(b, seed,
       cuda::std::span<const int4>(cw_s, cw_s_count), packed_tr, x, level_stride);
 }
@@ -1197,7 +1192,6 @@ std::vector<__uint128_t> ComponentGpuDepth128Queries(__uint128_t alpha) {
 template <int bits, typename In>
 void CheckComponentEvalGpu(const std::vector<In> &queries, In alpha, int4 beta, size_t level_stride) {
   using Scheme = ComponentGpuScheme<bits, In>;
-  using Cw = typename Scheme::Cw;
   ASSERT_FALSE(queries.empty());
   ASSERT_LE(queries.size(), size_t{8});
   ASSERT_GT(level_stride, size_t{0});
@@ -1206,32 +1200,26 @@ void CheckComponentEvalGpu(const std::vector<In> &queries, In alpha, int4 beta, 
   }
 
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme, In> k0, k1;
   fss_test::GenPair(scheme, k0, k1, kComponentSeeds, alpha, beta);
 
-  ASSERT_EQ(k0.cws[bits].s.w & 1, 0);
+  ASSERT_EQ(k0.cws[bits].w & 1, 0);
 
   const size_t query_count = queries.size();
   const size_t used = static_cast<size_t>(bits) * level_stride + 1;
   const size_t capacity = used + 3;
 
-  Cw *d_cws = nullptr;
   int4 *d_cw_s = nullptr;
   In *d_queries = nullptr;
-  int4 *d_aos = nullptr;
   int4 *d_component = nullptr;
   auto cleanup = [&] {
     if (d_component != nullptr) EXPECT_EQ(cudaFree(d_component), cudaSuccess);
-    if (d_aos != nullptr) EXPECT_EQ(cudaFree(d_aos), cudaSuccess);
     if (d_queries != nullptr) EXPECT_EQ(cudaFree(d_queries), cudaSuccess);
     if (d_cw_s != nullptr) EXPECT_EQ(cudaFree(d_cw_s), cudaSuccess);
-    if (d_cws != nullptr) EXPECT_EQ(cudaFree(d_cws), cudaSuccess);
   };
 
-  cudaError_t alloc = cudaMallocManaged(&d_cws, (static_cast<size_t>(bits) + 1) * sizeof(Cw));
-  if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_cw_s, capacity * sizeof(int4));
+  cudaError_t alloc = cudaMallocManaged(&d_cw_s, capacity * sizeof(int4));
   if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_queries, query_count * sizeof(In));
-  if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_aos, 2 * query_count * sizeof(int4));
   if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_component, 2 * query_count * sizeof(int4));
   if (alloc != cudaSuccess) {
     cleanup();
@@ -1239,10 +1227,6 @@ void CheckComponentEvalGpu(const std::vector<In> &queries, In alpha, int4 beta, 
     return;
   }
 
-  for (int i = 0; i <= bits; ++i) {
-    d_cws[i].s = k0.cws[i].s;
-    d_cws[i].tr = k0.cws[i].tr;
-  }
   for (size_t i = 0; i < capacity; ++i) {
     d_cw_s[i].x = kComponentSentinel.x;
     d_cw_s[i].y = kComponentSentinel.y;
@@ -1251,25 +1235,18 @@ void CheckComponentEvalGpu(const std::vector<In> &queries, In alpha, int4 beta, 
   }
   for (int i = 0; i <= bits; ++i) {
     const size_t slot = static_cast<size_t>(i) * level_stride;
-    d_cw_s[slot].x = k0.cws[i].s.x;
-    d_cw_s[slot].y = k0.cws[i].s.y;
-    d_cw_s[slot].z = k0.cws[i].s.z;
-    d_cw_s[slot].w = k0.cws[i].s.w;
+    d_cw_s[slot] = k0.cws[i];
   }
-  In packed_tr = 0;
-  for (int i = 0; i < bits; ++i) {
-    if (k0.cws[i].tr) packed_tr = static_cast<In>(packed_tr | static_cast<In>(__uint128_t{1} << i));
-  }
+  In packed_tr = k0.tr;
   for (size_t i = 0; i < query_count; ++i) d_queries[i] = queries[i];
   for (size_t i = 0; i < 2 * query_count; ++i) {
-    d_aos[i] = kComponentSentinel;
     d_component[i] = kComponentSentinel;
   }
 
   for (int party = 0; party < 2; ++party) {
     ComponentEvalGpuKernel<bits, In><<<1, static_cast<unsigned>(query_count)>>>(party != 0,
-        party == 0 ? k0.s0 : k1.s0, d_cws, d_cw_s, used, packed_tr, d_queries,
-        d_aos + party * query_count, d_component + party * query_count,
+        party == 0 ? k0.s0 : k1.s0, d_cw_s, used, packed_tr, d_queries,
+        d_component + party * query_count,
         static_cast<int>(query_count), level_stride);
     const cudaError_t launch = cudaGetLastError();
     EXPECT_EQ(launch, cudaSuccess) << cudaGetErrorString(launch);
@@ -1277,20 +1254,28 @@ void CheckComponentEvalGpu(const std::vector<In> &queries, In alpha, int4 beta, 
     EXPECT_EQ(sync, cudaSuccess) << cudaGetErrorString(sync);
   }
 
+  const cuda::std::span<const int4> dense(k0.cws,
+      fss_test::ComponentKey<Scheme, In>::kCwWords);
   for (int party = 0; party < 2; ++party) {
-    const typename Scheme::Key &key = party == 0 ? k0 : k1;
+    const int4 seed = party == 0 ? k0.s0 : k1.s0;
     for (size_t i = 0; i < query_count; ++i) {
       SCOPED_TRACE(::testing::Message() << "depth " << bits << " stride " << level_stride
                                         << " party " << party << " query " << i);
-      const int4 oracle = scheme.Eval(party != 0, key.s0, key.cws, queries[i]);
-      ExpectComponentInt4(d_aos[party * query_count + i], oracle);
+      const int4 oracle = scheme.Eval(party != 0, seed, dense, k0.tr, queries[i]);
       ExpectComponentInt4(d_component[party * query_count + i], oracle);
     }
+  }
+  for (size_t i = 0; i < query_count; ++i) {
+    const int4 sum = (BytesGroup::From(d_component[i]) +
+        BytesGroup::From(d_component[query_count + i])).Into();
+    const int4 truth = queries[i] == alpha ? BytesGroup::From(beta).Into() : BytesGroup{}.Into();
+    EXPECT_EQ(memcmp(&sum, &truth, GroupCompareSize<BytesGroup>()), 0)
+        << "device sum query " << i;
   }
 
   for (size_t i = 0; i < capacity; ++i) {
     int4 expected = kComponentSentinel;
-    if (i < used && i % level_stride == 0) expected = k0.cws[i / level_stride].s;
+    if (i < used && i % level_stride == 0) expected = k0.cws[i / level_stride];
     SCOPED_TRACE(::testing::Message() << "depth " << bits << " stride " << level_stride
                                       << " component slot " << i);
     ExpectComponentInt4(d_cw_s[i], expected);
@@ -1301,7 +1286,7 @@ void CheckComponentEvalGpu(const std::vector<In> &queries, In alpha, int4 beta, 
 
 }  // namespace
 
-TEST(DpfComponentEvalGpu, DeviceMatchesHostAos) {
+TEST(DpfComponentEvalGpu, DeviceMatchesHost) {
   int devices = 0;
   const cudaError_t status = cudaGetDeviceCount(&devices);
   if (status == cudaErrorNoDevice || status == cudaErrorInsufficientDriver ||
@@ -1335,12 +1320,13 @@ bool Int4Equal(const int4 &a, const int4 &b) {
   return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
-// One thread per independent key; all keys are active in the same block.
+// One thread per independent key; all keys are active in the same block. Each
+// key evaluates its queries from a contiguous stride-1 span and from the
+// shared level-major interleaved storage with stride kInterleavedKeyCount.
 template <int bits, typename In>
 __global__ void InterleavedComponentEvalGpuKernel(bool b, const int4 *seeds,
-    const typename ComponentGpuScheme<bits, In>::Cw *cws, const int4 *component,
-    const In *packed_tr, const In *queries, int4 *aos_out,
-    int4 *component_out, int query_count, size_t component_count,
+    const int4 *dense, const int4 *component, const In *packed_tr, const In *queries,
+    int4 *dense_out, int4 *component_out, int query_count, size_t component_count,
     size_t exact_span_length) {
   const int key = static_cast<int>(threadIdx.x);
   if (key >= kInterleavedKeyCount) return;
@@ -1349,13 +1335,14 @@ __global__ void InterleavedComponentEvalGpuKernel(bool b, const int4 *seeds,
   const size_t span_length = exact_span_length == 0
       ? component_count - static_cast<size_t>(key)
       : exact_span_length;
-  const typename Scheme::Cw *key_cws = cws + static_cast<size_t>(key) * (bits + 1);
+  const int4 *key_dense = dense + static_cast<size_t>(key) * (bits + 1);
   const In *key_queries = queries + static_cast<size_t>(key) * query_count;
-  int4 *key_aos = aos_out + static_cast<size_t>(key) * query_count;
+  int4 *key_dense_out = dense_out + static_cast<size_t>(key) * query_count;
   int4 *key_component = component_out + static_cast<size_t>(key) * query_count;
   for (int i = 0; i < query_count; ++i) {
     const In x = key_queries[i];
-    key_aos[i] = scheme.Eval(b, seeds[key], key_cws, x);
+    key_dense_out[i] = scheme.Eval(b, seeds[key],
+        cuda::std::span<const int4>(key_dense, bits + 1), packed_tr[key], x);
     key_component[i] = scheme.Eval(b, seeds[key],
         cuda::std::span<const int4>(component + key, span_length), packed_tr[key],
         x, kInterleavedKeyCount);
@@ -1366,7 +1353,6 @@ template <int bits, typename In>
 void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
     const std::vector<In> &queries1, In alpha0, int4 beta0, In alpha1, int4 beta1) {
   using Scheme = ComponentGpuScheme<bits, In>;
-  using Cw = typename Scheme::Cw;
   static_assert(bits > 0);
 
   ASSERT_EQ(queries0.size(), queries1.size());
@@ -1387,7 +1373,7 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
   }
 
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
-  typename Scheme::Key keys[kInterleavedKeyCount][2];
+  fss_test::ComponentKey<Scheme, In> keys[kInterleavedKeyCount][2];
   const int4 betas[kInterleavedKeyCount] = {beta0, beta1};
   for (int key = 0; key < kInterleavedKeyCount; ++key) {
     fss_test::GenPair(scheme, keys[key][0], keys[key][1], kInterleavedSeeds[key],
@@ -1399,7 +1385,7 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
         << "seeds must differ between keys, party " << party;
   }
   for (int level = 0; level < bits; ++level) {
-    EXPECT_FALSE(Int4Equal(keys[0][0].cws[level].s, keys[1][0].cws[level].s))
+    EXPECT_FALSE(Int4Equal(keys[0][0].cws[level], keys[1][0].cws[level]))
         << "correction words must differ between keys, level " << level;
   }
 
@@ -1407,13 +1393,9 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
   In packed_tr[kInterleavedKeyCount] = {In{0}, In{0}};
   constexpr int kInWidth = static_cast<int>(sizeof(In) * 8);
   for (int key = 0; key < kInterleavedKeyCount; ++key) {
-    terminals[key] = keys[key][0].cws[bits].s;
+    terminals[key] = keys[key][0].cws[bits];
     ASSERT_EQ(terminals[key].w & 1, 0);
-    for (int level = 0; level < bits; ++level) {
-      if (keys[key][0].cws[level].tr) {
-        packed_tr[key] = static_cast<In>(packed_tr[key] | static_cast<In>(In{1} << level));
-      }
-    }
+    packed_tr[key] = keys[key][0].tr;
     // Bits at and above the depth are ignored. Tag them per key so the packed
     // correction words differ deterministically and the ignore rule is exercised.
     for (int level = bits; level < kInWidth; ++level) {
@@ -1435,36 +1417,35 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
   for (int level = 0; level <= bits; ++level) {
     for (int key = 0; key < kInterleavedKeyCount; ++key) {
       expected_component[static_cast<size_t>(level) * key_count + key] =
-          keys[key][0].cws[level].s;
+          keys[key][0].cws[level];
     }
   }
 
   int4 *d_seeds = nullptr;
-  Cw *d_cws = nullptr;
+  int4 *d_dense = nullptr;
   int4 *d_component = nullptr;
   In *d_packed_tr = nullptr;
   In *d_queries = nullptr;
-  int4 *d_aos = nullptr;
+  int4 *d_dense_out = nullptr;
   int4 *d_component_out = nullptr;
   auto cleanup = [&] {
     if (d_component_out != nullptr) EXPECT_EQ(cudaFree(d_component_out), cudaSuccess);
-    if (d_aos != nullptr) EXPECT_EQ(cudaFree(d_aos), cudaSuccess);
+    if (d_dense_out != nullptr) EXPECT_EQ(cudaFree(d_dense_out), cudaSuccess);
     if (d_queries != nullptr) EXPECT_EQ(cudaFree(d_queries), cudaSuccess);
     if (d_packed_tr != nullptr) EXPECT_EQ(cudaFree(d_packed_tr), cudaSuccess);
     if (d_component != nullptr) EXPECT_EQ(cudaFree(d_component), cudaSuccess);
-    if (d_cws != nullptr) EXPECT_EQ(cudaFree(d_cws), cudaSuccess);
+    if (d_dense != nullptr) EXPECT_EQ(cudaFree(d_dense), cudaSuccess);
     if (d_seeds != nullptr) EXPECT_EQ(cudaFree(d_seeds), cudaSuccess);
   };
 
   cudaError_t alloc = cudaMallocManaged(&d_seeds, 2 * key_count * sizeof(int4));
   if (alloc == cudaSuccess) {
-    alloc = cudaMallocManaged(&d_cws,
-        key_count * (static_cast<size_t>(bits) + 1) * sizeof(Cw));
+    alloc = cudaMallocManaged(&d_dense, component_count * sizeof(int4));
   }
   if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_component, component_count * sizeof(int4));
   if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_packed_tr, key_count * sizeof(In));
   if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_queries, key_count * query_count * sizeof(In));
-  if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_aos, output_count * sizeof(int4));
+  if (alloc == cudaSuccess) alloc = cudaMallocManaged(&d_dense_out, output_count * sizeof(int4));
   if (alloc == cudaSuccess) {
     alloc = cudaMallocManaged(&d_component_out, output_count * sizeof(int4));
   }
@@ -1480,10 +1461,9 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
     }
   }
   for (int key = 0; key < kInterleavedKeyCount; ++key) {
-    const size_t cw_base = static_cast<size_t>(key) * (bits + 1);
+    const size_t dense_base = static_cast<size_t>(key) * (bits + 1);
     for (int level = 0; level <= bits; ++level) {
-      d_cws[cw_base + level].s = keys[key][0].cws[level].s;
-      d_cws[cw_base + level].tr = keys[key][0].cws[level].tr;
+      d_dense[dense_base + level] = keys[key][0].cws[level];
     }
     d_packed_tr[key] = packed_tr[key];
     for (size_t i = 0; i < query_count; ++i) {
@@ -1492,11 +1472,11 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
   }
   for (int level = 0; level <= bits; ++level) {
     for (int key = 0; key < kInterleavedKeyCount; ++key) {
-      d_component[static_cast<size_t>(level) * key_count + key] = keys[key][0].cws[level].s;
+      d_component[static_cast<size_t>(level) * key_count + key] = keys[key][0].cws[level];
     }
   }
   for (size_t i = 0; i < output_count; ++i) {
-    d_aos[i] = kComponentSentinel;
+    d_dense_out[i] = kComponentSentinel;
     d_component_out[i] = kComponentSentinel;
   }
 
@@ -1506,8 +1486,8 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
       const size_t output_offset = static_cast<size_t>(party) * key_count * query_count;
       InterleavedComponentEvalGpuKernel<bits, In>
           <<<1, static_cast<unsigned>(kInterleavedKeyCount)>>>(party != 0,
-              d_seeds + static_cast<size_t>(party) * key_count, d_cws, d_component,
-              d_packed_tr, d_queries, d_aos + output_offset,
+              d_seeds + static_cast<size_t>(party) * key_count, d_dense, d_component,
+              d_packed_tr, d_queries, d_dense_out + output_offset,
               d_component_out + output_offset, static_cast<int>(query_count),
               component_count, span_length);
       const cudaError_t launch = cudaGetLastError();
@@ -1518,15 +1498,16 @@ void CheckInterleavedComponentEvalGpu(const std::vector<In> &queries0,
 
     for (int party = 0; party < 2; ++party) {
       for (int key = 0; key < kInterleavedKeyCount; ++key) {
-        const typename Scheme::Key &oracle_key = keys[key][party];
+        const auto &oracle_key = keys[key][party];
         const size_t key_offset =
             (static_cast<size_t>(party) * key_count + key) * query_count;
         for (size_t i = 0; i < query_count; ++i) {
           SCOPED_TRACE(::testing::Message() << "depth " << bits << " key " << key
                                             << " party " << party << " query " << i);
-          const int4 oracle = scheme.Eval(party != 0, oracle_key.s0, oracle_key.cws,
+          const int4 oracle = scheme.Eval(party != 0, oracle_key.s0,
+              cuda::std::span<const int4>(oracle_key.cws, bits + 1), oracle_key.tr,
               (*query_sets[key])[i]);
-          ExpectComponentInt4(d_aos[key_offset + i], oracle);
+          ExpectComponentInt4(d_dense_out[key_offset + i], oracle);
           ExpectComponentInt4(d_component_out[key_offset + i], oracle);
         }
       }
@@ -1571,18 +1552,16 @@ constexpr size_t GenStridedSlots(int bits) { return static_cast<size_t>(bits) * 
 
 template <int bits, typename Group, typename In>
 struct GenRun {
-  using Scheme = fss::Dpf<bits, Group, fss::prg::ChaCha<2>, In>;
-  using Cw = typename Scheme::Cw;
   int4 seeds[2];
   In alpha;
   int4 beta;
   size_t stride;
   int query_count;
-  In fixed_tr, strided_tr;
+  In dense_tr, fixed_tr, strided_tr;
   In queries[kGenQueryCap];
-  Cw legacy[bits + 1];
+  int4 dense[bits + 1];
   int4 fixed[bits + 3];
-  int4 legacy_out[2][kGenQueryCap], fixed_out[2][kGenQueryCap], strided_out[2][kGenQueryCap];
+  int4 dense_out[2][kGenQueryCap], fixed_out[2][kGenQueryCap], strided_out[2][kGenQueryCap];
 };
 
 template <int bits, typename Group, typename In>
@@ -1598,12 +1577,12 @@ void PrepareGenRun(GenRun<bits, Group, In> &run, const int4 (&seeds)[2], In alph
   run.query_count = static_cast<int>(
       queries.size() > static_cast<size_t>(kGenQueryCap) ? kGenQueryCap : queries.size());
   for (int q = 0; q < run.query_count; ++q) run.queries[q] = queries[q];
-  for (auto &cw : run.legacy) cw = {kComponentSentinel, false};
+  for (auto &slot : run.dense) slot = kComponentSentinel;
   for (auto &slot : run.fixed) slot = kComponentSentinel;
   const In ones = static_cast<In>(~static_cast<In>(0));
-  run.fixed_tr = run.strided_tr = ones;
+  run.dense_tr = run.fixed_tr = run.strided_tr = ones;
   for (int p = 0; p < 2; ++p) for (int q = 0; q < kGenQueryCap; ++q) {
-    run.legacy_out[p][q] = run.fixed_out[p][q] = run.strided_out[p][q] = kComponentSentinel;
+    run.dense_out[p][q] = run.fixed_out[p][q] = run.strided_out[p][q] = kComponentSentinel;
   }
 }
 
@@ -1612,17 +1591,19 @@ __host__ __device__ void RunComponentGen(GenRun<bits, Group, In> &r, int4 *strid
   using Scheme = fss::Dpf<bits, Group, fss::prg::ChaCha<2>, In>;
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
   const cuda::std::span<const int4, 2> seeds(r.seeds, 2);
-  scheme.Gen(r.legacy, r.seeds, r.alpha, r.beta);
+  scheme.Gen(cuda::std::span<int4>(r.dense, bits + 1), r.dense_tr, seeds,
+      r.alpha, r.beta);
   scheme.Gen(cuda::std::span<int4>(r.fixed + 1, bits + 1), r.fixed_tr, seeds,
       r.alpha, r.beta);
   scheme.Gen(cuda::std::span<int4>(strided, cap), r.strided_tr, seeds, r.alpha, r.beta,
       r.stride);
+  const cuda::std::span<const int4> dtree(r.dense, bits + 1);
   const cuda::std::span<const int4> tree(r.fixed + 1, bits + 1);
   const cuda::std::span<const int4> stree(strided, cap);
   for (int p = 0; p < 2; ++p) for (int q = 0; q < r.query_count; ++q) {
     const bool b = p != 0;
     const In x = r.queries[q];
-    r.legacy_out[p][q] = scheme.Eval(b, r.seeds[p], r.legacy, x);
+    r.dense_out[p][q] = scheme.Eval(b, r.seeds[p], dtree, r.dense_tr, x);
     r.fixed_out[p][q] = scheme.Eval(b, r.seeds[p], tree, r.fixed_tr, x);
     r.strided_out[p][q] = scheme.Eval(b, r.seeds[p], stree, r.strided_tr, x, r.stride);
   }
@@ -1639,22 +1620,20 @@ template <int bits, typename Group, typename In>
 void CheckGenCws(const GenRun<bits, Group, In> &g, const int4 *s,
     const GenRun<bits, Group, In> &o) {
   for (int i = 0; i <= bits; ++i) {
-    ExpectComponentInt4(g.legacy[i].s, o.legacy[i].s);
-    EXPECT_EQ(g.legacy[i].tr, o.legacy[i].tr);
+    ExpectComponentInt4(g.dense[i], o.dense[i]);
   }
   for (int i = 0; i < bits; ++i) {
-    ExpectComponentInt4(g.fixed[1 + i], o.legacy[i].s);
-    ExpectComponentInt4(s[static_cast<size_t>(i) * g.stride], o.legacy[i].s);
-    EXPECT_EQ(((g.fixed_tr >> i) & 1) != 0, o.legacy[i].tr);
-    EXPECT_EQ(((g.strided_tr >> i) & 1) != 0, o.legacy[i].tr);
+    ExpectComponentInt4(g.fixed[1 + i], o.dense[i]);
+    ExpectComponentInt4(s[static_cast<size_t>(i) * g.stride], o.dense[i]);
+    EXPECT_EQ(((g.fixed_tr >> i) & 1) != 0, ((o.dense_tr >> i) & 1) != 0);
+    EXPECT_EQ(((g.strided_tr >> i) & 1) != 0, ((o.dense_tr >> i) & 1) != 0);
   }
   const int4 ft = g.fixed[1 + bits], st = s[static_cast<size_t>(bits) * g.stride];
-  ExpectComponentInt4(ft, o.legacy[bits].s);
-  ExpectComponentInt4(st, o.legacy[bits].s);
+  ExpectComponentInt4(ft, o.dense[bits]);
+  ExpectComponentInt4(st, o.dense[bits]);
   EXPECT_EQ(ft.w & 1, 0);
   EXPECT_EQ(st.w & 1, 0);
-  EXPECT_EQ(g.legacy[bits].s.w & 1, 0);
-  EXPECT_FALSE(g.legacy[bits].tr);
+  EXPECT_EQ(g.dense[bits].w & 1, 0);
   EXPECT_TRUE(Int4Equal(g.fixed[0], kComponentSentinel));
   EXPECT_TRUE(Int4Equal(g.fixed[bits + 2], kComponentSentinel));
   if constexpr (bits < static_cast<int>(sizeof(In) * 8)) {
@@ -1669,9 +1648,9 @@ void CheckGenCws(const GenRun<bits, Group, In> &g, const int4 *s,
 template <int bits, typename Group, typename In>
 void CheckGenEval(const GenRun<bits, Group, In> &g, const GenRun<bits, Group, In> &o) {
   for (int p = 0; p < 2; ++p) for (int q = 0; q < g.query_count; ++q) {
-    ExpectComponentInt4(g.legacy_out[p][q], o.legacy_out[p][q]);
-    ExpectComponentInt4(g.fixed_out[p][q], o.legacy_out[p][q]);
-    ExpectComponentInt4(g.strided_out[p][q], o.legacy_out[p][q]);
+    ExpectComponentInt4(g.dense_out[p][q], o.dense_out[p][q]);
+    ExpectComponentInt4(g.fixed_out[p][q], o.dense_out[p][q]);
+    ExpectComponentInt4(g.strided_out[p][q], o.dense_out[p][q]);
   }
   const int4 beta = Group::From(fss::util::SetLsb(g.beta, false)).Into();
   const int4 zero = Group{}.Into();
@@ -1682,7 +1661,7 @@ void CheckGenEval(const GenRun<bits, Group, In> &g, const GenRun<bits, Group, In
       EXPECT_EQ(memcmp(&sum, &expected, GroupCompareSize<Group>()), 0);
     }
   };
-  sums(g.legacy_out);
+  sums(g.dense_out);
   sums(g.fixed_out);
   sums(g.strided_out);
 }
@@ -1694,7 +1673,7 @@ void CheckSharedLayout(const int4 *shared, size_t total, size_t stride,
   for (int i = 0; i <= bits; ++i) {
     const size_t plane = 1 + static_cast<size_t>(i) * stride;
     for (int key = 0; key < key_count; ++key) {
-      ExpectComponentInt4(shared[plane + key], runs[key].legacy[i].s);
+      ExpectComponentInt4(shared[plane + key], runs[key].dense[i]);
     }
     for (size_t gap = key_count; gap < stride; ++gap) {
       EXPECT_TRUE(Int4Equal(shared[plane + gap], kComponentSentinel));
@@ -1779,7 +1758,7 @@ void CheckGenBackendCalls() {
     EXPECT_EQ(counts.live, 1);
     const int4 seeds[2] = {kInterleavedSeeds[0][0], kInterleavedSeeds[0][1]};
     const cuda::std::span<const int4, 2> seed_span(seeds, 2);
-    typename Scheme::Cw legacy[bits + 1];
+    int4 dense[bits + 1];
     int4 fixed[bits + 1];
     std::vector<int4> strided(static_cast<size_t>(bits) * 2 + 1, kComponentSentinel);
     const uint8_t alpha = 3;
@@ -1788,7 +1767,8 @@ void CheckGenBackendCalls() {
       const int live_before = counts.live;
       uint8_t tr = 0xff;
       if (method == 0) {
-        scheme.Gen(legacy, seed_span.data(), alpha, kComponentBeta);
+        scheme.Gen(cuda::std::span<int4>(dense, bits + 1), tr,
+            cuda::std::span<const int4, 2>(seed_span.data(), 2), alpha, kComponentBeta);
       } else if (method == 1) {
         scheme.Gen(cuda::std::span<int4>(fixed, bits + 1), tr, seed_span, alpha,
             kComponentBeta);
@@ -1959,12 +1939,13 @@ TEST(DpfComponentGenGpu, InterleavedKeys) {
 }
 
 // -----------------------------------------------------------------------------
-// Split-Cws full-domain and range API: bit-exactness against the Cw forms.
+// Split-Cws full-domain and range API: strided forms are bit-exact against
+// the dense stride-1 layout and the two-party reconstruction truth.
 
 namespace {
 
-// Checks the split-Cws full-domain API against the Cw forms for one
-// configuration: Gen() correction words, every EvalAll and EvalRange output, and the
+// Checks the split-Cws full-domain API for one configuration: Gen() correction
+// words, every EvalAll and EvalRange output against the dense layout, and the
 // two-party reconstruction. stride == 0 selects the default-argument call.
 template <int in_bits, typename Group, typename In>
 void CheckDpfSplitFullDomain(In alpha, int4 beta, size_t stride) {
@@ -1977,8 +1958,10 @@ void CheckDpfSplitFullDomain(In alpha, int4 beta, size_t stride) {
   constexpr size_t kExtra = 3;
   constexpr size_t kDomain = size_t{1} << in_bits;
 
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme, In> k0, k1;
   fss_test::GenPair(scheme, k0, k1, kComponentSeeds, alpha, beta);
+  const cuda::std::span<const int4> dense(k0.cws,
+      fss_test::ComponentKey<Scheme, In>::kCwWords);
 
   std::vector<int4> cws(used + kExtra, kComponentSentinel);
   const cuda::std::span<int4> cws_out(cws.data(), cws.size());
@@ -1987,16 +1970,14 @@ void CheckDpfSplitFullDomain(In alpha, int4 beta, size_t stride) {
   if (default_stride) scheme.Gen(cws_out, tr, seed_span, alpha, beta);
   else scheme.Gen(cws_out, tr, seed_span, alpha, beta, stride);
 
-  // The split correction words are bit-exact against the Cw layout, including the
-  // left-control LSB, and only the described prefix is written.
-  In expected_tr = 0;
+  // The strided generation is bit-exact against the dense component key,
+  // including the left-control LSB, and only the described prefix is written.
   for (int i = 0; i < in_bits; ++i) {
     const size_t index = static_cast<size_t>(i) * level_stride;
-    EXPECT_EQ(memcmp(&cws[index], &k0.cws[i].s, sizeof(int4)), 0) << "cws layer " << i;
-    if (k0.cws[i].tr) expected_tr = static_cast<In>(expected_tr | static_cast<In>(In{1} << i));
+    EXPECT_EQ(memcmp(&cws[index], &k0.cws[i], sizeof(int4)), 0) << "cws layer " << i;
   }
-  EXPECT_EQ(tr, expected_tr) << "packed right-control bits";
-  EXPECT_EQ(memcmp(&cws[used - 1], &k0.cws[in_bits].s, sizeof(int4)), 0) << "cws terminal";
+  EXPECT_EQ(tr, k0.tr) << "packed right-control bits";
+  EXPECT_EQ(memcmp(&cws[used - 1], &k0.cws[in_bits], sizeof(int4)), 0) << "cws terminal";
   for (size_t i = 0; i < cws.size(); ++i) {
     if (i % level_stride == 0 && i / level_stride <= static_cast<size_t>(in_bits)) continue;
     EXPECT_EQ(memcmp(&cws[i], &kComponentSentinel, sizeof(int4)), 0) << "cws untouched at " << i;
@@ -2009,12 +1990,12 @@ void CheckDpfSplitFullDomain(In alpha, int4 beta, size_t stride) {
     const int4 s0 = party == 0 ? k0.s0 : k1.s0;
 
     for (int par_depth : {0, 2}) {
-      std::vector<int4> aos_all(kDomain + 2, kComponentSentinel);
+      std::vector<int4> dense_all(kDomain + 2, kComponentSentinel);
       split_all[party].assign(kDomain + 2, kComponentSentinel);
-      scheme.EvalAll(b, s0, k0.cws, aos_all.data(), par_depth);
+      scheme.EvalAll(b, s0, dense, k0.tr, dense_all.data(), par_depth);
       if (default_stride) scheme.EvalAll(b, s0, split_cws, tr, split_all[party].data(), par_depth);
       else scheme.EvalAll(b, s0, split_cws, tr, split_all[party].data(), par_depth, stride);
-      EXPECT_EQ(memcmp(aos_all.data(), split_all[party].data(), kDomain * sizeof(int4)), 0)
+      EXPECT_EQ(memcmp(dense_all.data(), split_all[party].data(), kDomain * sizeof(int4)), 0)
           << "EvalAll party=" << party << " par_depth=" << par_depth;
       for (size_t i = kDomain; i < split_all[party].size(); ++i) {
         EXPECT_EQ(memcmp(&split_all[party][i], &kComponentSentinel, sizeof(int4)), 0)
@@ -2031,14 +2012,14 @@ void CheckDpfSplitFullDomain(In alpha, int4 beta, size_t stride) {
       const In last = interval[1];
       const size_t count = static_cast<size_t>(last - first) + 1;
       for (int par_depth : {0, 2}) {
-        std::vector<int4> aos_range(count + 2, kComponentSentinel);
+        std::vector<int4> dense_range(count + 2, kComponentSentinel);
         std::vector<int4> split_range(count + 2, kComponentSentinel);
-        scheme.EvalRange(b, first, last, s0, k0.cws,
-            cuda::std::span<int4>(aos_range.data(), count), par_depth);
+        scheme.EvalRange(b, first, last, s0, dense, k0.tr,
+            cuda::std::span<int4>(dense_range.data(), count), par_depth);
         const auto ys = cuda::std::span<int4>(split_range.data(), count);
         if (default_stride) scheme.EvalRange(b, first, last, s0, split_cws, tr, ys, par_depth);
         else scheme.EvalRange(b, first, last, s0, split_cws, tr, ys, par_depth, stride);
-        EXPECT_EQ(memcmp(aos_range.data(), split_range.data(), count * sizeof(int4)), 0)
+        EXPECT_EQ(memcmp(dense_range.data(), split_range.data(), count * sizeof(int4)), 0)
             << "EvalRange party=" << party << " first=" << static_cast<uint64_t>(first)
             << " last=" << static_cast<uint64_t>(last) << " par_depth=" << par_depth;
         for (size_t i = count; i < split_range.size(); ++i) {
@@ -2084,8 +2065,10 @@ TEST(DpfCwsTest, WideInputRange) {
   const __uint128_t first = (__uint128_t{1} << 100) + 3;
   const __uint128_t last = first + 12;
   constexpr size_t kCount = 13;
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme> k0, k1;
   fss_test::GenPair(scheme, k0, k1, kComponentSeeds, alpha, kComponentBeta);
+  const cuda::std::span<const int4> dense(k0.cws,
+      fss_test::ComponentKey<Scheme>::kCwWords);
 
   for (const size_t stride : {size_t{1}, size_t{3}}) {
     std::vector<int4> cws(128 * stride + 1, kComponentSentinel);
@@ -2096,12 +2079,13 @@ TEST(DpfCwsTest, WideInputRange) {
     for (int party = 0; party < 2; ++party) {
       const bool b = party != 0;
       const int4 s0 = party == 0 ? k0.s0 : k1.s0;
-      std::vector<int4> aos(kCount + 1, kComponentSentinel);
+      std::vector<int4> dense_out(kCount + 1, kComponentSentinel);
       std::vector<int4> split(kCount + 1, kComponentSentinel);
-      scheme.EvalRange(b, first, last, s0, k0.cws, cuda::std::span<int4>(aos.data(), kCount));
+      scheme.EvalRange(b, first, last, s0, dense, k0.tr,
+          cuda::std::span<int4>(dense_out.data(), kCount));
       scheme.EvalRange(b, first, last, s0, split_cws, tr,
           cuda::std::span<int4>(split.data(), kCount), 0, stride);
-      EXPECT_EQ(memcmp(aos.data(), split.data(), kCount * sizeof(int4)), 0)
+      EXPECT_EQ(memcmp(dense_out.data(), split.data(), kCount * sizeof(int4)), 0)
           << "party=" << party << " stride=" << stride;
       EXPECT_EQ(memcmp(&split[kCount], &kComponentSentinel, sizeof(int4)), 0);
     }
@@ -2188,16 +2172,11 @@ void CheckDpfOddTerminalRejected(int par_depth) {
   using Scheme = fss::Dpf<in_bits, BytesGroup, fss::prg::ChaCha<2>, uint8_t>;
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
   const int4 s0 = {13, 27, 45, 66};
-  typename Scheme::Cw cws[in_bits + 1]{};
-  cws[in_bits].s.w |= 1;
   int4 split_cws[in_bits + 1] = {};
   split_cws[in_bits].w = 1;
   const uint8_t tr = 0;
   constexpr size_t n = size_t{1} << in_bits;
   int4 ys_storage[n];
-  EXPECT_DEATH(scheme.EvalAll(false, s0, cws, ys_storage, par_depth), "Assertion.*failed");
-  EXPECT_DEATH(scheme.EvalRange(false, uint8_t{0}, uint8_t{n - 1}, s0, cws,
-      cuda::std::span<int4>(ys_storage, n), par_depth), "Assertion.*failed");
   EXPECT_DEATH(scheme.EvalAll(false, s0, cuda::std::span<const int4>(split_cws, in_bits + 1),
       tr, ys_storage, par_depth), "Assertion.*failed");
   EXPECT_DEATH(scheme.EvalRange(false, uint8_t{0}, uint8_t{n - 1}, s0,
@@ -2342,8 +2321,10 @@ void CheckDpfSplitGpuLaunches() {
   const uint16_t alpha = 107;
   constexpr size_t kStride = 2;
 
-  typename Scheme::Key k0, k1;
+  fss_test::ComponentKey<Scheme> k0, k1;
   fss_test::GenPair(scheme, k0, k1, cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+  const cuda::std::span<const int4> dense(k0.cws,
+      fss_test::ComponentKey<Scheme>::kCwWords);
 
   std::vector<int4> cws((kBits + 1) * kStride + 2, kComponentSentinel);
   uint16_t tr = 0;
@@ -2370,9 +2351,9 @@ void CheckDpfSplitGpuLaunches() {
     const int4 s0 = party == 0 ? k0.s0 : k1.s0;
     const auto span_cws = cuda::std::span<const int4>(device_cws, cws.size());
 
-    // EvalAllGpu matches the host Cw form block for block.
+    // EvalAllGpu matches the dense host component form block for block.
     std::vector<int4> expected(kDomain, kComponentSentinel);
-    scheme.EvalAll(b, s0, k0.cws, expected.data());
+    scheme.EvalAll(b, s0, dense, k0.tr, expected.data());
     std::vector<int4> actual(kDomain, kComponentSentinel);
     ASSERT_EQ((scheme.template EvalAllGpu<8, 16>(b, s0, span_cws, tr,
         cuda::std::span<int4>(device_ys, kDomain), stream, kStride)), cudaSuccess);
@@ -2392,7 +2373,7 @@ void CheckDpfSplitGpuLaunches() {
         cudaMemcpyDeviceToHost, stream), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     for (uint16_t x = 13; x <= 201; ++x) {
-      const int4 oracle = scheme.Eval(b, s0, k0.cws, x);
+      const int4 oracle = scheme.Eval(b, s0, dense, k0.tr, x);
       EXPECT_EQ(memcmp(&filled[x - 13], &oracle, sizeof(int4)), 0) << "range x=" << x;
     }
     for (size_t i = 201 - 13 + 1; i < kDomain; ++i) {
@@ -2409,13 +2390,18 @@ void CheckDpfSplitGpuLaunches() {
       cuda::std::span<int4>(device_ys, kDomain), stream)), cudaErrorInvalidValue);
 
   // Batch launches: the default stride is the dense level-major key count.
-  typename Scheme::Cw ref_batch[kKeys][kBits + 1];
   std::vector<int4> batch_cws((kBits + 1) * kKeys, kComponentSentinel);
+  std::vector<int4> ref_batch(kKeys * (kBits + 1));
+  std::vector<uint16_t> ref_tr(kKeys);
   int4 batch_s0s[kKeys];
   uint16_t batch_tr[kKeys] = {0, 0};
   for (size_t key = 0; key < kKeys; ++key) {
     batch_s0s[key] = seeds[key];
-    scheme.Gen(ref_batch[key], seeds, static_cast<uint16_t>(alpha + key), beta);
+    uint16_t dense_tr = 0;
+    scheme.Gen(cuda::std::span<int4>(ref_batch.data() + key * (kBits + 1), kBits + 1),
+        dense_tr, cuda::std::span<const int4, 2>(seeds, 2),
+        static_cast<uint16_t>(alpha + key), beta);
+    ref_tr[key] = dense_tr;
     uint16_t key_tr = 0;
     // Offsetting by the key index fills the dense level-major layout.
     scheme.Gen(cuda::std::span<int4>(batch_cws.data() + key, batch_cws.size() - key), key_tr,
@@ -2447,8 +2433,10 @@ void CheckDpfSplitGpuLaunches() {
         cudaMemcpyDeviceToHost, stream), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     for (size_t key = 0; key < kKeys; ++key) {
+      const cuda::std::span<const int4> key_dense(ref_batch.data() + key * (kBits + 1),
+          kBits + 1);
       for (size_t x = 0; x < kDomain; ++x) {
-        const int4 oracle = scheme.Eval(false, batch_s0s[key], ref_batch[key],
+        const int4 oracle = scheme.Eval(false, batch_s0s[key], key_dense, ref_tr[key],
             static_cast<uint16_t>(x));
         EXPECT_EQ(memcmp(&actual[key * kDomain + x], &oracle, sizeof(int4)), 0)
             << "key=" << key << " x=" << x;
@@ -2470,7 +2458,7 @@ void CheckDpfSplitGpuLaunches() {
 
 }  // namespace
 
-TEST(DpfSplitGpuTest, SplitLaunchesMatchCwHost) { CheckDpfSplitGpuLaunches<BytesGroup>(); }
+TEST(DpfSplitGpuTest, SplitLaunchesMatchDenseHost) { CheckDpfSplitGpuLaunches<BytesGroup>(); }
 TEST(DpfSplitGpuTest, WideGroupSplitLaunchesCompile) { CheckDpfSplitGpuLaunches<Uint127Group>(); }
 
 // The split EvalAll and EvalRange buffer checks stay host-boundary throws; the
@@ -2480,7 +2468,7 @@ TEST(DpfCwsTest, RejectsInvalidInputs) {
   Scheme scheme{fss::prg::ChaCha<2>(kNonce0, kNonce1)};
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
   int4 cws[4] = {};
-  typename Scheme::Cw raw_cws[4] = {};
+  const auto raw_cws = cuda::std::span<const int4>(cws, 4);
   int4 ys[8] = {};
   const int4 s0 = seeds[0];
 
@@ -2489,18 +2477,18 @@ TEST(DpfCwsTest, RejectsInvalidInputs) {
       std::invalid_argument);
 
   // Range checks: reversed and out-of-domain intervals, short output, null input.
-  EXPECT_THROW((void)scheme.EvalRange(false, 3, 2, s0, raw_cws,
+  EXPECT_THROW((void)scheme.EvalRange(false, 3, 2, s0, raw_cws, uint8_t{0},
                         cuda::std::span<int4>(ys, 8)),
       std::invalid_argument);
-  EXPECT_THROW((void)scheme.EvalRange(false, 0, 8, s0, raw_cws,
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 8, s0, raw_cws, uint8_t{0},
                         cuda::std::span<int4>(ys, 8)),
       std::invalid_argument);
-  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0, raw_cws,
+  EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0, raw_cws, uint8_t{0},
                         cuda::std::span<int4>(ys, 7)),
       std::invalid_argument);
   EXPECT_THROW((void)scheme.EvalRange(false, 0, 7, s0,
-                        static_cast<const typename Scheme::Cw *>(nullptr),
-                        cuda::std::span<int4>(ys, 8)),
+                        cuda::std::span<const int4>(static_cast<const int4 *>(nullptr), 4),
+                        uint8_t{0}, cuda::std::span<int4>(ys, 8)),
       std::invalid_argument);
 }
 

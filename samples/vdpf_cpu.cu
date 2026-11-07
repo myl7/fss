@@ -59,7 +59,8 @@ int main() {
   int4 beta = {7, 0, 0, 0};
 
   // The sample owns its retry budget. Each attempt uses two fresh seeds.
-  Vdpf::Cw cws[kInBits + 1];
+  int4 cws[kInBits + 1];
+  In tr = 0;
   int4 cs[4];
   int4 seeds[2];
   constexpr int kMaxAttempts = 128;
@@ -70,7 +71,7 @@ int main() {
       VdpfPrg::FreeCtxs(ctxs);
       return 1;
     }
-    status = vdpf.Gen(cws, cuda::std::span<int4, 4>(cs),
+    status = vdpf.Gen(cuda::std::span<int4>(cws, kInBits + 1), tr, cuda::std::span<int4, 4>(cs),
         cuda::std::span<const int4, 2>(seeds), alpha, beta);
     if (status == 0) break;
   }
@@ -82,8 +83,10 @@ int main() {
 
   // Evaluation with proof. Each party also gets pi_tilde at every point.
   int4 y0, y1;
-  auto pi_tilde0 = vdpf.Eval(false, seeds[0], cws, cs, alpha, y0);
-  auto pi_tilde1 = vdpf.Eval(true, seeds[1], cws, cs, alpha, y1);
+  auto pi_tilde0 = vdpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+      cuda::std::span<const int4, 4>(cs), alpha, y0);
+  auto pi_tilde1 = vdpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+      cuda::std::span<const int4, 4>(cs), alpha, y1);
   int4 sum = Reconstruct(y0, y1);
   printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
 
@@ -102,8 +105,10 @@ int main() {
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
   int4 ys1[1 << kInBits];
-  vdpf.EvalAll(false, seeds[0], cws, cs, cuda::std::span<int4>(ys0), pi0);
-  vdpf.EvalAll(true, seeds[1], cws, cs, cuda::std::span<int4>(ys1), pi1);
+  vdpf.EvalAll(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+      cuda::std::span<const int4, 4>(cs), cuda::std::span<int4>(ys0), pi0);
+  vdpf.EvalAll(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+      cuda::std::span<const int4, 4>(cs), cuda::std::span<int4>(ys1), pi1);
 
   int4 zero = {0, 0, 0, 0};
   int mismatches = 0;

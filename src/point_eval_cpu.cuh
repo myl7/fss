@@ -147,9 +147,9 @@ inline ExtBits<in_bits> ReverseDomainBits(In x) {
 /**
  * A party's DPF key in the compact point-evaluation layout.
  *
- * cws[i] keeps level i's correction word with tl in its LSB, as in
- * Dpf::Cw::s. The per-level tr bits are packed into the single tr word,
- * bit i = level i. cws[in_bits] holds the output correction word, whose LSB is 0.
+ * cws[i] keeps level i's correction word with tl in its LSB. The per-level
+ * tr bits are packed into the single tr word, bit i = level i. cws[in_bits]
+ * holds the output correction word, whose LSB is 0.
  *
  * Both parties share the same correction words and differ in the seed.
  */
@@ -182,25 +182,22 @@ struct HalfTreeDpfPointKey {
  * One-time compaction of a Dpf key into the layout consumed by DpfEvalPoint().
  *
  * @tparam in_bits Input domain bit size.
- * @tparam Group Type for the output domain. See Groupable.
- * @tparam Prg See Prgable. Requires mul=2, same as Dpf.
  * @tparam In Type for the input domain. From uint8_t to __uint128_t.
- * @param key An owning key assembled from Dpf::Gen() outputs.
+ * @param key A component key from Dpf::Gen(): cws in the dense split layout
+ * and the packed control value.
  * @return The packed key.
  */
-template <int in_bits, typename Group, typename Prg, typename In,
-    typename Key = typename Dpf<in_bits, Group, Prg, In>::Key>
-  requires(std::is_same_v<Key, typename Dpf<in_bits, Group, Prg, In>::Key>)
-DpfPointKey<in_bits> DpfPackPoint(const Key &key) {
+// The packed layout matches the split key layout directly, so the compaction
+// works for any backend combination without re-deriving the scheme type.
+template <int in_bits, typename SplitKey>
+  requires(requires { SplitKey::kCwWords; })
+DpfPointKey<in_bits> DpfPackPoint(const SplitKey &key) {
+  static_assert(SplitKey::kCwWords == static_cast<size_t>(in_bits) + 1,
+      "the split key must be generated for this domain width");
   DpfPointKey<in_bits> packed = {};
   packed.s0 = key.s0;
-  ExtBits<in_bits> tr = 0;
-  for (int i = 0; i < in_bits; ++i) {
-    packed.cws[i] = key.cws[i].s;
-    if (key.cws[i].tr) tr |= static_cast<ExtBits<in_bits>>(1) << i;
-  }
-  packed.tr = tr;
-  packed.cws[in_bits] = key.cws[in_bits].s;
+  for (size_t i = 0; i < SplitKey::kCwWords; ++i) packed.cws[i] = key.cws[i];
+  packed.tr = static_cast<ExtBits<in_bits>>(key.tr);
   assert((packed.cws[in_bits].w & 1) == 0);
   return packed;
 }
@@ -267,22 +264,19 @@ int4 DpfEvalPoint(bool b, int4 s0, const int4 cws[], ExtBits<in_bits> tr, In x, 
  * HalfTreeDpfEvalPoint().
  *
  * @tparam in_bits Input domain bit size.
- * @tparam Group Type for the output domain. See Groupable.
- * @tparam Hash See CcrHashable, as in HalfTreeDpf.
- * @tparam In Type for the input domain. From uint8_t to __uint128_t.
- * @param key An owning key assembled from HalfTreeDpf::Gen() outputs.
+ * @param key A component key from HalfTreeDpf::Gen(): cws in the dense split
+ * layout and the packed control value, whose top bit is LCW_1.
  * @return The packed key.
  */
-template <int in_bits, typename Group, typename Hash, typename In,
-    typename Key = typename HalfTreeDpf<in_bits, Group, Hash, In>::Key>
-  requires(std::is_same_v<Key, typename HalfTreeDpf<in_bits, Group, Hash, In>::Key>)
-HalfTreeDpfPointKey<in_bits> HalfTreeDpfPackPoint(const Key &key) {
+template <int in_bits, typename SplitKey>
+  requires(requires { SplitKey::kCwWords; })
+HalfTreeDpfPointKey<in_bits> HalfTreeDpfPackPoint(const SplitKey &key) {
+  static_assert(SplitKey::kCwWords == static_cast<size_t>(in_bits) + 1,
+      "the split key must be generated for this domain width");
   HalfTreeDpfPointKey<in_bits> packed = {};
   packed.s0 = key.s0;
-  for (int i = 0; i < in_bits - 1; ++i) packed.cws[i] = key.cws[i].s;
-  packed.cws[in_bits - 1] = key.cws[in_bits - 1].s;
-  packed.lcw1 = key.cws[in_bits - 1].extra;
-  packed.cws[in_bits] = key.cws[in_bits].s;
+  for (size_t i = 0; i < SplitKey::kCwWords; ++i) packed.cws[i] = key.cws[i];
+  packed.lcw1 = ((key.tr >> (in_bits - 1)) & 1) != 0;
   return packed;
 }
 

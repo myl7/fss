@@ -81,7 +81,7 @@ void CheckDpfPoint() {
   using Prg = fss::prg::ChaCha<2>;
   using Group = fss::group::Bytes;
   using Scheme = fss::Dpf<bits, Group, Prg, In>;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   const int4 beta = {7, 19, 23, 42};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
@@ -152,7 +152,7 @@ void CheckHalfTreePoint() {
   using Prg = fss_test::TestCcrHash;
   using Group = fss::group::Bytes;
   using Scheme = fss::HalfTreeDpf<bits, Group, fss_test::CcrBackend<Prg>, In>;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   const int4 hash_key = {11, 22, 33, 44};
   Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), hash_key};
   const int4 beta = {7, 19, 23, 42};
@@ -239,7 +239,7 @@ void CheckPackedPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss_test::TestCcrHash;
   using Scheme = fss::PackedHalfTreeDpf<bits, out_bits, fss_test::CcrBackend<Prg>, In>;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   constexpr int kDepth = Scheme::kDepth;
   Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), {11, 22, 33, 44}};
   const uint64_t beta = out_bits == 1 ? 1 : (out_bits == 64 ? ~uint64_t{0} : (uint64_t{1} << out_bits) - 1) - 2;
@@ -307,7 +307,7 @@ void CheckHalfTreeGrottoPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss_test::TestCcrHash;
   using Scheme = fss::HalfTreeGrottoDcf<bits, fss_test::CcrBackend<Prg>, In>;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   constexpr int kDepth = Scheme::kDepth;
   Scheme scheme{fss_test::Ccr(Prg(0x12345678, static_cast<int>(0x9abcdef0u))), {11, 22, 33, 44}};
   // Every other run of six keys flips alpha's last tree bit, so each boundary point meets both
@@ -378,7 +378,7 @@ void CheckGrottoPoint() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
   using Scheme = fss::GrottoDcf<bits, Prg, In>;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
   const std::vector<In> xs = MakeBoundaryPoints<bits, In, bits>(alphas);
@@ -449,7 +449,7 @@ void CheckDcfPoint() {
   using Prg = fss::prg::ChaCha<4>;
   using Group = fss::group::Bytes;
   using Scheme = fss::Dcf<bits, Group, Prg, In, pred>;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   Scheme scheme{Prg(0x12345678, static_cast<int>(0x9abcdef0u))};
   const int4 beta = {7, 19, 23, 42};
   const std::vector<In> alphas = MakeAlphas<bits, In>(keys);
@@ -526,7 +526,7 @@ void CheckVdpfPoint() {
   using Blake3 = fss::hash::Blake3;
   using Group = fss::group::Bytes;
   using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>;
-  using Key = typename Scheme::Key;
+  using Key = fss_test::ComponentKey<Scheme, In>;
   constexpr int kStride = bits + 1;
   // Blake3 copies the IV by value at construction.
   const int4 iv[2] = {{11, 22, 33, 44}, {55, 66, 77, 88}};

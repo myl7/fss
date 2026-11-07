@@ -47,7 +47,7 @@ protected:
   using DcfType = fss::Dcf<kAlphaBits, Group, Prg, uint16_t, pred>;
 
   int4 s0s[2];
-  typename DcfType::Key k0, k1;
+  fss_test::ComponentKey<DcfType> k0, k1;
   Prg prg;
 
   DcfTestBase(Prg p) : prg(p) {}
@@ -156,7 +156,7 @@ protected:
   using DcfType = fss::Dcf<in_bits, Group, Prg, In, pred>;
 
   int4 s0s[2];
-  typename DcfType::Key k0, k1;
+  fss_test::ComponentKey<DcfType, In> k0, k1;
   Prg prg;
 
   DcfFrontierTestBase() : prg(MakePrg()) {}
@@ -388,7 +388,7 @@ protected:
   using DcfType = fss::Dcf<kAlphaBits, Group, Prg, uint16_t>;
 
   int4 s0s[2];
-  DcfType::Key k0, k1;
+  fss_test::ComponentKey<DcfType> k0, k1;
   cuda::std::array<EVP_CIPHER_CTX *, 4> ctxs;
 
   void SetUp() override {
@@ -491,27 +491,33 @@ void CheckDcfRange(In first, In last, In alpha, int par_depth) {
   const int4 beta = {604, 981, 273, 84};
   struct CwStorage {
     int4 before;
-    typename Scheme::Cw words[in_bits + 1];
+    int4 words[in_bits + 1];
+    int4 values[in_bits + 1];
     int4 after;
+    In tr = 0;
   } cw_storage{};
   const int4 sentinel = {0x12345678, 0x23456789, 0x3456789a, 0x456789ab};
   cw_storage.before = cw_storage.after = sentinel;
-  scheme.Gen(cw_storage.words, seeds, alpha, beta);
+  scheme.Gen(cuda::std::span<int4>(cw_storage.words, in_bits + 1),
+      cuda::std::span<int4>(cw_storage.values, in_bits + 1), cw_storage.tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
   const auto saved_cws = cw_storage;
   const size_t count = static_cast<size_t>(last - first) + 1;
   std::vector<int4> shares[2] = {
       std::vector<int4>(count + 4, sentinel), std::vector<int4>(count + 4, sentinel)};
   for (int party = 0; party < 2; ++party) {
-    scheme.EvalRange(party, first, last, seeds[party], cw_storage.words,
+    const auto key_words = cuda::std::span<const int4>(cw_storage.words, in_bits + 1);
+    const auto key_values = cuda::std::span<const int4>(cw_storage.values, in_bits + 1);
+    scheme.EvalRange(party, first, last, seeds[party], key_words, key_values, cw_storage.tr,
         cuda::std::span<int4>(shares[party].data() + 1, count + 2), par_depth);
     if (par_depth > 0) {
       std::vector<int4> sequential(count);
-      scheme.EvalRange(party, first, last, seeds[party], cw_storage.words,
+      scheme.EvalRange(party, first, last, seeds[party], key_words, key_values, cw_storage.tr,
           cuda::std::span<int4>(sequential.data(), sequential.size()), 0);
       EXPECT_EQ(memcmp(shares[party].data() + 1, sequential.data(), count * sizeof(int4)), 0);
     }
     for (size_t offset = 0; offset < count; ++offset) {
-      const int4 point = scheme.Eval(party, seeds[party], cw_storage.words,
+      const int4 point = scheme.Eval(party, seeds[party], key_words, key_values, cw_storage.tr,
           first + static_cast<In>(offset));
       EXPECT_EQ(memcmp(&shares[party][offset + 1], &point, sizeof(int4)), 0)
           << "party=" << party << " offset=" << offset << " depth=" << par_depth;
@@ -621,13 +627,18 @@ TEST(DcfRangeTest, ZeroDepthUsesCallerThread) {
   using Scheme = fss::Dcf<8, BytesGroup, DcfRangeObservedPrg>;
   Scheme generator(DcfRangeObservedPrg(nullptr));
   const int4 seeds[2] = {{13, 27, 45, 66}, {19, 31, 53, 78}};
-  typename Scheme::Cw cws[9];
-  generator.Gen(cws, seeds, 107, {604, 981, 273, 84});
+  int4 cws[9];
+  int4 vws[9];
+  uint tr = 0;
+  generator.Gen(cuda::std::span<int4>(cws, 9), cuda::std::span<int4>(vws, 9), tr,
+      cuda::std::span<const int4, 2>(seeds, 2), 107, {604, 981, 273, 84});
+  const auto cws_in = cuda::std::span<const int4>(cws, 9);
+  const auto vws_in = cuda::std::span<const int4>(vws, 9);
   for (int party = 0; party < 2; ++party) {
     DcfRangeCalls calls;
     Scheme scheme{DcfRangeObservedPrg(&calls)};
     std::vector<int4> outputs(256);
-    scheme.EvalRange(party, 0, 255, seeds[party], cws,
+    scheme.EvalRange(party, 0, 255, seeds[party], cws_in, vws_in, tr,
         cuda::std::span<int4>(outputs.data(), outputs.size()));
     EXPECT_EQ(calls.active.load(), 0);
     EXPECT_EQ(calls.max_active.load(), 1);
@@ -640,20 +651,27 @@ TEST(DcfRangeTest, RejectsInvalidPreconditions) {
   using Scheme = fss::Dcf<3, BytesGroup, fss::prg::ChaCha<4>>;
   Scheme scheme(fss::prg::ChaCha<4>(kNonce0, kNonce1));
   const int4 seed = {13, 27, 45, 66};
-  typename Scheme::Cw cws[4]{};
+  int4 cw_words[4]{};
+  int4 vw_words[4]{};
+  const auto cws = cuda::std::span<const int4>(cw_words, 4);
+  const auto vws = cuda::std::span<const int4>(vw_words, 4);
+  const uint8_t tr = 0;
   int4 output[8];
   auto outputs = cuda::std::span<int4>(output, 8);
-  EXPECT_THROW(scheme.EvalRange(false, 3, 2, seed, cws, outputs), std::invalid_argument);
-  EXPECT_THROW(scheme.EvalRange(false, 0, 8, seed, cws, outputs), std::invalid_argument);
-  EXPECT_THROW(scheme.EvalRange(false, 0, 7, seed, cws,
+  EXPECT_THROW(scheme.EvalRange(false, 3, 2, seed, cws, vws, tr, outputs), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 8, seed, cws, vws, tr, outputs), std::invalid_argument);
+  EXPECT_THROW(scheme.EvalRange(false, 0, 7, seed, cws, vws, tr,
       cuda::std::span<int4>(output, 7)), std::invalid_argument);
   using WideScheme = fss::Dcf<128, BytesGroup, fss::prg::ChaCha<4>, __uint128_t>;
   WideScheme wide(fss::prg::ChaCha<4>(kNonce0, kNonce1));
-  typename WideScheme::Cw wide_cws[129]{};
+  int4 wide_words[129]{};
+  int4 wide_values[129]{};
   EXPECT_THROW(wide.EvalRange(false, 0, ~__uint128_t{0}, seed,
-      wide_cws, outputs), std::invalid_argument);
+      cuda::std::span<const int4>(wide_words, 129),
+      cuda::std::span<const int4>(wide_values, 129), __uint128_t{0}, outputs),
+      std::invalid_argument);
 #ifndef NDEBUG
-  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, cws, outputs, -1), "par_depth >= 0");
+  EXPECT_DEBUG_DEATH(scheme.EvalRange(false, 0, 7, seed, cws, vws, tr, outputs, -1), "par_depth >= 0");
 #endif
 }
 
@@ -734,8 +752,8 @@ void CheckDcfGenHalf() {
   FullScheme reference{full_prg};
   int4 seeds[2] = {{1, 3, 5, 6}, {7, 9, 11, 12}};
   int4 beta = {42, 6, 8, 10};
-  typename Scheme::Key keys[2];
-  typename FullScheme::Key full_keys[2];
+  fss_test::ComponentKey<Scheme> keys[2];
+  fss_test::ComponentKey<FullScheme> full_keys[2];
   fss_test::GenPair(scheme, keys[0], keys[1], seeds, uint8_t{13}, beta);
   fss_test::GenPair(reference, full_keys[0], full_keys[1], seeds, uint8_t{13}, beta);
   EXPECT_EQ(calls.full, 2 * bits);
@@ -757,10 +775,14 @@ void CheckDcfGenHalf() {
         int4 left, right_state;
         Group left_value, right_value;
         fss::detail::SchemeAccess::DcfExpandNode<FullScheme>(full_prg, state, value, b,
-            full_keys[b].cws[i], left, left_value, right_state, right_value);
+            typename FullScheme::Cw{full_keys[b].cws[i],
+                fss::util::SetLsb(full_keys[b].vws[i], (full_keys[b].tr >> i) & 1)},
+            left, left_value, right_state, right_value);
         calls = {};
         fss::detail::SchemeAccess::DcfPathStep<Scheme>(prg, state, value, b,
-            keys[b].cws[i], right, state, value);
+            typename Scheme::Cw{keys[b].cws[i],
+                fss::util::SetLsb(keys[b].vws[i], (keys[b].tr >> i) & 1)},
+            right, state, value);
         int4 expected_state = right ? right_state : left;
         int4 expected_value = (right ? right_value : left_value).Into();
         int4 actual_value = value.Into();
@@ -831,8 +853,13 @@ void CheckDcfSplit(In alpha, int4 beta, size_t stride) {
   constexpr size_t kExtra = 3;
   constexpr size_t kDomain = size_t{1} << in_bits;
 
-  typename Scheme::Cw ref[in_bits + 1];
-  scheme.Gen(ref, seeds, alpha, beta);
+  std::vector<int4> ref_cws(in_bits + 1);
+  std::vector<int4> ref_vws(in_bits + 1);
+  In ref_tr = 0;
+  scheme.Gen(cuda::std::span<int4>(ref_cws.data(), ref_cws.size()),
+      cuda::std::span<int4>(ref_vws.data(), ref_vws.size()), ref_tr, seed_span, alpha, beta);
+  const auto dense_cws = cuda::std::span<const int4>(ref_cws.data(), ref_cws.size());
+  const auto dense_vws = cuda::std::span<const int4>(ref_vws.data(), ref_vws.size());
 
   std::vector<int4> cws(used + kExtra, kSplitSentinel);
   std::vector<int4> vws(used + kExtra, kSplitSentinel);
@@ -842,18 +869,15 @@ void CheckDcfSplit(In alpha, int4 beta, size_t stride) {
   if (default_stride) scheme.Gen(cws_out, vws_out, tr, seed_span, alpha, beta);
   else scheme.Gen(cws_out, vws_out, tr, seed_span, alpha, beta, stride);
 
-  In expected_tr = 0;
   for (int l = 0; l < in_bits; ++l) {
     const size_t index = static_cast<size_t>(l) * level_stride;
-    EXPECT_EQ(memcmp(&cws[index], &ref[l].s, sizeof(int4)), 0) << "cws layer " << l;
-    const int4 v_without_control = fss::util::SetLsb(ref[l].v, false);
-    EXPECT_EQ(memcmp(&vws[index], &v_without_control, sizeof(int4)), 0) << "vws layer " << l;
-    if (fss::util::GetLsb(ref[l].v)) expected_tr |= static_cast<In>(1) << l;
+    EXPECT_EQ(memcmp(&cws[index], &ref_cws[l], sizeof(int4)), 0) << "cws layer " << l;
+    EXPECT_EQ(memcmp(&vws[index], &ref_vws[l], sizeof(int4)), 0) << "vws layer " << l;
   }
-  EXPECT_EQ(tr, expected_tr) << "packed right-control bits";
+  EXPECT_EQ(tr, ref_tr) << "packed right-control bits";
   const int4 zero = {0, 0, 0, 0};
   EXPECT_EQ(memcmp(&cws[used - 1], &zero, sizeof(int4)), 0) << "cws terminal";
-  EXPECT_EQ(memcmp(&vws[used - 1], &ref[in_bits].v, sizeof(int4)), 0) << "vws terminal";
+  EXPECT_EQ(memcmp(&vws[used - 1], &ref_vws[in_bits], sizeof(int4)), 0) << "vws terminal";
   // Only the described prefix is written: gap entries and trailing capacity keep the sentinel.
   for (size_t i = 0; i < cws.size(); ++i) {
     if (i % level_stride == 0 && i / level_stride <= static_cast<size_t>(in_bits)) continue;
@@ -869,19 +893,19 @@ void CheckDcfSplit(In alpha, int4 beta, size_t stride) {
     const int4 s0 = seeds[party];
     for (size_t x = 0; x < kDomain; ++x) {
       const In xi = static_cast<In>(x);
-      const int4 aos = scheme.Eval(b, s0, ref, xi);
+      const int4 dense = scheme.Eval(b, s0, dense_cws, dense_vws, ref_tr, xi);
       const int4 got = default_stride
           ? scheme.Eval(b, s0, split_cws, split_vws, tr, xi)
           : scheme.Eval(b, s0, split_cws, split_vws, tr, xi, stride);
-      EXPECT_EQ(memcmp(&aos, &got, sizeof(int4)), 0) << "Eval party=" << party << " x=" << x;
+      EXPECT_EQ(memcmp(&dense, &got, sizeof(int4)), 0) << "Eval party=" << party << " x=" << x;
     }
 
-    std::vector<int4> aos_all(kDomain, kSplitSentinel);
+    std::vector<int4> dense_all(kDomain, kSplitSentinel);
     split_all[party].assign(kDomain + 2, kSplitSentinel);
-    scheme.EvalAll(b, s0, ref, aos_all.data());
+    scheme.EvalAll(b, s0, dense_cws, dense_vws, ref_tr, dense_all.data());
     if (default_stride) scheme.EvalAll(b, s0, split_cws, split_vws, tr, split_all[party].data());
     else scheme.EvalAll(b, s0, split_cws, split_vws, tr, split_all[party].data(), 0, stride);
-    EXPECT_EQ(memcmp(aos_all.data(), split_all[party].data(), kDomain * sizeof(int4)), 0)
+    EXPECT_EQ(memcmp(dense_all.data(), split_all[party].data(), kDomain * sizeof(int4)), 0)
         << "EvalAll party=" << party;
     EXPECT_EQ(memcmp(&split_all[party][kDomain], &kSplitSentinel, sizeof(int4)), 0)
         << "EvalAll extra capacity party=" << party;
@@ -889,14 +913,14 @@ void CheckDcfSplit(In alpha, int4 beta, size_t stride) {
     const In first = In{0};
     const In last = static_cast<In>(kDomain - 1);
     for (int par_depth : {0, 2}) {
-      std::vector<int4> aos_range(kDomain + 2, kSplitSentinel);
+      std::vector<int4> dense_range(kDomain + 2, kSplitSentinel);
       std::vector<int4> split_range(kDomain + 2, kSplitSentinel);
-      scheme.EvalRange(b, first, last, s0, ref,
-          cuda::std::span<int4>(aos_range.data(), kDomain), par_depth);
+      scheme.EvalRange(b, first, last, s0, dense_cws, dense_vws, ref_tr,
+          cuda::std::span<int4>(dense_range.data(), kDomain), par_depth);
       const auto ys = cuda::std::span<int4>(split_range.data(), kDomain);
       if (default_stride) scheme.EvalRange(b, first, last, s0, split_cws, split_vws, tr, ys, par_depth);
       else scheme.EvalRange(b, first, last, s0, split_cws, split_vws, tr, ys, par_depth, stride);
-      EXPECT_EQ(memcmp(aos_range.data(), split_range.data(), kDomain * sizeof(int4)), 0)
+      EXPECT_EQ(memcmp(dense_range.data(), split_range.data(), kDomain * sizeof(int4)), 0)
           << "EvalRange party=" << party << " par_depth=" << par_depth;
       for (size_t i = kDomain; i < split_range.size(); ++i) {
         EXPECT_EQ(memcmp(&split_range[i], &kSplitSentinel, sizeof(int4)), 0)
@@ -1003,17 +1027,12 @@ void CheckDcfOddTerminalRejected(int par_depth) {
   using Scheme = fss::Dcf<in_bits, BytesGroup, fss::prg::ChaCha<4>, uint8_t>;
   Scheme scheme{fss::prg::ChaCha<4>(kNonce0, kNonce1)};
   const int4 s0 = {13, 27, 45, 66};
-  typename Scheme::Cw cws[in_bits + 1]{};
-  cws[in_bits].v.w |= 1;
   int4 split_cws[in_bits + 1] = {};
   int4 split_vws[in_bits + 1] = {};
   split_vws[in_bits].w = 1;
   const uint8_t tr = 0;
   constexpr size_t n = size_t{1} << in_bits;
   int4 ys_storage[n];
-  EXPECT_DEATH(scheme.EvalAll(false, s0, cws, ys_storage, par_depth), "Assertion.*failed");
-  EXPECT_DEATH(scheme.EvalRange(false, uint8_t{0}, uint8_t{n - 1}, s0, cws,
-      cuda::std::span<int4>(ys_storage, n), par_depth), "Assertion.*failed");
   EXPECT_DEATH(scheme.EvalAll(false, s0, cuda::std::span<const int4>(split_cws, in_bits + 1),
       cuda::std::span<const int4>(split_vws, in_bits + 1), tr, ys_storage, par_depth),
       "Assertion.*failed");
@@ -1121,8 +1140,14 @@ void CheckSplitGpuLaunches() {
   const uint16_t alpha = 107;
   constexpr size_t kStride = 2;
 
-  typename Scheme::Cw ref[kBits + 1];
-  scheme.Gen(ref, seeds, alpha, beta);
+  std::vector<int4> ref_cws(kBits + 1);
+  std::vector<int4> ref_vws(kBits + 1);
+  uint16_t ref_tr = 0;
+  scheme.Gen(cuda::std::span<int4>(ref_cws.data(), ref_cws.size()),
+      cuda::std::span<int4>(ref_vws.data(), ref_vws.size()), ref_tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+  const auto dense_cws = cuda::std::span<const int4>(ref_cws.data(), ref_cws.size());
+  const auto dense_vws = cuda::std::span<const int4>(ref_vws.data(), ref_vws.size());
   std::vector<int4> cws((kBits + 1) * kStride + 2, kSplitSentinel);
   std::vector<int4> vws((kBits + 1) * kStride + 2, kSplitSentinel);
   uint16_t tr = 0;
@@ -1160,7 +1185,8 @@ void CheckSplitGpuLaunches() {
         cudaMemcpyDeviceToHost, stream), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     for (size_t x = 0; x < kDomain; ++x) {
-      const int4 expected = scheme.Eval(b, seeds[party], ref, static_cast<uint16_t>(x));
+      const int4 expected = scheme.Eval(b, seeds[party], dense_cws, dense_vws, ref_tr,
+          static_cast<uint16_t>(x));
       EXPECT_EQ(memcmp(&actual[x], &expected, sizeof(int4)), 0) << "x=" << x;
     }
     // EvalRangeGpu over a partial interval leaves the extra device capacity untouched.
@@ -1174,7 +1200,7 @@ void CheckSplitGpuLaunches() {
         cudaMemcpyDeviceToHost, stream), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     for (uint16_t x = 13; x <= 201; ++x) {
-      const int4 expected = scheme.Eval(b, seeds[party], ref, x);
+      const int4 expected = scheme.Eval(b, seeds[party], dense_cws, dense_vws, ref_tr, x);
       EXPECT_EQ(memcmp(&filled[x - 13], &expected, sizeof(int4)), 0) << "range x=" << x;
     }
     for (size_t i = 201 - 13 + 1; i < kDomain; ++i) {
@@ -1191,14 +1217,19 @@ void CheckSplitGpuLaunches() {
       tr, cuda::std::span<int4>(device_ys, kDomain), stream)), cudaErrorInvalidValue);
 
   // Batch launches: the default stride is the dense level-major key count.
-  typename Scheme::Cw ref_batch[kKeys][kBits + 1];
+  std::vector<int4> ref_batch_cws(kKeys * (kBits + 1));
+  std::vector<int4> ref_batch_vws(kKeys * (kBits + 1));
+  std::vector<uint16_t> ref_batch_tr(kKeys);
   std::vector<int4> batch_cws((kBits + 1) * kKeys, kSplitSentinel);
   std::vector<int4> batch_vws((kBits + 1) * kKeys, kSplitSentinel);
   int4 batch_s0s[kKeys];
   uint16_t batch_tr[kKeys] = {0, 0};
   for (size_t key = 0; key < kKeys; ++key) {
     batch_s0s[key] = seeds[key];
-    scheme.Gen(ref_batch[key], seeds, static_cast<uint16_t>(alpha + key), beta);
+    scheme.Gen(cuda::std::span<int4>(ref_batch_cws.data() + key * (kBits + 1), kBits + 1),
+        cuda::std::span<int4>(ref_batch_vws.data() + key * (kBits + 1), kBits + 1),
+        ref_batch_tr[key], cuda::std::span<const int4, 2>(seeds, 2),
+        static_cast<uint16_t>(alpha + key), beta);
     uint16_t key_tr = 0;
     // Offsetting by the key index fills the dense level-major layout.
     scheme.Gen(cuda::std::span<int4>(batch_cws.data() + key, batch_cws.size() - key),
@@ -1233,8 +1264,10 @@ void CheckSplitGpuLaunches() {
     ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
     for (size_t key = 0; key < kKeys; ++key) {
       for (size_t x = 0; x < kDomain; ++x) {
-        const int4 expected = scheme.Eval(false, batch_s0s[key], ref_batch[key],
-            static_cast<uint16_t>(x));
+        const int4 expected = scheme.Eval(false, batch_s0s[key],
+            cuda::std::span<const int4>(ref_batch_cws.data() + key * (kBits + 1), kBits + 1),
+            cuda::std::span<const int4>(ref_batch_vws.data() + key * (kBits + 1), kBits + 1),
+            ref_batch_tr[key], static_cast<uint16_t>(x));
         EXPECT_EQ(memcmp(&actual[key * kDomain + x], &expected, sizeof(int4)), 0)
             << "key=" << key << " x=" << x;
       }

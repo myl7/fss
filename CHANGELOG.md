@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Scheme operations use caller-owned component buffers instead of aggregate Key-taking overloads. Correction arrays include terminal data, and host parallel depth is a per-call argument.
+- The paired public Cw overloads are removed; the strided component operations with the stride=1 single-key and stride=0 dense batch defaults are the only public forms. VDPF gained component forms for every previously Cw-only operation. DMPF and VDMPF keep their bucket Cw contracts.
+- Python single-point schemes store keys as opaque component bytes: 16-byte correction-component rows plus a packed-control row (DCF adds the value-component rows, changing its row count). Previously persisted native key bytes are not compatible and must be regenerated.
 - Grotto preprocessing uses explicit parity-tree views and owned trees whose `View()` methods expose borrowed storage.
 - VDPF and VDMPF generation preserve caller-supplied seeds and report a single attempt's status; callers resample and retry failed attempts.
 - Python scheme methods fill caller-owned tensors and select CPU or CUDA from their tensor arguments. Mixed devices are rejected instead of copied automatically.
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The aggregate `Key` structs of DCF, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, and VDPF; `Dpf::Key` remains as the `Dmpf::BucketKey` bucket storage. Schemes expose `kCwCount` for sizing component arrays instead.
 - Public `RelayoutGpu` and `RepackGpu` preparation helpers; generate layouts with the split or strided Gen overloads.
 - Public point-launcher helpers; launchers in `gpu::detail` are implementation details.
 - Python `DmpfKey` and `VdmpfKey` wrappers.

@@ -44,14 +44,16 @@ int main() {
   }
 
   // Key generation (done by a trusted dealer)
-  Gdcf::Cw cws[kInBits + 1];
-  dcf.Gen(cws, seeds, alpha);
+  int4 cws[kInBits + 1];
+  In tr = 0;
+  dcf.Gen(cuda::std::span<int4>(cws, kInBits + 1), tr,
+      cuda::std::span<const int4, 2>(seeds, 2), alpha);
 
   // Preprocess: each party expands its tree and builds a parity segment tree.
   // The result owns its 2*N-1 parity bits and answers Eval() queries in O(log N).
   constexpr size_t N = size_t{1} << kInBits;
-  auto tree0 = dcf.PreprocessOwned(false, seeds[0], cws);
-  auto tree1 = dcf.PreprocessOwned(true, seeds[1], cws);
+  auto tree0 = dcf.PreprocessOwned(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr);
+  auto tree1 = dcf.PreprocessOwned(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr);
 
   // Evaluation: the parties XOR their bool shares; the result is x >= alpha
   bool y0 = Gdcf::Eval(tree0.View(), alpha);

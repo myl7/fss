@@ -94,6 +94,47 @@ __host__ inline bool RangeOutputCount(In first, In last, size_t capacity, size_t
   return count <= capacity;
 }
 
+
+// Subdivide [first, last] into aligned chunks and compute the launch geometry
+// shared by the range GPU launchers: per-chunk frontier, thread width, block
+// root depth, and block count. frontier_cap reserves trailing levels that the
+// caller's kernel resolves outside the block frontier (HalfTree uses one).
+// launch(chunk_first, depth, offset, frontier, thread_bits, root, blocks)
+// starts each chunk's kernels; its return value propagates.
+template <int in_bits, int frontier_depth, int threads_per_block, int frontier_cap = 0,
+    typename In, typename LaunchChunk>
+__host__ inline cudaError_t SplitRangeChunks(In first, In last, size_t ys_count,
+    LaunchChunk &&launch) {
+  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  size_t count;
+  if (!RangeOutputCount<in_bits>(first, last, ys_count, count)) return cudaErrorInvalidValue;
+  constexpr int kThreadBits = [] {
+    int bits = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
+    return bits;
+  }();
+  constexpr int kMaxDepth = [] {
+    int depth = 30 + kThreadBits + frontier_cap;
+    if (depth >= sizeof(size_t) * CHAR_BIT) depth = sizeof(size_t) * CHAR_BIT - 1;
+    if (frontier_depth < depth && depth - frontier_depth > 8) depth = frontier_depth + 8;
+    return depth;
+  }();
+  return ForEachAlignedRange<in_bits>(first, last, kMaxDepth,
+      [&](In chunk_first, int depth, size_t offset, size_t) {
+        int frontier = frontier_depth < depth - frontier_cap ? frontier_depth : depth - frontier_cap;
+        if (frontier < 0) frontier = 0;
+        int thread_bits = kThreadBits < frontier ? kThreadBits : frontier;
+        int root = frontier - thread_bits;
+        size_t blocks = size_t{1} << root;
+        if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
+          return cudaErrorInvalidConfiguration;
+        return launch(chunk_first, depth, offset, frontier, thread_bits, root, blocks);
+      });
+}
+
 // Visit aligned power-of-two chunks in input order without shifting by In's width.
 // A caller may cap depth to split chunks further for its kernel's fixed limits.
 template <int in_bits, typename In, typename Callback>
@@ -399,6 +440,48 @@ struct SchemeAccess {
 
   template <typename Scheme>
   static __host__ __device__ auto GetInstanceSeed(const Scheme &scheme) { return scheme.instance_seed_; }
+
+  // Cw-layout correction-word entry points for library owners that keep the Cw
+  // storage contract (DMPF/VDMPF bucket keys). Public callers use the component
+  // strided APIs; these reuse the schemes' private shared implementations.
+  template <typename Scheme>
+  static __host__ __device__ void DpfGenCw(Scheme &scheme, typename Scheme::Cw *cws,
+      const int4 *s0s, auto a, int4 b_buf) {
+    scheme.Generate(typename Scheme::AosWriter{cws}, s0s, a, b_buf);
+  }
+
+  template <typename Scheme>
+  static __host__ __device__ int4 DpfEvalCw(Scheme &scheme, bool b, int4 s0,
+      const typename Scheme::Cw *cws, auto x) {
+    return scheme.EvalCws(b, s0, cws, x);
+  }
+
+  template <typename Scheme>
+  static void DpfEvalAllCw(Scheme &scheme, bool b, int4 s0,
+      const typename Scheme::Cw *cws, int4 *ys, int par_depth) {
+    scheme.EvalAllCws(b, s0, cws, ys, par_depth);
+  }
+
+  template <int frontier_depth = 16, int threads_per_block = 256, typename Scheme>
+  static __host__ cudaError_t DpfEvalAllGpuBatchCw(Scheme &scheme, bool b,
+      cuda::std::span<const int4> s0s, cuda::std::span<const typename Scheme::Cw> cws,
+      cuda::std::span<int4> ys, cudaStream_t stream) {
+    return scheme.template EvalAllGpuBatchCw<frontier_depth, threads_per_block>(
+        b, s0s, cws, ys, stream);
+  }
+
+  template <typename Scheme>
+  static __host__ __device__ int VdpfGenCw(Scheme &scheme, typename Scheme::Cw *cws,
+      cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, auto a, int4 b_buf) {
+    return scheme.Generate(typename Scheme::AosWriter{cws}, cs, s0s.data(), a, b_buf);
+  }
+
+  template <typename Scheme>
+  static __host__ __device__ auto VdpfEvalCw(Scheme &scheme, bool b, int4 s0,
+      cuda::std::span<const typename Scheme::Cw> cws, cuda::std::span<const int4, 4> cs,
+      auto x, int4 &y) {
+    return scheme.EvalCws(b, s0, cws.data(), cs, x, y);
+  }
 
   template <typename Scheme>
   static __host__ __device__ auto MakeInner(Scheme &scheme) {

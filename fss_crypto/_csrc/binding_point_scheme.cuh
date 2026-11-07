@@ -10,13 +10,21 @@ namespace fss::python {
 namespace detail {
 
 // Scalar Python coordinates are kernel arguments, not temporary input tensors.
+// The key components are device addresses: the kernel loads the packed control
+// and the party seed where the split entry points expect values.
 template <typename Descriptor>
 __global__ void PointEvalOneKernel(void *scheme_storage, bool b, const int4 *s0,
-    const void *cws_storage, InType x, int4 *y) {
+    const int4 *cws, const int4 *vws, const InType *tr, InType x, int4 *y) {
   using Core = typename Descriptor::Scheme;
   Core *scheme = static_cast<Core *>(scheme_storage);
-  const typename Core::Cw *cws = static_cast<const typename Core::Cw *>(cws_storage);
-  y[0] = scheme->Eval(b, s0[0], cws, x);
+  if constexpr (kSchemeKind == 2) {
+    y[0] = scheme->Eval(b, s0[0], cuda::std::span<const int4>(cws, kNativeArrayRecords),
+        cuda::std::span<const int4>(vws, kNativeArrayRecords), tr[0], x);
+  } else if constexpr (kSchemeKind == 4) {
+    y[0] = scheme->Eval(b, s0[0], cuda::std::span<const int4>(cws, kNativeArrayRecords), x);
+  } else {
+    y[0] = scheme->Eval(b, s0[0], cuda::std::span<const int4>(cws, kNativeArrayRecords), tr[0], x);
+  }
 }
 
 // Host-only launchers select a safe descriptor where one exists. The primary
@@ -24,39 +32,39 @@ __global__ void PointEvalOneKernel(void *scheme_storage, bool b, const int4 *s0,
 template <typename Core>
 struct PointEvalOneLauncher {
   static inline void Launch(Core *scheme, bool b, const int4 *s0,
-      const typename Core::Cw *cws, InType x, int4 *y, cudaStream_t stream) {
+      const int4 *cws, const int4 *vws, const InType *tr, InType x, int4 *y, cudaStream_t stream) {
     PointEvalOneKernel<fss::gpu::detail::CoreLaunchIdentityDescriptor<Core>>
-        <<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+        <<<1, 1, 0, stream>>>(scheme, b, s0, cws, vws, tr, x, y);
   }
 };
 
 template <int n, typename Group, typename Prg, typename In>
 struct PointEvalOneLauncher<Dpf<n, Group, Prg, In>> {
   static inline void Launch(Dpf<n, Group, Prg, In> *scheme, bool b, const int4 *s0,
-      const typename Dpf<n, Group, Prg, In>::Cw *cws, In x, int4 *y, cudaStream_t stream) {
+      const int4 *cws, const int4 *vws, const InType *tr, In x, int4 *y, cudaStream_t stream) {
     using Descriptor = fss::gpu::detail::DpfGpuKernelDescriptor<n,
         typename fss::detail::GpuGroupTag<Group>::Type, Prg, In>;
-    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, vws, tr, x, y);
   }
 };
 
 template <int n, typename Group, typename Prg, typename In, DcfPred pred>
 struct PointEvalOneLauncher<Dcf<n, Group, Prg, In, pred>> {
   static inline void Launch(Dcf<n, Group, Prg, In, pred> *scheme, bool b, const int4 *s0,
-      const typename Dcf<n, Group, Prg, In, pred>::Cw *cws, In x, int4 *y, cudaStream_t stream) {
+      const int4 *cws, const int4 *vws, const InType *tr, In x, int4 *y, cudaStream_t stream) {
     using Descriptor = fss::gpu::detail::DcfGpuKernelDescriptor<n,
         typename fss::detail::GpuGroupTag<Group>::Type, Prg, In, pred>;
-    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, vws, tr, x, y);
   }
 };
 
 template <int n, typename Group, typename Hash, typename In>
 struct PointEvalOneLauncher<HalfTreeDpf<n, Group, Hash, In>> {
   static inline void Launch(HalfTreeDpf<n, Group, Hash, In> *scheme, bool b, const int4 *s0,
-      const typename HalfTreeDpf<n, Group, Hash, In>::Cw *cws, In x, int4 *y, cudaStream_t stream) {
+      const int4 *cws, const int4 *vws, const InType *tr, In x, int4 *y, cudaStream_t stream) {
     using Descriptor = fss::gpu::detail::HalfTreeGpuKernelDescriptor<n,
         typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
-    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, x, y);
+    PointEvalOneKernel<Descriptor><<<1, 1, 0, stream>>>(scheme, b, s0, cws, vws, tr, x, y);
   }
 };
 
@@ -68,20 +76,28 @@ __global__ void PackedExtractOneKernel(const int4 *block, InType x, uint64_t *ou
 template <typename Core>
 void PointGenBlock(NativeState &state, const Tensor &cws, const Tensor &s0s,
     const py::int_ &a, const Tensor &b_buf) {
-  constexpr size_t count = CwCount<Core>();
   CheckSameDevice({cws, s0s, b_buf});
   CheckBlocks(s0s, 2);
   CheckBlocks(b_buf, 1);
-  auto *words = CwPtr(cws, count);
+  auto key = KeyPtr(cws);
   InType point = ReadInput<InType>(a, kInBits);
   if (cws.is_cuda()) {
     if constexpr (kGpuSupported) {
       c10::cuda::CUDAGuard guard(cws.device());
       auto stream = CurrentStream();
       int4 payload = FetchBlock(b_buf);
-      CheckCuda(fss::gpu::GenGpu<Core>(state.template Device<kGpuSupported, Core>(stream),
-          cuda::std::span<typename Core::Cw, count>(words, count),
-          cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), point, payload, stream));
+      if constexpr (kNativeValueArray) {
+        CheckCuda(fss::gpu::GenGpu<Core>(state.template Device<kGpuSupported, Core>(stream),
+            cuda::std::span<int4, kNativeArrayRecords>(key.arrays, kNativeArrayRecords),
+            cuda::std::span<int4, kNativeArrayRecords>(key.values, kNativeArrayRecords),
+            key.control,
+            cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), point, payload, stream));
+      } else {
+        CheckCuda(fss::gpu::GenGpu<Core>(state.template Device<kGpuSupported, Core>(stream),
+            cuda::std::span<int4, kNativeArrayRecords>(key.arrays, kNativeArrayRecords),
+            nullptr, key.control,
+            cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), point, payload, stream));
+      }
       RecordTensors({cws, s0s, b_buf}, stream);
       state.RecordUse(stream);
     } else {
@@ -90,17 +106,23 @@ void PointGenBlock(NativeState &state, const Tensor &cws, const Tensor &s0s,
   } else {
     CheckCpu({cws, s0s, b_buf});
     Core &scheme = state.Cpu();
-    scheme.Gen(words, ConstBlocks(s0s), point, FetchBlock(b_buf));
+    if constexpr (kNativeValueArray) {
+      scheme.Gen(cuda::std::span<int4>(key.arrays, kNativeArrayRecords),
+          cuda::std::span<int4>(key.values, kNativeArrayRecords), *key.control,
+          cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), point, FetchBlock(b_buf));
+    } else {
+      scheme.Gen(cuda::std::span<int4>(key.arrays, kNativeArrayRecords), *key.control,
+          cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), point, FetchBlock(b_buf));
+    }
   }
 }
 
 template <typename Core>
 void PointGenPacked(NativeState &state, const Tensor &cws, const Tensor &s0s,
     const py::int_ &a, uint64_t beta) {
-  constexpr size_t count = CwCount<Core>();
   CheckSameDevice({cws, s0s});
   CheckBlocks(s0s, 2);
-  auto *words = CwPtr(cws, count);
+  auto key = KeyPtr(cws);
   constexpr int payload_bits = 128 / Core::kLanes;
   if constexpr (payload_bits < 64) {
     TORCH_CHECK(beta < (uint64_t{1} << payload_bits), "beta exceeds the packed output width");
@@ -111,7 +133,7 @@ void PointGenPacked(NativeState &state, const Tensor &cws, const Tensor &s0s,
       c10::cuda::CUDAGuard guard(cws.device());
       auto stream = CurrentStream();
       CheckCuda(fss::gpu::GenGpu<Core>(state.template Device<kGpuSupported, Core>(stream),
-          cuda::std::span<typename Core::Cw, count>(words, count),
+          cuda::std::span<int4, kNativeArrayRecords>(key.arrays, kNativeArrayRecords),
           cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), point, beta, stream));
       RecordTensors({cws, s0s}, stream);
       state.RecordUse(stream);
@@ -121,17 +143,17 @@ void PointGenPacked(NativeState &state, const Tensor &cws, const Tensor &s0s,
   } else {
     CheckCpu({cws, s0s});
     Core &scheme = state.Cpu();
-    scheme.Gen(words, ConstBlocks(s0s), point, beta);
+    scheme.Gen(cuda::std::span<int4>(key.arrays, kNativeArrayRecords),
+        cuda::std::span<const int4, 2>(ConstBlocks(s0s), 2), point, beta);
   }
 }
 
 template <typename Core>
 Tensor PointEval(NativeState &state, bool b, const Tensor &s0, const Tensor &cws,
     const py::int_ &x) {
-  constexpr size_t count = CwCount<Core>();
   CheckSameDevice({s0, cws});
   CheckBlocks(s0, 1);
-  const auto *words = ConstCwPtr(cws, count);
+  auto key = KeyPtr(cws);
   InType point = ReadInput<InType>(x, kInBits);
   auto y = at::empty({4}, s0.options().dtype(at::kInt));
   if (s0.is_cuda()) {
@@ -139,7 +161,8 @@ Tensor PointEval(NativeState &state, bool b, const Tensor &s0, const Tensor &cws
       c10::cuda::CUDAGuard guard(s0.device());
       auto stream = CurrentStream();
       PointEvalOneLauncher<Core>::Launch(
-          state.template Device<kGpuSupported, Core>(stream), b, ConstBlocks(s0), words, point, Blocks(y), stream);
+          state.template Device<kGpuSupported, Core>(stream), b, ConstBlocks(s0),
+          key.arrays, key.values, key.control, point, Blocks(y), stream);
       CheckCuda(cudaGetLastError());
       RecordTensors({s0, cws, y}, stream);
       state.RecordUse(stream);
@@ -148,7 +171,17 @@ Tensor PointEval(NativeState &state, bool b, const Tensor &s0, const Tensor &cws
     }
   } else {
     Core &scheme = state.Cpu();
-    Blocks(y)[0] = scheme.Eval(b, ConstBlocks(s0)[0], words, point);
+    if constexpr (kSchemeKind == 2) {
+      Blocks(y)[0] = scheme.Eval(b, ConstBlocks(s0)[0],
+          cuda::std::span<const int4>(key.arrays, kNativeArrayRecords),
+          cuda::std::span<const int4>(key.values, kNativeArrayRecords), *key.control, point);
+    } else if constexpr (kSchemeKind == 4) {
+      Blocks(y)[0] = scheme.Eval(b, ConstBlocks(s0)[0],
+          cuda::std::span<const int4>(key.arrays, kNativeArrayRecords), point);
+    } else {
+      Blocks(y)[0] = scheme.Eval(b, ConstBlocks(s0)[0],
+          cuda::std::span<const int4>(key.arrays, kNativeArrayRecords), *key.control, point);
+    }
   }
   return y;
 }
@@ -173,17 +206,34 @@ void PointEvalAll(NativeState &state, bool b, const Tensor &s0, const Tensor &cw
     CheckSameDevice({s0, cws, ys});
     CheckBlocks(s0, 1);
     CheckBlocks(ys, outputs);
-    constexpr size_t count = CwCount<Core>();
-    const auto *words = ConstCwPtr(cws, count);
+    auto key = KeyPtr(cws);
     if (ys.is_cuda()) {
       constexpr int frontier_limit = kSchemeKind == 3 ? bits - 1 : bits;
       if constexpr (kGpuSupported && ValidCoreGpuLaunch<bits, frontier_limit>()) {
         c10::cuda::CUDAGuard guard(ys.device());
         auto stream = CurrentStream();
-        auto &scheme = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-        CheckCuda(scheme.template EvalAllGpu<kFrontierDepth, kThreadsPerBlock>(b,
-            FetchBlock(s0), cuda::std::span<const typename Core::Cw>(words, count),
-            cuda::std::span<int4>(Blocks(ys), outputs), stream));
+        auto &core = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
+        cudaError_t status;
+        if constexpr (kSchemeKind == 1) {
+          status = fss::gpu::detail::DpfEvalAllGpuDeviceKey<bits, GroupType, PrgType, InType, kFrontierDepth, kThreadsPerBlock>(b, ConstBlocks(s0),
+              key.arrays, kNativeKeyRecords, key.control, 1, Blocks(ys), outputs,
+              fss::detail::SchemeAccess::GetPrg(core), stream);
+        } else if constexpr (kSchemeKind == 2) {
+          status = fss::gpu::detail::DcfEvalAllGpuDeviceKey<bits, GroupType, PrgType, InType, kPred, kFrontierDepth, kThreadsPerBlock>(b,
+              ConstBlocks(s0), key.arrays, kNativeKeyRecords, key.values, kNativeKeyRecords,
+              key.control, 1, Blocks(ys), outputs,
+              fss::detail::SchemeAccess::GetPrg(core), stream);
+        } else if constexpr (kSchemeKind == 3) {
+          status = fss::gpu::detail::HalfTreeDpfEvalAllGpuDeviceKey<bits, GroupType, HashType, InType, kFrontierDepth, kThreadsPerBlock>(b, ConstBlocks(s0),
+              key.arrays, kNativeKeyRecords, key.control, 1, Blocks(ys), outputs,
+              fss::detail::SchemeAccess::GetInstanceSeed(core),
+              fss::detail::SchemeAccess::GetHash(core), stream);
+        } else {
+          status = core.template EvalAllGpu<kFrontierDepth, kThreadsPerBlock>(b,
+              FetchBlock(s0), cuda::std::span<const int4>(key.arrays, kNativeKeyRecords),
+              cuda::std::span<int4>(Blocks(ys), outputs), stream);
+        }
+        CheckCuda(status);
         RecordTensors({s0, cws, ys}, stream);
         state.RecordUse(stream);
       } else {
@@ -192,7 +242,19 @@ void PointEvalAll(NativeState &state, bool b, const Tensor &s0, const Tensor &cw
     } else {
       state.CheckCpuParallel(par_depth);
       Core &scheme = state.Cpu();
-      scheme.EvalAll(b, ConstBlocks(s0)[0], words, Blocks(ys), par_depth);
+      if constexpr (kSchemeKind == 2) {
+        scheme.EvalAll(b, ConstBlocks(s0)[0],
+            cuda::std::span<const int4>(key.arrays, kNativeArrayRecords),
+            cuda::std::span<const int4>(key.values, kNativeArrayRecords), *key.control,
+            Blocks(ys), par_depth);
+      } else if constexpr (kSchemeKind == 4) {
+        scheme.EvalAll(b, ConstBlocks(s0)[0],
+            cuda::std::span<const int4>(key.arrays, kNativeArrayRecords), Blocks(ys), par_depth);
+      } else {
+        scheme.EvalAll(b, ConstBlocks(s0)[0],
+            cuda::std::span<const int4>(key.arrays, kNativeArrayRecords), *key.control,
+            Blocks(ys), par_depth);
+      }
     }
   }
 }
@@ -203,8 +265,7 @@ void PointEvalRange(NativeState &state, bool b, const py::int_ &first,
     const Tensor &ys, int par_depth) {
   CheckSameDevice({s0, cws, ys});
   CheckBlocks(s0, 1);
-  constexpr size_t cw_count = CwCount<Core>();
-  const auto *words = ConstCwPtr(cws, cw_count);
+  auto key = KeyPtr(cws);
   const InType left = ReadInput<InType>(first, kInBits);
   const InType right = ReadInput<InType>(last, kInBits);
   constexpr size_t lanes = [] {
@@ -219,11 +280,24 @@ void PointEvalRange(NativeState &state, bool b, const py::int_ &first,
     } else if constexpr (kGpuSupported && ValidRangeGpuLaunch()) {
       c10::cuda::CUDAGuard guard(ys.device());
       auto stream = CurrentStream();
-      auto &scheme = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-      CheckCuda(scheme.template EvalRangeGpu<kFrontierDepth, kThreadsPerBlock>(b,
-          left, right, FetchBlock(s0),
-          cuda::std::span<const typename Core::Cw>(words, cw_count),
-          cuda::std::span<int4>(Blocks(ys), count), stream));
+      auto &core = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
+      cudaError_t status;
+      if constexpr (kSchemeKind == 1) {
+        status = fss::gpu::detail::DpfEvalRangeGpuDeviceKey<kInBits, GroupType, PrgType, InType, kFrontierDepth, kThreadsPerBlock>(b, left, right,
+            ConstBlocks(s0), key.arrays, kNativeKeyRecords, key.control, 1, Blocks(ys), count,
+            fss::detail::SchemeAccess::GetPrg(core), stream);
+      } else if constexpr (kSchemeKind == 2) {
+        status = fss::gpu::detail::DcfEvalRangeGpuDeviceKey<kInBits, GroupType, PrgType, InType, kPred, kFrontierDepth, kThreadsPerBlock>(b, left,
+            right, ConstBlocks(s0), key.arrays, kNativeKeyRecords, key.values,
+            kNativeKeyRecords, key.control, 1, Blocks(ys), count,
+            fss::detail::SchemeAccess::GetPrg(core), stream);
+      } else {
+        status = fss::gpu::detail::HalfTreeDpfEvalRangeGpuDeviceKey<kInBits, GroupType, HashType, InType, kFrontierDepth, kThreadsPerBlock>(b, left, right,
+            ConstBlocks(s0), key.arrays, kNativeKeyRecords, key.control, 1, Blocks(ys), count,
+            fss::detail::SchemeAccess::GetInstanceSeed(core),
+            fss::detail::SchemeAccess::GetHash(core), stream);
+      }
+      CheckCuda(status);
       RecordTensors({s0, cws, ys}, stream);
       state.RecordUse(stream);
     } else {
@@ -233,8 +307,21 @@ void PointEvalRange(NativeState &state, bool b, const py::int_ &first,
     constexpr int roles = kSchemeKind == 3 || kSchemeKind == 4
         ? NativeState::kHashRole : NativeState::kPrgRole;
     state.CheckCpuParallel(par_depth, roles);
-    static_cast<Core &>(state.Cpu()).EvalRange(b, left, right, ConstBlocks(s0)[0],
-        words, cuda::std::span<int4>(Blocks(ys), count), par_depth);
+    Core &scheme = state.Cpu();
+    if constexpr (kSchemeKind == 2) {
+      scheme.EvalRange(b, left, right, ConstBlocks(s0)[0],
+          cuda::std::span<const int4>(key.arrays, kNativeArrayRecords),
+          cuda::std::span<const int4>(key.values, kNativeArrayRecords), *key.control,
+          cuda::std::span<int4>(Blocks(ys), count), par_depth);
+    } else if constexpr (kSchemeKind == 4) {
+      scheme.EvalRange(b, left, right, ConstBlocks(s0)[0],
+          cuda::std::span<const int4>(key.arrays, kNativeArrayRecords),
+          cuda::std::span<int4>(Blocks(ys), count), par_depth);
+    } else {
+      scheme.EvalRange(b, left, right, ConstBlocks(s0)[0],
+          cuda::std::span<const int4>(key.arrays, kNativeArrayRecords), *key.control,
+          cuda::std::span<int4>(Blocks(ys), count), par_depth);
+    }
   }
 }
 
@@ -247,7 +334,6 @@ void PointEvalAllGpuBatch(NativeState &state, bool b, const Tensor &s0s,
   TORCH_CHECK(s0s.dim() == 2 && s0s.size(1) == 4,
       "s0s must have shape [key_count, 4]");
   constexpr int bits = FullOutputBits<Core>();
-  constexpr int64_t cw_count = CwCount<Core>();
   if constexpr (bits >= 63 || !fss::detail::FitsFullDomain<int4, bits>()) {
     throw py::value_error("full-domain output is not addressable by a tensor");
   } else if constexpr (!kGpuSupported ||
@@ -258,12 +344,9 @@ void PointEvalAllGpuBatch(NativeState &state, bool b, const Tensor &s0s,
     int64_t outputs = AddressableCount(bits);
     constexpr int64_t max_elements = std::numeric_limits<int64_t>::max();
     TORCH_CHECK(keys <= max_elements / outputs / 4 &&
-        keys <= max_elements / cw_count / sizeof(typename Core::Cw),
+        keys <= max_elements / static_cast<int64_t>(kNativeKeyRecords) / 16,
         "full-domain batch storage size overflows");
-    TORCH_CHECK(cws.dim() == 3 && cws.size(0) == keys &&
-        cws.size(1) == cw_count && cws.size(2) == sizeof(typename Core::Cw),
-        "cws has the wrong key-major shape for correction words");
-    const auto *words = ConstCwPtr(cws, keys * cw_count);
+    auto *base = KeyBaseBatch(cws, keys);
     CheckBlocks(ys, keys * outputs);
     TORCH_CHECK(ys.dim() == 3 && ys.size(0) == keys &&
         ys.size(1) == outputs && ys.size(2) == 4,
@@ -271,11 +354,31 @@ void PointEvalAllGpuBatch(NativeState &state, bool b, const Tensor &s0s,
     if (keys == 0) return;
     c10::cuda::CUDAGuard guard(ys.device());
     auto stream = CurrentStream();
-    auto &scheme = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
-    CheckCuda(scheme.template EvalAllGpuBatch<kFrontierDepth, kThreadsPerBlock>(b,
-        cuda::std::span<const int4>(ConstBlocks(s0s), keys),
-        cuda::std::span<const typename Core::Cw>(words, keys * cw_count),
-        cuda::std::span<int4>(Blocks(ys), keys * outputs), stream));
+    auto &core = static_cast<Core &>(state.template DeviceForLaunch<kGpuSupported>(stream));
+    cudaError_t status;
+    if constexpr (kSchemeKind == 1) {
+      status = fss::gpu::detail::DpfEvalAllGpuBatchDeviceKey<kInBits, GroupType, PrgType, InType, kFrontierDepth, kThreadsPerBlock>(b,
+          ConstBlocks(s0s), keys, base, keys * kNativeKeyRecords, kNativeKeyRecords,
+          kNativeControlRecord, Blocks(ys), keys * outputs,
+          fss::detail::SchemeAccess::GetPrg(core), stream);
+    } else if constexpr (kSchemeKind == 2) {
+      status = fss::gpu::detail::DcfEvalAllGpuBatchDeviceKey<kInBits, GroupType, PrgType, InType, kPred, kFrontierDepth, kThreadsPerBlock>(b,
+          ConstBlocks(s0s), keys, base, keys * kNativeKeyRecords, kNativeArrayRecords,
+          kNativeKeyRecords, Blocks(ys), keys * outputs,
+          fss::detail::SchemeAccess::GetPrg(core), stream);
+    } else if constexpr (kSchemeKind == 3) {
+      status = fss::gpu::detail::HalfTreeDpfEvalAllGpuBatchDeviceKey<kInBits, GroupType, HashType, InType, kFrontierDepth, kThreadsPerBlock>(b,
+          ConstBlocks(s0s), keys, base, keys * kNativeKeyRecords, kNativeKeyRecords,
+          kNativeControlRecord, Blocks(ys), keys * outputs,
+          fss::detail::SchemeAccess::GetInstanceSeed(core),
+          fss::detail::SchemeAccess::GetHash(core), stream);
+    } else {
+      status = fss::gpu::detail::PackedHalfTreeDpfEvalAllGpuBatchDeviceKey<kInBits, kOutBits, HashType, InType, kFrontierDepth, kThreadsPerBlock>(b,
+          ConstBlocks(s0s), keys, base, keys * kNativeKeyRecords, kNativeKeyRecords,
+          Blocks(ys), keys * outputs, fss::detail::SchemeAccess::GetInstanceSeed(core),
+          fss::detail::SchemeAccess::GetHash(core), stream);
+    }
+    CheckCuda(status);
     RecordTensors({s0s, cws, ys}, stream);
     state.RecordUse(stream);
   }

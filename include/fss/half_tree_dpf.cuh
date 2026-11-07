@@ -94,14 +94,10 @@ public:
   };
   static_assert(sizeof(Cw) == 32);
 
-  /**
-   * A party's key: the shared correction words and the party's initial seed.
-   * @ingroup fss_api
-   */
-  struct Key {
-    Cw cws[in_bits + 1];  ///< Tree correction words followed by the output correction word in the final s field.
-    int4 s0;  ///< This party's initial seed.
-  };
+  /// Seed-component count Gen() writes at stride 1: in_bits levels plus the terminal.
+  static constexpr int kCwCount = in_bits + 1;
+
+  using Input = In;  ///< The caller-facing input-domain type.
 
   /**
    * Configure the CCR hash and public instance seed S.
@@ -110,18 +106,6 @@ public:
    * @param instance_seed Uniformly sampled public seed S, fixed for this instance.
    */
   __host__ __device__ explicit HalfTreeDpf(Hash hash, int4 instance_seed);
-
-  /**
-   * Generate shared correction words in caller-owned storage.
-   *
-   * @param cws Output array of in_bits + 1 correction words, including the output correction word.
-   * @param s0s Two initial seeds, retained by the caller.
-   * @param a The secret point.
-   * @param b_buf Output value, clamped before conversion to Group.
-   * @pre a is in [0, 2^in_bits).
-   * @post cws[in_bits].s holds the output correction word and cws[in_bits].extra is false.
-   */
-  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf);
 
   /**
    * Generate split Cws from caller-owned initial seeds.
@@ -156,18 +140,6 @@ public:
       cuda::std::span<const int4, 2> s0s, In a, int4 b_buf, size_t stride = 1);
 
   /**
-   * Evaluate one point using a seed and shared correction words.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed from generation.
-   * @param cws Shared correction words returned by Gen().
-   * @param x Query point.
-   * @return This party's output share.
-   * @pre x is in [0, 2^in_bits).
-   */
-  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
-
-  /**
    * Evaluate one point from split Cws.
    *
    * Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride].
@@ -196,25 +168,6 @@ public:
    */
   __host__ __device__ int4 Eval(bool b, int4 s0, cuda::std::span<const int4> cws,
       In tr, In x, size_t stride = 1);
-
-  /**
-   * Evaluate the full domain on the host using caller-owned storage.
-   *
-   * par_depth controls OpenMP partitioning for this call.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed from generation.
-   * @param cws Shared correction words returned by Gen().
-   * @param ys Output array of at least 2^in_bits elements.
-   * @param par_depth Nonnegative OpenMP split depth for this call. Zero runs sequentially.
-   * Positive depths require backends that support concurrent calls.
-   * @pre The output element count and byte size fit size_t.
-   * @pre cws and ys are nonnull.
-   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
-   * Debug builds and is undefined behavior in Release builds.
-   * @post ys[x] contains this party's output share for x.
-   */
-  void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth = 0);
 
   /**
    * Evaluate the full domain from split Cws.
@@ -246,29 +199,6 @@ public:
    */
   void EvalAll(bool b, int4 s0, cuda::std::span<const int4> cws, In tr,
       int4 ys[], int par_depth = 0, size_t stride = 1);
-
-  /**
-   * Evaluate the closed input interval [first, last] on the host.
-   *
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param first First input in the interval, inclusive.
-   * @param last Last input in the interval, inclusive.
-   * @param s0 This party's initial seed.
-   * @param cws The in_bits + 1 shared correction words returned by Gen().
-   * @param ys Output storage for at least last - first + 1 shares.
-   * @param par_depth Nonnegative OpenMP split depth. Zero runs sequentially.
-   * Positive depths require backends that support concurrent calls.
-   * @pre first <= last and both endpoints belong to the input domain.
-   * @pre The output count and byte size fit size_t, and used pointers are nonnull.
-   * @pre cws[in_bits].s.w & 1 == 0. A violation aborts with a diagnostic in
-   * Debug builds and is undefined behavior in Release builds.
-   * @throws std::invalid_argument if cws is null, first > last, an endpoint is
-   * outside the input domain, the interval does not fit size_t, or ys is too short.
-   * @post ys[j] is this party's scalar share at first + j.
-   * Extra output capacity is untouched.
-   */
-  void EvalRange(bool b, In first, In last, int4 s0, const Cw cws[],
-      cuda::std::span<int4> ys, int par_depth = 0);
 
   /**
    * Evaluate the closed input interval [first, last] from split Cws.
@@ -306,24 +236,6 @@ public:
   void EvalRange(bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws,
       In tr, cuda::std::span<int4> ys, int par_depth = 0, size_t stride = 1);
 
-
-  /**
-   * Evaluate the closed interval [first, last] on the given CUDA stream.
-   * Output ys[j] corresponds to first+j. Extra output capacity is unchanged.
-   * Resources and asynchronous error handling follow EvalAllGpu().
-   * frontier_depth is relative to each aligned evaluation subtree and is capped
-   * to its depth (before HalfTreeDpf's special final layer).
-   * Private subdivision keeps the tail at most eight output levels and the
-   * block-root depth at most 30, without backend or hardware tuning.
-   * Invalid endpoints, buffers, counts or byte sizes return cudaErrorInvalidValue.
-   * Grid limits return cudaErrorInvalidConfiguration.
-   * The input domain itself need not fit in size_t.
-   */
-  template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t EvalRangeGpu(bool b, In first, In last, int4 s0,
-      cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
-      cudaStream_t stream = 0) const;
-
   /**
    * Evaluate the closed interval [first, last] on the given CUDA stream from
    * split device arrays. Output ys[j] corresponds to first+j.
@@ -356,33 +268,6 @@ public:
       cudaStream_t stream = 0, size_t stride = 1) const;
 
   /**
-   * Launch full-domain CUDA evaluation from this host-accessible instance.
-   *
-   * Hash values and the instance seed are passed as kernel arguments. The caller
-   * prepares device buffers and any device resources referenced by Hash, and
-   * keeps them alive until stream completes. Hash and output operations must
-   * support concurrent device execution. No allocation, upload or synchronization
-   * is performed. The scheme itself must be accessible on the host.
-   * @tparam frontier_depth Frontier depth, capped at in_bits - 1, before the special final tree level. Defaults to 16.
-   * @tparam threads_per_block A power of two in [1,1024], capped at the frontier width.
-   * Defaults to 256. Block-root depth is derived from the effective frontier and
-   * block size. At most eight output levels may remain below the frontier, and
-   * the block-root depth must be at most 30. These are fixed correctness caps.
-   * @param b Party index, false for party 0 and true for party 1.
-   * @param s0 This party's seed, passed by value as a kernel argument.
-   * @param cws Device storage containing at least in_bits + 1 correction words.
-   * @param ys Device storage containing at least 2^in_bits output blocks.
-   * @param stream Stream on the device owning the referenced resources.
-   * @return Immediate CUDA launch status. Invalid buffer dimensions, null used
-   * buffers, or unaddressable byte sizes return cudaErrorInvalidValue. Execution
-   * remains asynchronous; the caller observes completion errors through stream.
-   */
-  template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t EvalAllGpu(bool b, int4 s0, cuda::std::span<const Cw> cws,
-      cuda::std::span<int4> ys, cudaStream_t stream = 0) const
-    requires(in_bits < sizeof(size_t) * 8);
-
-  /**
    * Launch full-domain CUDA evaluation from split device arrays.
    *
    * Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride].
@@ -409,28 +294,6 @@ public:
   template <int frontier_depth = 16, int threads_per_block = 256>
   __host__ cudaError_t EvalAllGpu(bool b, int4 s0, cuda::std::span<const int4> cws,
       In tr, cuda::std::span<int4> ys, cudaStream_t stream = 0, size_t stride = 1) const
-    requires(in_bits < sizeof(size_t) * 8);
-
-  /**
-   * Launch full-domain evaluation for s0s.size() keys with this configuration.
-   *
-   * Uses the same execution, resource and tuning rules as EvalAllGpu().
-   * Seeds, correction words and outputs are device-accessible buffers. Cws
-   * and outputs are key-major rows, with in_bits + 1 correction words and
-   * 2^in_bits output blocks per key. The key count comes from s0s.size().
-   * @param b Party index shared by the batch.
-   * @param s0s Device storage containing one seed per key.
-   * @param cws Flat device rows of Cws.
-   * @param ys Flat device output rows.
-   * @param stream Stream on the device owning the referenced resources.
-   * @return Immediate CUDA status. Empty batches succeed without reading buffers.
-   * Invalid dimensions, null used buffers, or unaddressable counts and bytes
-   * return cudaErrorInvalidValue. Oversized grids return cudaErrorInvalidConfiguration.
-   */
-  template <int frontier_depth = 16, int threads_per_block = 256>
-  __host__ cudaError_t EvalAllGpuBatch(bool b, cuda::std::span<const int4> s0s,
-      cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
-      cudaStream_t stream = 0) const
     requires(in_bits < sizeof(size_t) * 8);
 
   /**
@@ -498,29 +361,6 @@ private:
   // Split Cws view over the caller's array. The host methods and the
   // split GPU kernels share this one view; see detail::HalfTreeDpfCwsView.
   using CwsView = detail::HalfTreeDpfCwsView<Cw, In, in_bits>;
-
-  // Writes Cw slots in the key array layout.
-  struct AosWriter {
-    Cw *cws;
-
-    __host__ __device__ void Write(int i, int4 s_cw) const {
-      cws[i] = {s_cw, false};
-    }
-
-    __host__ __device__ void WriteLast(int4 s_cw, bool extra_cw) const {
-      // Both 16B halves of the final 32B slot are written so NVCC emits unmasked
-      // stores: {s_cw, extra_cw} alone leaves the padding undefined, and the
-      // partial-sector write forces a write-allocate round trip on GPU
-      // (measured ~2x Gen time for the same pattern).
-      int4 *cw_slot = reinterpret_cast<int4 *>(&cws[in_bits - 1]);
-      cw_slot[0] = s_cw;
-      cw_slot[1] = make_int4(extra_cw, 0, 0, 0);
-    }
-
-    __host__ __device__ void Finish(int4 terminal) const {
-      cws[in_bits] = {terminal, false};
-    }
-  };
 
   // Writes the strided components and accumulates the packed control bit locally.
   struct CwsWriter {
@@ -740,68 +580,6 @@ __device__ __forceinline__ void HalfTreeEvalAllBlock(bool b, int4 s0,
   }
 }
 
-template <typename Descriptor, int threads_per_block>
-__global__ void HalfTreeDpfEvalRangeKernel(bool b, int4 s0,
-    const void *cws_buffer, int4 *ys, __uint128_t first,
-    int depth, int frontier, int root, int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Scheme::Cw *>(cws_buffer);
-  __shared__ int4 states[threads_per_block];
-  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (depth == 0) {
-    int4 node = util::SetLsb(s0, b);
-    for (int level = 0; level < HalfTreeGpuTraits<Scheme>::kExpansionDepth; ++level) {
-      auto node_hash = hash;
-      node = fss::detail::SchemeAccess::HalfTreePathStep<Scheme>(node_hash,
-          instance_seed, node, cws[level].s,
-          ((first >> (HalfTreeGpuTraits<Scheme>::kOutputBits - 1 - level)) & 1) != 0);
-    }
-    int4 left, right;
-    using OutputGroup = typename HalfTreeGpuTraits<Scheme>::OutputGroup;
-    auto cw = OutputGroup::From(cws[HalfTreeGpuTraits<Scheme>::kOutputBits].s);
-    fss::detail::SchemeAccess::HalfTreeConvertLeafPair<Scheme>(b, hash, instance_seed,
-        node, cws[HalfTreeGpuTraits<Scheme>::kExpansionDepth], cw, left, right);
-    ys[0] = (first & 1) ? right : left;
-    return;
-  }
-  HalfTreeEvalAllBlock<Scheme, 0, 0, true>(b, s0, cws, ys, instance_seed, hash,
-      blockIdx.x, thread_index, states, first, depth, frontier, root);
-}
-
-template <typename Descriptor, int frontier_depth, int block_root_depth>
-__global__ void HalfTreeEvalAllKernel(bool b, int4 s0, const void *cws_buffer,
-    int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Scheme::Cw *>(cws_buffer);
-  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (thread_index >= (1LL << frontier_depth)) return;
-  __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
-  HalfTreeEvalAllBlock<Scheme, frontier_depth, block_root_depth>(
-      b, s0, cws, ys, instance_seed, hash, blockIdx.x, thread_index, shared_frontier);
-}
-
-template <typename Descriptor, int frontier_depth, int block_root_depth>
-__global__ void HalfTreeEvalAllBatchKernel(bool b, const int4 *s0s,
-    const void *cws_buffer, int4 *ys, int4 instance_seed,
-    typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Scheme::Cw *>(cws_buffer);
-  constexpr int kBlocksPerKey = 1 << block_root_depth;
-  constexpr int kCwCount = HalfTreeGpuTraits<Scheme>::kExpansionDepth +
-      (HalfTreeGpuTraits<Scheme>::kPacked ? 1 : 2);
-  constexpr size_t kOutputsPerKey = size_t{1} << HalfTreeGpuTraits<Scheme>::kOutputBits;
-  const int key_index = blockIdx.x / kBlocksPerKey;
-  const int subtree_block_index = blockIdx.x - key_index * kBlocksPerKey;
-  const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
-  if (thread_index >= (1LL << frontier_depth)) return;
-  const auto *key_cws = cws + static_cast<size_t>(key_index) * kCwCount;
-  int4 *key_outputs = ys + static_cast<size_t>(key_index) * kOutputsPerKey;
-  __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
-  HalfTreeEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
-      key_cws, key_outputs, instance_seed, hash, subtree_block_index,
-      thread_index, shared_frontier);
-}
-
 // Split-layout counterparts of the three kernels above. The Cw buffer
 // arrives type-erased and the boundary view reconstructs the per-layer Cw
 // entries, so the shared traversal stays identical on both paths.
@@ -879,6 +657,190 @@ __global__ void HalfTreeSplitEvalAllBatchKernel(bool b, const int4 *s0s,
       hash, subtree_block_index, thread_index, shared_frontier);
 }
 
+// Device-key counterparts of the split kernels above: the party seed and the
+// packed control are loaded from caller device storage. The shared traversal
+// and the shallow-range fast path are unchanged.
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void HalfTreeSplitEvalAllDeviceKeyKernel(bool b, const int4 *s0,
+    const void *cws_buffer, const typename HalfTreeGpuTraits<typename Descriptor::Scheme>::Input *tr,
+    size_t stride, int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
+  using Scheme = typename Descriptor::Scheme;
+  using Traits = HalfTreeGpuTraits<Scheme>;
+  using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw,
+      typename Traits::Input, Traits::kOutputBits>;
+  const auto *cws = static_cast<const int4 *>(cws_buffer);
+  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (thread_index >= (1LL << frontier_depth)) return;
+  __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
+  HalfTreeEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0[0],
+      Cws{cws, tr[0], stride}, ys, instance_seed, hash, blockIdx.x,
+      thread_index, shared_frontier);
+}
+
+template <typename Descriptor, int threads_per_block>
+__global__ void HalfTreeSplitEvalRangeDeviceKeyKernel(bool b, const int4 *s0,
+    const void *cws_buffer,
+    const typename HalfTreeGpuTraits<typename Descriptor::Scheme>::Input *tr, size_t stride,
+    int4 *ys, __uint128_t first, int depth, int frontier, int root,
+    int4 instance_seed, typename Descriptor::Backend hash) {
+  using Scheme = typename Descriptor::Scheme;
+  using Traits = HalfTreeGpuTraits<Scheme>;
+  using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw,
+      typename Traits::Input, Traits::kOutputBits>;
+  const auto *cws = static_cast<const int4 *>(cws_buffer);
+  const Cws view{cws, tr[0], stride};
+  __shared__ int4 states[threads_per_block];
+  const int64_t thread_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (depth == 0) {
+    int4 node = util::SetLsb(s0[0], b);
+    for (int level = 0; level < HalfTreeGpuTraits<Scheme>::kExpansionDepth; ++level) {
+      auto node_hash = hash;
+      node = fss::detail::SchemeAccess::HalfTreePathStep<Scheme>(node_hash,
+          instance_seed, node, view[level].s,
+          ((first >> (HalfTreeGpuTraits<Scheme>::kOutputBits - 1 - level)) & 1) != 0);
+    }
+    int4 left, right;
+    using OutputGroup = typename HalfTreeGpuTraits<Scheme>::OutputGroup;
+    auto cw = OutputGroup::From(view[HalfTreeGpuTraits<Scheme>::kOutputBits].s);
+    fss::detail::SchemeAccess::HalfTreeConvertLeafPair<Scheme>(b, hash, instance_seed,
+        node, view[HalfTreeGpuTraits<Scheme>::kExpansionDepth], cw, left, right);
+    ys[0] = (first & 1) ? right : left;
+    return;
+  }
+  HalfTreeEvalAllBlock<Scheme, 0, 0, true>(b, s0[0], view, ys, instance_seed, hash,
+      blockIdx.x, thread_index, states, first, depth, frontier, root);
+}
+
+// Key-major batch counterpart: key k's components occupy records
+// [k*key_records, k*key_records + output_bits] and its control record follows.
+template <typename Descriptor, int frontier_depth, int block_root_depth>
+__global__ void HalfTreeSplitEvalAllBatchDeviceKeyKernel(bool b, const int4 *s0s,
+    const void *cws_buffer, size_t key_records, size_t control_record, size_t key_count,
+    int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
+  using Scheme = typename Descriptor::Scheme;
+  using In = typename HalfTreeGpuTraits<Scheme>::Input;
+  using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw, In,
+      HalfTreeGpuTraits<Scheme>::kOutputBits>;
+  constexpr int kBlocksPerKey = 1 << block_root_depth;
+  constexpr size_t kOutputsPerKey = size_t{1} << HalfTreeGpuTraits<Scheme>::kOutputBits;
+  const auto *cws = static_cast<const int4 *>(cws_buffer);
+  const int key_index = blockIdx.x / kBlocksPerKey;
+  const int subtree_block_index = blockIdx.x - key_index * kBlocksPerKey;
+  const int64_t thread_index = static_cast<int64_t>(subtree_block_index) * blockDim.x + threadIdx.x;
+  if (thread_index >= (1LL << frontier_depth)) return;
+  const int4 *key = cws + static_cast<size_t>(key_index) * key_records;
+  const In *tr = reinterpret_cast<const In *>(key + control_record);
+  int4 *key_outputs = ys + static_cast<size_t>(key_index) * kOutputsPerKey;
+  __shared__ int4 shared_frontier[1 << (frontier_depth - block_root_depth)];
+  HalfTreeEvalAllBlock<Scheme, frontier_depth, block_root_depth>(b, s0s[key_index],
+      Cws{key, tr[0], 1}, key_outputs, instance_seed,
+      hash, subtree_block_index, thread_index, shared_frontier);
+}
+
+// Host launchers for the device-key kernels. The hash backend and instance
+// seed arrive by value from a host mirror of the device scheme, matching the
+// public launch methods.
+template <int in_bits, typename Group, typename Hash, typename In, int frontier_depth = 16,
+    int threads_per_block = 256>
+__host__ inline cudaError_t HalfTreeDpfEvalAllGpuDeviceKey(bool b, const int4 *s0,
+    const int4 *cws, size_t cws_count, const In *tr, size_t stride, int4 *ys,
+    size_t ys_count, int4 instance_seed, const Hash &hash, cudaStream_t stream) {
+  constexpr int kOutputBits = in_bits;
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  constexpr size_t kOutputsPerKey = size_t{1} << kOutputBits;
+  // Cap the frontier below the leaf level, exactly like the public launcher:
+  // the tail converts leaf pairs, so a frontier at the full depth would emit
+  // two outputs per frontier thread and double the domain.
+  constexpr int kFrontierDepth = frontier_depth < kOutputBits - 1
+      ? frontier_depth : kOutputBits - 1;
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  static_assert(kOutputBits - kFrontierDepth <= 8,
+      "gpu frontier leaves more than eight tail levels; specify a larger frontier_depth");
+  constexpr int kThreadsPerBlockLog2 = [] {
+    int requested_log2 = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++requested_log2;
+    return requested_log2 < kFrontierDepth ? requested_log2 : kFrontierDepth;
+  }();
+  constexpr int kBlockRootDepth = kFrontierDepth - kThreadsPerBlockLog2;
+  if (stride == 0 || stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws_count < static_cast<size_t>(in_bits) * stride + 1 || ys_count < kOutputsPerKey ||
+      s0 == nullptr || cws == nullptr || tr == nullptr || ys == nullptr ||
+      kOutputsPerKey > kMaxElements) return cudaErrorInvalidValue;
+  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits,
+      typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
+  HalfTreeSplitEvalAllDeviceKeyKernel<Descriptor, kFrontierDepth, kBlockRootDepth>
+      <<<size_t{1} << kBlockRootDepth, 1 << kThreadsPerBlockLog2, 0, stream>>>(
+          b, s0, cws, tr, stride, ys, instance_seed, hash);
+  return cudaGetLastError();
+}
+
+template <int in_bits, typename Group, typename Hash, typename In, int frontier_depth = 16,
+    int threads_per_block = 256>
+__host__ inline cudaError_t HalfTreeDpfEvalRangeGpuDeviceKey(bool b, In first, In last,
+    const int4 *s0, const int4 *cws, size_t cws_count, const In *tr, size_t stride,
+    int4 *ys, size_t ys_count, int4 instance_seed, const Hash &hash, cudaStream_t stream) {
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  if (stride == 0 || stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
+      cws_count < static_cast<size_t>(in_bits) * stride + 1 || s0 == nullptr ||
+      cws == nullptr || tr == nullptr || ys == nullptr) return cudaErrorInvalidValue;
+  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits,
+      typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
+  return fss::detail::SplitRangeChunks<in_bits, frontier_depth, threads_per_block, 1>(
+      first, last, ys_count,
+      [&](In chunk_first, int depth, size_t offset, int frontier, int thread_bits, int root,
+          size_t blocks) {
+        HalfTreeSplitEvalRangeDeviceKeyKernel<Descriptor, threads_per_block>
+            <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws, tr, stride,
+                ys + offset, chunk_first, depth, frontier, root, instance_seed, hash);
+        return cudaGetLastError();
+      });
+}
+
+template <int in_bits, typename Group, typename Hash, typename In, int frontier_depth = 16,
+    int threads_per_block = 256>
+__host__ inline cudaError_t HalfTreeDpfEvalAllGpuBatchDeviceKey(bool b, const int4 *s0s,
+    size_t key_count, const int4 *cws, size_t cws_count, size_t key_records,
+    size_t control_record, int4 *ys, size_t ys_count, int4 instance_seed, const Hash &hash,
+    cudaStream_t stream) {
+  constexpr int kOutputBits = in_bits;
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
+  constexpr size_t kOutputsPerKey = size_t{1} << kOutputBits;
+  constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
+  // Cap the frontier below the leaf level like the public and single-key
+  // launchers; the tail converts leaf pairs, so a frontier at the full depth
+  // would emit two outputs per frontier thread and double each key's rows.
+  constexpr int kFrontierDepth = frontier_depth < kOutputBits - 1
+      ? frontier_depth : kOutputBits - 1;
+  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
+      (threads_per_block & (threads_per_block - 1)) == 0,
+      "gpu block size must be a power of two in [1,1024]");
+  static_assert(kOutputBits - kFrontierDepth <= 8,
+      "gpu frontier leaves more than eight tail levels; specify a larger frontier_depth");
+  constexpr int kThreadsPerBlockLog2 = [] {
+    int requested_log2 = 0;
+    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++requested_log2;
+    return requested_log2 < kFrontierDepth ? requested_log2 : kFrontierDepth;
+  }();
+  constexpr int kBlockRootDepth = kFrontierDepth - kThreadsPerBlockLog2;
+  constexpr int kBlocksPerKey = 1 << kBlockRootDepth;
+  if (key_count == 0) return cudaSuccess;
+  if (key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
+      key_count > kMaxAddressableSize / key_records / sizeof(int4) ||
+      cws_count < key_count * key_records || ys_count < key_count * kOutputsPerKey ||
+      s0s == nullptr || cws == nullptr || ys == nullptr ||
+      kOutputsPerKey > kMaxElements) return cudaErrorInvalidValue;
+  if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / kBlocksPerKey)
+    return cudaErrorInvalidConfiguration;
+  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits,
+      typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
+  HalfTreeSplitEvalAllBatchDeviceKeyKernel<Descriptor, kFrontierDepth, kBlockRootDepth>
+      <<<key_count * kBlocksPerKey, 1 << kThreadsPerBlockLog2, 0, stream>>>(
+          b, s0s, cws, key_records, control_record, key_count, ys, instance_seed, hash);
+  return cudaGetLastError();
+}
+
 #endif  // defined(__CUDACC__)
 
 }  // namespace gpu::detail
@@ -888,14 +850,6 @@ template <int in_bits, typename Group, typename Hash, typename In>
       Groupable<Group> && CcrHashable<Hash>)
 __host__ __device__ inline HalfTreeDpf<in_bits, Group, Hash, In>::HalfTreeDpf(Hash hash, int4 instance_seed)
     : hash_(hash), instance_seed_(instance_seed) {}
-
-template <int in_bits, typename Group, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && CcrHashable<Hash>)
-__host__ __device__ inline void HalfTreeDpf<in_bits, Group, Hash, In>::Gen(
-    Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
-  Generate(AosWriter{cws}, s0s, a, b_buf);
-}
 
 template <int in_bits, typename Group, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
@@ -994,7 +948,7 @@ __host__ __device__ inline void HalfTreeDpf<in_bits, Group, Hash, In>::Generate(
     bool LCW_0 = low0_0 ^ low1_0 ^ !a_n;
     bool LCW_1 = low0_1 ^ low1_1 ^ a_n;
 
-    // Store CW_n. The writer covers the whole final slot, see AosWriter::WriteLast().
+    // Store CW_n. The writer's WriteLast() covers the whole final slot.
     writer.WriteLast(util::SetLsb(HCW, LCW_0), LCW_1);
 
     // Compute leaf for each party
@@ -1020,14 +974,6 @@ __host__ __device__ inline void HalfTreeDpf<in_bits, Group, Hash, In>::Generate(
     if (util::GetLsb(leaf1)) v_cw = -v_cw;
     writer.Finish(v_cw.Into());
   }
-}
-
-template <int in_bits, typename Group, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && CcrHashable<Hash>)
-__host__ __device__ inline int4 HalfTreeDpf<in_bits, Group, Hash, In>::Eval(
-    bool b, int4 s0, const Cw cws[], In x) {
-  return EvalWalk(b, s0, cws, x);
 }
 
 template <int in_bits, typename Group, typename Hash, typename In>
@@ -1071,14 +1017,6 @@ __host__ __device__ inline int4 HalfTreeDpf<in_bits, Group, Hash, In>::EvalWalk(
 template <int in_bits, typename Group, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && CcrHashable<Hash>)
-inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(
-    bool b, int4 s0, const Cw cws[], int4 ys[], int par_depth) {
-  EvalAllCws(b, s0, cws, ys, par_depth);
-}
-
-template <int in_bits, typename Group, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && CcrHashable<Hash>)
 inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(bool b, int4 s0,
     cuda::std::span<const int4> cws, In tr, int4 ys[], int par_depth, size_t stride) {
   if (stride == 0) throw std::invalid_argument("HalfTreeDpf::EvalAll: stride must be positive");
@@ -1102,8 +1040,8 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllCws(
       "full-domain output count and byte size must fit in size_t");
 
   // The terminal LSB is a caller precondition. Check it on the calling thread,
-  // so a Debug violation aborts there with this entry's name instead of inside
-  // an OpenMP worker; Release builds do not check it.
+  // so a Debug violation aborts there instead of inside an OpenMP worker;
+  // Release builds do not check it.
   util::RequireArg((cws[in_bits].s.w & 1) == 0,
       "HalfTreeDpf::EvalAll: the terminal group value must have a zero LSB");
 
@@ -1136,17 +1074,6 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllCws(
   } else {
     EvalBatched8(b, node, cws, Group::From(cws[in_bits].s), ys, 0, 0);
   }
-}
-
-template <int in_bits, typename Group, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && CcrHashable<Hash>)
-inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalRange(
-    bool b, In first, In last, int4 s0, const Cw cws[],
-    cuda::std::span<int4> ys, int par_depth) {
-  if (cws == nullptr)
-    throw std::invalid_argument("HalfTreeDpf::EvalRange: cws must not be null");
-  EvalRangeCws(b, first, last, s0, cws, ys, par_depth);
 }
 
 template <int in_bits, typename Group, typename Hash, typename In>
@@ -1559,55 +1486,6 @@ template <int in_bits, typename Group, typename Hash, typename In>
       Groupable<Group> && CcrHashable<Hash>)
 template <int frontier_depth, int threads_per_block>
 __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
-    bool b, In first, In last, int4 s0, cuda::std::span<const Cw> cws,
-    cuda::std::span<int4> ys, cudaStream_t stream) const {
-#if defined(__CUDACC__)
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
-  static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
-  static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
-      (threads_per_block & (threads_per_block - 1)) == 0,
-      "gpu block size must be a power of two in [1,1024]");
-  size_t count;
-  if (!detail::RangeOutputCount<in_bits>(first, last, ys.size(), count) ||
-      cws.size() < in_bits + 1 || cws.data() == nullptr || ys.data() == nullptr)
-    return cudaErrorInvalidValue;
-  constexpr int kThreadBits = [] {
-    int bits = 0;
-    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
-    return bits;
-  }();
-  constexpr int kMaxDepth = [] {
-    int depth = 30 + kThreadBits + 1;
-    if (depth >= sizeof(size_t) * CHAR_BIT) depth = sizeof(size_t) * CHAR_BIT - 1;
-    if (frontier_depth < depth && depth - frontier_depth > 8) depth = frontier_depth + 8;
-    return depth;
-  }();
-  return detail::ForEachAlignedRange<in_bits>(first, last, kMaxDepth,
-      [&](In chunk_first, int depth, size_t offset, size_t) {
-        int frontier = frontier_depth < depth - 1 ? frontier_depth : depth - 1;
-        if (frontier < 0) frontier = 0;
-        int thread_bits = kThreadBits < frontier ? kThreadBits : frontier;
-        int root = frontier - thread_bits;
-        size_t blocks = size_t{1} << root;
-        if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
-          return cudaErrorInvalidConfiguration;
-        gpu::detail::HalfTreeDpfEvalRangeKernel<Descriptor, threads_per_block>
-            <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), ys.data() + offset,
-                chunk_first, depth, frontier, root, instance_seed_, hash_);
-        return cudaGetLastError();
-      });
-#else
-  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
-  return cudaErrorNotSupported;
-#endif
-}
-
-template <int in_bits, typename Group, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && CcrHashable<Hash>)
-template <int frontier_depth, int threads_per_block>
-__host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
     bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<int4> ys, cudaStream_t stream, size_t stride) const {
 #if defined(__CUDACC__)
@@ -1624,59 +1502,15 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
       cws.size() < static_cast<size_t>(in_bits) * stride + 1 ||
       cws.data() == nullptr || ys.data() == nullptr)
     return cudaErrorInvalidValue;
-  constexpr int kThreadBits = [] {
-    int bits = 0;
-    for (int threads = threads_per_block; threads > 1; threads >>= 1) ++bits;
-    return bits;
-  }();
-  constexpr int kMaxDepth = [] {
-    int depth = 30 + kThreadBits + 1;
-    if (depth >= sizeof(size_t) * CHAR_BIT) depth = sizeof(size_t) * CHAR_BIT - 1;
-    if (frontier_depth < depth && depth - frontier_depth > 8) depth = frontier_depth + 8;
-    return depth;
-  }();
-  return detail::ForEachAlignedRange<in_bits>(first, last, kMaxDepth,
-      [&](In chunk_first, int depth, size_t offset, size_t) {
-        int frontier = frontier_depth < depth - 1 ? frontier_depth : depth - 1;
-        if (frontier < 0) frontier = 0;
-        int thread_bits = kThreadBits < frontier ? kThreadBits : frontier;
-        int root = frontier - thread_bits;
-        size_t blocks = size_t{1} << root;
-        if (blocks > static_cast<size_t>(std::numeric_limits<int>::max()))
-          return cudaErrorInvalidConfiguration;
+  return detail::SplitRangeChunks<in_bits, frontier_depth, threads_per_block, 1>(
+      first, last, ys.size(),
+      [&](In chunk_first, int depth, size_t offset, int frontier, int thread_bits, int root,
+          size_t blocks) {
         gpu::detail::HalfTreeSplitDpfEvalRangeKernel<Descriptor, threads_per_block>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), tr, stride,
                 ys.data() + offset, chunk_first, depth, frontier, root, instance_seed_, hash_);
         return cudaGetLastError();
       });
-#else
-  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
-  return cudaErrorNotSupported;
-#endif
-}
-
-template <int in_bits, typename Group, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && CcrHashable<Hash>)
-template <int frontier_depth, int threads_per_block>
-__host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpu(
-    bool b, int4 s0, cuda::std::span<const Cw> cws,
-    cuda::std::span<int4> ys, cudaStream_t stream) const
-  requires(in_bits < sizeof(size_t) * 8) {
-#if defined(__CUDACC__)
-  using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
-  constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
-  constexpr size_t kCwPerKey = in_bits + 1;
-  constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
-  if (cws.size() < kCwPerKey || ys.size() < kOutputsPerKey ||
-      cws.data() == nullptr || ys.data() == nullptr ||
-      kOutputsPerKey > kMaxAddressableSize / sizeof(int4)) return cudaErrorInvalidValue;
-  gpu::detail::HalfTreeEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
-      <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
-          b, s0, cws.data(), ys.data(), instance_seed_, hash_);
-  return cudaGetLastError();
 #else
   static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
   return cudaErrorNotSupported;
@@ -1709,40 +1543,6 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpu(
       LaunchShape::kBlockRootDepth>
       <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), tr, stride, ys.data(), instance_seed_, hash_);
-  return cudaGetLastError();
-#else
-  static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");
-  return cudaErrorNotSupported;
-#endif
-}
-
-template <int in_bits, typename Group, typename Hash, typename In>
-  requires(ValidForInputBits<In, in_bits> &&
-      Groupable<Group> && CcrHashable<Hash>)
-template <int frontier_depth, int threads_per_block>
-__host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpuBatch(
-    bool b, cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
-    cuda::std::span<int4> ys, cudaStream_t stream) const
-  requires(in_bits < sizeof(size_t) * 8) {
-#if defined(__CUDACC__)
-  using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
-  constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
-  constexpr size_t kCwPerKey = in_bits + 1;
-  constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
-  const size_t key_count = s0s.size();
-  if (key_count == 0) return cudaSuccess;
-  if (key_count > kMaxAddressableSize / kCwPerKey / sizeof(Cw) ||
-      key_count > kMaxAddressableSize / kOutputsPerKey / sizeof(int4) ||
-      cws.size() < key_count * kCwPerKey || ys.size() < key_count * kOutputsPerKey ||
-      s0s.data() == nullptr || cws.data() == nullptr || ys.data() == nullptr)
-    return cudaErrorInvalidValue;
-  if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
-    return cudaErrorInvalidConfiguration;
-  gpu::detail::HalfTreeEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth, LaunchShape::kBlockRootDepth>
-      <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
-          b, s0s.data(), cws.data(), ys.data(), instance_seed_, hash_);
   return cudaGetLastError();
 #else
   static_assert(sizeof(Hash) == 0, "gpu launch requires a CUDA compiler");

@@ -2,6 +2,7 @@
 #pragma once
 #include <fss/hash/aes128_ccr.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
+#include <type_traits>
 #include <vector>
 
 namespace fss_test {
@@ -140,7 +141,7 @@ __host__ __device__ CcrBackend<Backend> Ccr(Backend backend) {
 
 // nvcc reports #20011-D and #20014-D here because host tests pass std::vector to the
 // __host__ __device__ GenPair helpers, which instantiates Data() with a host-only data().
-// No device code passes a container, so the warning is a known false alarm.
+// No device code passes a host container, so the warning is a known false alarm.
 // A new #20011-D or #20014-D elsewhere is not this one.
 // If this one changes, check whether device code started passing a host container.
 template <typename Buffer>
@@ -149,38 +150,108 @@ __host__ __device__ auto Data(Buffer &buffer) {
   else return buffer;
 }
 
-template <typename Scheme, typename Seeds>
-__host__ __device__ void AssemblePair(typename Scheme::Key &k0, typename Scheme::Key &k1, Seeds &seeds) {
+// Single-point key fixture in the component layout: contiguous strided
+// correction words plus packed control bits. Schemes whose Cw carries no
+// right-control bit (PackedHalfTreeDpf, HalfTreeGrottoDcf) leave tr zero.
+// cs exists in every fixture and only the verifiable schemes write it.
+template <typename Scheme, typename In = typename Scheme::Input>
+struct ComponentKey {
+  static constexpr size_t kCwWords = static_cast<size_t>(Scheme::kCwCount);
+  int4 cws[kCwWords];
+  // Value-correction components, written only by schemes whose Cw carries a
+  // group-value word (Dcf); its right control lives in packed tr instead.
+  int4 vws[kCwWords];
+  In tr = 0;
+  int4 s0;
+  int4 cs[4];
+};
+
+// True when the scheme's correction words carry a separate group-value word.
+template <typename Scheme>
+inline constexpr bool kHasValueWord = requires { std::declval<typename Scheme::Cw &>().v; };
+
+// True when the scheme's correction words carry a packed control component,
+// so its component APIs take a control argument. Dpf, Dcf, Vdpf, and GrottoDcf
+// carry the right-control bit in Cw::tr, HalfTreeDpf carries its final-level
+// control in Cw::extra, and PackedHalfTreeDpf and HalfTreeGrottoDcf carry only
+// the seed component.
+template <typename Scheme>
+inline constexpr bool kHasControlBit = requires { std::declval<typename Scheme::Cw &>().tr; } ||
+    requires { std::declval<typename Scheme::Cw &>().extra; };
+
+// True for the verifiable single-point scheme (Vdpf), whose Gen and Eval
+// exchange the shared correction seed cs.
+template <typename Scheme>
+inline constexpr bool kIsVerifiable = requires { &Scheme::Verify; };
+
+template <typename Scheme, typename In>
+__host__ __device__ cuda::std::span<int4> KeyCws(ComponentKey<Scheme, In> &key) {
+  return cuda::std::span<int4>(key.cws, ComponentKey<Scheme, In>::kCwWords);
+}
+
+template <typename Scheme, typename In>
+__host__ __device__ cuda::std::span<const int4> KeyCws(const ComponentKey<Scheme, In> &key) {
+  return cuda::std::span<const int4>(key.cws, ComponentKey<Scheme, In>::kCwWords);
+}
+
+template <typename Scheme, typename In>
+__host__ __device__ cuda::std::span<int4> KeyVws(ComponentKey<Scheme, In> &key) {
+  return cuda::std::span<int4>(key.vws, ComponentKey<Scheme, In>::kCwWords);
+}
+
+template <typename Scheme, typename In>
+__host__ __device__ cuda::std::span<const int4> KeyVws(const ComponentKey<Scheme, In> &key) {
+  return cuda::std::span<const int4>(key.vws, ComponentKey<Scheme, In>::kCwWords);
+}
+
+template <typename Scheme, typename In, typename Seeds>
+__host__ __device__ void AssemblePair(ComponentKey<Scheme, In> &k0,
+    ComponentKey<Scheme, In> &k1, Seeds &seeds) {
   auto data = Data(seeds);
   k0.s0 = data[0];
   k1.s0 = data[1];
-  constexpr size_t count = std::extent_v<decltype(k0.cws)>;
-  for (size_t i = 0; i < count; ++i) k1.cws[i] = k0.cws[i];
-  if constexpr (requires { k0.cs; }) {
-    for (int i = 0; i < 4; ++i) k1.cs[i] = k0.cs[i];
+  k1.tr = k0.tr;
+  for (size_t i = 0; i < ComponentKey<Scheme, In>::kCwWords; ++i) {
+    k1.cws[i] = k0.cws[i];
+    k1.vws[i] = k0.vws[i];
   }
+  for (int i = 0; i < 4; ++i) k1.cs[i] = k0.cs[i];
 }
 
 // Fixture assembly performs one Core Gen attempt and preserves its status.
 template <typename Scheme, typename Seeds, typename In, typename Beta = int4>
-__host__ __device__ decltype(auto) GenPair(Scheme &scheme, typename Scheme::Key &k0,
-    typename Scheme::Key &k1, Seeds &&seeds, In alpha, Beta beta) {
-  if constexpr (requires { k0.cs; }) {
-    int ret = scheme.Gen(k0.cws, cuda::std::span<int4, 4>(k0.cs, 4),
-        cuda::std::span<const int4, 2>(Data(seeds), 2), alpha, beta);
-    if (ret == 0) AssemblePair<Scheme>(k0, k1, seeds);
+__host__ __device__ decltype(auto) GenPair(Scheme &scheme, ComponentKey<Scheme, In> &k0,
+    ComponentKey<Scheme, In> &k1, Seeds &&seeds, auto alpha, Beta beta) {
+  const cuda::std::span<const int4, 2> seed_view(Data(seeds), 2);
+  if constexpr (kIsVerifiable<Scheme>) {
+    int ret = scheme.Gen(KeyCws(k0), k0.tr, cuda::std::span<int4, 4>(k0.cs, 4),
+        seed_view, alpha, beta);
+    if (ret == 0) AssemblePair(k0, k1, seeds);
     return ret;
+  } else if constexpr (!kHasControlBit<Scheme> && !kHasValueWord<Scheme>) {
+    // The packed scheme carries no control component: the payload is the only
+    // extra argument, whatever integer type the caller spelled it with.
+    scheme.Gen(KeyCws(k0), seed_view, alpha, static_cast<uint64_t>(beta));
+    AssemblePair(k0, k1, seeds);
+  } else if constexpr (kHasValueWord<Scheme>) {
+    scheme.Gen(KeyCws(k0), KeyVws(k0), k0.tr, seed_view, alpha, beta);
+    AssemblePair(k0, k1, seeds);
   } else {
-    scheme.Gen(k0.cws, Data(seeds), alpha, beta);
-    AssemblePair<Scheme>(k0, k1, seeds);
+    scheme.Gen(KeyCws(k0), k0.tr, seed_view, alpha, beta);
+    AssemblePair(k0, k1, seeds);
   }
 }
 
 template <typename Scheme, typename Seeds, typename In>
-__host__ __device__ void GenPair(Scheme &scheme, typename Scheme::Key &k0,
-    typename Scheme::Key &k1, Seeds &&seeds, In alpha) {
-  scheme.Gen(k0.cws, Data(seeds), alpha);
-  AssemblePair<Scheme>(k0, k1, seeds);
+__host__ __device__ void GenPair(Scheme &scheme, ComponentKey<Scheme, In> &k0,
+    ComponentKey<Scheme, In> &k1, Seeds &&seeds, auto alpha) {
+  const cuda::std::span<const int4, 2> seed_view(Data(seeds), 2);
+  if constexpr (kHasControlBit<Scheme>) {
+    scheme.Gen(KeyCws(k0), k0.tr, seed_view, alpha);
+  } else {
+    scheme.Gen(KeyCws(k0), seed_view, alpha);
+  }
+  AssemblePair(k0, k1, seeds);
 }
 
 template <typename Scheme, typename Seeds, typename Alphas, typename Betas>
@@ -222,14 +293,19 @@ int GenMulti(Scheme &scheme, typename Scheme::Key &k0, typename Scheme::Key &k1,
   return ret;
 }
 
-template <typename Scheme, typename Key, typename In>
-__host__ __device__ auto EvalKey(Scheme &scheme, bool party, const Key &key, In x) {
-  if constexpr (requires { key.cs; }) {
+template <typename Scheme, typename In>
+__host__ __device__ auto EvalKey(Scheme &scheme, bool party, const ComponentKey<Scheme, In> &key, auto x) {
+  if constexpr (kIsVerifiable<Scheme>) {
     EvalResult result;
-    result.pi_tilde = scheme.Eval(party, key.s0, key.cws, key.cs, x, result.y);
+    result.pi_tilde = scheme.Eval(party, key.s0, KeyCws(key), key.tr,
+        cuda::std::span<const int4, 4>(key.cs, 4), x, result.y);
     return result;
+  } else if constexpr (kHasValueWord<Scheme>) {
+    return scheme.Eval(party, key.s0, KeyCws(key), KeyVws(key), key.tr, x);
+  } else if constexpr (kHasControlBit<Scheme>) {
+    return scheme.Eval(party, key.s0, KeyCws(key), key.tr, x);
   } else {
-    return scheme.Eval(party, key.s0, key.cws, x);
+    return scheme.Eval(party, key.s0, KeyCws(key), x);
   }
 }
 
@@ -262,22 +338,30 @@ void EvalAllKey(Scheme &scheme, bool party, const Key &key, Output &&output, Pro
   if constexpr (requires { key.bks; }) {
     MultiRows<Scheme> parts(key);
     scheme.EvalAll(party, key.sigma, key.b_size_rt, parts.s0s, parts.cws, output, par_depth);
-  } else if constexpr (requires { key.cs; }) {
-    scheme.EvalAll(party, key.s0, key.cws, key.cs, output, proof..., par_depth);
+  } else if constexpr (kIsVerifiable<Scheme>) {
+    scheme.EvalAll(party, key.s0, KeyCws(key), key.tr,
+        cuda::std::span<const int4, 4>(key.cs, 4), output, proof..., par_depth);
+  } else if constexpr (kHasValueWord<Scheme>) {
+    scheme.EvalAll(party, key.s0, KeyCws(key), KeyVws(key), key.tr, Data(output), par_depth);
+  } else if constexpr (kHasControlBit<Scheme>) {
+    scheme.EvalAll(party, key.s0, KeyCws(key), key.tr, Data(output), par_depth);
   } else {
-    scheme.EvalAll(party, key.s0, key.cws, Data(output), par_depth);
+    scheme.EvalAll(party, key.s0, KeyCws(key), Data(output), par_depth);
   }
 }
 
-template <int par_depth = 0, typename Scheme, typename Key, typename Output, typename Proof>
-void EvalAllMerkleKey(Scheme &scheme, bool party, const Key &key, Output &&output, Proof &proof) {
-  scheme.EvalAllMerkle(party, key.s0, key.cws, key.cs, output, proof, par_depth);
+template <int par_depth = 0, typename Scheme, typename In, typename Output, typename Proof>
+void EvalAllMerkleKey(Scheme &scheme, bool party, const ComponentKey<Scheme, In> &key,
+    Output &&output, Proof &proof) {
+  scheme.EvalAllMerkle(party, key.s0, KeyCws(key), key.tr,
+      cuda::std::span<const int4, 4>(key.cs, 4), output, proof, par_depth);
 }
 
-template <int par_depth = 0, typename Scheme, typename Key, typename Output, typename Proof>
-void EvalRangeKey(Scheme &scheme, bool party, size_t left, size_t right, const Key &key,
-    Output &&output, Proof &proof) {
-  scheme.EvalRange(party, left, right, key.s0, key.cws, key.cs, output, proof, par_depth);
+template <int par_depth = 0, typename Scheme, typename In, typename Output, typename Proof>
+void EvalRangeKey(Scheme &scheme, bool party, auto left, auto right,
+    const ComponentKey<Scheme, In> &key, Output &&output, Proof &proof) {
+  scheme.EvalRange(party, left, right, key.s0, KeyCws(key), key.tr,
+      cuda::std::span<const int4, 4>(key.cs, 4), output, proof, par_depth);
 }
 
 template <typename Scheme, typename Key, typename Xs, typename Ys, typename... Proof>
@@ -298,9 +382,13 @@ void BatchEvalMerkleKey(Scheme &scheme, bool party, const Key &key, Xs &&xs, Ys 
       parts.s0s, parts.cws, parts.cs, xs, ys, proof);
 }
 
-template <int par_depth = 0, typename Scheme, typename Key>
-auto PreprocessKey(Scheme &scheme, bool party, const Key &key) {
-  return scheme.PreprocessOwned(party, key.s0, key.cws, par_depth);
+template <int par_depth = 0, typename Scheme, typename In>
+auto PreprocessKey(Scheme &scheme, bool party, const ComponentKey<Scheme, In> &key) {
+  if constexpr (kHasControlBit<Scheme>) {
+    return scheme.PreprocessOwned(party, key.s0, KeyCws(key), key.tr, par_depth);
+  } else {
+    return scheme.PreprocessOwned(party, key.s0, KeyCws(key), par_depth);
+  }
 }
 
 template <int width, typename In>

@@ -87,12 +87,23 @@ class _Scheme:
 
     @property
     def cws_shape(self) -> tuple[int, ...]:
-        """Shape for caller-allocated contiguous uint8 C++ correction word records.
+        """Shape for caller-allocated contiguous uint8 correction-word storage.
 
         Allocate with ``torch.empty(scheme.cws_shape, dtype=torch.uint8,
-        device=device)``. Each final-axis row contains one complete Cw,
-        including padding. Multi-point schemes include a leading bucket axis.
-        Contents are uninitialized until a successful ``gen`` call.
+        device=device)``. Multi-point schemes include a leading bucket axis and
+        each final-axis row contains one complete legacy Cw record, including
+        padding. Single-point schemes store the split key components: each
+        16-byte final-axis row holds one correction-component block, with the
+        DCF value components after the seed components and one packed-control
+        row at the end for the schemes that have one; treat the tensor as
+        opaque bytes produced by ``gen``. Contents are uninitialized until a
+        successful ``gen`` call.
+
+        The single-point encoding changed from the previous Cw records to this
+        component layout. Key bytes persisted by an older release are not
+        compatible: the row count, row meaning, and DCF row contents all
+        changed. Regenerate keys with the current ``gen`` instead of loading
+        old native bytes.
         """
         shape = (self._native.cw_count, self._native.cw_size)
         if self._scheme in ("dmpf", "vdmpf"):
