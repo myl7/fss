@@ -91,6 +91,36 @@ class Vdmpf(_Scheme):
         self._native.batch_eval_merkle(b, sigma, b_size_rt, s0s,
                                        self._cws(cws), cs, xs, ys, pi)
 
+    def eval(self, b, sigma, b_size_rt, s0s, cws, cs, x, y):
+        """Write one share to y and return its corrected hashes [C, 4, 4].
+
+        x is a Python integer in the configured input domain. C is Core's
+        per-input candidate count from the public EvalProof type. Entries for
+        unused candidates stay zero. Pass the values back with prove or
+        prove_merkle over the same ordered xs. This per-input path is
+        CPU-only and allocates only the returned proof tensor.
+        """
+        return self._native.eval(b, sigma, b_size_rt, s0s,
+                                 self._cws(cws), cs, x, y)
+
+    def prove(self, sigma, b_size_rt, cs, xs, proof_values, pi):
+        """Fold Eval proof values into the caller's pi with the chain rule.
+
+        proof_values is int32 [N, C, 4, 4] holding the Eval result for each
+        xs entry in the same order, duplicates allowed. Returns None and
+        writes pi [4, 4] in place. CPU buffers only.
+        """
+        self._native.prove(sigma, b_size_rt, cs, xs, proof_values, pi)
+
+    def prove_merkle(self, sigma, b_size_rt, cs, xs, proof_values, pi):
+        """Fold Eval proof values into the caller's pi with the Merkle rule.
+
+        Same ordering contract as prove. Chain and Merkle accumulators must
+        not be mixed. Returns None, writes pi [4, 4] in place, and requires
+        CPU buffers.
+        """
+        self._native.prove_merkle(sigma, b_size_rt, cs, xs, proof_values, pi)
+
     def eval_all(self, b, sigma, b_size_rt, s0s, cws, cs, ys, pi):
         """Write the full CPU output domain and its Core chain proof.
 

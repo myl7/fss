@@ -177,6 +177,42 @@ void Range(NativeState &state, bool b, const py::int_ &first, const py::int_ &la
   }
 }
 
+template <bool merkle, typename S = SchemeType>
+void Batch(NativeState &state, bool b, Tensor seed, Tensor cws, Tensor cs,
+    Tensor xs, Tensor ys, Tensor pi) {
+  CheckSameDevice({seed, cws, cs, xs, ys, pi});
+  CheckBlocks(seed, 1); CheckBlocks(cs, 4); CheckBlocks(pi, 4);
+  const int64_t count = InputCount<InType>(xs);
+  TORCH_CHECK(count > 0, "xs must be nonempty");
+  CheckBlocks(ys, count);
+  const auto *words = ConstCwPtr(cws, kInBits + 1);
+  if (ys.is_cpu()) {
+    CheckCpuInputsInDomain<InType>(xs, kInBits);
+    if (merkle) state.Cpu().BatchEvalMerkle(b, *ConstBlocks(seed), {words, kInBits + 1},
+        cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+        {ConstInPtr(xs), size_t(count)}, {Blocks(ys), size_t(count)},
+        cuda::std::span<int4, 4>(Blocks(pi), 4));
+    else state.Cpu().BatchEval(b, *ConstBlocks(seed), {words, kInBits + 1},
+        cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+        {ConstInPtr(xs), size_t(count)}, {Blocks(ys), size_t(count)},
+        cuda::std::span<int4, 4>(Blocks(pi), 4));
+  } else if constexpr (!merkle) {
+    TORCH_CHECK(false, "chain batch evaluation is a CPU operation; use batch_eval_merkle for CUDA");
+  } else if constexpr (kGpuSupported && kThreadsPerBlock >= 1 && kThreadsPerBlock <= 1024 &&
+      (kThreadsPerBlock & (kThreadsPerBlock - 1)) == 0) {
+    c10::cuda::CUDAGuard guard(ys.device());
+    auto stream = CurrentStream();
+    auto &core = static_cast<S &>(state.template DeviceForLaunch<kGpuSupported>(stream));
+    CheckCuda(core.template BatchEvalMerkleGpu<kThreadsPerBlock>(b, FetchBlock(seed),
+        {words, kInBits + 1}, cuda::std::span<const int4, 4>(ConstBlocks(cs), 4),
+        {ConstInPtr(xs), size_t(count)}, {Blocks(ys), size_t(count)},
+        cuda::std::span<int4, 4>(Blocks(pi), 4), stream));
+    state.RecordUse(stream); RecordTensors({seed, cws, cs, xs, ys, pi}, stream);
+  } else {
+    throw py::value_error("configured backend or GPU launch shape is unavailable; check threads_per_block");
+  }
+}
+
 bool Verify(NativeState &, Tensor p0, Tensor p1) {
   CheckSameDevice({p0,p1}); CheckBlocks(p0,4); CheckBlocks(p1,4);
   Proof left, right;
@@ -208,5 +244,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   cls.def("eval_range_merkle", &Range<true>, py::arg("b"), py::arg("first"),
       py::arg("last"), py::arg("s0"), py::arg("cws"), py::arg("cs"),
       py::arg("ys"), py::arg("pi"), py::arg("par_depth") = 0);
+  cls.def("batch_eval", [](NativeState &s, bool b, Tensor seed, Tensor c, Tensor cs,
+      Tensor xs, Tensor ys, Tensor pi) { Batch<false>(s, b, seed, c, cs, xs, ys, pi); },
+      py::arg("b"), py::arg("s0"), py::arg("cws"), py::arg("cs"), py::arg("xs"),
+      py::arg("ys"), py::arg("pi"));
+  cls.def("batch_eval_merkle", [](NativeState &s, bool b, Tensor seed, Tensor c, Tensor cs,
+      Tensor xs, Tensor ys, Tensor pi) { Batch<true>(s, b, seed, c, cs, xs, ys, pi); },
+      py::arg("b"), py::arg("s0"), py::arg("cws"), py::arg("cs"), py::arg("xs"),
+      py::arg("ys"), py::arg("pi"));
   cls.def("verify", &Verify);
 }

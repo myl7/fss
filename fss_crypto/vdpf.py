@@ -41,6 +41,28 @@ class Vdpf(_Scheme):
         """Write one output share to y and return its corrected hash [4, 4]."""
         return self._native.eval(b, s0, self._cws(cws), cs, x, y)
 
+    def batch_eval(self, b, s0, cws, cs, xs, ys, pi):
+        """Write shares for a nonempty ordered xs and a chain proof in place.
+
+        xs may be sparse, unsorted, or contain duplicates; both parties must
+        pass the same ordered sequence. ys holds one int32 [4] block per input
+        and pi is int32 [4, 4]. Returns None and requires CPU buffers.
+        """
+        self._native.batch_eval(b, s0, self._cws(cws), cs, xs, ys, pi)
+
+    def batch_eval_merkle(self, b, s0, cws, cs, xs, ys, pi, *,
+                          threads_per_block: int = 256):
+        """Write shares for a nonempty ordered xs and a Merkle proof in place.
+
+        Same evaluation and ordering contract as batch_eval, with the proof
+        coming from the Merkle fold. All tensors must be contiguous and use the
+        same exact CPU/CUDA device. CUDA uses threads_per_block and CPU ignores
+        it. Scalar seed fetch and backend launch-view preparation may
+        synchronize.
+        """
+        self._execution_native(ys, threads_per_block=threads_per_block).batch_eval_merkle(
+            b, s0, self._cws(cws), cs, xs, ys, pi)
+
     def prove(self, pi_tildes, cs, pi):
         """Write a CPU chain proof from hashes [N, 4, 4], rejecting CUDA buffers."""
         self._native.prove(pi_tildes, cs, pi)

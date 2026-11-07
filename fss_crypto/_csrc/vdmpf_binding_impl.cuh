@@ -11,6 +11,9 @@ namespace {
 constexpr int kRows = SchemeType::kBucketCount;
 constexpr int kWords = kBucketBits + 1;
 using Proof = cuda::std::array<int4, 4>;
+// The candidate axis of caller proof buffers follows the public EvalProof type.
+constexpr int kProofCandidates =
+    int(sizeof(typename SchemeType::EvalProof) / sizeof(Proof));
 
 // The evaluation entries take no runtime bucket count, so b_size_rt alone
 // must keep every located bucket inside the allocation. The scheme states
@@ -86,6 +89,41 @@ void Batch(NativeState &state,bool b,Tensor sigma,py::int_ size,
         cuda::std::span<int4,4>(Blocks(pi),4),stream));
     state.RecordUse(stream); RecordTensors({sigma,seeds,cws,cs, xs,ys,pi},stream);
   } else TORCH_CHECK(false,"configured backends do not support CUDA evaluation");
+}
+
+Tensor Eval(NativeState &state, bool b, Tensor sigma, py::int_ size,
+    Tensor seeds, Tensor cws, Tensor cs, py::int_ x, Tensor y) {
+  CheckCpu({sigma, seeds, cws, cs, y});
+  CheckBlocks(sigma,1); CheckBlocks(seeds,kRows); CheckBlocks(cs,kRows*4); CheckBlocks(y,1);
+  const __uint128_t domain=ReadU128(size); CheckRuntime(domain);
+  const InType input=ReadIn(x);
+  const auto *words=ConstCwPtr(cws,int64_t{kRows}*kWords);
+  Tensor proof = at::empty({kProofCandidates, 4, 4}, y.options());
+  *reinterpret_cast<SchemeType::EvalProof *>(Blocks(proof)) = state.Cpu().Eval(b,
+      *ConstBlocks(sigma),domain,cuda::std::span<const int4,kRows>(ConstBlocks(seeds),kRows),
+      {words,size_t(kRows)*kWords},{ConstBlocks(cs),size_t(kRows)*4},input,*Blocks(y));
+  return proof;
+}
+
+template <bool merkle>
+void Prove(NativeState &state, Tensor sigma, py::int_ size, Tensor cs,
+    Tensor xs, Tensor proof_values, Tensor pi) {
+  CheckCpu({sigma, cs, xs, proof_values, pi});
+  const int64_t count=InputCount<InType>(xs);
+  TORCH_CHECK(count > 0, "xs must be nonempty");
+  CheckBlocks(sigma,1); CheckBlocks(cs,kRows*4); CheckBlocks(pi,4); CheckBlocks(proof_values);
+  TORCH_CHECK(proof_values.dim() == 4 && proof_values.size(0) == count &&
+      proof_values.size(1) == kProofCandidates && proof_values.size(2) == 4,
+      "proof values must have shape [n, ", kProofCandidates, ", 4, 4]");
+  CheckCpuInputsInDomain<InType>(xs, kInBits);
+  const __uint128_t domain=ReadU128(size); CheckRuntime(domain);
+  const auto *values=reinterpret_cast<const SchemeType::EvalProof *>(ConstBlocks(proof_values));
+  if (merkle) state.Cpu().ProveMerkle(*ConstBlocks(sigma),domain,
+      {ConstBlocks(cs),size_t(kRows)*4},{ConstInPtr(xs),size_t(count)},
+      {values,size_t(count)},cuda::std::span<int4,4>(Blocks(pi),4));
+  else state.Cpu().Prove(*ConstBlocks(sigma),domain,
+      {ConstBlocks(cs),size_t(kRows)*4},{ConstInPtr(xs),size_t(count)},
+      {values,size_t(count)},cuda::std::span<int4,4>(Blocks(pi),4));
 }
 
 bool Verify(NativeState &,Tensor p0,Tensor p1) {
@@ -176,5 +214,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
       Tensor seeds, Tensor c, Tensor cs, Tensor ys, Tensor pi) {
     Full(s, b, sigma, size, seeds, c, cs, ys, pi, true);
   });
+  cls.def("eval",[](NativeState &s,bool b,Tensor sigma,py::int_ size,Tensor seeds,
+      Tensor c,Tensor cs,py::int_ x,Tensor y) { return Eval(s,b,sigma,size,seeds,c,cs,x,y); });
+  cls.def("prove",[](NativeState &s,Tensor sigma,py::int_ size,Tensor cs,Tensor xs,
+      Tensor values,Tensor pi) { Prove<false>(s,sigma,size,cs,xs,values,pi); });
+  cls.def("prove_merkle",[](NativeState &s,Tensor sigma,py::int_ size,Tensor cs,Tensor xs,
+      Tensor values,Tensor pi) { Prove<true>(s,sigma,size,cs,xs,values,pi); });
   cls.def("verify",&Verify);
 }
