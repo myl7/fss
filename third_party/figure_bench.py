@@ -755,6 +755,7 @@ def collect(args, case, directory, sources):
                            criterion_sample_size=20, criterion_warmup_s=.2, criterion_measurement_s=.2)
                 rows.append(row)
     else:
+        native_interleaving = benchmark_policy.interleaving_flag(case["library"], args.repetitions)
         units = [(binary, pattern(case)) for binary in executables(args, case)]
         if case["library"] == "fss" and case["platform"] == "gpu" and case["operation"] == "Eval" and case["sweep"] != "block" \
                 and not case.get("scheme"):
@@ -767,6 +768,8 @@ def collect(args, case, directory, sources):
             command = pin + [str(binary), f"--benchmark_filter={selected_filter}", f"--benchmark_min_time={args.min_time}s",
                              f"--benchmark_min_warmup_time={args.warmup}", f"--benchmark_repetitions={args.repetitions}",
                              "--benchmark_display_aggregates_only=true", "--benchmark_out_format=json", f"--benchmark_out={raw}"]
+            if native_interleaving:
+                command.append(native_interleaving)
             (directory / f"command-{index}.json").write_text(json.dumps(command) + "\n")
             process_error = None
             try:
@@ -796,6 +799,9 @@ def collect(args, case, directory, sources):
     for row in rows:
         row.update(repetitions=args.repetitions, min_time_s=args.min_time, warmup_s=args.warmup,
                    framework="criterion" if case["library"] in bench.RUST else "google")
+        interleaving = bench.resolved_interleaving(args, case["library"])
+        if interleaving is not None:
+            row["interleaving"] = interleaving
         path = Path(row["raw_result"])
         if path.is_file():
             row["raw_result_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -929,6 +935,10 @@ def main(argv=None):
     if args.jobs <= 0 or args.repetitions <= 0 or args.num_keys <= 0 or not math.isfinite(args.min_time) or args.min_time <= 0 or not math.isfinite(args.warmup) or args.warmup < 0:
         raise ValueError("jobs, repetitions, keys, and minimum time must be positive")
     selected = cases(args)
+    for case in selected:
+        interleaving = bench.resolved_interleaving(args, case["library"])
+        if interleaving is not None:
+            case["interleaving"] = interleaving
     if args.action == "list" or args.dry_run:
         print(json.dumps(selected, indent=2))
         return 0

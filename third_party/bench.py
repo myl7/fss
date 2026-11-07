@@ -396,9 +396,17 @@ def resolved_filter(args, name, device):
                           exclude_internal_points=getattr(args, "profile", None) == "decision")
 
 
+def resolved_interleaving(args, name):
+    if name not in benchmark_policy.INTERLEAVED_LIBRARIES:
+        return None
+    return benchmark_policy.interleaving_enabled(name, args.repetitions,
+                                                 getattr(args, "explicit_interleaving", None))
+
+
 def record(args, name, device, directory, commands):
     env = environment(args, name)
     pin = ["taskset", "-c", str(args.cpu)]
+    interleaving = resolved_interleaving(args, name)
     units = []
     if name in RUST:
         target = BUILD / name / "target"
@@ -428,6 +436,8 @@ def record(args, name, device, directory, commands):
             command += ["--filter", args.filter]
         units.append((command, "python", "", None))
     else:
+        native_interleaving = benchmark_policy.interleaving_flag(
+            name, args.repetitions, getattr(args, "explicit_interleaving", None))
         for binary, variant in binaries(name, device, args):
             pattern = resolved_filter(args, name, device)
             filters = [pattern]
@@ -449,6 +459,8 @@ def record(args, name, device, directory, commands):
                                  f"--benchmark_repetitions={args.repetitions}",
                                  "--benchmark_display_aggregates_only=true",
                                  "--benchmark_out_format=json", f"--benchmark_out={output}"]
+                if native_interleaving:
+                    command.append(native_interleaving)
                 units.append((command, "google", variant + "-" + suffix, None))
     if not units:
         entry = {"library": name, "device": device, "framework": "selection",
@@ -466,6 +478,8 @@ def record(args, name, device, directory, commands):
             entry["full_launches"] = getattr(args, "full_launches", None)
         if name in ("main", "fss"):
             entry["required_work_schema"] = 1
+        if interleaving is not None:
+            entry["interleaving"] = interleaving
         commands.append(entry)
         started = time.monotonic()
         try:
@@ -493,6 +507,15 @@ def record(args, name, device, directory, commands):
 
 
 def plan_document(args, selected):
+    commands = []
+    for name, device in selected:
+        command = {"library": name, "device": device,
+                   "filter": resolved_filter(args, name, device),
+                   "result_row_count": "unresolved until the native run"}
+        interleaving = resolved_interleaving(args, name)
+        if interleaving is not None:
+            command["interleaving"] = interleaving
+        commands.append(command)
     return {"profile": args.profile, "workload": args.workload,
             "min_time_s": args.min_time, "repetitions": args.repetitions,
             "warmup_s": args.warmup_s, "full_launches": args.full_launches,
@@ -500,10 +523,7 @@ def plan_document(args, selected):
             "full_launches_scope": "main GPU batch full-domain rows; batch keys stay "
                                    f"{benchmark_policy.FULL_EVAL_BATCH_KEYS}",
             "libraries": args.libraries, "sources": args.policy["sources"],
-            "commands": [{"library": name, "device": device,
-                          "filter": resolved_filter(args, name, device),
-                          "result_row_count": "unresolved until the native run"}
-                         for name, device in selected]}
+            "commands": commands}
 
 
 def result_rows(entry, data):
@@ -857,12 +877,19 @@ def main():
             raise RuntimeError("min-time and repetitions must be positive")
         if args.native_args[:1] == ["--"]:
             args.native_args.pop(0)
+        args.explicit_interleaving = None
         for value in args.native_args:
             if value.startswith(("--benchmark_out", "--output")):
                 raise RuntimeError("output paths are managed by the runner")
             if value.startswith("--benchmark_filter="):
                 args.filter = value.split("=", 1)[1]
-        args.native_args = [v for v in args.native_args if not v.startswith("--benchmark_filter=")]
+            if value.startswith(benchmark_policy.INTERLEAVING_FLAG + "="):
+                setting = value.split("=", 1)[1]
+                if setting not in ("true", "false"):
+                    raise RuntimeError(f"{benchmark_policy.INTERLEAVING_FLAG} accepts only true or false")
+                args.explicit_interleaving = setting == "true"
+        args.native_args = [v for v in args.native_args if not v.startswith(
+            ("--benchmark_filter=", benchmark_policy.INTERLEAVING_FLAG + "="))]
         if args.plan:
             print(json.dumps(plan_document(args, selection(args)), indent=2))
             return 0

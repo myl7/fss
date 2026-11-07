@@ -148,6 +148,8 @@ Google Benchmark runs under the publication profile use five repetitions, at
 least 0.1 seconds of measurement, and 0.1 seconds of warmup; the decision
 profile defaults to a 0.3-second minimum measurement, one repetition, and no
 warmup. The figure uses the median.
+The repeated FSS samples run with Google Benchmark random interleaving inside
+each native command; independent binaries and cases are not interleaved.
 Rust cases use five separate Criterion processes, each with 20 samples,
 0.2 seconds of warmup, and a 0.2-second requested measurement interval.
 The figure uses the median of the five process medians. Criterion can extend

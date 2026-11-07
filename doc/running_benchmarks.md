@@ -55,6 +55,10 @@ The `decision` default excludes the internal compact-path and point-launcher exp
 The filters are plain POSIX extended alternations over the registered operation names, because the native binaries compile `--benchmark_filter` with a regex backend that rejects lookaround.
 Smoke includes the full-domain rows instead of excluding them, so one correctness run covers at least one real `n = 20` full evaluation.
 Explicit `--min-time` and `--repetitions` values reach the native commands unchanged in every profile, including smoke.
+When the resolved repetitions exceed one, the current library's native commands (`main` and the FSS wrapper) run their repeated samples with Google Benchmark random interleaving, one `--benchmark_enable_random_interleaving=true` per command; a single repetition, third-party adapters, and the historical FSS binaries carry no such flag.
+An explicit `--benchmark_enable_random_interleaving=false|true` after `--` overrides the mode for the run, is resolved before `--plan` prints, and the command carries exactly one such flag.
+Interleaving shuffles the repetitions of the rows selected within one native command; it does not interleave independent processes, binaries, or cases, and is not a global A/B schedule or a precision guarantee.
+The resolved mode is recorded per command in `--plan` and the run manifest.
 
 `--plan` prints the resolved libraries, exact filters, timing budget, and work configuration without building or touching hardware.
 A `--benchmark_filter=` value passed after `--` is folded into the plan before it is printed, so the plan always shows the exact filter the run would use.

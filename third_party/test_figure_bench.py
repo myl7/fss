@@ -880,6 +880,47 @@ class FigureSweepTest(unittest.TestCase):
         self.assertIn("--benchmark_display_aggregates_only=true", command)
         self.assertNotIn("--benchmark_report_aggregates_only=true", command)
 
+    def test_fss_repeated_samples_run_interleaved(self):
+        case = self.case(operation="EvalAll", num_keys=1)
+        for repetitions, expected, flag in ((5, True, "--benchmark_enable_random_interleaving=true"),
+                                            (1, False, None)):
+            args = argparse.Namespace(cpu=100, repetitions=repetitions, min_time=.1, warmup=.1)
+            commands = []
+            def execute(command, **unused):
+                commands.append(command)
+                raw = Path(next(argument.split("=", 1)[1] for argument in command
+                                if argument.startswith("--benchmark_out=")))
+                raw.write_text(json.dumps({"benchmarks": [
+                    dict(name="fss/GPU/DPF-bytes/EvalAll", real_time=100, time_unit="ns",
+                         work_schema_version=1, key_count=1, domain_outputs=4096)]}))
+            with mock.patch.object(sweep, "environment", return_value={}), \
+                 mock.patch.object(sweep, "executables", return_value=[Path("bench")]), \
+                 mock.patch.object(sweep.bench, "execute", side_effect=execute):
+                rows = sweep.collect(args, case, self.directory / f"case-{repetitions}", {})
+            self.assertEqual([argument for argument in commands[0]
+                              if argument.startswith(sweep.benchmark_policy.INTERLEAVING_FLAG)],
+                             [flag] if flag else [])
+            self.assertEqual(rows[0]["interleaving"], expected)
+
+    def test_third_party_google_commands_do_not_interleave(self):
+        case = sweep.cases(self.args(libraries="libfss", platform="cpu", domain_bits=[12],
+                                     operations=["EvalAll"]))[0]
+        args = argparse.Namespace(cpu=100, repetitions=5, min_time=.1, warmup=.1)
+        commands = []
+        def execute(command, **unused):
+            commands.append(command)
+            raw = Path(next(argument.split("=", 1)[1] for argument in command
+                            if argument.startswith("--benchmark_out=")))
+            raw.write_text(json.dumps({"benchmarks": [
+                dict(name="libfss/CPU/EvalAll/12", real_time=100, time_unit="ns")]}))
+        with mock.patch.object(sweep, "environment", return_value={}), \
+             mock.patch.object(sweep, "executables", return_value=[Path("bench")]), \
+             mock.patch.object(sweep.bench, "execute", side_effect=execute):
+            rows = sweep.collect(args, case, self.directory / "case", {})
+        self.assertTrue(all(not argument.startswith(sweep.benchmark_policy.INTERLEAVING_FLAG)
+                            for argument in commands[0]))
+        self.assertNotIn("interleaving", rows[0])
+
 
 class FigurePolicyTest(unittest.TestCase):
     def capture(self, argv):
@@ -909,6 +950,16 @@ class FigurePolicyTest(unittest.TestCase):
         self.assertEqual((plan["policy"]["min_time_s"], plan["policy"]["repetitions"],
                           plan["policy"]["warmup_s"]), (0.1, 5, 0.1))
         self.assertGreater(len({case["library"] for case in plan["cases"]}), 1)
+
+    def test_plan_records_fss_interleaving_per_case(self):
+        publication = self.capture(["run", "--plan", "--profile", "publication", "--platform", "gpu"])
+        current = [case for case in publication["cases"] if case["library"] == "fss"]
+        others = [case for case in publication["cases"] if case["library"] != "fss"]
+        self.assertTrue(current and others)
+        self.assertTrue(all(case["interleaving"] for case in current))
+        self.assertTrue(all("interleaving" not in case for case in others))
+        decision = self.capture(["run", "--plan"])
+        self.assertTrue(all(case["interleaving"] is False for case in decision["cases"]))
 
 
 if __name__ == "__main__":

@@ -610,6 +610,91 @@ class RunnerSelectionTest(unittest.TestCase):
         self.assertNotIn("--benchmark_report_aggregates_only=true", command)
         self.assertEqual(commands[0]["required_work_schema"], 1)
 
+    def test_repeated_current_library_commands_run_interleaved(self):
+        (bench.ROOT / "build").mkdir(exist_ok=True)
+        commands = []
+        for library, repetitions, expected, flag in (
+                ("main", 5, True, "--benchmark_enable_random_interleaving=true"),
+                ("main", 1, False, None),
+                ("fss", 5, True, "--benchmark_enable_random_interleaving=true"),
+                ("fss", 1, False, None)):
+            args = argparse.Namespace(gpu="0", jobs=1, cuda_arch=None, cpu=0, filter=None,
+                                      smoke=False, min_time=.3, repetitions=repetitions,
+                                      native_args=[], profile="decision", full_launches=1)
+            with tempfile.TemporaryDirectory(dir=bench.ROOT / "build") as temp, \
+                 mock.patch.object(bench, "execute"), \
+                 mock.patch.object(bench, "result_rows", return_value=([], [])):
+                bench.record(args, library, "cpu", Path(temp), commands)
+            entry = commands[-1]
+            self.assertEqual([value for value in entry["command"]
+                              if value.startswith(bench.benchmark_policy.INTERLEAVING_FLAG)],
+                             [flag] if flag else [], library)
+            self.assertEqual(entry["interleaving"], expected)
+
+    def test_explicit_native_interleaving_leaves_exactly_one_flag(self):
+        (bench.ROOT / "build").mkdir(exist_ok=True)
+        args = argparse.Namespace(gpu="0", jobs=1, cuda_arch=None, cpu=0, filter=None,
+                                  smoke=False, min_time=1, repetitions=5, native_args=[],
+                                  profile="publication", full_launches=1,
+                                  explicit_interleaving=False)
+        commands = []
+        with tempfile.TemporaryDirectory(dir=bench.ROOT / "build") as temp, \
+             mock.patch.object(bench, "execute"), \
+             mock.patch.object(bench, "result_rows", return_value=([], [])):
+            bench.record(args, "main", "cpu", Path(temp), commands)
+        self.assertEqual([value for value in commands[0]["command"]
+                          if value.startswith(bench.benchmark_policy.INTERLEAVING_FLAG)],
+                         ["--benchmark_enable_random_interleaving=false"])
+        self.assertFalse(commands[0]["interleaving"])
+
+    def test_historical_and_third_party_commands_do_not_interleave(self):
+        (bench.ROOT / "build").mkdir(exist_ok=True)
+        for library in ("fss_v070", "torchcsprng", "libdpf"):
+            args = argparse.Namespace(gpu="0", jobs=1, cuda_arch=None, cpu=16,
+                                      filter=None, smoke=False, min_time=.01, repetitions=5,
+                                      native_args=[], profile="publication", full_launches=1)
+            commands = []
+            with tempfile.TemporaryDirectory(dir=bench.ROOT / "build") as temp, \
+                 mock.patch.object(bench, "execute"), \
+                 mock.patch.object(bench, "result_rows", return_value=([[]], [])):
+                bench.record(args, library, "cpu", Path(temp), commands)
+            self.assertTrue(commands, library)
+            for entry in commands:
+                self.assertNotIn("interleaving", entry)
+                self.assertTrue(all(not value.startswith(bench.benchmark_policy.INTERLEAVING_FLAG)
+                                    for value in entry["command"]), library)
+
+    def test_decision_repetition_override_interleaves(self):
+        output = io.StringIO()
+        with mock.patch.object(bench.sys, "argv",
+                               ["bench.py", "run", "--plan", "--profile", "decision",
+                                "--repetitions", "3"]), \
+             mock.patch.object(bench, "build"), mock.patch.object(bench, "run"), \
+             mock.patch.object(bench, "metadata"), \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(bench.main(), 0)
+        plan = json.loads(output.getvalue())
+        self.assertEqual(plan["repetitions"], 3)
+        self.assertTrue(all(command["interleaving"] for command in plan["commands"]))
+
+    def test_native_interleaving_passthrough_resolves_before_plan(self):
+        output = io.StringIO()
+        with mock.patch.object(bench.sys, "argv",
+                               ["bench.py", "run", "--plan", "--repetitions", "5", "--",
+                                "--benchmark_enable_random_interleaving=false"]), \
+             mock.patch.object(bench, "build"), mock.patch.object(bench, "run"), \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(bench.main(), 0)
+        plan = json.loads(output.getvalue())
+        self.assertEqual(plan["repetitions"], 5)
+        self.assertTrue(all(command["interleaving"] is False for command in plan["commands"]))
+        with mock.patch.object(bench.sys, "argv",
+                               ["bench.py", "run", "--plan", "--",
+                                "--benchmark_enable_random_interleaving=maybe"]), \
+             mock.patch.object(bench, "build"), mock.patch.object(bench, "run"):
+            with self.assertRaisesRegex(RuntimeError, "only true or false"):
+                bench.main()
+
     def test_plan_honors_a_native_passthrough_filter(self):
         output = io.StringIO()
         with mock.patch.object(bench.sys, "argv",

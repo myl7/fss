@@ -55,6 +55,22 @@ def resolve_policy(args, runner):
     return resolved
 
 
+INTERLEAVING_FLAG = "--benchmark_enable_random_interleaving"
+INTERLEAVED_LIBRARIES = ("main", "fss")
+
+
+def interleaving_enabled(library, repetitions, explicit=None):
+    if explicit is not None:
+        return explicit
+    return library in INTERLEAVED_LIBRARIES and repetitions > 1
+
+
+def interleaving_flag(library, repetitions, explicit=None):
+    if library not in INTERLEAVED_LIBRARIES or (explicit is None and repetitions <= 1):
+        return None
+    return f"{INTERLEAVING_FLAG}={'true' if interleaving_enabled(library, repetitions, explicit) else 'false'}"
+
+
 def _resolve_full_launches(args, workload):
     explicit = getattr(args, "full_launches", None)
     if explicit is not None and (not isinstance(explicit, int) or isinstance(explicit, bool)

@@ -102,5 +102,26 @@ class ResolvePolicyTest(unittest.TestCase):
         self.assertIsNone(args.domain_bits)
 
 
+class InterleavingPolicyTest(unittest.TestCase):
+    def test_repeated_current_library_samples_interleave(self):
+        for library in benchmark_policy.INTERLEAVED_LIBRARIES:
+            self.assertTrue(benchmark_policy.interleaving_enabled(library, 5))
+            self.assertFalse(benchmark_policy.interleaving_enabled(library, 1))
+
+    def test_other_libraries_and_explicit_values_do_not_auto_interleave(self):
+        for library in ("fss_v060", "fss_v070", "torchcsprng", "libdpf", "google_dpf", "ezpc"):
+            self.assertFalse(benchmark_policy.interleaving_enabled(library, 5))
+        self.assertFalse(benchmark_policy.interleaving_enabled("main", 5, False))
+        self.assertTrue(benchmark_policy.interleaving_enabled("main", 1, True))
+
+    def test_command_carries_one_resolved_flag_or_none(self):
+        self.assertEqual(benchmark_policy.interleaving_flag("main", 5),
+                         "--benchmark_enable_random_interleaving=true")
+        self.assertEqual(benchmark_policy.interleaving_flag("fss", 5, False),
+                         "--benchmark_enable_random_interleaving=false")
+        self.assertIsNone(benchmark_policy.interleaving_flag("main", 1))
+        self.assertIsNone(benchmark_policy.interleaving_flag("fss_v070", 5))
+
+
 if __name__ == "__main__":
     unittest.main()
