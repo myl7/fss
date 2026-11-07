@@ -1,0 +1,3 @@
+# The sdist default rules add test/test*.py only, and the shipped test
+# modules import helpers from conftest, so it needs an explicit entry.
+include test/conftest.py
