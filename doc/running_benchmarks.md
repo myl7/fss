@@ -107,7 +107,7 @@ Two more targets support the sections below: `make ptx_info` rebuilds with `--pt
 The domain sweep measures domain sizes `N = 2^8, 2^10, ..., 2^20`.
 Each figure shows one platform, with five rows: DCF, full-width DPF, packed DPF, VDPF, and DMPF/VDMPF. Columns show `Gen`, `Eval`, and `EvalAll`.
 Logarithmic time axes retain the full measured range. Legends distinguish the construction, output shape, PRG, and proof accumulator; colors, markers, and line styles identify each method.
-Separate figures cover [prepared-key costs](figures/cpu-prepared.svg), [proof accumulators](figures/cpu-proof.svg), [PRP backends](figures/cpu-prp.svg), and [output groups](figures/cpu-output-groups.svg). The comparison site supports selecting individual methods to inspect overlapping curves.
+Separate figures cover [prepared-key costs](figures/cpu-prepared.svg), [proof accumulators](figures/cpu-proof.svg), [PRP backends](figures/cpu-prp.svg), and [GPU output groups](figures/gpu-output-groups.svg). The comparison site supports selecting individual methods to inspect overlapping curves.
 Hardware, sampling, timing boundaries, and reproduction commands are in the [curve methodology](bench_figures.md).
 The exact measured medians behind the curves, with per-domain values and pairwise library comparison, are on the [benchmark comparison site](https://myl7.github.io/fss/bench/).
 An implementation appears in a panel only where it provides that method on that platform.

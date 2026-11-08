@@ -156,6 +156,14 @@ Select an idle GPU and set `CUDA_VISIBLE_DEVICES` before running CUDA benchmarks
 Point, batch, and full-domain timings measure different amounts of work.
 See [benchmark and profiling commands](doc/running_benchmarks.md), [benchmark coverage](doc/benchmarks.md), [comparison methodology](doc/bench_figures.md), and [third-party comparisons](doc/bench_third_parties.md) for timing boundaries and reproduction commands.
 
+Measured with the `decision` profile (0.3 s minimum, five interleaved repetitions, medians) on 2026-11-08 UTC (2026-11-09 HKT) at the unreleased tree after v1.3.0, over the 2^20 domain:
+
+- CPU, cs659b (one core, `performance` governor, OpenSSL AES PRG, `Uint` group): DPF `Gen` 1.0 µs/key, point `Eval` 344 ns/query, `EvalAll` 27.7 ms per full-domain evaluation (about 37.9 M outputs/s); DCF `Gen` 1.8 µs/key, point `Eval` 519 ns/query, `EvalAll` 54.3 ms per evaluation (about 19.3 M outputs/s).
+- GPU, cs11369a (A6000, SM 86, CUDA event time): in the native suite (`Uint` group, ChaCha PRG, 1,048,576 keys or queries per call), DPF point `Gen` is about 3.6 ns/key and point `Eval` about 2.6 ns/query, and one 1024-key batch full-domain `EvalAll` API call takes 136 ms (DPF) and 142 ms (DCF), about 7.9 and 7.5 G domain outputs/s per call, which is batch time and not single-key latency. The domain curves measure the byte group at 262,144 keys per call; their per-call values differ and are on the comparison site.
+
+These are single-collection medians on shared hosts, not a strict comparison against historical settings.
+The [comparison site](https://myl7.github.io/fss/bench/) carries the full domain sweeps, the third-party baselines with their original dates, and the exact per-run sampling.
+
 ## License
 
 [Apache-2.0](LICENSE.txt).

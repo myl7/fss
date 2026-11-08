@@ -4,12 +4,20 @@ Use `third_party/figure_bench.py` to reproduce the time curves. Run from the
 repository root on Linux after following the
 [pinned dependency and toolchain setup](bench_third_parties.md).
 CPU curves use `cs659b`: AMD EPYC 9115, NVIDIA RTX PRO 5000, SM 120, and
-CUDA 13.2. The experiment pins CPU operations to CPU 24, uses one CPU
-thread, and verifies the `performance` governor.
+CUDA 13.2. The current collection, taken on 2026-11-08 UTC (2026-11-09 HKT)
+at library version 1.3.0-unreleased, pins CPU operations to CPU 25 (sibling
+57, NUMA node 1) with one CPU thread and the `performance` governor; the
+historical third-party rows below were collected pinned to CPU 24 with the
+same governor, so cross-collection comparisons are not strictly placed on the
+same core.
 GPU curves use `cs11369a`: Intel Xeon Platinum 8352V, NVIDIA A6000, SM 86,
-and CUDA 12.6. GPU runs pin the launch process to CPU 100, leaving the shared
-host's CPU governor unchanged. The v1.3 repair recollection on 2026-10-18
-uses GPU 3 for all current-FSS GPU domain and block curves. Retained
+and CUDA 12.6. The native GPU run and the domain Gen / EvalAll collections
+launch from CPU 100; the point-Eval supplement and the block sweep,
+including its scheme-isolated T=1024 supplements, launch from CPU 30
+(sibling 102, NUMA node 0, `schedutil` governor as found on the shared
+host), all against the admitted idle GPU
+`GPU-f976dcde-dac4-5451-626e-908adcf0ccb2`; the earlier v1.3.0 repair
+recollection of 2026-10-18 used CPU 100 and GPU 3. Retained
 third-party receipts identify their original device and run configuration.
 All four devices on this host are the same A6000 model.
 Historical FSS 0.7 has no GPU curves: its upstream benchmarks crash on the
@@ -150,6 +158,10 @@ Google Benchmark runs under the publication profile use five repetitions, at
 least 0.1 seconds of measurement, and 0.1 seconds of warmup; the decision
 profile defaults to a 0.3-second minimum measurement, one repetition, and no
 warmup. The figure uses the median.
+The current-FSS curves of the 2026-11-08 collection were gathered with an
+explicit 0.3-second minimum measurement, five repetitions, no warmup, and
+Google Benchmark random interleaving inside each native command; the figure
+uses the median of the five repetitions.
 The repeated FSS samples run with Google Benchmark random interleaving inside
 each native command; independent binaries and cases are not interleaved.
 Rust cases use five separate Criterion processes, each with 20 samples,
@@ -251,9 +263,9 @@ Prepared-key variants have a focused default-byte-group comparison with separate
 steady-state query, and pack-plus-query panels. A speedup panel is produced
 only for actual paired direct/variant measurements from the same raw receipt
 with matching configuration. The pairing retains the direct reference receipt. It does
-not derive standalone setup cost from unrelated medians. Integer-group
-prepared variants remain selectable on the comparison site and are listed
-in the method inventory.
+not derive standalone setup cost from unrelated medians. The optional
+integer-group prepared variants were not re-collected; the current
+comparison site carries the byte-group prepared rows only.
 
 The [prepared-key figure](figures/cpu-prepared.svg),
 [proof-accumulator figure](figures/cpu-proof.svg),
@@ -283,12 +295,24 @@ and fast curves occupy overlapping time ranges as N changes.
 The supplementary block sweep fixes `N = 2^20` and varies actual threads per
 block T: point `Eval` (including software AES) amortized over `K = 262,144`
 keys, and full-domain `EvalAll` with `K = 1` for the DCF, DPF, HalfTreeDPF,
-packed, VDPF, and Grotto schemes. Fixed-256-thread DMPF/VDMPF kernels are
+packed, VDPF, and Grotto schemes. The published sweep is the fresh
+2026-11-08 to 09 collection at library version 1.3.0-unreleased; the earlier
+2026-10-18 sweep also carried optional integer-group rows that this
+collection does not include. Fixed-256-thread DMPF/VDMPF kernels are
 excluded from this sensitivity sweep. The sweep adjusts the block
 root depth as described above. VDPF has no T=16 and T=32 points because no
 tiling satisfies its root-fold constraints at those block sizes, and
 software AES at T=1024 exceeds the kernel's
-resource limit and has no timing point. The README keeps the domain-size
+resource limit and has no timing point. The combined T=1024 EvalAll command
+aborts at the DCF launch (`too many resources requested for launch` at the
+public `EvalAllGpu` call), and with random repetition interleaving that
+failure terminates the whole process, so the remaining schemes are collected
+by scheme-isolated commands at the same settings: DPF, HalfTreeDPF, packed
+HalfTreeDPF, VDPF, and Grotto DCF all measure successfully at T=1024, and
+only the DCF launch fails, keeping its failed receipt as the observed
+variant outcome rather than an extrapolation. The main sweep ran on
+2026-11-08 UTC and the isolated supplements on 2026-11-08 to 09 UTC (the DPF
+supplement on 2026-11-08, the other four on 2026-11-09). The README keeps the domain-size
 comparison figures. This figure stays in the methodology documentation.
 
 ## Run and export
@@ -342,17 +366,21 @@ python3 third_party/figure_bench.py merge \
 uses the same supported-case registry as `--scheme`, and includes DMPF and
 VDMPF. Explicit scheme selection skips unsupported operations. Prepare rows
 are collected alongside the ordinary CPU Eval sweep, keeping the CLI's three
-ordinary operation defaults unchanged. The current published curves merge
-the `figure-data-r5` baseline and the cs11369a DMPF / VDMPF cards with eight
-cs659b re-measurement runs on the integrated revision: the pipelined
-full-domain rows at n = 8, 10, and 16, the n = 10 DMPF / VDMPF / VDPF rows,
-the DPF and Half-Tree point-evaluation sweep with its packed-key rows, and the
-VDPF chain and Merkle-fold rows, each superseding the cells it re-measured
-through `merge --retry-inputs`. A second round of three runs covers the CPU
-scheme round: the VDMPF chain rows after the quadratic dedup scan fix, the DCF
-rows after the frontier pipelining, and the DMPF rows together with their
-`AES-NI-rawprp` PRP twins (the VDMPF twins were collected with the same run),
-each superseding its predecessors. Use `export` on an individual
+ordinary operation defaults unchanged. The current published curves are the
+2026-11-08 to 09 UTC collection at library version 1.3.0-unreleased: a full
+CPU domain sweep on cs659b, a full GPU domain sweep on cs11369a whose
+point-Eval cases come from a second run after a collection-side fix, and a
+fresh GPU block sweep whose scheme-isolated T=1024 full-domain supplements
+ran on 2026-11-08 (DPF) and 2026-11-09 UTC (the other four schemes). The
+merge drops every earlier current-FSS row and keeps the retained
+third-party rows unchanged as dated historical baselines; export and merge
+represent one repeated failure configuration as a single record carrying the
+repetition count in `failure_repetitions`, while the raw receipts keep every
+failed repetition. The optional
+integer output group is not part of this collection: the current-FSS curves
+cover the byte group, the 63 optional integer-group cells of the earlier
+current-library CPU sweep are not re-collected, and the native suite still
+measures the Uint group (`bench_cpu`). Use `export` on an individual
 run to rebuild them from saved `case.json` files. `merge` combines completed
 run exports. For an explicit retry, pass its directory to `merge --retry-inputs`
 and retain the superseded attempt provenance. A nonzero exit status can
