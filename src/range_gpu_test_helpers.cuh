@@ -7,17 +7,6 @@
 
 namespace fss_test {
 
-struct RangeUint127Group {
-  using Impl = fss::group::Uint<__uint128_t, (__uint128_t{1} << 127)>;
-  Impl value;
-  __host__ __device__ RangeUint127Group operator+(RangeUint127Group rhs) const {
-    return {value + rhs.value};
-  }
-  __host__ __device__ RangeUint127Group operator-() const { return {-value}; }
-  __host__ __device__ static RangeUint127Group From(int4 input) { return {Impl::From(input)}; }
-  __host__ __device__ int4 Into() const { return value.Into(); }
-};
-
 template <int bits, typename In, int frontier = 16, int threads = 256, typename Scheme>
 void CheckGpuRange(Scheme &scheme, In first, In last) {
   int devices = 0;

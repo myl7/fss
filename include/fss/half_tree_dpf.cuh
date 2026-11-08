@@ -444,14 +444,6 @@ private:
 
 namespace gpu::detail {
 
-// Hold the scheme behind a tag so wide Group non-type template parameters stay
-// out of CUDA host stub signatures.
-template <int n, typename GroupTag, typename Hash, typename In>
-struct HalfTreeGpuKernelDescriptor {
-  using Scheme = HalfTreeDpf<n, typename GroupTag::type, Hash, In>;
-  using Backend = Hash;
-};
-
 template <typename Scheme>
 struct HalfTreeGpuTraits;
 
@@ -583,13 +575,12 @@ __device__ __forceinline__ void HalfTreeEvalAllBlock(bool b, int4 s0,
 // Split-layout counterparts of the three kernels above. The Cw buffer
 // arrives type-erased and the boundary view reconstructs the per-layer Cw
 // entries, so the shared traversal stays identical on both paths.
-template <typename Descriptor, int threads_per_block>
+template <typename Scheme, int threads_per_block>
 __global__ void HalfTreeSplitDpfEvalRangeKernel(bool b, int4 s0,
     const void *cws_buffer,
-    typename HalfTreeGpuTraits<typename Descriptor::Scheme>::Input packed_tr, size_t stride,
+    typename HalfTreeGpuTraits<Scheme>::Input packed_tr, size_t stride,
     int4 *ys, __uint128_t first, int depth, int frontier, int root,
-    int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
+    int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
   using Traits = HalfTreeGpuTraits<Scheme>;
   using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw,
       typename Traits::Input, Traits::kOutputBits>;
@@ -617,11 +608,10 @@ __global__ void HalfTreeSplitDpfEvalRangeKernel(bool b, int4 s0,
       blockIdx.x, thread_index, states, first, depth, frontier, root);
 }
 
-template <typename Descriptor, int frontier_depth, int block_root_depth>
+template <typename Scheme, int frontier_depth, int block_root_depth>
 __global__ void HalfTreeSplitEvalAllKernel(bool b, int4 s0, const void *cws_buffer,
-    typename HalfTreeGpuTraits<typename Descriptor::Scheme>::Input packed_tr, size_t stride,
-    int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
+    typename HalfTreeGpuTraits<Scheme>::Input packed_tr, size_t stride,
+    int4 *ys, int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
   using Traits = HalfTreeGpuTraits<Scheme>;
   using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw,
       typename Traits::Input, Traits::kOutputBits>;
@@ -634,12 +624,11 @@ __global__ void HalfTreeSplitEvalAllKernel(bool b, int4 s0, const void *cws_buff
       thread_index, shared_frontier);
 }
 
-template <typename Descriptor, int frontier_depth, int block_root_depth>
+template <typename Scheme, int frontier_depth, int block_root_depth>
 __global__ void HalfTreeSplitEvalAllBatchKernel(bool b, const int4 *s0s,
     const void *cws_buffer,
-    const typename HalfTreeGpuTraits<typename Descriptor::Scheme>::Input *trs, size_t stride,
-    int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
+    const typename HalfTreeGpuTraits<Scheme>::Input *trs, size_t stride,
+    int4 *ys, int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
   using Traits = HalfTreeGpuTraits<Scheme>;
   using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw,
       typename Traits::Input, Traits::kOutputBits>;
@@ -660,11 +649,10 @@ __global__ void HalfTreeSplitEvalAllBatchKernel(bool b, const int4 *s0s,
 // Device-key counterparts of the split kernels above: the party seed and the
 // packed control are loaded from caller device storage. The shared traversal
 // and the shallow-range fast path are unchanged.
-template <typename Descriptor, int frontier_depth, int block_root_depth>
+template <typename Scheme, int frontier_depth, int block_root_depth>
 __global__ void HalfTreeSplitEvalAllDeviceKeyKernel(bool b, const int4 *s0,
-    const void *cws_buffer, const typename HalfTreeGpuTraits<typename Descriptor::Scheme>::Input *tr,
-    size_t stride, int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
+    const void *cws_buffer, const typename HalfTreeGpuTraits<Scheme>::Input *tr,
+    size_t stride, int4 *ys, int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
   using Traits = HalfTreeGpuTraits<Scheme>;
   using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw,
       typename Traits::Input, Traits::kOutputBits>;
@@ -677,13 +665,12 @@ __global__ void HalfTreeSplitEvalAllDeviceKeyKernel(bool b, const int4 *s0,
       thread_index, shared_frontier);
 }
 
-template <typename Descriptor, int threads_per_block>
+template <typename Scheme, int threads_per_block>
 __global__ void HalfTreeSplitEvalRangeDeviceKeyKernel(bool b, const int4 *s0,
     const void *cws_buffer,
-    const typename HalfTreeGpuTraits<typename Descriptor::Scheme>::Input *tr, size_t stride,
+    const typename HalfTreeGpuTraits<Scheme>::Input *tr, size_t stride,
     int4 *ys, __uint128_t first, int depth, int frontier, int root,
-    int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
+    int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
   using Traits = HalfTreeGpuTraits<Scheme>;
   using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw,
       typename Traits::Input, Traits::kOutputBits>;
@@ -713,11 +700,10 @@ __global__ void HalfTreeSplitEvalRangeDeviceKeyKernel(bool b, const int4 *s0,
 
 // Key-major batch counterpart: key k's components occupy records
 // [k*key_records, k*key_records + output_bits] and its control record follows.
-template <typename Descriptor, int frontier_depth, int block_root_depth>
+template <typename Scheme, int frontier_depth, int block_root_depth>
 __global__ void HalfTreeSplitEvalAllBatchDeviceKeyKernel(bool b, const int4 *s0s,
     const void *cws_buffer, size_t key_records, size_t control_record, size_t key_count,
-    int4 *ys, int4 instance_seed, typename Descriptor::Backend hash) {
-  using Scheme = typename Descriptor::Scheme;
+    int4 *ys, int4 instance_seed, typename HalfTreeGpuTraits<Scheme>::Backend hash) {
   using In = typename HalfTreeGpuTraits<Scheme>::Input;
   using Cws = fss::detail::HalfTreeDpfCwsView<typename Scheme::Cw, In,
       HalfTreeGpuTraits<Scheme>::kOutputBits>;
@@ -768,9 +754,8 @@ __host__ inline cudaError_t HalfTreeDpfEvalAllGpuDeviceKey(bool b, const int4 *s
       cws_count < static_cast<size_t>(in_bits) * stride + 1 || ys_count < kOutputsPerKey ||
       s0 == nullptr || cws == nullptr || tr == nullptr || ys == nullptr ||
       kOutputsPerKey > kMaxElements) return cudaErrorInvalidValue;
-  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits,
-      typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
-  HalfTreeSplitEvalAllDeviceKeyKernel<Descriptor, kFrontierDepth, kBlockRootDepth>
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
+  HalfTreeSplitEvalAllDeviceKeyKernel<Scheme, kFrontierDepth, kBlockRootDepth>
       <<<size_t{1} << kBlockRootDepth, 1 << kThreadsPerBlockLog2, 0, stream>>>(
           b, s0, cws, tr, stride, ys, instance_seed, hash);
   return cudaGetLastError();
@@ -785,13 +770,12 @@ __host__ inline cudaError_t HalfTreeDpfEvalRangeGpuDeviceKey(bool b, In first, I
   if (stride == 0 || stride > (kMaxElements - 1) / static_cast<size_t>(in_bits) ||
       cws_count < static_cast<size_t>(in_bits) * stride + 1 || s0 == nullptr ||
       cws == nullptr || tr == nullptr || ys == nullptr) return cudaErrorInvalidValue;
-  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits,
-      typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
   return fss::detail::SplitRangeChunks<in_bits, frontier_depth, threads_per_block, 1>(
       first, last, ys_count,
       [&](In chunk_first, int depth, size_t offset, int frontier, int thread_bits, int root,
           size_t blocks) {
-        HalfTreeSplitEvalRangeDeviceKeyKernel<Descriptor, threads_per_block>
+        HalfTreeSplitEvalRangeDeviceKeyKernel<Scheme, threads_per_block>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws, tr, stride,
                 ys + offset, chunk_first, depth, frontier, root, instance_seed, hash);
         return cudaGetLastError();
@@ -833,9 +817,8 @@ __host__ inline cudaError_t HalfTreeDpfEvalAllGpuBatchDeviceKey(bool b, const in
       kOutputsPerKey > kMaxElements) return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / kBlocksPerKey)
     return cudaErrorInvalidConfiguration;
-  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits,
-      typename fss::detail::GpuGroupTag<Group>::Type, Hash, In>;
-  HalfTreeSplitEvalAllBatchDeviceKeyKernel<Descriptor, kFrontierDepth, kBlockRootDepth>
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
+  HalfTreeSplitEvalAllBatchDeviceKeyKernel<Scheme, kFrontierDepth, kBlockRootDepth>
       <<<key_count * kBlocksPerKey, 1 << kThreadsPerBlockLog2, 0, stream>>>(
           b, s0s, cws, key_records, control_record, key_count, ys, instance_seed, hash);
   return cudaGetLastError();
@@ -1369,10 +1352,9 @@ struct HalfTreeGpuTraits<HalfTreeDpf<in_bits, Group, Hash, In>> {
 // layout the split form of Gen() writes: layer i of key k is cws[i * nkeys + k]
 // and the terminal layer is cws[in_bits * nkeys + k]. tr[k] carries key k's
 // packed control bits; its bit in_bits - 1 is the last level's extra bit.
-template <int in_bits, int unroll, bool b, typename Descriptor, typename In, typename Query = In>
+template <int in_bits, int unroll, bool b, typename Scheme, typename In, typename Query = In>
 __global__ void HalfTreeDpfEvalPointKernel(int4 *ys, const int4 *seeds, const int4 *cws, const In *tr,
-    const Query *xs, int nkeys, typename Descriptor::Backend hash, int4 instance_seed) {
-  using Scheme = typename Descriptor::Scheme;
+    const Query *xs, int nkeys, typename HalfTreeGpuTraits<Scheme>::Backend hash, int4 instance_seed) {
   using Group = typename HalfTreeGpuTraits<Scheme>::OutputGroup;
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1439,16 +1421,15 @@ void HalfTreeDpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::st
     throw std::invalid_argument("HalfTreeDpfEvalPointGpu: cws must hold (in_bits+1)*nkeys elements");
   if (seeds.size() < count || tr.size() < count || xs.size() < count || ys == nullptr)
     throw std::invalid_argument("HalfTreeDpfEvalPointGpu: seeds, tr, xs, and ys must cover nkeys entries");
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Descriptor, In, Query>
+    HalfTreeDpfEvalPointKernel<in_bits, unroll, true, Scheme, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds.data(), cws.data(), tr.data(), xs.data(), nkeys,
         fss::detail::SchemeAccess::GetHash(dpf), fss::detail::SchemeAccess::GetInstanceSeed(dpf));
   } else {
-    HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Descriptor, In, Query>
+    HalfTreeDpfEvalPointKernel<in_bits, unroll, false, Scheme, In, Query>
         <<<blocks, kBs, 0, stream>>>(ys, seeds.data(), cws.data(), tr.data(), xs.data(), nkeys,
         fss::detail::SchemeAccess::GetHash(dpf), fss::detail::SchemeAccess::GetInstanceSeed(dpf));
   }
@@ -1489,8 +1470,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
     bool b, In first, In last, int4 s0, cuda::std::span<const int4> cws, In tr,
     cuda::std::span<int4> ys, cudaStream_t stream, size_t stride) const {
 #if defined(__CUDACC__)
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
@@ -1506,7 +1486,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalRangeGpu(
       first, last, ys.size(),
       [&](In chunk_first, int depth, size_t offset, int frontier, int thread_bits, int root,
           size_t blocks) {
-        gpu::detail::HalfTreeSplitDpfEvalRangeKernel<Descriptor, threads_per_block>
+        gpu::detail::HalfTreeSplitDpfEvalRangeKernel<Scheme, threads_per_block>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, s0, cws.data(), tr, stride,
                 ys.data() + offset, chunk_first, depth, frontier, root, instance_seed_, hash_);
         return cudaGetLastError();
@@ -1527,8 +1507,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpu(
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   if (stride == 0 ||
@@ -1539,7 +1518,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpu(
       cws.data() == nullptr || ys.data() == nullptr ||
       kOutputsPerKey > std::numeric_limits<size_t>::max() / sizeof(int4))
     return cudaErrorInvalidValue;
-  gpu::detail::HalfTreeSplitEvalAllKernel<Descriptor, LaunchShape::kFrontierDepth,
+  gpu::detail::HalfTreeSplitEvalAllKernel<Scheme, LaunchShape::kFrontierDepth,
       LaunchShape::kBlockRootDepth>
       <<<LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), tr, stride, ys.data(), instance_seed_, hash_);
@@ -1561,8 +1540,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpuBat
   requires(in_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   using LaunchShape = GpuLaunchShape<frontier_depth, threads_per_block>;
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::HalfTreeGpuKernelDescriptor<in_bits, GroupTag, Hash, In>;
+  using Scheme = HalfTreeDpf<in_bits, Group, Hash, In>;
   constexpr size_t kOutputsPerKey = size_t{1} << in_bits;
   constexpr size_t kMaxElements = std::numeric_limits<size_t>::max() / sizeof(int4);
   constexpr size_t kMaxAddressableSize = std::numeric_limits<size_t>::max();
@@ -1585,7 +1563,7 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpuBat
     return cudaErrorInvalidValue;
   if (key_count > static_cast<size_t>(std::numeric_limits<int>::max()) / LaunchShape::kBlocksPerKey)
     return cudaErrorInvalidConfiguration;
-  gpu::detail::HalfTreeSplitEvalAllBatchKernel<Descriptor, LaunchShape::kFrontierDepth,
+  gpu::detail::HalfTreeSplitEvalAllBatchKernel<Scheme, LaunchShape::kFrontierDepth,
       LaunchShape::kBlockRootDepth>
       <<<key_count * LaunchShape::kBlocksPerKey, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0s.data(), cws.data(), tr.data(), resolved_stride, ys.data(), instance_seed_, hash_);

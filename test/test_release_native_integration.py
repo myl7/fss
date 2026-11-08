@@ -370,8 +370,8 @@ def _uint_boundary_payloads(bits, mod):
     pytest.param(32, 2147483659, id="u32mod"),
     pytest.param(64, 0, id="u64"),
     pytest.param(64, 9223372036854775837, id="u64mod"),
-    pytest.param(128, 1 << 127, id="u127"),
-    pytest.param(128, (1 << 126) + 17, id="u127mod"),
+    pytest.param(128, 1 << 127, id="u128"),
+    pytest.param(128, (1 << 126) + 17, id="u128mod"),
 ])
 @pytest.mark.parametrize("device", _GROUP_DEVICE_PARAMS)
 def test_group_value_uint_boundaries(bits, mod, device):

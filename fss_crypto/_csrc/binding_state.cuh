@@ -2,7 +2,6 @@
 #pragma once
 #include "binding_materials.cuh"
 #include "binding_device_init.cuh"
-#include "binding_multi_descriptor.cuh"
 #include <fss/dpf.cuh>
 #include <fss/dcf.cuh>
 #include <fss/half_tree_dpf.cuh>
@@ -146,11 +145,9 @@ struct NativeDeviceState {
   }
 };
 
-template <typename DescriptorType, typename Prg = PrgType, typename XorHash = XorHashType,
+template <typename Core, typename Prg = PrgType, typename XorHash = XorHashType,
     typename Hash = HashType, typename Prp = PrpType>
 struct NativeDeviceFactory {
-  using Descriptor = DescriptorType;
-  using Core = typename DescriptorType::Scheme;
   Prg *prg;
   XorHash *xor_hash;
   Hash *hash;
@@ -166,64 +163,10 @@ struct NativeDeviceFactory {
   }
 };
 
-// Host-only overloads keep the raw scheme type out of the factory type.
 template <typename Core>
-inline NativeDeviceFactory<fss::gpu::detail::CoreLaunchIdentityDescriptor<Core>>
-MakeNativeDeviceFactory(Core *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
+inline NativeDeviceFactory<Core> MakeNativeDeviceFactory(
+    Core *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
     PrpType *prp, int4 instance_seed) {
-  return {prg, xor_hash, hash, prp, instance_seed};
-}
-
-template <int n, typename Group, typename In>
-inline NativeDeviceFactory<fss::gpu::detail::DpfGpuKernelDescriptor<n,
-    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, In>> MakeNativeDeviceFactory(
-    Dpf<n, Group, PrgType, In> *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
-    PrpType *prp, int4 instance_seed) {
-  return {prg, xor_hash, hash, prp, instance_seed};
-}
-
-template <int n, typename Group, typename In, DcfPred pred>
-inline NativeDeviceFactory<fss::gpu::detail::DcfGpuKernelDescriptor<n,
-    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, In, pred>> MakeNativeDeviceFactory(
-    Dcf<n, Group, PrgType, In, pred> *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
-    PrpType *prp, int4 instance_seed) {
-  return {prg, xor_hash, hash, prp, instance_seed};
-}
-
-template <int n, typename Group, typename In>
-inline NativeDeviceFactory<fss::gpu::detail::HalfTreeGpuKernelDescriptor<n,
-    typename fss::detail::GpuGroupTag<Group>::Type, HashType, In>> MakeNativeDeviceFactory(
-    HalfTreeDpf<n, Group, HashType, In> *, PrgType *prg, XorHashType *xor_hash, HashType *hash,
-    PrpType *prp, int4 instance_seed) {
-  return {prg, xor_hash, hash, prp, instance_seed};
-}
-
-template <int n, typename Group, typename In>
-inline NativeDeviceFactory<fss::gpu::detail::VdpfGpuKernelDescriptor<n,
-    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, XorHashType, HashType, In>>
-MakeNativeDeviceFactory(
-    Vdpf<n, Group, PrgType, XorHashType, HashType, In> *, PrgType *prg, XorHashType *xor_hash,
-    HashType *hash, PrpType *prp, int4 instance_seed) {
-  return {prg, xor_hash, hash, prp, instance_seed};
-}
-
-template <int in_bits, int max_points, int bucket_bits, typename Group, typename In, int ch_lambda>
-inline NativeDeviceFactory<fss::gpu::detail::DmpfLaunchDescriptor<in_bits, max_points, bucket_bits,
-    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, PrpType, In, ch_lambda>>
-MakeNativeDeviceFactory(
-    Dmpf<in_bits, max_points, bucket_bits, Group, PrgType, PrpType, In, ch_lambda> *,
-    PrgType *prg, XorHashType *xor_hash, HashType *hash, PrpType *prp, int4 instance_seed) {
-  return {prg, xor_hash, hash, prp, instance_seed};
-}
-
-template <int in_bits, int max_points, int bucket_bits, typename Group, typename In, int ch_lambda>
-inline NativeDeviceFactory<fss::gpu::detail::VdmpfLaunchDescriptor<in_bits, max_points, bucket_bits,
-    typename fss::detail::GpuGroupTag<Group>::Type, PrgType, XorHashType, HashType, PrpType, In,
-    ch_lambda>>
-MakeNativeDeviceFactory(
-    Vdmpf<in_bits, max_points, bucket_bits, Group, PrgType, XorHashType, HashType, PrpType, In,
-        ch_lambda> *,
-    PrgType *prg, XorHashType *xor_hash, HashType *hash, PrpType *prp, int4 instance_seed) {
   return {prg, xor_hash, hash, prp, instance_seed};
 }
 

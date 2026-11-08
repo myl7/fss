@@ -7,6 +7,7 @@
 #include <fss/dcf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include <fss/prg/aes128_mmo_raw.cuh>
@@ -17,7 +18,7 @@
 #include <climits>
 
 using BytesGroup = fss::group::Bytes;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
+using Uint128Group = fss::group::Uint128<>;
 using Uint64Group = fss::group::Uint<uint64_t>;
 
 // Helper to determine comparison size for each group type
@@ -25,7 +26,7 @@ template <typename Group>
 constexpr size_t GroupCompareSize() {
   if constexpr (std::is_same_v<Group, Uint64Group>) {
     return 8;  // Compare only first 8 bytes for uint64
-  } else if constexpr (std::is_same_v<Group, Uint127Group>) {
+  } else if constexpr (std::is_same_v<Group, Uint128Group>) {
     return 16;  // Compare 16 bytes (127 bits + control bit which is always 0)
   } else {
     return sizeof(int4);  // Full 16 bytes for Bytes group
@@ -257,25 +258,25 @@ class DcfBytesAesRaw16BitsDefaultTest : public DcfFrontierTestBase<16, BytesGrou
 class DcfBytesAesRaw20BitsSeqTest
     : public DcfFrontierTestBase<20, BytesGroup, AesRaw4, uint32_t, fss::DcfPred::kLt, 0> {};
 class DcfUint128AesRaw8BitsSplitTest
-    : public DcfFrontierTestBase<8, Uint127Group, AesRaw4, uint32_t, fss::DcfPred::kLt, 2> {};
-class DcfUint128AesRaw16BitsDefaultTest : public DcfFrontierTestBase<16, Uint127Group, AesRaw4> {};
+    : public DcfFrontierTestBase<8, Uint128Group, AesRaw4, uint32_t, fss::DcfPred::kLt, 2> {};
+class DcfUint128AesRaw16BitsDefaultTest : public DcfFrontierTestBase<16, Uint128Group, AesRaw4> {};
 class DcfUint128AesRaw20BitsSeqTest
-    : public DcfFrontierTestBase<20, Uint127Group, AesRaw4, uint32_t, fss::DcfPred::kLt, 0> {};
+    : public DcfFrontierTestBase<20, Uint128Group, AesRaw4, uint32_t, fss::DcfPred::kLt, 0> {};
 class DcfBytesAesRawGt8BitsSeqTest
     : public DcfFrontierTestBase<8, BytesGroup, AesRaw4, uint32_t, fss::DcfPred::kGt, 0> {};
 class DcfBytesAesRawGt16BitsDefaultTest
     : public DcfFrontierTestBase<16, BytesGroup, AesRaw4, uint32_t, fss::DcfPred::kGt> {};
 class DcfUint128AesRawGt8BitsSplitTest
-    : public DcfFrontierTestBase<8, Uint127Group, AesRaw4, uint32_t, fss::DcfPred::kGt, 2> {};
+    : public DcfFrontierTestBase<8, Uint128Group, AesRaw4, uint32_t, fss::DcfPred::kGt, 2> {};
 class DcfUint128AesRawGt16BitsDefaultTest
-    : public DcfFrontierTestBase<16, Uint127Group, AesRaw4, uint32_t, fss::DcfPred::kGt> {};
+    : public DcfFrontierTestBase<16, Uint128Group, AesRaw4, uint32_t, fss::DcfPred::kGt> {};
 // ChaCha has no Gen8(), so EvalAll() runs the frontier through the detail::GenBatch() loop.
 class DcfBytesChaCha8BitsSeqTest
     : public DcfFrontierTestBase<8, BytesGroup, ChaCha4, uint32_t, fss::DcfPred::kLt, 0> {};
 class DcfBytesChaCha16BitsDefaultTest : public DcfFrontierTestBase<16, BytesGroup, ChaCha4> {};
 class DcfUint128ChaCha8BitsSplitTest
-    : public DcfFrontierTestBase<8, Uint127Group, ChaCha4, uint32_t, fss::DcfPred::kLt, 2> {};
-class DcfUint128ChaCha16BitsDefaultTest : public DcfFrontierTestBase<16, Uint127Group, ChaCha4> {};
+    : public DcfFrontierTestBase<8, Uint128Group, ChaCha4, uint32_t, fss::DcfPred::kLt, 2> {};
+class DcfUint128ChaCha16BitsDefaultTest : public DcfFrontierTestBase<16, Uint128Group, ChaCha4> {};
 
 TEST_F(DcfBytesAesRaw5BitsTest, EvalAll) {
   TestEvalAll(11);
@@ -370,7 +371,7 @@ public:
   DcfBytesChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(kNonce0, kNonce1)) {}
 };
 
-class DcfUint128ChaChaTest : public DcfTestBase<Uint127Group, fss::prg::ChaCha<4>> {
+class DcfUint128ChaChaTest : public DcfTestBase<Uint128Group, fss::prg::ChaCha<4>> {
 public:
   DcfUint128ChaChaTest() : DcfTestBase(fss::prg::ChaCha<4>(kNonce0, kNonce1)) {}
 };
@@ -612,14 +613,14 @@ private:
 
 TEST(DcfRangeTest, LtBytes) { CheckDcfSmallRanges<BytesGroup, fss::DcfPred::kLt>(); }
 TEST(DcfRangeTest, GtBytes) { CheckDcfSmallRanges<BytesGroup, fss::DcfPred::kGt>(); }
-TEST(DcfRangeTest, LtUint127) { CheckDcfSmallRanges<Uint127Group, fss::DcfPred::kLt>(); }
-TEST(DcfRangeTest, GtUint127) { CheckDcfSmallRanges<Uint127Group, fss::DcfPred::kGt>(); }
+TEST(DcfRangeTest, LtUint128) { CheckDcfSmallRanges<Uint128Group, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, GtUint128) { CheckDcfSmallRanges<Uint128Group, fss::DcfPred::kGt>(); }
 TEST(DcfRangeTest, LtGenericGroup) { CheckDcfSmallRanges<Uint64Group, fss::DcfPred::kLt>(); }
 TEST(DcfRangeTest, GtGenericGroup) { CheckDcfSmallRanges<Uint64Group, fss::DcfPred::kGt>(); }
 TEST(DcfRangeTest, WideLtBytes) { CheckDcfWideRanges<BytesGroup, fss::DcfPred::kLt>(); }
 TEST(DcfRangeTest, WideGtBytes) { CheckDcfWideRanges<BytesGroup, fss::DcfPred::kGt>(); }
-TEST(DcfRangeTest, WideLtUint127) { CheckDcfWideRanges<Uint127Group, fss::DcfPred::kLt>(); }
-TEST(DcfRangeTest, WideGtUint127) { CheckDcfWideRanges<Uint127Group, fss::DcfPred::kGt>(); }
+TEST(DcfRangeTest, WideLtUint128) { CheckDcfWideRanges<Uint128Group, fss::DcfPred::kLt>(); }
+TEST(DcfRangeTest, WideGtUint128) { CheckDcfWideRanges<Uint128Group, fss::DcfPred::kGt>(); }
 TEST(DcfRangeTest, WideLtGenericGroup) { CheckDcfWideRanges<Uint64Group, fss::DcfPred::kLt>(); }
 TEST(DcfRangeTest, WideGtGenericGroup) { CheckDcfWideRanges<Uint64Group, fss::DcfPred::kGt>(); }
 
@@ -715,19 +716,19 @@ TEST(DcfGpuRangeTest, GtWideDomainAndBoundedSubdivision) {
 }
 
 TEST(DcfGpuRangeTest, kLtArithmeticGroupNarrowInputAndCappedFrontier) {
-  fss::Dcf<8, fss_test::RangeUint127Group, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kLt> scheme{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
+  fss::Dcf<8, fss::group::Uint128<>, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kLt> scheme{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
   fss_test::CheckGpuRange<8, uint8_t, 999, 1024>(scheme, 0, 255);
   fss_test::CheckGpuRange<8, uint8_t, 2, 4>(scheme, 13, 201);
-  fss::Dcf<1, fss_test::RangeUint127Group, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kLt> tiny{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
+  fss::Dcf<1, fss::group::Uint128<>, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kLt> tiny{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
   fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
   fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }
 
 TEST(DcfGpuRangeTest, kGtArithmeticGroupNarrowInputAndCappedFrontier) {
-  fss::Dcf<8, fss_test::RangeUint127Group, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kGt> scheme{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
+  fss::Dcf<8, fss::group::Uint128<>, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kGt> scheme{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
   fss_test::CheckGpuRange<8, uint8_t, 999, 1024>(scheme, 0, 255);
   fss_test::CheckGpuRange<8, uint8_t, 2, 4>(scheme, 13, 201);
-  fss::Dcf<1, fss_test::RangeUint127Group, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kGt> tiny{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
+  fss::Dcf<1, fss::group::Uint128<>, fss::prg::ChaCha<4>, uint8_t, fss::DcfPred::kGt> tiny{fss::prg::ChaCha<4>{kNonce0, kNonce1}};
   fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
   fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }
@@ -809,7 +810,7 @@ void CheckDcfGenHalfPredicates() {
 }
 
 TEST(DcfGenHalf, BytesSelectedAndFallback) { CheckDcfGenHalfPredicates<BytesGroup>(); }
-TEST(DcfGenHalf, Uint127SelectedAndFallback) { CheckDcfGenHalfPredicates<Uint127Group>(); }
+TEST(DcfGenHalf, Uint128SelectedAndFallback) { CheckDcfGenHalfPredicates<Uint128Group>(); }
 TEST(DcfGenHalf, GenericGroupSelectedAndFallback) { CheckDcfGenHalfPredicates<Uint64Group>(); }
 
 
@@ -952,8 +953,8 @@ void CheckDcfSplitStrides(In alpha) {
 // walk, and 6 and 8 run the batched EvalAll() frontier.
 TEST(DcfCwsTest, Depth1Lt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kLt>(1); }
 TEST(DcfCwsTest, Depth1Gt) { CheckDcfSplitStrides<1, BytesGroup, uint8_t, fss::DcfPred::kGt>(0); }
-TEST(DcfCwsTest, Depth3Uint127Lt) { CheckDcfSplitStrides<3, Uint127Group, uint8_t, fss::DcfPred::kLt>(5); }
-TEST(DcfCwsTest, Depth3Uint127Gt) { CheckDcfSplitStrides<3, Uint127Group, uint8_t, fss::DcfPred::kGt>(5); }
+TEST(DcfCwsTest, Depth3Uint128Lt) { CheckDcfSplitStrides<3, Uint128Group, uint8_t, fss::DcfPred::kLt>(5); }
+TEST(DcfCwsTest, Depth3Uint128Gt) { CheckDcfSplitStrides<3, Uint128Group, uint8_t, fss::DcfPred::kGt>(5); }
 TEST(DcfCwsTest, Depth6Lt) { CheckDcfSplitStrides<6, BytesGroup, uint8_t, fss::DcfPred::kLt>(11); }
 TEST(DcfCwsTest, Depth8Lt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kLt>(kAlpha); }
 TEST(DcfCwsTest, Depth8Gt) { CheckDcfSplitStrides<8, BytesGroup, uint8_t, fss::DcfPred::kGt>(kAlpha); }
@@ -1289,4 +1290,4 @@ void CheckSplitGpuLaunches() {
 }  // namespace
 
 TEST(DcfSplitGpuTest, SplitLaunchesMatchCwHost) { CheckSplitGpuLaunches<BytesGroup>(); }
-TEST(DcfSplitGpuTest, WideGroupSplitLaunchesCompile) { CheckSplitGpuLaunches<Uint127Group>(); }
+TEST(DcfSplitGpuTest, WideGroupSplitLaunchesCompile) { CheckSplitGpuLaunches<Uint128Group>(); }

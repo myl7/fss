@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Compile-only regression for the wide Uint127 Group in CUDA host stubs.
+// Compile-only regression for the Uint128 Group in CUDA host stubs.
 // Each function instantiates a fixed public GPU entry point; no main() and no
 // GPU work. Built as an object target under BUILD_TESTING.
 
@@ -12,7 +12,7 @@
 #include <fss/dcf.cuh>
 #include <fss/dmpf.cuh>
 #include <fss/dpf.cuh>
-#include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/half_tree_dpf.cuh>
 #include <fss/hash/blake3.cuh>
 #include <fss/prg/chacha.cuh>
@@ -22,8 +22,8 @@
 
 namespace probe {
 
-// The wide Group under audit.
-using Uint127 = fss::group::Uint<__uint128_t, static_cast<__uint128_t>(1) << 127>;
+// The clamped 127-bit Group under audit.
+using Uint128 = fss::group::Uint128<>;
 
 // Minimal CCR hash. Probes only need the expression shape for constraints.
 struct CcrHash {
@@ -35,12 +35,12 @@ using DcfPrg = fss::prg::ChaCha<4>;
 using Prp = fss::prp::ChaChaFeistel;
 using Hash = fss::hash::Blake3;
 
-using DpfScheme = fss::Dpf<8, Uint127, DpfPrg, uint32_t>;
-using DcfScheme = fss::Dcf<8, Uint127, DcfPrg, uint32_t, fss::DcfPred::kLt>;
-using HalfTreeScheme = fss::HalfTreeDpf<8, Uint127, CcrHash, uint32_t>;
-using VdpfScheme = fss::Vdpf<8, Uint127, DpfPrg, Hash, Hash, uint32_t>;
-using DmpfScheme = fss::Dmpf<8, 30, 4, Uint127, DpfPrg, Prp, uint32_t>;
-using VdmpfScheme = fss::Vdmpf<8, 30, 4, Uint127, DpfPrg, Hash, Hash, Prp, uint16_t>;
+using DpfScheme = fss::Dpf<8, Uint128, DpfPrg, uint32_t>;
+using DcfScheme = fss::Dcf<8, Uint128, DcfPrg, uint32_t, fss::DcfPred::kLt>;
+using HalfTreeScheme = fss::HalfTreeDpf<8, Uint128, CcrHash, uint32_t>;
+using VdpfScheme = fss::Vdpf<8, Uint128, DpfPrg, Hash, Hash, uint32_t>;
+using DmpfScheme = fss::Dmpf<8, 30, 4, Uint128, DpfPrg, Prp, uint32_t>;
+using VdmpfScheme = fss::Vdmpf<8, 30, 4, Uint128, DpfPrg, Hash, Hash, Prp, uint16_t>;
 
 }  // namespace probe
 

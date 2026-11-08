@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fss::group::Uint128<mod>`, the clamped 127-bit modular integer group in 128-bit storage. The modulus is the structural `fss::group::Uint128Modulus{low, high}` non-type template parameter (`(high << 64) | low`, default `2^127`), so the type is usable directly as a CUDA kernel template argument.
 - Closed-interval host evaluation for DPF, DCF, `HalfTreeDpf`, `PackedHalfTreeDpf`, and VDPF, with CUDA range evaluation for DCF.
 - VDPF sparse-batch and range Merkle accumulation on CPU and CUDA.
 - Single-path Grotto DCF evaluation without preprocessing, and the experimental `HalfTreeGrottoDcf` scheme with Python bindings.
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `__uint128_t` storage support from `fss::group::Uint`, which now accepts `uint8_t` through `uint64_t`; use `fss::group::Uint128` for the 127-bit group. The internal GPU group tags and kernel launch descriptors that worked around the wide-modulus stub limitation are gone, and kernels take the scheme or group types directly.
 - The aggregate `Key` structs of DCF, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, and VDPF; `Dpf::Key` remains as the `Dmpf::BucketKey` bucket storage. Schemes expose `kCwCount` for sizing component arrays instead.
 - Public `RelayoutGpu` and `RepackGpu` preparation helpers; generate layouts with the split or strided Gen overloads.
 - Public point-launcher helpers; launchers in `gpu::detail` are implementation details.

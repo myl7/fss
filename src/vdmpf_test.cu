@@ -7,6 +7,7 @@
 #include <fss/vdmpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/hash/blake3.cuh>
 #include <fss/prp/aes128_feistel.cuh>
@@ -15,7 +16,7 @@
 #include <fss/prp/chacha_feistel.cuh>
 
 using BytesGroup = fss::group::Bytes;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
+using Uint128Group = fss::group::Uint128<>;
 
 constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
@@ -589,7 +590,7 @@ protected:
 };
 
 using VdmpfBytesChaChaTest = VdmpfChaChaTest<BytesGroup>;
-using VdmpfUint128ChaChaTest = VdmpfChaChaTest<Uint127Group>;
+using VdmpfUint128ChaChaTest = VdmpfChaChaTest<Uint128Group>;
 
 TEST_F(VdmpfBytesChaChaTest, EvalAtAlpha) {
   TestEvalAtAlpha();
@@ -625,7 +626,7 @@ TEST_F(VdmpfUint128ChaChaTest, BatchEvalDuplicates) {
 // while kBucketCount = 112, so 59 inactive buckets contribute their check
 // seeds to both accumulators.
 using VdmpfSplitInactiveBytesTest = VdmpfChaChaTest<BytesGroup, 12, 64, 14>;
-using VdmpfSplitInactiveUint128Test = VdmpfChaChaTest<Uint127Group, 12, 64, 14>;
+using VdmpfSplitInactiveUint128Test = VdmpfChaChaTest<Uint128Group, 12, 64, 14>;
 
 TEST_F(VdmpfBytesChaChaTest, SplitMatchesFusedBatch) {
   TestSplitMatchesFusedBatch();

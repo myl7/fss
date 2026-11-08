@@ -759,15 +759,17 @@ HalfTreeGrottoDcf<in_bits, Hash, In>::PreprocessOwnedCws(
 
 namespace gpu::detail {
 
-#if defined(__CUDACC__)
-
-// Hold the scheme behind a tag so the shared packed point kernel does not spell
-// the scheme's hash in the host stub signature.
+// The shared packed point kernel reads the backend through these traits; the
+// Grotto scheme packs one share bit per output like PackedHalfTreeDpf.
 template <int in_bits, typename Hash, typename In>
-struct HalfTreeGrottoGpuKernelDescriptor {
-  using Scheme = HalfTreeGrottoDcf<in_bits, Hash, In>;
+struct HalfTreeGpuTraits<HalfTreeGrottoDcf<in_bits, Hash, In>> {
   using Backend = Hash;
+  static constexpr int kExpansionDepth = HalfTreeGrottoDcf<in_bits, Hash, In>::kDepth;
+  static constexpr int kOutputBits = HalfTreeGrottoDcf<in_bits, Hash, In>::kDepth;
+  static constexpr bool kPacked = true;
 };
+
+#if defined(__CUDACC__)
 
 /**
  * GPU point evaluation of nkeys HalfTree Grotto DCF keys: ys[k] = Eval(b,
@@ -799,8 +801,8 @@ void HalfTreeGrottoDcfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cu
     throw std::invalid_argument("HalfTreeGrottoDcfEvalPointGpu: cws must hold (kDepth+1)*nkeys elements");
   if (seeds.size() < count || xs.size() < count || ys == nullptr)
     throw std::invalid_argument("HalfTreeGrottoDcfEvalPointGpu: seeds, xs, and ys must cover nkeys entries");
-  using Descriptor = HalfTreeGrottoGpuKernelDescriptor<in_bits, Hash, In>;
-  PackedHalfTreeDpfEvalPointLaunch<unroll, true, in_bits, Descriptor, In, Query, bool>(b, seeds.data(), cws.data(),
+  using Scheme = HalfTreeGrottoDcf<in_bits, Hash, In>;
+  PackedHalfTreeDpfEvalPointLaunch<unroll, true, in_bits, Scheme, In, Query, bool>(b, seeds.data(), cws.data(),
       xs.data(), ys, nkeys, fss::detail::SchemeAccess::GetHash(dcf),
       fss::detail::SchemeAccess::GetInstanceSeed(dcf), stream);
 }

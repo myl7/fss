@@ -24,6 +24,7 @@
 #include <fss/half_tree_dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include "point_eval_cpu.cuh"
 #include <fss/prg/aes128_mmo_raw.cuh>
 #include <fss/prg/chacha.cuh>
@@ -33,7 +34,7 @@ namespace {
 
 using BytesGroup = fss::group::Bytes;
 using Uint8Group = fss::group::Uint<uint8_t>;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
+using Uint128Group = fss::group::Uint128<>;
 
 using Aes2 = fss::prg::Aes128MmoRaw<2>;
 using Aes1 = fss::prg::Aes128MmoRaw<1>;
@@ -356,12 +357,12 @@ struct Case {
 int main(int argc, char **argv) {
   const Case cases[] = {
       {"DpfPointEvalCpuTest.BytesAesRawEquivalence", [] { return RunDpfGrid<BytesGroup, Aes2>(); }},
-      {"DpfPointEvalCpuTest.Uint128ChaChaEquivalence", [] { return RunDpfGrid<Uint127Group, ChaCha2>(); }},
+      {"DpfPointEvalCpuTest.Uint128ChaChaEquivalence", [] { return RunDpfGrid<Uint128Group, ChaCha2>(); }},
       {"DpfPointEvalCpuTest.Uint8AesRawEquivalence", [] { return RunDpfGrid<Uint8Group, Aes2>(); }},
       {"DpfPointEvalCpuTest.Uint128InAesRawEquivalence", [] { return RunDpfU128In<BytesGroup, Aes2>(); }},
-      {"DpfPointEvalCpuTest.Uint128InChaChaEquivalence", [] { return RunDpfU128In<Uint127Group, ChaCha2>(); }},
+      {"DpfPointEvalCpuTest.Uint128InChaChaEquivalence", [] { return RunDpfU128In<Uint128Group, ChaCha2>(); }},
       {"HalfTreePointEvalCpuTest.BytesAesRawEquivalence", [] { return RunHalfTreeGrid<BytesGroup, Aes1>(); }},
-      {"HalfTreePointEvalCpuTest.Uint128ChaChaEquivalence", [] { return RunHalfTreeGrid<Uint127Group, OwnedAesCcr>(); }},
+      {"HalfTreePointEvalCpuTest.Uint128ChaChaEquivalence", [] { return RunHalfTreeGrid<Uint128Group, OwnedAesCcr>(); }},
       {"HalfTreePointEvalCpuTest.Uint8AesRawEquivalence", [] { return RunHalfTreeGrid<Uint8Group, Aes1>(); }},
       {"HalfTreePointEvalCpuTest.Uint128InAesRawEquivalence", [] { return RunHalfTreeU128In<BytesGroup, Aes1>(); }},
   };
@@ -390,7 +391,7 @@ TEST(DpfPointEvalCpuTest, BytesAesRawEquivalence) {
 }
 
 TEST(DpfPointEvalCpuTest, Uint128ChaChaEquivalence) {
-  EXPECT_TRUE((RunDpfGrid<Uint127Group, ChaCha2>()));
+  EXPECT_TRUE((RunDpfGrid<Uint128Group, ChaCha2>()));
 }
 
 TEST(DpfPointEvalCpuTest, Uint8AesRawEquivalence) {
@@ -402,7 +403,7 @@ TEST(DpfPointEvalCpuTest, Uint128InAesRawEquivalence) {
 }
 
 TEST(DpfPointEvalCpuTest, Uint128InChaChaEquivalence) {
-  EXPECT_TRUE((RunDpfU128In<Uint127Group, ChaCha2>()));
+  EXPECT_TRUE((RunDpfU128In<Uint128Group, ChaCha2>()));
 }
 
 TEST(HalfTreePointEvalCpuTest, BytesAesRawEquivalence) {
@@ -410,7 +411,7 @@ TEST(HalfTreePointEvalCpuTest, BytesAesRawEquivalence) {
 }
 
 TEST(HalfTreePointEvalCpuTest, Uint128ChaChaEquivalence) {
-  EXPECT_TRUE((RunHalfTreeGrid<Uint127Group, OwnedAesCcr>()));
+  EXPECT_TRUE((RunHalfTreeGrid<Uint128Group, OwnedAesCcr>()));
 }
 
 TEST(HalfTreePointEvalCpuTest, Uint8AesRawEquivalence) {

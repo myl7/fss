@@ -7,6 +7,7 @@
 #include <fss/dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include <fss/prg/aes128_mmo_raw.cuh>
@@ -27,7 +28,7 @@ static_assert(fss::ValidForInputBits<__uint128_t, 128>);
 static_assert(!fss::ValidForInputBits<__uint128_t, 129>);
 
 using BytesGroup = fss::group::Bytes;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
+using Uint128Group = fss::group::Uint128<>;
 using Uint64Group = fss::group::Uint<uint64_t>;
 
 // Helper to determine comparison size for each group type
@@ -35,7 +36,7 @@ template <typename Group>
 constexpr size_t GroupCompareSize() {
   if constexpr (std::is_same_v<Group, Uint64Group>) {
     return 8;  // Compare only first 8 bytes for uint64
-  } else if constexpr (std::is_same_v<Group, Uint127Group>) {
+  } else if constexpr (std::is_same_v<Group, Uint128Group>) {
     return 16;  // Compare 16 bytes (127 bits + control bit which is always 0)
   } else {
     return sizeof(int4);  // Full 16 bytes for Bytes group
@@ -161,7 +162,7 @@ public:
   DpfBytesChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(kNonce0, kNonce1)) {}
 };
 
-class DpfUint128ChaChaTest : public DpfTestBase<Uint127Group, fss::prg::ChaCha<2>> {
+class DpfUint128ChaChaTest : public DpfTestBase<Uint128Group, fss::prg::ChaCha<2>> {
 public:
   DpfUint128ChaChaTest() : DpfTestBase(fss::prg::ChaCha<2>(kNonce0, kNonce1)) {}
 };
@@ -640,8 +641,8 @@ TEST(DpfRangeTest, ChaChaBytesScalarAndPointOracles) {
   CheckDpfRangeSuite<BytesGroup>(fss::prg::ChaCha<2>(kNonce0, kNonce1));
 }
 
-TEST(DpfRangeTest, ChaChaUint127ScalarAndPointOracles) {
-  CheckDpfRangeSuite<Uint127Group>(fss::prg::ChaCha<2>(kNonce0, kNonce1));
+TEST(DpfRangeTest, ChaChaUint128ScalarAndPointOracles) {
+  CheckDpfRangeSuite<Uint128Group>(fss::prg::ChaCha<2>(kNonce0, kNonce1));
 }
 
 TEST(DpfRangeTest, AesSoftScalarAndPointOracles) {
@@ -655,7 +656,7 @@ TEST(DpfRangeTest, AesSoftScalarAndPointOracles) {
   fss::prg::aes_detail::InitSbox(sbox);
   fss::prg::Aes128Soft<2> prg(keys, table, sbox);
   CheckDpfRangeSuite<BytesGroup>(prg);
-  CheckDpfRangeSuite<Uint127Group>(prg);
+  CheckDpfRangeSuite<Uint128Group>(prg);
 }
 
 TEST(DpfRangeTest, ZeroDepthConfinesUnsafeAesBackendToCaller) {
@@ -668,7 +669,7 @@ TEST(DpfRangeTest, ZeroDepthConfinesUnsafeAesBackendToCaller) {
   DpfRangeObservedPrg observed{Prg(contexts), &calls};
   CheckDpfRange<5, BytesGroup>(observed, uint8_t{3}, uint8_t{29}, uint8_t{11}, 0);
   const __uint128_t maximum = ~__uint128_t{0};
-  CheckDpfRange<128, Uint127Group>(observed, maximum - 12, maximum, maximum, 0);
+  CheckDpfRange<128, Uint128Group>(observed, maximum - 12, maximum, maximum, 0);
   EXPECT_EQ(calls.inside.load(), 0);
   EXPECT_EQ(calls.maximum.load(), 1);
   EXPECT_FALSE(calls.other_thread.load());
@@ -716,10 +717,10 @@ TEST(DpfGpuRangeTest, WideDomainAndBoundedSubdivision) {
 }
 
 TEST(DpfGpuRangeTest, ArithmeticGroupNarrowInputAndCappedFrontier) {
-  fss::Dpf<8, fss_test::RangeUint127Group, fss::prg::ChaCha<2>, uint8_t> scheme{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
+  fss::Dpf<8, fss::group::Uint128<>, fss::prg::ChaCha<2>, uint8_t> scheme{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
   fss_test::CheckGpuRange<8, uint8_t, 999, 1024>(scheme, 0, 255);
   fss_test::CheckGpuRange<8, uint8_t, 2, 4>(scheme, 13, 201);
-  fss::Dpf<1, fss_test::RangeUint127Group, fss::prg::ChaCha<2>, uint8_t> tiny{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
+  fss::Dpf<1, fss::group::Uint128<>, fss::prg::ChaCha<2>, uint8_t> tiny{fss::prg::ChaCha<2>{kNonce0, kNonce1}};
   fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
   fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }
@@ -769,9 +770,9 @@ TEST(DpfGenHalf, BytesSelectedAndFallback) {
   CheckDpfGenHalf<BytesGroup, true>();
   CheckDpfGenHalf<BytesGroup, false>();
 }
-TEST(DpfGenHalf, Uint127SelectedAndFallback) {
-  CheckDpfGenHalf<Uint127Group, true>();
-  CheckDpfGenHalf<Uint127Group, false>();
+TEST(DpfGenHalf, Uint128SelectedAndFallback) {
+  CheckDpfGenHalf<Uint128Group, true>();
+  CheckDpfGenHalf<Uint128Group, false>();
 }
 TEST(DpfGenHalf, GenericGroupSelectedAndFallback) {
   CheckDpfGenHalf<Uint64Group, true>();
@@ -903,9 +904,9 @@ TEST(DpfComponentEval, BytesDepth128) {
       WideComponentQueries(alpha), alpha, kComponentBeta);
 }
 
-TEST(DpfComponentEval, Uint127Depth128) {
+TEST(DpfComponentEval, Uint128Depth128) {
   const __uint128_t alpha = (__uint128_t{1} << 127) | (__uint128_t{1} << 64) | 0x42;
-  CheckComponentEvalStrides<Uint127Group, 128, __uint128_t>(
+  CheckComponentEvalStrides<Uint128Group, 128, __uint128_t>(
       WideComponentQueries(alpha), alpha, kComponentBeta);
 }
 
@@ -1853,7 +1854,7 @@ TEST(DpfComponentGen, HostFixedAndStridedMatchLegacy) {
   CheckSingleGenCases(false);
 }
 
-TEST(DpfComponentGen, Uint127HostTerminal) {
+TEST(DpfComponentGen, Uint128HostTerminal) {
   const int4 beta = make_int4(kComponentBeta.x, kComponentBeta.y, kComponentBeta.z,
       kComponentBeta.w | 1);
   const __uint128_t alpha = (__uint128_t{1} << 127) | (__uint128_t{1} << 64) | 0x42;
@@ -1863,7 +1864,7 @@ TEST(DpfComponentGen, Uint127HostTerminal) {
   const std::vector<__uint128_t> q = WideComponentQueries(alpha);
   const std::vector<__uint128_t> queries[1] = {q};
   for (const size_t stride : {size_t{1}, size_t{2}, size_t{7}}) {
-    CheckGenSharedHost<1, Uint127Group, 128, __uint128_t>(seeds, alphas, betas, queries,
+    CheckGenSharedHost<1, Uint128Group, 128, __uint128_t>(seeds, alphas, betas, queries,
         stride);
   }
 }
@@ -2052,14 +2053,14 @@ TEST(DpfCwsTest, Depth1) { CheckDpfSplitStrides<1, BytesGroup, uint8_t>(1); }
 TEST(DpfCwsTest, Depth3) { CheckDpfSplitStrides<3, BytesGroup, uint8_t>(5); }
 TEST(DpfCwsTest, Depth6) { CheckDpfSplitStrides<6, BytesGroup, uint8_t>(43); }
 TEST(DpfCwsTest, Depth8) { CheckDpfSplitStrides<8, BytesGroup, uint16_t>(165); }
-TEST(DpfCwsTest, Depth8Uint127) { CheckDpfSplitStrides<8, Uint127Group, uint16_t>(165); }
+TEST(DpfCwsTest, Depth8Uint128) { CheckDpfSplitStrides<8, Uint128Group, uint16_t>(165); }
 TEST(DpfCwsTest, Depth8GenericGroup) { CheckDpfSplitStrides<8, Uint64Group, uint16_t>(165); }
 
 // A 128-bit input domain keeps EvalRange() in the wide-input instantiation,
 // where the input width equals in_bits.
 TEST(DpfCwsTest, WideInputRange) {
   using Prg = fss::prg::ChaCha<2>;
-  using Scheme = fss::Dpf<128, Uint127Group, Prg, __uint128_t>;
+  using Scheme = fss::Dpf<128, Uint128Group, Prg, __uint128_t>;
   Scheme scheme{Prg(kNonce0, kNonce1)};
   const __uint128_t alpha = (__uint128_t{1} << 127) | (__uint128_t{1} << 64) | 0x42;
   const __uint128_t first = (__uint128_t{1} << 100) + 3;
@@ -2459,7 +2460,7 @@ void CheckDpfSplitGpuLaunches() {
 }  // namespace
 
 TEST(DpfSplitGpuTest, SplitLaunchesMatchDenseHost) { CheckDpfSplitGpuLaunches<BytesGroup>(); }
-TEST(DpfSplitGpuTest, WideGroupSplitLaunchesCompile) { CheckDpfSplitGpuLaunches<Uint127Group>(); }
+TEST(DpfSplitGpuTest, WideGroupSplitLaunchesCompile) { CheckDpfSplitGpuLaunches<Uint128Group>(); }
 
 // The split EvalAll and EvalRange buffer checks stay host-boundary throws; the
 // split Gen, split Eval, and terminal requirements are low-level preconditions.

@@ -816,18 +816,16 @@ inline cudaError_t VdmpfFullLaunchBlocks(size_t count, int threads, int &blocks)
   return cudaSuccess;
 }
 
-// The VDPF descriptor keeps wide Group non-type template parameters out of
-// CUDA host stubs. The correction words stay opaque on the host and recover their type
-// in the device body.
-template <int in_bits, int bucket_bits, typename Descriptor, typename In, typename Prp>
+// The correction words stay opaque on the host and recover their type in the
+// device body.
+template <int in_bits, int bucket_bits, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename In, typename Prp>
 __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_size,
     int choices, const int4 *s0s, const void *cws_bytes, const int4 *cs, int4 *ys,
     uint32_t *buckets, VdmpfFullNode *nodes, uint32_t *counts, size_t count,
-    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
-    typename Descriptor::HashBackend hash, Prp prp) {
-  using Group = typename Descriptor::Group;
-  using Inner = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
+    Prg prg, XorHash xor_hash, Hash hash, Prp prp) {
+  using Inner = Vdpf<bucket_bits, Group, Prg, XorHash, Hash, __uint128_t>;
+  const auto *cws = static_cast<const typename Inner::Cw *>(cws_bytes);
   size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (omega >= count) return;
   Inner inner{prg, xor_hash, hash};
@@ -839,7 +837,7 @@ __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_siz
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
     auto corrected = fss::detail::SchemeAccess::VdpfEvalCw(inner, b, s0s[bucket],
-        cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
+        cuda::std::span<const typename Inner::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
     // Stable sorting by bucket preserves this outer-input, candidate order.
     size_t record = static_cast<size_t>(choices) * omega + k;
@@ -855,15 +853,14 @@ __global__ void VdmpfFullLeavesKernel(bool b, int4 sigma, __uint128_t bucket_siz
 // instead of the thread index. Records keep the (query, candidate) order of
 // the stable sort, matching the canonical order the host BatchEvalMerkle
 // folds its per-bucket leaves in.
-template <int in_bits, int bucket_bits, typename Descriptor, typename In, typename Prp>
+template <int in_bits, int bucket_bits, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename In, typename Prp>
 __global__ void VdmpfBatchLeavesKernel(bool b, int4 sigma, __uint128_t bucket_size,
     int choices, const In *xs, const int4 *s0s, const void *cws_bytes, const int4 *cs, int4 *ys,
     uint32_t *buckets, VdmpfFullNode *nodes, uint32_t *counts, size_t count,
-    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
-    typename Descriptor::HashBackend hash, Prp prp) {
-  using Group = typename Descriptor::Group;
-  using Inner = typename Descriptor::Scheme;
-  const auto *cws = static_cast<const typename Descriptor::Cw *>(cws_bytes);
+    Prg prg, XorHash xor_hash, Hash hash, Prp prp) {
+  using Inner = Vdpf<bucket_bits, Group, Prg, XorHash, Hash, __uint128_t>;
+  const auto *cws = static_cast<const typename Inner::Cw *>(cws_bytes);
   size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (omega >= count) return;
   Inner inner{prg, xor_hash, hash};
@@ -875,7 +872,7 @@ __global__ void VdmpfBatchLeavesKernel(bool b, int4 sigma, __uint128_t bucket_si
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
     auto corrected = fss::detail::SchemeAccess::VdpfEvalCw(inner, b, s0s[bucket],
-        cuda::std::span<const typename Descriptor::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
+        cuda::std::span<const typename Inner::Cw>(cws + bucket * (bucket_bits + 1), bucket_bits + 1),
         cuda::std::span<const int4, 4>(cs + bucket * 4, 4), location.index, value);
     // Stable sorting by bucket preserves this outer-query, candidate order.
     size_t record = static_cast<size_t>(choices) * omega + k;
@@ -989,12 +986,14 @@ __global__ void VdmpfLocateKernel(
 // hash pi_tilde at its contribution index. cws holds the key's own
 // bucket-major rows of inner VDPF correction words; cs and ocws are indexed
 // by bucket.
-template <int bucket_bits, int unroll, bool b, typename Descriptor>
+template <int bucket_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash,
+    typename Hash>
 __global__ void VdmpfBatchEvalKernel(int4 *ys, int n, int m_rt, const int4 *s0s,
-    const typename Descriptor::Cw *cws, const cuda::std::array<int4, 4> *cs, const int4 *ocws,
+    const typename Vdpf<bucket_bits, Group, Prg, XorHash, Hash, __uint128_t>::Cw *cws,
+    const cuda::std::array<int4, 4> *cs, const int4 *ocws,
     cuda::std::array<int4, 4> *pi_tilde_buf, const uint32_t *keys, const uint64_t *vals,
-    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash) {
-  using Group = typename Descriptor::Group;
+    Prg prg, XorHash xor_hash) {
+  using Cw = typename Vdpf<bucket_bits, Group, Prg, XorHash, Hash, __uint128_t>::Cw;
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   auto acc = Group::From(Zero4());
@@ -1009,7 +1008,7 @@ __global__ void VdmpfBatchEvalKernel(int4 *ys, int n, int m_rt, const int4 *s0s,
 
 #pragma unroll unroll
     for (int i = 0; i < bucket_bits; ++i) {
-      const typename Descriptor::Cw &cw = cws[static_cast<size_t>(bucket) * (bucket_bits + 1) + i];
+      const Cw &cw = cws[static_cast<size_t>(bucket) * (bucket_bits + 1) + i];
       int4 s_cw = cw.s;
       bool tr_cw = cw.tr;
       bool tl_cw = fss::util::GetLsb(s_cw);
@@ -1343,15 +1342,13 @@ void VdmpfBatchEvalMerkleGpu(bool b, cuda::std::span<const In> xs, int4 *ys, cud
   CheckCudaStatus(cudaGetLastError());
   CheckCudaStatus(cub::DeviceRadixSort::SortPairs(
       d_cub_temp, cub_bytes, d_keys, d_keys_out, d_vals, d_vals_out, static_cast<int>(total), 0, 16, stream));
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = VdpfGpuKernelDescriptor<bucket_bits, GroupTag, Prg, XorHash, Hash, __uint128_t>;
   if (b) {
-    VdmpfBatchEvalKernel<bucket_bits, unroll, true, Descriptor><<<blocks, kBs, 0, stream>>>(
+    VdmpfBatchEvalKernel<bucket_bits, unroll, true, Group, Prg, XorHash, Hash><<<blocks, kBs, 0, stream>>>(
         ys, n, m_rt, s0s.data(), cws.data(), cs.data(), ocws.data(), d_pi_tilde, d_keys, d_vals,
         fss::detail::SchemeAccess::GetPrg(vdmpf),
         fss::detail::SchemeAccess::GetXorHash(vdmpf));
   } else {
-    VdmpfBatchEvalKernel<bucket_bits, unroll, false, Descriptor>
+    VdmpfBatchEvalKernel<bucket_bits, unroll, false, Group, Prg, XorHash, Hash>
         <<<blocks, kBs, 0, stream>>>(
             ys, n, m_rt, s0s.data(), cws.data(), cs.data(), ocws.data(), d_pi_tilde, d_keys, d_vals,
         fss::detail::SchemeAccess::GetPrg(vdmpf),
@@ -2046,9 +2043,6 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
   static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
       "gpu block size must be a power of two in [1,1024]");
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor =
-      gpu::detail::VdpfGpuKernelDescriptor<bucket_bits, GroupTag, Prg, XorHash, Hash, __uint128_t>;
   constexpr size_t kOutputs = size_t{1} << in_bits;
   constexpr size_t kBuckets = kBucketCount;
   constexpr size_t kCwStride = bucket_bits + 1;
@@ -2097,7 +2091,7 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
     gpu::detail::VdmpfFullClearCountsKernel<<<bucket_grid, threads_per_block, 0, stream>>>(counts, kBuckets);
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
-    gpu::detail::VdmpfFullLeavesKernel<in_bits, bucket_bits, Descriptor, In, Prp>
+    gpu::detail::VdmpfFullLeavesKernel<in_bits, bucket_bits, Group, Prg, XorHash, Hash, In, Prp>
         <<<query_grid, threads_per_block, 0, stream>>>(b, sigma, b_size_rt,
             kCuckooChoices, s0s.data(), cws.data(), cs.data(), ys.data(), keys, nodes, counts, kOutputs,
             prg_, xor_hash_, hash_, prp_);
@@ -2168,9 +2162,6 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
   static_assert(threads_per_block >= 1 && threads_per_block <= 1024 &&
       (threads_per_block & (threads_per_block - 1)) == 0,
       "gpu block size must be a power of two in [1,1024]");
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor =
-      gpu::detail::VdpfGpuKernelDescriptor<bucket_bits, GroupTag, Prg, XorHash, Hash, __uint128_t>;
   constexpr size_t kBuckets = kBucketCount;
   constexpr size_t kCwStride = bucket_bits + 1;
   constexpr size_t kMax = std::numeric_limits<size_t>::max();
@@ -2218,7 +2209,7 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
   gpu::detail::VdmpfFullClearCountsKernel<<<bucket_grid, threads_per_block, 0, stream>>>(counts, kBuckets);
   status = cudaGetLastError();
   if (status != cudaSuccess) return status;
-  gpu::detail::VdmpfBatchLeavesKernel<in_bits, bucket_bits, Descriptor, In, Prp>
+  gpu::detail::VdmpfBatchLeavesKernel<in_bits, bucket_bits, Group, Prg, XorHash, Hash, In, Prp>
       <<<query_grid, threads_per_block, 0, stream>>>(b, sigma, b_size_rt,
           kCuckooChoices, xs.data(), s0s.data(), cws.data(), cs.data(), ys.data(), keys, nodes,
           counts, count, prg_, xor_hash_, hash_, prp_);

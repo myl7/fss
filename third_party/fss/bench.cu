@@ -6,6 +6,7 @@
 #include <fss/dcf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/aes128_mmo.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
 #include <fss/prg/chacha.cuh>
@@ -49,27 +50,8 @@ constexpr int kNumBlocks = (kN + kThreadsPerBlock - 1) / kThreadsPerBlock;
 
 using BytesGroup = fss::group::Bytes;
 
-// Wrap Uint<__uint128_t, 2^127> in a plain struct to avoid embedding a 128-bit
-// integer literal in __global__ function stubs (nvcc stub gen bug).
-struct UintGroup {
-  using Impl = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
-  Impl impl;
-
-  __host__ __device__ UintGroup operator+(UintGroup rhs) const {
-    return {impl + rhs.impl};
-  }
-  __host__ __device__ UintGroup operator-() const {
-    return {-impl};
-  }
-  __host__ __device__ static UintGroup From(int4 buf) {
-    UintGroup g;
-    g.impl = Impl::From(buf);
-    return g;
-  }
-  __host__ __device__ int4 Into() const {
-    return impl.Into();
-  }
-};
+// The clamped 127-bit modular integer group with mod 2^127.
+using UintGroup = fss::group::Uint128<>;
 static_assert(Groupable<UintGroup>);
 
 #define CUDA_CHECK(x) \
@@ -1780,15 +1762,12 @@ static void BM_GpuFullEvalAll(benchmark::State &state) {
     constexpr size_t n = size_t{1} << kInBits;
     int active_blocks = 0;
     if constexpr (half_tree) {
-      using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-      using Descriptor = fss::gpu::detail::HalfTreeGpuKernelDescriptor<kInBits, GroupTag, GpuCcr, uint>;
-      auto *kernel = &fss::gpu::detail::HalfTreeSplitEvalAllKernel<Descriptor, z, b1>;
+      using Scheme = fss::HalfTreeDpf<kInBits, Group, GpuCcr, uint>;
+      auto *kernel = &fss::gpu::detail::HalfTreeSplitEvalAllKernel<Scheme, z, b1>;
       CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, kernel, kThreadsPerBlock, size_t{0}));
     } else {
-      using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-      using Descriptor =
-          fss::gpu::detail::DpfGpuKernelDescriptor<kInBits, GroupTag, fss::prg::ChaCha<2>, uint>;
-      auto *kernel = &fss::gpu::detail::DpfSplitEvalAllKernel<Descriptor, z, b1>;
+      using Scheme = fss::Dpf<kInBits, Group, fss::prg::ChaCha<2>, uint>;
+      auto *kernel = &fss::gpu::detail::DpfSplitEvalAllKernel<Scheme, z, b1>;
       CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, kernel, kThreadsPerBlock, size_t{0}));
     }
     if (active_blocks == 0) {

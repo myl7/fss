@@ -8,6 +8,7 @@
 #include <vector>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/hash/blake3.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/chacha_feistel.cuh>
@@ -15,24 +16,6 @@
 #include "core_api_test_helpers.cuh"
 
 namespace {
-
-// A named wrapper keeps the 128-bit modulus out of nvcc kernel stubs.
-struct Uint127Group {
-  using Impl = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
-  Impl value;
-  __host__ __device__ Uint127Group operator+(Uint127Group rhs) const {
-    return {value + rhs.value};
-  }
-  __host__ __device__ Uint127Group operator-() const {
-    return {-value};
-  }
-  __host__ __device__ static Uint127Group From(int4 input) {
-    return {Impl::From(input)};
-  }
-  __host__ __device__ int4 Into() const {
-    return value.Into();
-  }
-};
 
 template <typename T>
 class DeviceBuffer {
@@ -452,7 +435,7 @@ protected:
 };
 
 using VdmpfBytesGpuTest = VdmpfGpuTest<fss::group::Bytes>;
-using VdmpfUint128GpuTest = VdmpfGpuTest<Uint127Group>;
+using VdmpfUint128GpuTest = VdmpfGpuTest<fss::group::Uint128<>>;
 
 TEST_F(VdmpfBytesGpuTest, BatchEval) {
   TestBatchEval(true);

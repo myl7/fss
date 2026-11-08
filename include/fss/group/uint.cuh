@@ -18,17 +18,14 @@ namespace fss::group {
  * Unsigned integers with arithmetic addition and optional modulo as a group.
  * @ingroup fss_api
  *
- * @tparam T Type to store the value. From uint8_t to __uint128_t.
+ * @tparam T Type to store the value. From uint8_t to uint64_t.
  * @tparam mod Modulus, making the group addition defined as $a + b \mod mod$.
  * If 0, use $a + b$ as the group addition, i.e., same as $mod = 2^{sizeof(T) * 8}$.
- *
- * When T = __uint128_t, because elements are clamped, any element has < 2^127 and 0 < mod <= 2^127.
  *
  * Note that if you will use these groups as fields, i.e., perform multiplication, you must set mod to a prime number so that for random $a, b$, $a \cdot b$ is uniformly distributed in the field.
  */
 template <typename T, T mod = 0>
-  requires((std::is_unsigned_v<T> || std::is_same_v<T, __uint128_t>) && sizeof(T) <= 16 &&
-      (sizeof(T) < 16 || (mod > 0 && mod <= static_cast<T>(1) << 127)))
+  requires(std::is_unsigned_v<T> && sizeof(T) <= 8)
 class Uint {
 public:
   // Groupable interface.
@@ -62,11 +59,6 @@ public:
     else if constexpr (sizeof(T) == 4) value = static_cast<unsigned int>(buf.x);
     else if constexpr (sizeof(T) == 8)
       value = static_cast<T>(static_cast<unsigned int>(buf.x)) | static_cast<T>(static_cast<unsigned int>(buf.y)) << 32;
-    else if constexpr (sizeof(T) == 16)
-      value = static_cast<T>(static_cast<unsigned int>(buf.x)) | static_cast<T>(static_cast<unsigned int>(buf.y)) << 32 |
-          static_cast<T>(static_cast<unsigned int>(buf.z)) << 64 |
-          // For uint128, LSB of buf.w is the clamped bit
-          static_cast<T>(static_cast<unsigned int>(buf.w) >> 1) << 96;
     else __builtin_unreachable();
 
     if constexpr (mod > 0) value %= mod;
@@ -81,12 +73,6 @@ public:
     else if constexpr (sizeof(T) == 8) {
       buf.x = static_cast<int>(val_ & 0xffffffff);
       buf.y = static_cast<int>(val_ >> 32);
-    } else if constexpr (sizeof(T) == 16) {
-      buf.x = static_cast<int>(val_ & 0xffffffff);
-      buf.y = static_cast<int>((val_ >> 32) & 0xffffffff);
-      buf.z = static_cast<int>((val_ >> 64) & 0xffffffff);
-      // For uint128, its LSB is the clamped bit
-      buf.w = static_cast<int>((val_ >> 96) << 1);
     } else __builtin_unreachable();
     return buf;
   }
@@ -106,24 +92,5 @@ static_assert(Groupable<Uint<uint8_t>>);
 static_assert(Groupable<Uint<uint16_t>>);
 static_assert(Groupable<Uint<uint32_t>>);
 static_assert(Groupable<Uint<uint64_t>>);
-static_assert(Groupable<Uint<__uint128_t, static_cast<__uint128_t>(1) << 127>>);
 
 }  // namespace fss::group
-
-// -----------------------------------------------------------------------------
-
-namespace fss::detail {
-
-// Lossless low/high tag: stores the modulus in two 64-bit halves so CUDA stubs avoid wide NTTPs.
-template <typename T, uint64_t low, uint64_t high>
-struct UintGpuGroupTag {
-  using type = group::Uint<T, static_cast<T>((static_cast<__uint128_t>(high) << 64) | static_cast<__uint128_t>(low))>;
-};
-
-template <typename T, T mod>
-struct GpuGroupTag<group::Uint<T, mod>> {
-  using Type = UintGpuGroupTag<T, static_cast<uint64_t>(mod),
-      static_cast<uint64_t>(static_cast<__uint128_t>(mod) >> 64)>;
-};
-
-}  // namespace fss::detail

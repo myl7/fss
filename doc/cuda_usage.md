@@ -1,13 +1,7 @@
 # CUDA usage notes
 
-## Uint as a kernel template argument
+## Group types as kernel template arguments
 
-
-nvcc fails to compile the stub file when `fss::group::Uint<__uint128_t, ...>` is used as a template argument to a `__global__` kernel.
-Every kernel instantiation gets a host stub, and the stub spells the modulus as unsuffixed decimal literals; a 64-bit half of the modulus at or above 2^63 is not a valid unsuffixed literal for the host compiler.
-`__device__` functions are not affected, because no stub is generated for them.
-The failure comes from how nvcc generates the host stub, not from a particular toolkit version.
-
-Workaround: wrap the type in a plain aggregate struct that satisfies `Groupable` but has no `__uint128_t` non-type template parameter in its name.
-The struct must have no user-declared constructors to remain an aggregate.
-See `third_party/fss/bench.cu` for an example.
+The built-in groups are safe to use as `__global__` kernel template arguments.
+`fss::group::Uint128<fss::group::Uint128Modulus{.low = ..., .high = ...}>` carries its modulus as one structural non-type template parameter whose two `uint64_t` fields hold the low and high halves, because nvcc host stubs cannot spell a `__uint128_t` non-type template parameter.
+`fss::group::Uint<T, mod>` keeps the modulus in `T` itself, so it is limited to `T` up to `uint64_t`.

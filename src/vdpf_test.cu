@@ -9,12 +9,13 @@
 #include <fss/vdpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/hash/blake3.cuh>
 #include "core_api_test_helpers.cuh"
 
 using BytesGroup = fss::group::Bytes;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
+using Uint128Group = fss::group::Uint128<>;
 
 constexpr uint16_t kAlpha = 107;
 constexpr int kAlphaBits = 16;
@@ -434,7 +435,7 @@ protected:
 };
 
 using VdpfBytesChaChaTest = VdpfChaChaTest<BytesGroup>;
-using VdpfUint128ChaChaTest = VdpfChaChaTest<Uint127Group>;
+using VdpfUint128ChaChaTest = VdpfChaChaTest<Uint128Group>;
 
 TEST_F(VdpfBytesChaChaTest, EvalAtAlpha) {
   TestEvalAtAlpha();
@@ -493,18 +494,6 @@ TEST_F(VdpfUint128ChaChaTest, BatchEvalMerkle) {
 }
 
 namespace {
-
-struct MerkleRangeUint127Group {
-  Uint127Group value;
-  __host__ __device__ MerkleRangeUint127Group operator+(MerkleRangeUint127Group rhs) const {
-    return {value + rhs.value};
-  }
-  __host__ __device__ MerkleRangeUint127Group operator-() const { return {-value}; }
-  __host__ __device__ static MerkleRangeUint127Group From(int4 input) {
-    return {Uint127Group::From(input)};
-  }
-  __host__ __device__ int4 Into() const { return value.Into(); }
-};
 
 template <typename T>
 struct MerkleRangeDeviceBuffer {
@@ -612,9 +601,9 @@ TEST(VdpfRangeMerkle, CpuOddAndOffsetBytes) {
     CheckRangeMerkle<16, uint16_t, BytesGroup>(3, 3 + count - 1, false);
 }
 
-TEST(VdpfRangeMerkle, CpuOddAndOffsetUint127) {
+TEST(VdpfRangeMerkle, CpuOddAndOffsetUint128) {
   for (uint16_t count : {1, 4, 5, 7, 13})
-    CheckRangeMerkle<16, uint16_t, MerkleRangeUint127Group>(3, 3 + count - 1, false);
+    CheckRangeMerkle<16, uint16_t, Uint128Group>(3, 3 + count - 1, false);
 }
 
 TEST(VdpfRangeMerkle, CpuWideDomain) {
@@ -631,10 +620,10 @@ TEST(VdpfRangeMerkle, GpuOddAndOffsetBytes) {
     CheckRangeMerkle<16, uint16_t, BytesGroup>(3, 3 + count - 1, true);
 }
 
-TEST(VdpfRangeMerkle, GpuOddAndOffsetUint127) {
+TEST(VdpfRangeMerkle, GpuOddAndOffsetUint128) {
   if (!HasMerkleRangeDevice()) GTEST_SKIP() << "no CUDA device available";
   for (uint16_t count : {1, 4, 5, 7, 13})
-    CheckRangeMerkle<16, uint16_t, MerkleRangeUint127Group>(3, 3 + count - 1, true);
+    CheckRangeMerkle<16, uint16_t, Uint128Group>(3, 3 + count - 1, true);
 }
 
 TEST(VdpfRangeMerkle, GpuWideDomain) {
@@ -764,7 +753,7 @@ TEST(VdpfBatchMerkle, CpuMatchesPointwiseEvalAndProveMerkle) {
   std::mt19937 gen(rd());
   for (const auto &xs : BatchQuerySequences<uint16_t>(7, gen)) {
     CheckBatchMerkle<16, uint16_t, BytesGroup>(xs, false);
-    CheckBatchMerkle<16, uint16_t, MerkleRangeUint127Group>(xs, false);
+    CheckBatchMerkle<16, uint16_t, Uint128Group>(xs, false);
   }
 }
 
@@ -789,7 +778,7 @@ TEST(VdpfBatchMerkle, GpuCustomThreadsMatchHost) {
   const auto queries = BatchQuerySequences<uint16_t>(7, gen);
   CheckBatchMerkle<16, uint16_t, BytesGroup, 64>(queries[0], true);
   CheckBatchMerkle<16, uint16_t, BytesGroup, 1>(queries[1], true);
-  CheckBatchMerkle<16, uint16_t, MerkleRangeUint127Group, 1024>(queries[3], true);
+  CheckBatchMerkle<16, uint16_t, Uint128Group, 1024>(queries[3], true);
 }
 
 TEST(VdpfBatchMerkle, GpuRejectsInvalidBatchArguments) {
@@ -889,7 +878,7 @@ void CheckFixedBit96CaseRejects(bool merkle) {
   SCOPED_TRACE(merkle ? "Merkle" : "chain");
   using Input = __uint128_t;
   using Hash = fss::hash::Blake3;
-  using Scheme = fss::Vdpf<97, Uint127Group, fss::prg::ChaCha<2>, Hash, Hash, Input>;
+  using Scheme = fss::Vdpf<97, Uint128Group, fss::prg::ChaCha<2>, Hash, Hash, Input>;
   const int4 iv[2]{};
   Hash hash{cuda::std::span<const int4, 2>(iv, 2)};
   Scheme scheme{fss::prg::ChaCha<2>{0, 0}, hash, hash};
@@ -939,7 +928,7 @@ void CheckFixedBit96CaseRejects(bool merkle) {
   for (int i = 0; i < 2; ++i) {
     SCOPED_TRACE(::testing::Message() << "query index " << i);
     const int4 reconstructed =
-        (Uint127Group::From(outputs[0][i]) + Uint127Group::From(outputs[1][i])).Into();
+        (Uint128Group::From(outputs[0][i]) + Uint128Group::From(outputs[1][i])).Into();
     ExpectMerkleBlock(reconstructed, expected[i]);
     ASSERT_NE(reconstructed.x | reconstructed.y | reconstructed.z | reconstructed.w, 0);
   }
@@ -1161,9 +1150,9 @@ TEST(VdpfGenHalf, BytesSelectedAndFallbackProofs) {
   CheckVdpfGenHalf<BytesGroup, true>();
   CheckVdpfGenHalf<BytesGroup, false>();
 }
-TEST(VdpfGenHalf, Uint127SelectedAndFallbackProofs) {
-  CheckVdpfGenHalf<Uint127Group, true>();
-  CheckVdpfGenHalf<Uint127Group, false>();
+TEST(VdpfGenHalf, Uint128SelectedAndFallbackProofs) {
+  CheckVdpfGenHalf<Uint128Group, true>();
+  CheckVdpfGenHalf<Uint128Group, false>();
 }
 TEST(VdpfGenHalf, GenericGroupSelectedAndFallbackProofs) {
   using Group = fss::group::Uint<uint64_t>;
@@ -1266,8 +1255,8 @@ TEST(VdpfSplitForm, MiddleBitsUint32) {
 TEST(VdpfSplitForm, WideUint128) {
   CheckVdpfSplitForm<128, __uint128_t, BytesGroup>(static_cast<__uint128_t>(1) << 127);
 }
-TEST(VdpfSplitForm, WideUint128Uint127Group) {
-  CheckVdpfSplitForm<128, __uint128_t, Uint127Group>((static_cast<__uint128_t>(1) << 127) + 7);
+TEST(VdpfSplitForm, WideUint128Uint128Group) {
+  CheckVdpfSplitForm<128, __uint128_t, Uint128Group>((static_cast<__uint128_t>(1) << 127) + 7);
 }
 
 namespace {

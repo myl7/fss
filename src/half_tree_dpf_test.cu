@@ -7,6 +7,7 @@
 #include <fss/half_tree_dpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prg/aes128_mmo_soft.cuh>
 #include <fss/prg/aes128_mmo_raw.cuh>
@@ -17,14 +18,14 @@
 #include <limits>
 
 using BytesGroup = fss::group::Bytes;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
+using Uint128Group = fss::group::Uint128<>;
 using Uint64Group = fss::group::Uint<uint64_t>;
 
 template <typename Group>
 constexpr size_t GroupCompareSize() {
   if constexpr (std::is_same_v<Group, Uint64Group>) {
     return 8;
-  } else if constexpr (std::is_same_v<Group, Uint127Group>) {
+  } else if constexpr (std::is_same_v<Group, Uint128Group>) {
     return 16;
   } else {
     return sizeof(int4);
@@ -146,7 +147,7 @@ protected:
 };
 
 using HalfTreeDpfBytesOwnedAesCcrTest = HalfTreeDpfOwnedAesCcrTest<BytesGroup>;
-using HalfTreeDpfUint128OwnedAesCcrTest = HalfTreeDpfOwnedAesCcrTest<Uint127Group>;
+using HalfTreeDpfUint128OwnedAesCcrTest = HalfTreeDpfOwnedAesCcrTest<Uint128Group>;
 using HalfTreeDpfUint64OwnedAesCcrTest = HalfTreeDpfOwnedAesCcrTest<Uint64Group>;
 
 TEST_F(HalfTreeDpfBytesOwnedAesCcrTest, EvalAtAlpha) {
@@ -294,7 +295,7 @@ protected:
 };
 
 using HalfTreeDpfBytesAesSoftTest = HalfTreeDpfAesSoftTest<BytesGroup>;
-using HalfTreeDpfUint128AesSoftTest = HalfTreeDpfAesSoftTest<Uint127Group>;
+using HalfTreeDpfUint128AesSoftTest = HalfTreeDpfAesSoftTest<Uint128Group>;
 using HalfTreeDpfUint64AesSoftTest = HalfTreeDpfAesSoftTest<Uint64Group>;
 
 TEST_F(HalfTreeDpfBytesAesSoftTest, EvalAtAlpha) {
@@ -420,7 +421,7 @@ protected:
 };
 
 using HalfTreeDpfBytesOneBitTest = HalfTreeDpfOneBitTest<BytesGroup>;
-using HalfTreeDpfUint128OneBitTest = HalfTreeDpfOneBitTest<Uint127Group>;
+using HalfTreeDpfUint128OneBitTest = HalfTreeDpfOneBitTest<Uint128Group>;
 using HalfTreeDpfUint64OneBitTest = HalfTreeDpfOneBitTest<Uint64Group>;
 
 TEST_F(HalfTreeDpfBytesOneBitTest, EvalAtAlpha) {
@@ -757,7 +758,7 @@ TEST(HalfTreeRange, EverySmallClosedInterval) {
   }
   for (int depth : {0, 3}) {
     CheckHalfTreeRange<1>(uint8_t{0}, uint8_t{1}, uint8_t{1}, depth);
-    CheckHalfTreeRange<5, uint8_t, Uint127Group>(uint8_t{3}, uint8_t{24}, uint8_t{17}, depth);
+    CheckHalfTreeRange<5, uint8_t, Uint128Group>(uint8_t{3}, uint8_t{24}, uint8_t{17}, depth);
     CheckHalfTreeRange<5, uint8_t, Uint64Group>(uint8_t{3}, uint8_t{24}, uint8_t{17}, depth);
   }
 }
@@ -829,10 +830,10 @@ TEST(HalfTreeDpfGpuRangeTest, WideDomainAndBoundedSubdivision) {
 }
 
 TEST(HalfTreeDpfGpuRangeTest, ArithmeticGroupNarrowInputAndCappedFrontier) {
-  fss::HalfTreeDpf<8, fss_test::RangeUint127Group, fss_test::TestCcrHash, uint8_t> scheme{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
+  fss::HalfTreeDpf<8, fss::group::Uint128<>, fss_test::TestCcrHash, uint8_t> scheme{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
   fss_test::CheckGpuRange<8, uint8_t, 999, 1024>(scheme, 0, 255);
   fss_test::CheckGpuRange<8, uint8_t, 2, 4>(scheme, 13, 201);
-  fss::HalfTreeDpf<1, fss_test::RangeUint127Group, fss_test::TestCcrHash, uint8_t> tiny{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
+  fss::HalfTreeDpf<1, fss::group::Uint128<>, fss_test::TestCcrHash, uint8_t> tiny{fss_test::TestCcrHash{}, int4{11, 22, 33, 44}};
   fss_test::CheckGpuRange<1, uint8_t, 999, 1024>(tiny, 0, 1);
   fss_test::CheckGpuRange<1, uint8_t>(tiny, 1, 1);
 }
@@ -947,15 +948,15 @@ void CheckHalfTreeSplitStrides(In alpha) {
 
 // in_bits 1 is the single-level tree, 4 is the smallest batched EvalAll()
 // domain, 6 keeps the batched frontier with two parallel tasks, and 8 runs the
-// full frontier. The Uint127 group covers the arithmetic path.
+// full frontier. The Uint128 group covers the arithmetic path.
 TEST(HalfTreeDpfCwsTest, Depth1) { CheckHalfTreeSplitStrides<1, BytesGroup, uint8_t>(1); }
 TEST(HalfTreeDpfCwsTest, Depth2) { CheckHalfTreeSplitStrides<2, BytesGroup, uint8_t>(3); }
 TEST(HalfTreeDpfCwsTest, Depth3) { CheckHalfTreeSplitStrides<3, BytesGroup, uint8_t>(5); }
 TEST(HalfTreeDpfCwsTest, Depth4) { CheckHalfTreeSplitStrides<4, BytesGroup, uint8_t>(11); }
 TEST(HalfTreeDpfCwsTest, Depth6) { CheckHalfTreeSplitStrides<6, BytesGroup, uint8_t>(11); }
 TEST(HalfTreeDpfCwsTest, Depth8) { CheckHalfTreeSplitStrides<8, BytesGroup, uint8_t>(kAlpha); }
-TEST(HalfTreeDpfCwsTest, Depth6Uint127) {
-  CheckHalfTreeSplitStrides<6, Uint127Group, uint8_t>(11);
+TEST(HalfTreeDpfCwsTest, Depth6Uint128) {
+  CheckHalfTreeSplitStrides<6, Uint128Group, uint8_t>(11);
 }
 TEST(HalfTreeDpfCwsTest, Depth8GenericGroup) {
   CheckHalfTreeSplitStrides<8, Uint64Group, uint8_t>(kAlpha);
@@ -1313,7 +1314,7 @@ void CheckHalfTreeSplitGpuLaunches() {
 
 TEST(HalfTreeDpfSplitGpuTest, SplitLaunchesMatchCwHost) { CheckHalfTreeSplitGpuLaunches<BytesGroup>(); }
 TEST(HalfTreeDpfSplitGpuTest, WideGroupSplitLaunchesCompile) {
-  CheckHalfTreeSplitGpuLaunches<Uint127Group>();
+  CheckHalfTreeSplitGpuLaunches<Uint128Group>();
 }
 
 // An odd terminal violates a documented precondition: Debug builds must abort

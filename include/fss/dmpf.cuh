@@ -313,35 +313,12 @@ private:
 
 namespace gpu::detail {
 
-// Hold the merge group and backends behind a descriptor so wide Group
-// non-type template parameters stay out of CUDA host stub signatures.
-template <typename GroupTag, typename Prp, typename In>
-struct DmpfMergeGpuKernelDescriptor {
-  using Group = typename GroupTag::type;
-  using PrpBackend = Prp;
-  using InputType = In;
-};
-
-// Holds the batch group and backends plus the inner DPF correction word, so
-// the batch kernel reads the key's own bucket-major rows.
-template <int in_bits, int bucket_bits, typename GroupTag, typename Prg, typename Prp, typename In>
-struct DmpfBatchGpuKernelDescriptor {
-  using Group = typename GroupTag::type;
-  using Cw = typename Dpf<bucket_bits, typename GroupTag::type, Prg, __uint128_t>::Cw;
-  using PrgBackend = Prg;
-  using PrpBackend = Prp;
-  using InputType = In;
-};
-
 #if defined(__CUDACC__)
 
 // Each domain input gathers the three PRP-selected inner DPF outputs.
-template <int in_bits, int bucket_bits, typename Descriptor>
+template <int in_bits, int bucket_bits, typename Group, typename In, typename Prp>
 __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int bucket_count,
-    __uint128_t bucket_size, int choices, const int4 *bucket_ys, typename Descriptor::PrpBackend prp) {
-  using Group = typename Descriptor::Group;
-  using In = typename Descriptor::InputType;
-  using Prp = typename Descriptor::PrpBackend;
+    __uint128_t bucket_size, int choices, const int4 *bucket_ys, Prp prp) {
   constexpr size_t kOutputs = size_t{1} << in_bits;
   const size_t input_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (input_index >= kOutputs) return;
@@ -365,18 +342,19 @@ __global__ void DmpfMergeKernel(int4 *ys, int4 sigma, int bucket_count,
 // correction words, one row of bucket_bits + 1 entries per active bucket; a
 // warp's bucket indices are pseudorandom, so per-level loads scatter inside the
 // row set instead of following a shared level layout.
-template <int in_bits, int bucket_bits, int unroll, bool b, typename Descriptor>
-__global__ void DmpfBatchEvalKernel(int4 *ys, const typename Descriptor::InputType *xs, int n, int4 sigma,
-    int m_rt, __uint128_t b_rt, const int4 *s0s, const typename Descriptor::Cw *cws,
-    typename Descriptor::PrgBackend prg, typename Descriptor::PrpBackend prp) {
-  using Group = typename Descriptor::Group;
-  using In = typename Descriptor::InputType;
+template <int in_bits, int bucket_bits, int unroll, bool b, typename Group, typename Prg,
+    typename Prp, typename In>
+__global__ void DmpfBatchEvalKernel(int4 *ys, const In *xs, int n, int4 sigma,
+    int m_rt, __uint128_t b_rt, const int4 *s0s,
+    const typename Dpf<bucket_bits, Group, Prg, __uint128_t>::Cw *cws,
+    Prg prg, Prp prp) {
+  using Cw = typename Dpf<bucket_bits, Group, Prg, __uint128_t>::Cw;
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n) return;
   In x = xs[tid];
   constexpr __uint128_t n128 = static_cast<__uint128_t>(1) << in_bits;
-  cuckoo_hash::detail::PrpHash<typename Descriptor::PrpBackend, In> prp_hash{prp};
+  cuckoo_hash::detail::PrpHash<Prp, In> prp_hash{prp};
   auto acc = Group::From(Zero4());
   for (int k = 0; k < 3; ++k) {
     auto [bucket, j] = prp_hash.Locate(sigma, x, k, n128, b_rt);
@@ -387,7 +365,7 @@ __global__ void DmpfBatchEvalKernel(int4 *ys, const typename Descriptor::InputTy
 
 #pragma unroll unroll
     for (int i = 0; i < bucket_bits; ++i) {
-      const typename Descriptor::Cw &cw = cws[static_cast<size_t>(bucket) * (bucket_bits + 1) + i];
+      const Cw &cw = cws[static_cast<size_t>(bucket) * (bucket_bits + 1) + i];
       int4 s_cw = cw.s;
       bool tr_cw = cw.tr;
       bool tl_cw = fss::util::GetLsb(s_cw);
@@ -464,17 +442,15 @@ void DmpfBatchEvalGpu(bool b, cuda::std::span<const In> xs, int4 *ys, int n, int
   if (xs.size() < count || s0s.size() < bucket_count || ys == nullptr)
     throw std::invalid_argument("DmpfBatchEvalGpu: xs, s0s, and ys must cover n and m_rt entries");
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable, e.g. ChaChaFeistel");
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = DmpfBatchGpuKernelDescriptor<in_bits, bucket_bits, GroupTag, Prg, Prp, In>;
   constexpr int kBs = 256;
   int blocks = (n + kBs - 1) / kBs;
   if (b) {
-    DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Descriptor>
+    DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, true, Group, Prg, Prp, In>
         <<<blocks, kBs, 0, stream>>>(ys, xs.data(), n, sigma, m_rt, b_rt, s0s.data(), cws.data(),
         fss::detail::SchemeAccess::GetPrg(dmpf),
         fss::detail::SchemeAccess::GetPrp(dmpf));
   } else {
-    DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Descriptor>
+    DmpfBatchEvalKernel<in_bits, bucket_bits, unroll, false, Group, Prg, Prp, In>
         <<<blocks, kBs, 0, stream>>>(ys, xs.data(), n, sigma, m_rt, b_rt, s0s.data(), cws.data(),
         fss::detail::SchemeAccess::GetPrg(dmpf),
         fss::detail::SchemeAccess::GetPrp(dmpf));
@@ -741,8 +717,6 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   requires(in_bits <= 38 && in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
 #if defined(__CUDACC__)
   static_assert(std::is_trivially_copyable_v<Prp>, "the Prp backend must be device-callable");
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::DmpfMergeGpuKernelDescriptor<GroupTag, Prp, In>;
   constexpr size_t kOutputs = size_t{1} << in_bits;
   constexpr size_t kBucketOutputs = size_t{1} << bucket_bits;
   constexpr size_t kCwPerBucket = bucket_bits + 1;
@@ -773,7 +747,7 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
       s0s.first(bucket_count), cws.first(bucket_count * kCwPerBucket),
       cuda::std::span<int4>(bucket_ys, bucket_count * kBucketOutputs), stream);
   if (status != cudaSuccess) return status;
-  gpu::detail::DmpfMergeKernel<in_bits, bucket_bits, Descriptor>
+  gpu::detail::DmpfMergeKernel<in_bits, bucket_bits, Group, In, Prp>
       <<<kMergeBlocks, kMergeThreads, 0, stream>>>(ys.data(), sigma, static_cast<int>(bucket_count),
           b_size_rt, kCuckooChoices, bucket_ys, prp_);
   return gpu::detail::ReleaseScratch(cudaGetLastError(), {&bucket_storage});

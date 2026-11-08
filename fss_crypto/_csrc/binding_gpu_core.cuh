@@ -18,7 +18,6 @@
 #include <fss/grotto_dcf.cuh>
 #include <fss/half_tree_grotto_dcf.cuh>
 #include <fss/vdpf.cuh>
-#include "binding_launch_descriptor.cuh"
 
 namespace fss::gpu::detail {
 
@@ -145,10 +144,9 @@ template <int n, typename Group, typename Prg, typename XorHash, typename Hash,
 struct CoreGpuTraits<Vdpf<n, Group, Prg, XorHash, Hash, In>>
     : CoreGpuShape<In, n + 1, CoreGenKind::kVerifiable, true> {};
 
-template <typename Descriptor, typename Input, typename Payload>
+template <typename Scheme, typename Input, typename Payload>
 __global__ void CoreGenKernel(void *scheme_storage, void *cws_storage, void *vws_storage,
     Input *tr, const int4 *s0s, Input a, Payload payload) {
-  using Scheme = typename Descriptor::Scheme;
   using Traits = fss::gpu::detail::CoreGpuTraits<Scheme>;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   int4 *cws = static_cast<int4 *>(cws_storage);
@@ -166,51 +164,19 @@ __global__ void CoreGenKernel(void *scheme_storage, void *cws_storage, void *vws
   }
 }
 
-// Host-only launch helpers. The DPF, DCF, HalfTreeDpf, and Vdpf overloads
-// build the descriptor directly from the scheme's template parameters, so a
-// wide Group argument never reaches the generated host stub.
+// Host-only launch helper.
 template <typename Scheme, typename Payload>
 inline cudaError_t LaunchCoreGen(Scheme *scheme, int4 *cws, int4 *vws,
     typename CoreGpuTraits<Scheme>::Input *tr, const int4 *s0s,
     typename CoreGpuTraits<Scheme>::Input a, Payload payload, cudaStream_t stream) {
-  CoreGenKernel<CoreLaunchIdentityDescriptor<Scheme>, typename CoreGpuTraits<Scheme>::Input, Payload>
+  CoreGenKernel<Scheme, typename CoreGpuTraits<Scheme>::Input, Payload>
       <<<1, 1, 0, stream>>>(scheme, cws, vws, tr, s0s, a, payload);
   return cudaGetLastError();
 }
 
-template <int n, typename Group, typename Prg, typename In, typename Payload>
-inline cudaError_t LaunchCoreGen(Dpf<n, Group, Prg, In> *scheme,
-    int4 *cws, int4 *vws, In *tr, const int4 *s0s, In a,
-    Payload payload, cudaStream_t stream) {
-  using Descriptor = DpfGpuKernelDescriptor<n, typename fss::detail::GpuGroupTag<Group>::Type, Prg, In>;
-  CoreGenKernel<Descriptor, In, Payload><<<1, 1, 0, stream>>>(scheme, cws, vws, tr, s0s, a, payload);
-  return cudaGetLastError();
-}
-
-template <int n, typename Group, typename Prg, typename In, DcfPred pred, typename Payload>
-inline cudaError_t LaunchCoreGen(Dcf<n, Group, Prg, In, pred> *scheme,
-    int4 *cws, int4 *vws, In *tr, const int4 *s0s, In a,
-    Payload payload, cudaStream_t stream) {
-  using Descriptor = DcfGpuKernelDescriptor<n, typename fss::detail::GpuGroupTag<Group>::Type,
-      Prg, In, pred>;
-  CoreGenKernel<Descriptor, In, Payload><<<1, 1, 0, stream>>>(scheme, cws, vws, tr, s0s, a, payload);
-  return cudaGetLastError();
-}
-
-template <int n, typename Group, typename Hash, typename In, typename Payload>
-inline cudaError_t LaunchCoreGen(HalfTreeDpf<n, Group, Hash, In> *scheme,
-    int4 *cws, int4 *vws, In *tr, const int4 *s0s, In a,
-    Payload payload, cudaStream_t stream) {
-  using Descriptor = HalfTreeGpuKernelDescriptor<n, typename fss::detail::GpuGroupTag<Group>::Type,
-      Hash, In>;
-  CoreGenKernel<Descriptor, In, Payload><<<1, 1, 0, stream>>>(scheme, cws, vws, tr, s0s, a, payload);
-  return cudaGetLastError();
-}
-
-template <typename Descriptor, typename Input>
+template <typename Scheme, typename Input>
 __global__ void CoreComparisonGenKernel(void *scheme_storage, void *cws_storage,
     Input *tr, const int4 *s0s, Input a) {
-  using Scheme = typename Descriptor::Scheme;
   using Traits = fss::gpu::detail::CoreGpuTraits<Scheme>;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   int4 *cws = static_cast<int4 *>(cws_storage);
@@ -225,17 +191,15 @@ template <typename Scheme>
 inline cudaError_t LaunchComparisonGen(Scheme *scheme, int4 *cws,
     typename CoreGpuTraits<Scheme>::Input *tr, const int4 *s0s,
     typename CoreGpuTraits<Scheme>::Input a, cudaStream_t stream) {
-  CoreComparisonGenKernel<CoreLaunchIdentityDescriptor<Scheme>,
-      typename CoreGpuTraits<Scheme>::Input>
+  CoreComparisonGenKernel<Scheme, typename CoreGpuTraits<Scheme>::Input>
       <<<1, 1, 0, stream>>>(scheme, cws, tr, s0s, a);
   return cudaGetLastError();
 }
 
-template <typename Descriptor, typename Input>
+template <typename Scheme, typename Input>
 __global__ void CoreVerifiableGenKernel(void *scheme_storage, void *cws_storage,
     Input *tr, cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s,
     Input a, int4 b_buf, int *status) {
-  using Scheme = typename Descriptor::Scheme;
   using Traits = fss::gpu::detail::CoreGpuTraits<Scheme>;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   int4 *cws = static_cast<int4 *>(cws_storage);
@@ -243,14 +207,13 @@ __global__ void CoreVerifiableGenKernel(void *scheme_storage, void *cws_storage,
   *status = scheme->Gen(cuda::std::span<int4>(cws, count), *tr, cs, s0s, a, b_buf);
 }
 
-template <int n, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
-inline cudaError_t LaunchCoreGen(Vdpf<n, Group, Prg, XorHash, Hash, In> *scheme,
-    int4 *cws, In *tr,
-    cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s, In a,
+template <typename Scheme>
+inline cudaError_t LaunchCoreGen(Scheme *scheme,
+    int4 *cws, typename CoreGpuTraits<Scheme>::Input *tr,
+    cuda::std::span<int4, 4> cs, cuda::std::span<const int4, 2> s0s,
+    typename CoreGpuTraits<Scheme>::Input a,
     int4 b_buf, int *status, cudaStream_t stream) {
-  using Descriptor = VdpfGpuKernelDescriptor<n, typename fss::detail::GpuGroupTag<Group>::Type,
-      Prg, XorHash, Hash, In>;
-  CoreVerifiableGenKernel<Descriptor, In><<<1, 1, 0, stream>>>(
+  CoreVerifiableGenKernel<Scheme, typename CoreGpuTraits<Scheme>::Input><<<1, 1, 0, stream>>>(
       scheme, cws, tr, cs, s0s, a, b_buf, status);
   return cudaGetLastError();
 }
@@ -309,8 +272,7 @@ inline cudaError_t GenGpu(Scheme *scheme,
   constexpr bool kControl = detail::CoreGpuTraits<Scheme>::kHasControl;
   if (scheme == nullptr || cws.data() == nullptr || s0s.data() == nullptr ||
       (kControl && tr == nullptr)) return cudaErrorInvalidValue;
-  detail::CoreComparisonGenKernel<detail::CoreLaunchIdentityDescriptor<Scheme>,
-      typename detail::CoreGpuTraits<Scheme>::Input>
+  detail::CoreComparisonGenKernel<Scheme, typename detail::CoreGpuTraits<Scheme>::Input>
       <<<1, 1, 0, stream>>>(scheme, cws.data(), tr, s0s.data(), a);
   return cudaGetLastError();
 }

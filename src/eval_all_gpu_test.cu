@@ -6,6 +6,7 @@
 #include <vector>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/hash/blake3.cuh>
 #include <fss/prg/chacha.cuh>
 #include "core_api_test_helpers.cuh"
@@ -18,23 +19,7 @@
 
 namespace {
 
-// A named wrapper keeps the 128-bit modulus out of nvcc kernel stubs.
-struct Uint127Group {
-  using Impl = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
-  Impl value;
-  __host__ __device__ Uint127Group operator+(Uint127Group rhs) const {
-    return {value + rhs.value};
-  }
-  __host__ __device__ Uint127Group operator-() const {
-    return {-value};
-  }
-  __host__ __device__ static Uint127Group From(int4 input) {
-    return {Impl::From(input)};
-  }
-  __host__ __device__ int4 Into() const {
-    return value.Into();
-  }
-};
+using Uint128Group = fss::group::Uint128<>;
 
 template <typename T>
 class DeviceBuffer {
@@ -165,37 +150,37 @@ TEST(EvalAllGpu, DpfLeafFrontierBytes) {
   CheckFullEvaluation<8, 8, 128, 1, fss::group::Bytes, false>();
 }
 TEST(EvalAllGpu, DpfLeafFrontierUint) {
-  CheckFullEvaluation<8, 8, 128, 1, Uint127Group, false>();
+  CheckFullEvaluation<8, 8, 128, 1, Uint128Group, false>();
 }
 TEST(EvalAllGpu, HalfTreeParentFrontierBytes) {
   CheckFullEvaluation<8, 7, 128, 1, fss::group::Bytes, true>();
 }
 TEST(EvalAllGpu, HalfTreeParentFrontierUint) {
-  CheckFullEvaluation<8, 7, 128, 1, Uint127Group, true>();
+  CheckFullEvaluation<8, 7, 128, 1, Uint128Group, true>();
 }
 TEST(EvalAllGpu, DpfBatchBytes) {
   CheckFullEvaluation<8, 8, 128, 3, fss::group::Bytes, false>();
 }
 TEST(EvalAllGpu, DpfBatchUint) {
-  CheckFullEvaluation<8, 8, 128, 3, Uint127Group, false>();
+  CheckFullEvaluation<8, 8, 128, 3, Uint128Group, false>();
 }
 TEST(EvalAllGpu, HalfTreeBatchBytes) {
   CheckFullEvaluation<8, 7, 128, 3, fss::group::Bytes, true>();
 }
 TEST(EvalAllGpu, HalfTreeBatchUint) {
-  CheckFullEvaluation<8, 7, 128, 3, Uint127Group, true>();
+  CheckFullEvaluation<8, 7, 128, 3, Uint128Group, true>();
 }
 TEST(EvalAllGpu, DpfSubtreesUint) {
-  CheckFullEvaluation<14, 12, 256, 1, Uint127Group, false>();
+  CheckFullEvaluation<14, 12, 256, 1, Uint128Group, false>();
 }
 TEST(EvalAllGpu, HalfTreeSubtreesUint) {
-  CheckFullEvaluation<14, 12, 256, 1, Uint127Group, true>();
+  CheckFullEvaluation<14, 12, 256, 1, Uint128Group, true>();
 }
 TEST(EvalAllGpu, DpfAbove24Bits) {
-  CheckFullEvaluation<25, 21, 128, 1, Uint127Group, false, true>();
+  CheckFullEvaluation<25, 21, 128, 1, Uint128Group, false, true>();
 }
 TEST(EvalAllGpu, HalfTreeAbove24Bits) {
-  CheckFullEvaluation<25, 20, 128, 1, Uint127Group, true, true>();
+  CheckFullEvaluation<25, 20, 128, 1, Uint128Group, true, true>();
 }
 TEST(EvalAllGpu, HalfTreeWideInUint16) {
   CheckFullEvaluation<8, 7, 128, 1, fss::group::Bytes, true, false, uint16_t>();
@@ -304,7 +289,7 @@ void CheckVdpfGpu() {
   ASSERT_EQ(status, cudaSuccess);
   using Prg = fss::prg::ChaCha<2>;
   using Blake3 = fss::hash::Blake3;
-  using Group = Uint127Group;
+  using Group = Uint128Group;
   using Scheme = fss::Vdpf<bits, Group, Prg, Blake3, Blake3, In>;
   constexpr size_t n = size_t{1} << bits;
   constexpr int stride = bits + 1;
@@ -601,41 +586,41 @@ TEST(EvalAllGpu, DcfLeafFrontierBytes) {
   CheckDcfGpu<8, 8, 128, 1, fss::group::Bytes>();
 }
 TEST(EvalAllGpu, DcfLeafFrontierUint) {
-  CheckDcfGpu<8, 8, 128, 1, Uint127Group>();
+  CheckDcfGpu<8, 8, 128, 1, Uint128Group>();
 }
 TEST(EvalAllGpu, DcfSubtreesUint) {
-  CheckDcfGpu<14, 12, 256, 1, Uint127Group>();
+  CheckDcfGpu<14, 12, 256, 1, Uint128Group>();
 }
 TEST(EvalAllGpu, DcfBatchUint) {
-  CheckDcfGpu<8, 8, 128, 3, Uint127Group>();
+  CheckDcfGpu<8, 8, 128, 3, Uint128Group>();
 }
 
 TEST(EvalAllGpu, DcfGtLeafFrontierBytes) {
   CheckDcfGpu<8, 8, 128, 1, fss::group::Bytes, fss::DcfPred::kGt>();
 }
 TEST(EvalAllGpu, DcfGtLeafFrontierUint) {
-  CheckDcfGpu<8, 8, 128, 1, Uint127Group, fss::DcfPred::kGt>();
+  CheckDcfGpu<8, 8, 128, 1, Uint128Group, fss::DcfPred::kGt>();
 }
 TEST(EvalAllGpu, DcfGtSubtreesUint) {
-  CheckDcfGpu<14, 12, 256, 1, Uint127Group, fss::DcfPred::kGt>();
+  CheckDcfGpu<14, 12, 256, 1, Uint128Group, fss::DcfPred::kGt>();
 }
 TEST(EvalAllGpu, DcfGtBatchUint) {
-  CheckDcfGpu<8, 8, 128, 3, Uint127Group, fss::DcfPred::kGt>();
+  CheckDcfGpu<8, 8, 128, 3, Uint128Group, fss::DcfPred::kGt>();
 }
 TEST(EvalAllGpu, DcfGtAlphaZero) {
-  CheckDcfGpu<8, 8, 128, 1, Uint127Group, fss::DcfPred::kGt, 0>();
+  CheckDcfGpu<8, 8, 128, 1, Uint128Group, fss::DcfPred::kGt, 0>();
 }
 TEST(EvalAllGpu, DcfGtAlphaMax) {
-  CheckDcfGpu<8, 8, 128, 1, Uint127Group, fss::DcfPred::kGt, 255>();
+  CheckDcfGpu<8, 8, 128, 1, Uint128Group, fss::DcfPred::kGt, 255>();
 }
 TEST(EvalAllGpu, DcfAbove24Bits) {
-  CheckDcfGpu<25, 21, 128, 1, Uint127Group, fss::DcfPred::kLt, 42, uint, 0, true>();
+  CheckDcfGpu<25, 21, 128, 1, Uint128Group, fss::DcfPred::kLt, 42, uint, 0, true>();
 }
 TEST(EvalAllGpu, DcfGtAbove24Bits) {
-  CheckDcfGpu<25, 21, 128, 1, Uint127Group, fss::DcfPred::kGt, 42, uint, 0, true>();
+  CheckDcfGpu<25, 21, 128, 1, Uint128Group, fss::DcfPred::kGt, 42, uint, 0, true>();
 }
 TEST(EvalAllGpu, DcfWideInUint16) {
-  CheckDcfGpu<8, 8, 128, 1, Uint127Group, fss::DcfPred::kLt, 42, uint16_t>();
+  CheckDcfGpu<8, 8, 128, 1, Uint128Group, fss::DcfPred::kLt, 42, uint16_t>();
 }
 
 TEST(EvalAllGpu, GrottoSmall) {

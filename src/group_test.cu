@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 
 using BytesGroup = fss::group::Bytes;
 using Uint8Group = fss::group::Uint<uint8_t>;
@@ -15,8 +16,9 @@ using Uint32Group = fss::group::Uint<uint32_t>;
 using Uint32ModGroup = fss::group::Uint<uint32_t, 2147483659U>;
 using Uint64Group = fss::group::Uint<uint64_t>;
 using Uint64ModGroup = fss::group::Uint<uint64_t, 9223372036854775837ULL>;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
-using Uint127ModGroup = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 126)>;
+using Uint128Group = fss::group::Uint128<>;
+using Uint128ModGroup =
+    fss::group::Uint128<fss::group::Uint128Modulus{.low = 0, .high = uint64_t{1} << 62}>;
 
 // Helper to generate a random clamped int4 (LSB of .w cleared).
 static int4 RandomClampedInt4(std::mt19937 &gen) {
@@ -47,7 +49,7 @@ protected:
 };
 
 using GroupTypes = ::testing::Types<BytesGroup, Uint8Group, Uint8ModGroup, Uint16Group, Uint16ModGroup, Uint32Group,
-    Uint32ModGroup, Uint64Group, Uint64ModGroup, Uint127Group, Uint127ModGroup>;
+    Uint32ModGroup, Uint64Group, Uint64ModGroup, Uint128Group, Uint128ModGroup>;
 TYPED_TEST_SUITE(GroupAxiomTest, GroupTypes);
 
 // (a + b) + c == a + (b + c)
@@ -122,22 +124,91 @@ TEST(GroupBoundaryBehavior, UnsignedCanonicalMaxEncodesAndWraps) {
       BoundaryBlock(0xffffffe2U, 0x7fffffffU, 0, 0));
   ExpectOneWrapsToZero<Uint64ModGroup>(BoundaryBlock(0x0000001cU, 0x80000000U, 0, 0));
 
-  // Uint127 max, then the modular variant reducing the same 127 all-ones bits.
-  ExpectCanonicalBlock<Uint127Group>(
+  // The 127-bit clamp maximum, then the modular variant reducing the same 127 all-ones bits.
+  ExpectCanonicalBlock<Uint128Group>(
       BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU),
       BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU));
-  ExpectOneWrapsToZero<Uint127Group>(
+  ExpectOneWrapsToZero<Uint128Group>(
       BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU));
-  ExpectCanonicalBlock<Uint127ModGroup>(
+  ExpectCanonicalBlock<Uint128ModGroup>(
       BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU),
       BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x3fffffffU));
-  ExpectOneWrapsToZero<Uint127ModGroup>(
+  ExpectOneWrapsToZero<Uint128ModGroup>(
       BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x3fffffffU));
 }
 
 TEST(GroupPreconditionTest, BytesFromAcceptsClampedBlock) {
   int4 clamped = {1, 2, 3, 4};
   EXPECT_NO_THROW((void)BytesGroup::From(clamped));
+}
+
+// The storage types Uint keeps supporting, with wrap and modulo modes.
+static_assert(Groupable<fss::group::Uint<uint8_t>>);
+static_assert(Groupable<fss::group::Uint<uint16_t, 251>>);
+static_assert(Groupable<fss::group::Uint<uint32_t>>);
+static_assert(Groupable<fss::group::Uint<uint64_t, 9223372036854775783ULL>>);
+// __uint128_t storage and out-of-range Uint128 moduli are rejected at compile
+// time; uint_reject_compile_fail.cu covers those failures per case because a
+// requires-expression naming the type is a hard error under the nvcc frontend.
+// The default modulus is 2^127, matching the previous common127 encoding.
+static_assert(std::is_same_v<Uint128Group, fss::group::Uint128<>>);
+static_assert(std::is_same_v<Uint128Group, fss::group::Uint128<fss::group::Uint128Modulus{.low = 0, .high = uint64_t{1} << 63}>>);
+
+// Encode an unsigned 128-bit value below 2^127 as a clamped block.
+static int4 ClampedBlockOf(__uint128_t value) {
+  return BoundaryBlock(static_cast<uint32_t>(value), static_cast<uint32_t>(value >> 32),
+      static_cast<uint32_t>(value >> 64), static_cast<uint32_t>(value >> 96));
+}
+
+static void ExpectUint128Value(const char *what, __uint128_t actual, __uint128_t expected) {
+  EXPECT_TRUE(actual == expected) << what << ": actual " << static_cast<unsigned long long>(actual >> 64)
+      << ":" << static_cast<unsigned long long>(actual & 0xffffffffffffffffULL) << ", expected "
+      << static_cast<unsigned long long>(expected >> 64) << ":"
+      << static_cast<unsigned long long>(expected & 0xffffffffffffffffULL);
+}
+
+TEST(Uint128Behavior, DefaultModulusMatchesCommon127) {
+  // Elements below 2^127 pass From() unreduced and Into() re-encodes them.
+  const __uint128_t max127 = (static_cast<__uint128_t>(1) << 127) - 1;
+  ExpectBoundaryBlock(Uint128Group::From(ClampedBlockOf(max127)).Into(), ClampedBlockOf(max127));
+  ExpectUint128Value("max127 value", Uint128Group::From(ClampedBlockOf(max127)).Value(), max127);
+  // The clamp bit of buf.w is dropped even when the upper words are set.
+  ExpectBoundaryBlock(Uint128Group::From(BoundaryBlock(0xffffffffU, 0xffffffffU, 0xffffffffU, 0x7fffffffU)).Into(),
+      ClampedBlockOf(max127));
+  // max127 + 1 wraps to zero, and the additive inverse of the maximum is one.
+  ExpectBoundaryBlock((Uint128Group::From(ClampedBlockOf(max127)) + Uint128Group::From(BoundaryBlock(1, 0, 0, 0))).Into(),
+      ClampedBlockOf(0));
+  ExpectBoundaryBlock((-Uint128Group::From(ClampedBlockOf(max127))).Into(), ClampedBlockOf(1));
+  // A sum crossing the low/high 64-bit halves carries without wrapping.
+  const __uint128_t low_max = 0xffffffffffffffffULL;
+  ExpectBoundaryBlock(
+      (Uint128Group::From(ClampedBlockOf(low_max)) + Uint128Group::From(ClampedBlockOf(2))).Into(),
+      ClampedBlockOf(low_max + 2));
+}
+
+TEST(Uint128Behavior, ModulusHalvesCombineInOrder) {
+  // mod = (1 << 64) + 1 from low = 1 and high = 1.
+  using Mod2164plus1 = fss::group::Uint128<fss::group::Uint128Modulus{.low = 1, .high = 1}>;
+  // 2^64 stays below the modulus, 2^64 + 1 is the modulus itself, so the sum wraps to zero.
+  const auto near = Mod2164plus1::From(ClampedBlockOf(static_cast<__uint128_t>(1) << 64));
+  const auto one = Mod2164plus1::From(BoundaryBlock(1, 0, 0, 0));
+  ExpectBoundaryBlock((near + one).Into(), ClampedBlockOf(0));
+  // The additive inverse of 2^64 is 1, because 2^64 + 1 = mod.
+  ExpectBoundaryBlock((-near).Into(), ClampedBlockOf(1));
+  // From() reduces values at or above the modulus: mod itself maps to zero.
+  const __uint128_t mod = (static_cast<__uint128_t>(1) << 64) + 1;
+  ExpectBoundaryBlock(Mod2164plus1::From(ClampedBlockOf(mod)).Into(), ClampedBlockOf(0));
+  ExpectBoundaryBlock(Mod2164plus1::From(ClampedBlockOf(mod + 5)).Into(), ClampedBlockOf(5));
+  // A modulus with both halves large keeps From() and addition consistent.
+  using ModWide =
+      fss::group::Uint128<fss::group::Uint128Modulus{.low = 0xfedcba9876543210ULL, .high = 0x1234567890abcdefULL}>;
+  const __uint128_t wide_mod = (static_cast<__uint128_t>(0x1234567890abcdefULL) << 64) | 0xfedcba9876543210ULL;
+  const __uint128_t wide_max = (static_cast<__uint128_t>(1) << 127) - 1;
+  ExpectBoundaryBlock(ModWide::From(ClampedBlockOf(wide_max)).Into(), ClampedBlockOf(wide_max % wide_mod));
+  ExpectBoundaryBlock(ModWide::From(ClampedBlockOf(wide_mod - 1)).Into(), ClampedBlockOf(wide_mod - 1));
+  ExpectBoundaryBlock(
+      (ModWide::From(ClampedBlockOf(wide_mod - 1)) + ModWide::From(BoundaryBlock(1, 0, 0, 0))).Into(),
+      ClampedBlockOf(0));
 }
 
 #ifndef NDEBUG

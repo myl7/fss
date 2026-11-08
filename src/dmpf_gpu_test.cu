@@ -9,30 +9,13 @@
 #include <fss/dmpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/chacha_feistel.cuh>
 #include "binding_gpu_eval.cuh"
 #include "core_api_test_helpers.cuh"
 
 namespace {
-
-// A named wrapper keeps the 128-bit modulus out of nvcc kernel stubs.
-struct Uint127Group {
-  using Impl = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
-  Impl value;
-  __host__ __device__ Uint127Group operator+(Uint127Group rhs) const {
-    return {value + rhs.value};
-  }
-  __host__ __device__ Uint127Group operator-() const {
-    return {-value};
-  }
-  __host__ __device__ static Uint127Group From(int4 input) {
-    return {Impl::From(input)};
-  }
-  __host__ __device__ int4 Into() const {
-    return value.Into();
-  }
-};
 
 template <typename T>
 class DeviceBuffer {
@@ -285,7 +268,7 @@ protected:
 };
 
 using DmpfBytesGpuTest = DmpfGpuTest<fss::group::Bytes>;
-using DmpfUint128GpuTest = DmpfGpuTest<Uint127Group>;
+using DmpfUint128GpuTest = DmpfGpuTest<fss::group::Uint128<>>;
 
 TEST_F(DmpfBytesGpuTest, BatchEval) {
   TestBatchEval();
@@ -346,13 +329,11 @@ static_assert(
     !fss::cuckoo_hash::detail::ValidBucketSize(kBound - 1, DmpfType::kBucketSize, kBucketBits));
 
 TEST(DmpfGpuBucketBound, ValidMultiKeyBoundary) {
-  using Descriptor = fss::gpu::detail::DmpfLaunchDescriptor<kInBits, kMaxPoints, kBucketBits,
-      fss::detail::GpuGroupTag<Group>::Type, Prg, Prp, uint16_t>;
-  static_assert(Descriptor::kBucketCount == kBuckets);
+  static_assert(DmpfType::kBucketCount == kBuckets);
   std::vector<int4> s0s(kBuckets, int4{0, 0, 0, 0});
   std::vector<DmpfType::Cw> cws(size_t{kBuckets} * (kBucketBits + 1));
   auto valid = [&](__uint128_t b_size_rt) {
-    return fss::gpu::detail::ValidMultiKey<Descriptor>(b_size_rt, s0s.size(), cws.size(),
+    return fss::gpu::detail::ValidMultiKey<DmpfType>(b_size_rt, s0s.size(), cws.size(),
         s0s.data(), cws.data());
   };
   EXPECT_TRUE(valid(kBound)) << "b_size_rt = ceil(3*2^in_bits/kBucketCount)";

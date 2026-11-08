@@ -239,10 +239,6 @@ _SCHEMES = {
 }
 
 
-def _u128_literal(value: int) -> str:
-    return f"((static_cast<__uint128_t>({value >> 64}ULL) << 64) | {value & ((1 << 64) - 1)}ULL)"
-
-
 def _backend_cpp(spec: dict | None) -> tuple[str, list[str], bool]:
     if spec is None:
         return "fss::python::NoBackend", [], True
@@ -250,8 +246,12 @@ def _backend_cpp(spec: dict | None) -> tuple[str, list[str], bool]:
     if kind == "bytes":
         return "fss::group::Bytes", ["fss/group/bytes.cuh"], True
     if kind == "uint":
-        scalar = "__uint128_t" if spec["bits"] == 128 else f"uint{spec['bits']}_t"
-        return f"fss::group::Uint<{scalar}, {_u128_literal(spec['mod'])}>", ["fss/group/uint.cuh"], True
+        if spec["bits"] == 128:
+            mod = spec["mod"]
+            low, high = mod & ((1 << 64) - 1), mod >> 64
+            return (f"fss::group::Uint128<fss::group::Uint128Modulus{{.low = {low}ULL, .high = {high}ULL}}>",
+                ["fss/group/uint128.cuh"], True)
+        return f"fss::group::Uint<uint{spec['bits']}_t, {spec['mod']}>", ["fss/group/uint.cuh"], True
     if kind == "chacha":
         return f"fss::prg::ChaCha<{spec['mul']}, {spec['rounds']}>", ["fss/prg/chacha.cuh"], True
     if kind in ("aes128_mmo", "aes128_mmo_raw", "aes128_soft"):

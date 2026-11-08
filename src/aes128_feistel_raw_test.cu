@@ -8,13 +8,14 @@
 #include <fss/dmpf.cuh>
 #include <fss/group/bytes.cuh>
 #include <fss/group/uint.cuh>
+#include <fss/group/uint128.cuh>
 #include <fss/prg/chacha.cuh>
 #include <fss/prp/aes128_feistel.cuh>
 #include <fss/prp/aes128_feistel_raw.cuh>
 #include "core_api_test_helpers.cuh"
 
 using BytesGroup = fss::group::Bytes;
-using Uint127Group = fss::group::Uint<__uint128_t, (static_cast<__uint128_t>(1) << 127)>;
+using Uint128Group = fss::group::Uint128<>;
 
 constexpr int kNonce0 = 0x12345678, kNonce1 = static_cast<int>(0x9abcdef0u);
 
@@ -271,7 +272,7 @@ protected:
 };
 
 using DmpfBytesAes128FeistelRawTest = DmpfAes128FeistelRawTest<BytesGroup>;
-using DmpfUint128Aes128FeistelRawTest = DmpfAes128FeistelRawTest<Uint127Group>;
+using DmpfUint128Aes128FeistelRawTest = DmpfAes128FeistelRawTest<Uint128Group>;
 
 TEST_F(DmpfBytesAes128FeistelRawTest, EvalAtAlpha) {
   TestEvalAtAlpha();

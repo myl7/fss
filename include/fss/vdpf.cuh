@@ -769,20 +769,6 @@ __host__ __device__ inline cuda::std::array<int4, 2> VdpfMerkleFoldNode(
 
 namespace gpu::detail {
 
-// Hold the VDPF and its DPF math scheme behind a group tag so wide Group
-// non-type template parameters stay out of CUDA host stub signatures.
-template <int in_bits, typename GroupTag, typename Prg, typename XorHash, typename Hash, typename Input>
-struct VdpfGpuKernelDescriptor {
-  using Group = typename GroupTag::type;
-  using Scheme = Vdpf<in_bits, Group, Prg, XorHash, Hash, Input>;
-  using MathScheme = Dpf<in_bits, Group, Prg, Input>;
-  using Cw = typename Scheme::Cw;
-  using InputType = Input;
-  using PrgBackend = Prg;
-  using XorHashBackend = XorHash;
-  using HashBackend = Hash;
-};
-
 #if defined(__CUDACC__)
 
 // Strided correction-word readers shared by the split VDPF kernels: layer i is
@@ -797,15 +783,14 @@ __device__ inline bool VdpfCwRight(const In &packed_tr, int level) {
   return ((packed_tr >> level) & 1) != 0;
 }
 
-template <int in_bits, int threads_per_block, typename Descriptor>
-__device__ void VdpfRangeMerkleLeavesWork(bool b, typename Descriptor::InputType first,
+template <int in_bits, int threads_per_block, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename In>
+__device__ void VdpfRangeMerkleLeavesWork(bool b, In first,
     int subtree_depth, int frontier_depth, int block_root_depth, int4 s0, const int4 *cws,
-    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
-    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
-  using Group = typename Descriptor::Group;
-  using In = typename Descriptor::InputType;
-  using MathScheme = typename Descriptor::MathScheme;
+    In packed_tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *leaves, Prg prg,
+    XorHash xor_hash, Hash hash) {
+  using MathScheme = Dpf<in_bits, Group, Prg, In>;
   const int root_depth = in_bits - subtree_depth;
   const int block_subtree_depth = frontier_depth - block_root_depth;
   const int tail_depth = subtree_depth - frontier_depth;
@@ -880,26 +865,28 @@ __device__ void VdpfRangeMerkleLeavesWork(bool b, typename Descriptor::InputType
     }
   }
 }
-template <int in_bits, int threads_per_block, typename Descriptor>
-__global__ void VdpfRangeMerkleLeavesKernel(bool b, typename Descriptor::InputType first, int subtree_depth,
+template <int in_bits, int threads_per_block, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename In>
+__global__ void VdpfRangeMerkleLeavesKernel(bool b, In first, int subtree_depth,
     int frontier_depth, int block_root_depth, int4 s0, const int4 *cws,
-    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
-    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
-  VdpfRangeMerkleLeavesWork<in_bits, threads_per_block, Descriptor>(b, first, subtree_depth,
+    In packed_tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *leaves, Prg prg,
+    XorHash xor_hash, Hash hash) {
+  VdpfRangeMerkleLeavesWork<in_bits, threads_per_block, Group, Prg, XorHash, Hash, In>(b, first, subtree_depth,
       frontier_depth, block_root_depth, s0, cws, packed_tr, stride, cs, ys, leaves, prg,
       xor_hash, hash);
 }
 
 // Device-key counterpart: the party seed and the packed control are loaded
 // from caller device storage; the shared traversal is unchanged.
-template <int in_bits, int threads_per_block, typename Descriptor>
-__global__ void VdpfRangeMerkleLeavesDeviceKeyKernel(bool b, typename Descriptor::InputType first,
+template <int in_bits, int threads_per_block, typename Group, typename Prg, typename XorHash,
+    typename Hash, typename In>
+__global__ void VdpfRangeMerkleLeavesDeviceKeyKernel(bool b, In first,
     int subtree_depth, int frontier_depth, int block_root_depth, const int4 *s0,
-    const int4 *cws, const typename Descriptor::InputType *tr, size_t stride, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *leaves, typename Descriptor::PrgBackend prg,
-    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
-  VdpfRangeMerkleLeavesWork<in_bits, threads_per_block, Descriptor>(b, first, subtree_depth,
+    const int4 *cws, const In *tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *leaves, Prg prg,
+    XorHash xor_hash, Hash hash) {
+  VdpfRangeMerkleLeavesWork<in_bits, threads_per_block, Group, Prg, XorHash, Hash, In>(b, first, subtree_depth,
       frontier_depth, block_root_depth, s0[0], cws, tr[0], stride, cs, ys, leaves, prg,
       xor_hash, hash);
 }
@@ -926,15 +913,13 @@ __global__ void VdpfRangeMerkleProofKernel(const Node *root,
 // writes the output share and the hashed corrected per-point hash as the leaf
 // of the batch Merkle fold. The same per-point math as Vdpf::Eval, fed by the
 // split cws/packed-tr layout.
-template <int in_bits, typename Descriptor>
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
 __device__ void VdpfBatchMerkleLeavesWork(bool b, int4 s0, const int4 *cws,
-    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
-    const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
-    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
-    typename Descriptor::HashBackend hash) {
-  using Group = typename Descriptor::Group;
-  using In = typename Descriptor::InputType;
-  using MathScheme = typename Descriptor::MathScheme;
+    In packed_tr, size_t stride, const int4 *cs,
+    const In *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
+    Prg prg, XorHash xor_hash,
+    Hash hash) {
+  using MathScheme = Dpf<in_bits, Group, Prg, In>;
   const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= count) return;
   const In x = xs[index];
@@ -956,36 +941,35 @@ __device__ void VdpfBatchMerkleLeavesWork(bool b, int4 s0, const int4 *cws,
       cuda::std::span<const int4, 4>(cs, 4));
   leaves[index] = hash.Hash(cuda::std::span<const int4, 4>(corrected));
 }
-template <int in_bits, typename Descriptor>
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
 __global__ void VdpfBatchMerkleLeavesKernel(bool b, int4 s0, const int4 *cws,
-    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
-    const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
-    typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
-    typename Descriptor::HashBackend hash) {
-  VdpfBatchMerkleLeavesWork<in_bits, Descriptor>(b, s0, cws, packed_tr, stride, cs, xs, ys,
+    In packed_tr, size_t stride, const int4 *cs,
+    const In *xs, int4 *ys, cuda::std::array<int4, 2> *leaves, size_t count,
+    Prg prg, XorHash xor_hash,
+    Hash hash) {
+  VdpfBatchMerkleLeavesWork<in_bits, Group, Prg, XorHash, Hash, In>(b, s0, cws, packed_tr, stride, cs, xs, ys,
       leaves, count, prg, xor_hash, hash);
 }
 
 // Device-key counterpart of the batch leaves kernel; see above.
-template <int in_bits, typename Descriptor>
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
 __global__ void VdpfBatchMerkleLeavesDeviceKeyKernel(bool b, const int4 *s0, const int4 *cws,
-    const typename Descriptor::InputType *tr, size_t stride, const int4 *cs,
-    const typename Descriptor::InputType *xs, int4 *ys, cuda::std::array<int4, 2> *leaves,
-    size_t count, typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash,
-    typename Descriptor::HashBackend hash) {
-  VdpfBatchMerkleLeavesWork<in_bits, Descriptor>(b, s0[0], cws, tr[0], stride, cs, xs, ys,
+    const In *tr, size_t stride, const int4 *cs,
+    const In *xs, int4 *ys, cuda::std::array<int4, 2> *leaves,
+    size_t count, Prg prg, XorHash xor_hash,
+    Hash hash) {
+  VdpfBatchMerkleLeavesWork<in_bits, Group, Prg, XorHash, Hash, In>(b, s0[0], cws, tr[0], stride, cs, xs, ys,
       leaves, count, prg, xor_hash, hash);
 }
 
 
-template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
+template <int in_bits, int frontier_depth, int block_root_depth, typename Group, typename Prg,
+    typename XorHash, typename Hash, typename In>
 __device__ void VdpfMerkleFrontierWork(bool b, int4 s0, const int4 *cws,
-    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
-    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
-  using Group = typename Descriptor::Group;
-  using In = typename Descriptor::InputType;
-  using MathScheme = typename Descriptor::MathScheme;
+    In packed_tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *roots, Prg prg,
+    XorHash xor_hash, Hash hash) {
+  using MathScheme = Dpf<in_bits, Group, Prg, In>;
   constexpr int kTailDepth = in_bits - frontier_depth;
   constexpr int kBlockSubtreeDepth = frontier_depth - block_root_depth;
   const int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1105,22 +1089,24 @@ __device__ void VdpfMerkleFrontierWork(bool b, int4 s0, const int4 *cws,
   }
   if (threadIdx.x == 0) roots[blockIdx.x] = s_node[0];
 }
-template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
+template <int in_bits, int frontier_depth, int block_root_depth, typename Group, typename Prg,
+    typename XorHash, typename Hash, typename In>
 __global__ void VdpfMerkleFrontierKernel(bool b, int4 s0, const int4 *cws,
-    typename Descriptor::InputType packed_tr, size_t stride, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
-    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
-  VdpfMerkleFrontierWork<in_bits, frontier_depth, block_root_depth, Descriptor>(
+    In packed_tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *roots, Prg prg,
+    XorHash xor_hash, Hash hash) {
+  VdpfMerkleFrontierWork<in_bits, frontier_depth, block_root_depth, Group, Prg, XorHash, Hash, In>(
       b, s0, cws, packed_tr, stride, cs, ys, roots, prg, xor_hash, hash);
 }
 
 // Device-key counterpart of the frontier kernel; see above.
-template <int in_bits, int frontier_depth, int block_root_depth, typename Descriptor>
+template <int in_bits, int frontier_depth, int block_root_depth, typename Group, typename Prg,
+    typename XorHash, typename Hash, typename In>
 __global__ void VdpfMerkleFrontierDeviceKeyKernel(bool b, const int4 *s0, const int4 *cws,
-    const typename Descriptor::InputType *tr, size_t stride, const int4 *cs,
-    int4 *ys, cuda::std::array<int4, 2> *roots, typename Descriptor::PrgBackend prg,
-    typename Descriptor::XorHashBackend xor_hash, typename Descriptor::HashBackend hash) {
-  VdpfMerkleFrontierWork<in_bits, frontier_depth, block_root_depth, Descriptor>(
+    const In *tr, size_t stride, const int4 *cs,
+    int4 *ys, cuda::std::array<int4, 2> *roots, Prg prg,
+    XorHash xor_hash, Hash hash) {
+  VdpfMerkleFrontierWork<in_bits, frontier_depth, block_root_depth, Group, Prg, XorHash, Hash, In>(
       b, s0[0], cws, tr[0], stride, cs, ys, roots, prg, xor_hash, hash);
 }
 
@@ -1157,12 +1143,11 @@ __global__ void VdpfMerkleFinalizeKernel(const cuda::std::array<int4, 2> *roots,
 // writes: layer i of key k is cws[i*nkeys + k] and the terminal is
 // cws[in_bits*nkeys + k]. tr[k] carries key k's packed right-control bits, bit i
 // for layer i. cs stays per-key: it is read once per evaluation, not once per level.
-template <int in_bits, int unroll, bool b, typename Descriptor, typename Query>
+template <int in_bits, int unroll, bool b, typename Group, typename Prg, typename XorHash,
+    typename In, typename Query>
 __global__ void VdpfEvalPointKernel(int4 *ys, cuda::std::array<int4, 4> *pi, const int4 *seeds,
-    const int4 *cws, const typename Descriptor::InputType *tr, const cuda::std::array<int4, 4> *cs, const Query *xs,
-    int nkeys, typename Descriptor::PrgBackend prg, typename Descriptor::XorHashBackend xor_hash) {
-  using Group = typename Descriptor::Group;
-  using In = typename Descriptor::InputType;
+    const int4 *cws, const In *tr, const cuda::std::array<int4, 4> *cs, const Query *xs,
+    int nkeys, Prg prg, XorHash xor_hash) {
   static_assert(in_bits <= sizeof(In) * 8, "In too narrow for in_bits");
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nkeys) return;
@@ -1254,16 +1239,14 @@ void VdpfEvalPointGpu(bool b, cuda::std::span<const int4> seeds, cuda::std::span
   if (seeds.size() < count || tr.size() < count || cs.size() < count || xs.size() < count ||
       ys == nullptr || pi.size() < count)
     throw std::invalid_argument("VdpfEvalPointGpu: seeds, tr, cs, xs, ys, and pi must cover nkeys entries");
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   constexpr int kBs = 256;
   int blocks = (nkeys + kBs - 1) / kBs;
   if (b) {
-    VdpfEvalPointKernel<in_bits, unroll, true, Descriptor, Query><<<blocks, kBs, 0, stream>>>(
+    VdpfEvalPointKernel<in_bits, unroll, true, Group, Prg, XorHash, In, Query><<<blocks, kBs, 0, stream>>>(
         ys, pi.data(), seeds.data(), cws.data(), tr.data(), cs.data(), xs.data(), nkeys,
         fss::detail::SchemeAccess::GetPrg(vdpf), fss::detail::SchemeAccess::GetXorHash(vdpf));
   } else {
-    VdpfEvalPointKernel<in_bits, unroll, false, Descriptor, Query><<<blocks, kBs, 0, stream>>>(
+    VdpfEvalPointKernel<in_bits, unroll, false, Group, Prg, XorHash, In, Query><<<blocks, kBs, 0, stream>>>(
         ys, pi.data(), seeds.data(), cws.data(), tr.data(), cs.data(), xs.data(), nkeys,
         fss::detail::SchemeAccess::GetPrg(vdpf), fss::detail::SchemeAccess::GetXorHash(vdpf));
   }
@@ -1332,9 +1315,7 @@ __host__ inline cudaError_t VdpfEvalAllMerkleGpuDeviceKey(bool b, const int4 *s0
   cudaError_t status = roots_storage.Allocate<cuda::std::array<int4, 2>>(kBlockCount);
   if (status != cudaSuccess) return status;
   auto *block_roots = roots_storage.Get<cuda::std::array<int4, 2>>();
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
-  VdpfMerkleFrontierDeviceKeyKernel<in_bits, kFrontierDepth, kBlockRootDepth, Descriptor>
+  VdpfMerkleFrontierDeviceKeyKernel<in_bits, kFrontierDepth, kBlockRootDepth, Group, Prg, XorHash, Hash, In>
       <<<kBlockCount, kThreadsPerBlock, 0, stream>>>(
           b, s0, cws, tr, stride, cs, ys, block_roots, prg, xor_hash, hash);
   status = cudaGetLastError();
@@ -1383,8 +1364,6 @@ __host__ inline cudaError_t VdpfEvalRangeMerkleGpuDeviceKey(bool b, In first, In
   if (status != cudaSuccess) return status;
   auto *nodes = first_storage.Get<Node>();
   auto *next = second_storage.Get<Node>();
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   status = fss::detail::ForEachAlignedRange<in_bits>(first, last, kChunkDepth,
       [&](In chunk_first, int depth, size_t offset, size_t) {
         const int frontier = depth < frontier_depth ? depth : frontier_depth;
@@ -1392,7 +1371,7 @@ __host__ inline cudaError_t VdpfEvalRangeMerkleGpuDeviceKey(bool b, In first, In
         const int block_root_depth = frontier - thread_bits;
         const size_t blocks = size_t{1} << block_root_depth;
         if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
-        VdpfRangeMerkleLeavesDeviceKeyKernel<in_bits, threads_per_block, Descriptor>
+        VdpfRangeMerkleLeavesDeviceKeyKernel<in_bits, threads_per_block, Group, Prg, XorHash, Hash, In>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, chunk_first, depth,
                 frontier, block_root_depth, s0, cws, tr, stride, cs,
                 ys + offset, nodes + offset, prg, xor_hash, hash);
@@ -1432,9 +1411,7 @@ __host__ inline cudaError_t VdpfBatchEvalMerkleGpuDeviceKey(bool b, const int4 *
   if (status != cudaSuccess) return status;
   auto *nodes = first_storage.Get<Node>();
   auto *next = second_storage.Get<Node>();
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
-  VdpfBatchMerkleLeavesDeviceKeyKernel<in_bits, Descriptor>
+  VdpfBatchMerkleLeavesDeviceKeyKernel<in_bits, Group, Prg, XorHash, Hash, In>
       <<<static_cast<int>(leaf_blocks), threads_per_block, 0, stream>>>(
           b, s0, cws, tr, stride, cs, xs, ys, nodes, count, prg, xor_hash, hash);
   status = cudaGetLastError();
@@ -2159,10 +2136,8 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAl
   cudaError_t status = roots_storage.Allocate<cuda::std::array<int4, 2>>(LaunchShape::kBlockCount);
   if (status != cudaSuccess) return status;
   auto *block_roots = roots_storage.Get<cuda::std::array<int4, 2>>();
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   gpu::detail::VdpfMerkleFrontierKernel<in_bits, LaunchShape::kFrontierDepth,
-      LaunchShape::kBlockRootDepth, Descriptor>
+      LaunchShape::kBlockRootDepth, Group, Prg, XorHash, Hash, In>
       <<<LaunchShape::kBlockCount, LaunchShape::kThreadsPerBlock, 0, stream>>>(
           b, s0, cws.data(), tr, stride, cs.data(), ys.data(), block_roots, prg_, xor_hash_, hash_);
   status = cudaGetLastError();
@@ -2218,8 +2193,6 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRa
   if (status != cudaSuccess) return status;
   auto *nodes = first_storage.Get<Node>();
   auto *next = second_storage.Get<Node>();
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
   status = detail::ForEachAlignedRange<in_bits>(first, last, kChunkDepth,
       [&](In chunk_first, int depth, size_t offset, size_t) {
         const int frontier = depth < frontier_depth ? depth : frontier_depth;
@@ -2227,7 +2200,7 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalRa
         const int block_root_depth = frontier - thread_bits;
         const size_t blocks = size_t{1} << block_root_depth;
         if (blocks > static_cast<size_t>(INT_MAX)) return cudaErrorInvalidConfiguration;
-        gpu::detail::VdpfRangeMerkleLeavesKernel<in_bits, threads_per_block, Descriptor>
+        gpu::detail::VdpfRangeMerkleLeavesKernel<in_bits, threads_per_block, Group, Prg, XorHash, Hash, In>
             <<<blocks, 1 << thread_bits, 0, stream>>>(b, chunk_first, depth,
                 frontier, block_root_depth, s0, cws.data(), tr, stride, cs.data(),
                 ys.data() + offset, nodes + offset, prg_, xor_hash_, hash_);
@@ -2274,9 +2247,7 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchE
   if (status != cudaSuccess) return status;
   auto *nodes = first_storage.Get<Node>();
   auto *next = second_storage.Get<Node>();
-  using GroupTag = typename fss::detail::GpuGroupTag<Group>::Type;
-  using Descriptor = gpu::detail::VdpfGpuKernelDescriptor<in_bits, GroupTag, Prg, XorHash, Hash, In>;
-  gpu::detail::VdpfBatchMerkleLeavesKernel<in_bits, Descriptor>
+  gpu::detail::VdpfBatchMerkleLeavesKernel<in_bits, Group, Prg, XorHash, Hash, In>
       <<<static_cast<int>(leaf_blocks), threads_per_block, 0, stream>>>(
           b, s0, cws.data(), tr, stride, cs.data(), xs.data(), ys.data(), nodes, count,
           prg_, xor_hash_, hash_);

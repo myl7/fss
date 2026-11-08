@@ -19,7 +19,6 @@
 #include <type_traits>
 #include <cub/device/device_radix_sort.cuh>
 #include "binding_gpu_core.cuh"
-#include "binding_multi_descriptor.cuh"
 #include <fss/util.cuh>
 #include <fss/dmpf.cuh>
 #include <fss/vdmpf.cuh>
@@ -149,19 +148,17 @@ cudaError_t BatchEvalMerkleGpu(Scheme *scheme, bool b, VerifiableMultiComponents
 namespace fss::gpu::detail {
 
 
-template <typename Descriptor>
+template <typename Scheme>
 __global__ void HashCorrectedKernel(void *scheme_storage, const cuda::std::array<int4, 4> *corrected,
     ProofNode *nodes, size_t count) {
-  using Scheme = typename Descriptor::Scheme;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i < count) nodes[i] = fss::detail::SchemeAccess::GetHash(*scheme).Hash(cuda::std::span<const int4, 4>(corrected[i]));
 }
 
 
-template <typename Descriptor>
+template <typename Scheme>
 __global__ void PairNodesKernel(void *scheme_storage, const ProofNode *in, ProofNode *out, size_t count) {
-  using Scheme = typename Descriptor::Scheme;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i >= (count + 1) / 2) return;
@@ -174,14 +171,14 @@ __global__ void PairNodesKernel(void *scheme_storage, const ProofNode *in, Proof
   }
 }
 
-template <typename Descriptor>
-inline cudaError_t FoldNodesGpuWithDescriptor(typename Descriptor::Scheme *scheme,
+template <typename Scheme>
+inline cudaError_t FoldNodesGpu(Scheme *scheme,
     ProofNode *&nodes, ProofNode *scratch, size_t count, cudaStream_t stream, int threads) {
   while (count > 1) {
     int blocks;
     cudaError_t status = CoreLaunchBlocks((count + 1) / 2, threads, blocks);
     if (status != cudaSuccess) return status;
-    PairNodesKernel<Descriptor><<<blocks, threads, 0, stream>>>(scheme, nodes, scratch, count);
+    PairNodesKernel<Scheme><<<blocks, threads, 0, stream>>>(scheme, nodes, scratch, count);
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
     auto *swap = nodes;
@@ -190,13 +187,6 @@ inline cudaError_t FoldNodesGpuWithDescriptor(typename Descriptor::Scheme *schem
     count = (count + 1) / 2;
   }
   return cudaSuccess;
-}
-
-template <typename Scheme>
-inline cudaError_t FoldNodesGpu(Scheme *scheme, ProofNode *&nodes, ProofNode *scratch,
-    size_t count, cudaStream_t stream, int threads) {
-  return FoldNodesGpuWithDescriptor<CoreLaunchIdentityDescriptor<Scheme>>(
-      scheme, nodes, scratch, count, stream, threads);
 }
 
 static __global__ void VdpfFinishKernel(const ProofNode *root, const int4 *cs, int4 *pi) {
@@ -210,9 +200,9 @@ inline bool HasRows(size_t size, size_t rows, size_t width) {
   return rows <= size / width;
 }
 
-// Device launch view of a multi-point key. Pointers stay opaque so the wide
-// scheme type never reaches a CUDA host stub parameter.
-template <typename Descriptor>
+// Device launch view of a multi-point key. The correction-word pointer stays
+// opaque because its element type is scheme-dependent.
+template <typename Scheme>
 struct MultiLaunchComponents {
   int4 sigma;
   __uint128_t b_size_rt;
@@ -220,7 +210,7 @@ struct MultiLaunchComponents {
   const void *cws;
 };
 
-template <typename Descriptor>
+template <typename Scheme>
 struct VerifiableLaunchComponents {
   int4 sigma;
   __uint128_t b_size_rt;
@@ -229,73 +219,74 @@ struct VerifiableLaunchComponents {
   const int4 *cs;
 };
 
-template <typename Descriptor>
+template <typename Scheme>
 inline bool ValidMultiKey(__uint128_t b_size_rt, size_t s0s_size, size_t cws_size,
     const void *s0s, const void *cws) {
-  constexpr size_t rows = Descriptor::kBucketCount;
+  using Traits = ProofGpuTraits<Scheme>;
+  constexpr size_t rows = Scheme::kBucketCount;
   // Keeping every located bucket inside the allocation is the condition on
   // b_size_rt alone that the removed runtime bucket count check enforced:
   // s0s[bucket], cws + bucket*(bucket_bits+1), and counts + bucket stay in
   // range exactly then. The scheme owns that condition, so this file does not
   // need the fixed candidate count.
-  if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, Descriptor::Scheme::kBucketSize,
-          Descriptor::kBucketBits))
+  if (!cuckoo_hash::detail::ValidBucketSize(b_size_rt, Scheme::kBucketSize,
+          Traits::kBucketBits))
     return false;
   if (!HasRows(s0s_size, rows, 1) ||
-      !HasRows(cws_size, rows, Descriptor::kBucketBits + 1)) return false;
+      !HasRows(cws_size, rows, Traits::kBucketBits + 1)) return false;
   return s0s != nullptr && cws != nullptr;
 }
 
-template <typename Descriptor>
+template <typename Scheme>
 __global__ void DmpfBatchKernel(void *scheme_storage, bool b,
-    MultiLaunchComponents<Descriptor> key, const typename Descriptor::Input *xs, int4 *ys,
+    MultiLaunchComponents<Scheme> key, const typename ProofGpuTraits<Scheme>::Input *xs, int4 *ys,
     size_t count) {
-  using Scheme = typename Descriptor::Scheme;
-  using Group = typename Descriptor::Group;
-  using Cw = typename Descriptor::Cw;
+  using Traits = ProofGpuTraits<Scheme>;
+  using Group = typename Traits::GroupType;
+  using Cw = typename Scheme::Cw;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   const Cw *cws = static_cast<const Cw *>(key.cws);
   size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (omega >= count) return;
   auto inner = fss::detail::SchemeAccess::MakeInner(*scheme);
   auto prp = fss::detail::SchemeAccess::GetPrp(*scheme);
-  cuckoo_hash::detail::PrpHash<decltype(prp), typename Descriptor::Input> hasher{prp};
+  cuckoo_hash::detail::PrpHash<decltype(prp), typename Traits::Input> hasher{prp};
   auto sum = Group::From(int4{0, 0, 0, 0});
   constexpr int kChoices = cuckoo_hash::detail::kDefaultCuckooChoices;
   for (int k = 0; k < kChoices; ++k) {
     auto location = hasher.Locate(key.sigma, xs[omega], k,
-        __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt, kChoices);
+        __uint128_t{1} << Traits::kInputBits, key.b_size_rt, kChoices);
     int4 value = fss::detail::SchemeAccess::DpfEvalCw(inner, b, key.s0s[location.bucket],
-        cws + static_cast<size_t>(location.bucket) * (Descriptor::kBucketBits + 1), location.index);
+        cws + static_cast<size_t>(location.bucket) * (Traits::kBucketBits + 1), location.index);
     sum = sum + Group::From(value);
   }
   ys[omega] = sum.Into();
 }
 
-template <typename Descriptor>
+template <typename Scheme>
 __global__ void VdmpfBatchLeavesKernel(void *scheme_storage, bool b,
-    VerifiableLaunchComponents<Descriptor> key, const typename Descriptor::Input *xs, int4 *ys,
+    VerifiableLaunchComponents<Scheme> key, const typename ProofGpuTraits<Scheme>::Input *xs, int4 *ys,
     uint32_t *buckets, ProofNode *nodes, uint32_t *counts, size_t count) {
-  using Scheme = typename Descriptor::Scheme;
-  using Group = typename Descriptor::Group;
-  using Cw = typename Descriptor::Cw;
+  using Traits = ProofGpuTraits<Scheme>;
+  using Group = typename Traits::GroupType;
+  using Cw = typename Scheme::Cw;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   const Cw *cws = static_cast<const Cw *>(key.cws);
   size_t omega = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (omega >= count) return;
   auto inner = fss::detail::SchemeAccess::MakeInner(*scheme);
   auto prp = fss::detail::SchemeAccess::GetPrp(*scheme);
-  cuckoo_hash::detail::PrpHash<decltype(prp), typename Descriptor::Input> hasher{prp};
+  cuckoo_hash::detail::PrpHash<decltype(prp), typename Traits::Input> hasher{prp};
   auto sum = Group::From(int4{0, 0, 0, 0});
   constexpr int kChoices = cuckoo_hash::detail::kDefaultCuckooChoices;
   for (int k = 0; k < kChoices; ++k) {
     auto location = hasher.Locate(key.sigma, xs[omega], k,
-        __uint128_t{1} << Descriptor::kInputBits, key.b_size_rt, kChoices);
+        __uint128_t{1} << Traits::kInputBits, key.b_size_rt, kChoices);
     size_t bucket = static_cast<size_t>(location.bucket);
     int4 value;
     auto corrected = fss::detail::SchemeAccess::VdpfEvalCw(inner, b, key.s0s[bucket],
-        cuda::std::span<const Cw>(cws + bucket * (Descriptor::kBucketBits + 1),
-            Descriptor::kBucketBits + 1),
+        cuda::std::span<const Cw>(cws + bucket * (Traits::kBucketBits + 1),
+            Traits::kBucketBits + 1),
         cuda::std::span<const int4, 4>(key.cs + bucket * 4, 4), location.index, value);
     size_t record = static_cast<size_t>(kChoices) * omega + k;
     buckets[record] = static_cast<uint32_t>(bucket);
@@ -321,10 +312,9 @@ static __global__ void BucketOffsetsKernel(const uint32_t *counts, uint32_t *off
   offsets[count] = offset;
 }
 
-template <typename Descriptor>
+template <typename Scheme>
 __global__ void BucketPairNodesKernel(void *scheme_storage, const ProofNode *in, ProofNode *out,
     const uint32_t *counts, const uint32_t *offsets, size_t buckets, uint32_t stride, size_t total) {
-  using Scheme = typename Descriptor::Scheme;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   size_t slot = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (slot >= total) return;
@@ -347,11 +337,10 @@ __global__ void BucketPairNodesKernel(void *scheme_storage, const ProofNode *in,
   }
 }
 
-template <typename Descriptor>
+template <typename Scheme>
 __global__ void BindBucketRootsKernel(void *scheme_storage, const int4 *cs,
     const ProofNode *roots, const uint32_t *counts, const uint32_t *offsets, ProofNode *buckets) {
-  using Scheme = typename Descriptor::Scheme;
-  constexpr size_t count = Descriptor::kBucketCount;
+  constexpr size_t count = Scheme::kBucketCount;
   Scheme *scheme = static_cast<Scheme *>(scheme_storage);
   size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i >= count) return;
@@ -372,11 +361,8 @@ static __global__ void MultiFinishKernel(const ProofNode *root, int4 *pi) {
   pi[3] = {0, 0, 0, 0};
 }
 
-// Host-only descriptor dispatch. The kernel template arguments hold the
-// resolved descriptor, not the scheme, so wide Group parameters stay out of
-// the generated host stubs.
-template <typename Descriptor>
-inline cudaError_t ProveMerkleGpuWithDescriptor(typename Descriptor::Scheme *scheme,
+template <typename Scheme>
+inline cudaError_t ProveMerkleGpuImpl(Scheme *scheme,
     cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes,
     cuda::std::span<const int4, 4> cs, cuda::std::span<int4, 4> pi,
     cudaStream_t stream, int threads) {
@@ -394,11 +380,11 @@ inline cudaError_t ProveMerkleGpuWithDescriptor(typename Descriptor::Scheme *sch
   status = scratch_storage.Allocate<ProofNode>(pi_tildes.size());
   if (status != cudaSuccess) return status;
   auto *scratch = scratch_storage.Get<ProofNode>();
-  HashCorrectedKernel<Descriptor><<<blocks, threads, 0, stream>>>(
+  HashCorrectedKernel<Scheme><<<blocks, threads, 0, stream>>>(
       scheme, pi_tildes.data(), nodes, pi_tildes.size());
   status = cudaGetLastError();
   if (status != cudaSuccess) return status;
-  status = FoldNodesGpuWithDescriptor<Descriptor>(scheme, nodes, scratch, pi_tildes.size(), stream, threads);
+  status = FoldNodesGpu(scheme, nodes, scratch, pi_tildes.size(), stream, threads);
   if (status != cudaSuccess) return status;
   VdpfFinishKernel<<<1, 1, 0, stream>>>(nodes, cs.data(), pi.data());
   status = cudaGetLastError();
@@ -410,56 +396,33 @@ inline cudaError_t ProveMerkleGpuLaunch(Scheme *scheme,
     cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes,
     cuda::std::span<const int4, 4> cs, cuda::std::span<int4, 4> pi,
     cudaStream_t stream, int threads) {
-  return ProveMerkleGpuWithDescriptor<CoreLaunchIdentityDescriptor<Scheme>>(
-      scheme, pi_tildes, cs, pi, stream, threads);
+  return ProveMerkleGpuImpl(scheme, pi_tildes, cs, pi, stream, threads);
 }
 
-template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
-inline cudaError_t ProveMerkleGpuLaunch(Vdpf<in_bits, Group, Prg, XorHash, Hash, In> *scheme,
-    cuda::std::span<const cuda::std::array<int4, 4>> pi_tildes,
-    cuda::std::span<const int4, 4> cs, cuda::std::span<int4, 4> pi,
-    cudaStream_t stream, int threads) {
-  using Descriptor = VdpfGpuKernelDescriptor<in_bits,
-      typename fss::detail::GpuGroupTag<Group>::Type, Prg, XorHash, Hash, In>;
-  return ProveMerkleGpuWithDescriptor<Descriptor>(scheme, pi_tildes, cs, pi, stream, threads);
-}
-
-template <typename Descriptor>
-inline cudaError_t BatchEvalGpuWithDescriptor(typename Descriptor::Scheme *scheme, bool b,
-    MultiComponents<typename Descriptor::Scheme> key,
-    std::type_identity_t<cuda::std::span<const typename Descriptor::Input>> xs,
+template <typename Scheme>
+inline cudaError_t BatchEvalGpuLaunch(Scheme *scheme, bool b,
+    MultiComponents<Scheme> key,
+    std::type_identity_t<cuda::std::span<const typename ProofGpuTraits<Scheme>::Input>> xs,
     cuda::std::span<int4> ys, cudaStream_t stream, int threads) {
   if (xs.size() != ys.size()) return cudaErrorInvalidValue;
   int blocks;
   cudaError_t status = CoreLaunchBlocks(xs.size(), threads, blocks);
   if (status != cudaSuccess || blocks == 0) return status;
   if (scheme == nullptr || xs.data() == nullptr || ys.data() == nullptr ||
-      !ValidMultiKey<Descriptor>(key.b_size_rt, key.s0s.size(), key.cws.size(),
+      !ValidMultiKey<Scheme>(key.b_size_rt, key.s0s.size(), key.cws.size(),
           key.s0s.data(), key.cws.data()))
     return cudaErrorInvalidValue;
-  MultiLaunchComponents<Descriptor> view{key.sigma, key.b_size_rt,
+  MultiLaunchComponents<Scheme> view{key.sigma, key.b_size_rt,
       key.s0s.data(), key.cws.data()};
-  DmpfBatchKernel<Descriptor><<<blocks, threads, 0, stream>>>(
+  DmpfBatchKernel<Scheme><<<blocks, threads, 0, stream>>>(
       scheme, b, view, xs.data(), ys.data(), xs.size());
   return cudaGetLastError();
 }
 
-template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg,
-    typename Prp, typename In, int ch_lambda>
-inline cudaError_t BatchEvalGpuLaunch(
-    Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda> *scheme, bool b,
-    MultiComponents<Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>> key,
-    std::type_identity_t<cuda::std::span<const In>> xs, cuda::std::span<int4> ys,
-    cudaStream_t stream, int threads) {
-  using Descriptor = DmpfLaunchDescriptor<in_bits, max_points, bucket_bits,
-      typename fss::detail::GpuGroupTag<Group>::Type, Prg, Prp, In, ch_lambda>;
-  return BatchEvalGpuWithDescriptor<Descriptor>(scheme, b, key, xs, ys, stream, threads);
-}
-
-template <typename Descriptor>
-inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme *scheme, bool b,
-    VerifiableMultiComponents<typename Descriptor::Scheme> key,
-    std::type_identity_t<cuda::std::span<const typename Descriptor::Input>> xs,
+template <typename Scheme>
+inline cudaError_t BatchEvalMerkleGpuImpl(Scheme *scheme, bool b,
+    VerifiableMultiComponents<Scheme> key,
+    std::type_identity_t<cuda::std::span<const typename ProofGpuTraits<Scheme>::Input>> xs,
     cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
     cudaStream_t stream, int threads) {
   DeviceScratch bucket_nodes_storage(stream);
@@ -472,11 +435,11 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
   DeviceScratch offsets_storage(stream);
   DeviceScratch sort_scratch_storage(stream);
 
-  constexpr size_t buckets = Descriptor::kBucketCount;
+  constexpr size_t buckets = Scheme::kBucketCount;
   if (xs.size() != ys.size() || xs.size() > static_cast<size_t>(std::numeric_limits<int>::max() / 3) ||
       scheme == nullptr || pi.data() == nullptr || key.cs.data() == nullptr ||
       !HasRows(key.cs.size(), buckets, 4)) return cudaErrorInvalidValue;
-  if (!xs.empty() && !ValidMultiKey<Descriptor>(key.b_size_rt, key.s0s.size(),
+  if (!xs.empty() && !ValidMultiKey<Scheme>(key.b_size_rt, key.s0s.size(),
           key.cws.size(), key.s0s.data(), key.cws.data())) return cudaErrorInvalidValue;
   int grid;
   cudaError_t status = CoreLaunchBlocks(xs.size(), threads, grid);
@@ -492,7 +455,7 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
   if (status != cudaSuccess) return status;
   auto *bucket_scratch = bucket_scratch_storage.Get<ProofNode>();
   if (xs.empty()) {
-    BindBucketRootsKernel<Descriptor><<<bucket_grid, threads, 0, stream>>>(
+    BindBucketRootsKernel<Scheme><<<bucket_grid, threads, 0, stream>>>(
         scheme, key.cs.data(), nullptr, nullptr, nullptr, bucket_nodes);
   } else {
     size_t total = xs.size() * cuckoo_hash::detail::kDefaultCuckooChoices;
@@ -517,9 +480,9 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
     ClearCountsKernel<<<bucket_grid, threads, 0, stream>>>(counts, buckets);
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
-    VerifiableLaunchComponents<Descriptor> view{key.sigma, key.b_size_rt,
+    VerifiableLaunchComponents<Scheme> view{key.sigma, key.b_size_rt,
         key.s0s.data(), key.cws.data(), key.cs.data()};
-    VdmpfBatchLeavesKernel<Descriptor><<<grid, threads, 0, stream>>>(
+    VdmpfBatchLeavesKernel<Scheme><<<grid, threads, 0, stream>>>(
         scheme, b, view, xs.data(), ys.data(), keys, nodes, counts, xs.size());
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
@@ -540,7 +503,7 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
     auto *scratch = nodes;
     size_t max_count = total;
     for (uint32_t stride = 1; max_count > 1; stride *= 2) {
-      BucketPairNodesKernel<Descriptor><<<grid * 3, threads, 0, stream>>>(
+      BucketPairNodesKernel<Scheme><<<grid * 3, threads, 0, stream>>>(
           scheme, roots, scratch, counts, offsets, buckets, stride, total);
       status = cudaGetLastError();
       if (status != cudaSuccess) return status;
@@ -549,12 +512,12 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
       scratch = swap;
       max_count = (max_count + 1) / 2;
     }
-    BindBucketRootsKernel<Descriptor><<<bucket_grid, threads, 0, stream>>>(
+    BindBucketRootsKernel<Scheme><<<bucket_grid, threads, 0, stream>>>(
         scheme, key.cs.data(), roots, counts, offsets, bucket_nodes);
   }
   status = cudaGetLastError();
   if (status != cudaSuccess) return status;
-  status = FoldNodesGpuWithDescriptor<Descriptor>(
+  status = FoldNodesGpu(
       scheme, bucket_nodes, bucket_scratch, buckets, stream, threads);
   if (status != cudaSuccess) return status;
   MultiFinishKernel<<<1, 1, 0, stream>>>(bucket_nodes, pi.data());
@@ -562,18 +525,14 @@ inline cudaError_t BatchEvalMerkleGpuWithDescriptor(typename Descriptor::Scheme 
   return ReleaseScratch(status, {&bucket_nodes_storage, &bucket_scratch_storage, &keys_storage, &sorted_keys_storage, &nodes_storage, &sorted_nodes_storage, &counts_storage, &offsets_storage, &sort_scratch_storage});
 }
 
-template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg,
-    typename XorHash, typename Hash, typename Prp, typename In, int ch_lambda>
-inline cudaError_t BatchEvalMerkleGpuLaunch(
-    Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda> *scheme,
+template <typename Scheme>
+inline cudaError_t BatchEvalMerkleGpuLaunch(Scheme *scheme,
     bool b,
-    VerifiableMultiComponents<Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash,
-        Prp, In, ch_lambda>> key,
-    std::type_identity_t<cuda::std::span<const In>> xs, cuda::std::span<int4> ys,
+    VerifiableMultiComponents<Scheme> key,
+    std::type_identity_t<cuda::std::span<const typename ProofGpuTraits<Scheme>::Input>> xs,
+    cuda::std::span<int4> ys,
     cuda::std::span<int4, 4> pi, cudaStream_t stream, int threads) {
-  using Descriptor = VdmpfLaunchDescriptor<in_bits, max_points, bucket_bits,
-      typename fss::detail::GpuGroupTag<Group>::Type, Prg, XorHash, Hash, Prp, In, ch_lambda>;
-  return BatchEvalMerkleGpuWithDescriptor<Descriptor>(scheme, b, key, xs, ys, pi, stream, threads);
+  return BatchEvalMerkleGpuImpl(scheme, b, key, xs, ys, pi, stream, threads);
 }
 
 }  // namespace fss::gpu::detail
