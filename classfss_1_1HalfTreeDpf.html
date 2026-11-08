@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt; Class Template Reference</title>
+<title>myl7/fss: fss::HalfTreeDpf&lt; in_bits, Group, Hash, In &gt; Class Template Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -103,9 +103,11 @@ $(document).ready(function(){initNavTree('classfss_1_1HalfTreeDpf.html',''); ini
 <div class="header">
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
+<a href="#pub-types">Public Types</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-static-attribs">Static Public Attributes</a> &#124;
 <a href="classfss_1_1HalfTreeDpf-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt; Class Template Reference</div></div>
+  <div class="headertitle"><div class="title">fss::HalfTreeDpf&lt; in_bits, Group, Hash, In &gt; Class Template Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -117,50 +119,132 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html">Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1HalfTreeDpf_1_1Cw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words, the output correction word, and the party's initial seed.  <a href="structfss_1_1HalfTreeDpf_1_1Key.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
+Public Types</h2></td></tr>
+<tr class="memitem:a9d7e11177186ad022f92385644bdd71b" id="r_a9d7e11177186ad022f92385644bdd71b"><td class="memItemLeft" align="right" valign="top"><a id="a9d7e11177186ad022f92385644bdd71b" name="a9d7e11177186ad022f92385644bdd71b"></a>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>Input</b> = In</td></tr>
+<tr class="memdesc:a9d7e11177186ad022f92385644bdd71b"><td class="mdescLeft">&#160;</td><td class="mdescRight">The caller-facing input-domain type. <br /></td></tr>
+<tr class="separator:a9d7e11177186ad022f92385644bdd71b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a458d0e7407b70e149b0ca0dcc53807e6" id="r_a458d0e7407b70e149b0ca0dcc53807e6"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a458d0e7407b70e149b0ca0dcc53807e6">Gen</a> (<a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf)</td></tr>
-<tr class="memdesc:a458d0e7407b70e149b0ca0dcc53807e6"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html" title="A party&#39;s key: the correction words, the output correction word, and the party&#39;s initial seed.">Key</a> generation method.  <br /></td></tr>
-<tr class="separator:a458d0e7407b70e149b0ca0dcc53807e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:abe1696ea792f12c1f031bb2aefb12b4b" id="r_abe1696ea792f12c1f031bb2aefb12b4b"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#abe1696ea792f12c1f031bb2aefb12b4b">Eval</a> (bool b, const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;key, In x)</td></tr>
-<tr class="memdesc:abe1696ea792f12c1f031bb2aefb12b4b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
-<tr class="separator:abe1696ea792f12c1f031bb2aefb12b4b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a360cd1684ed8369dd9e41fabee0bde9c" id="r_a360cd1684ed8369dd9e41fabee0bde9c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a360cd1684ed8369dd9e41fabee0bde9c">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys)</td></tr>
-<tr class="memdesc:a360cd1684ed8369dd9e41fabee0bde9c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
-<tr class="separator:a360cd1684ed8369dd9e41fabee0bde9c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa609268b88d0ffebde2a8e849afe65be" id="r_aa609268b88d0ffebde2a8e849afe65be"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#aa609268b88d0ffebde2a8e849afe65be">HalfTreeDpf</a> (Hash hash, int4 instance_seed)</td></tr>
+<tr class="memdesc:aa609268b88d0ffebde2a8e849afe65be"><td class="mdescLeft">&#160;</td><td class="mdescRight">Configure the CCR hash and public instance seed S.  <br /></td></tr>
+<tr class="separator:aa609268b88d0ffebde2a8e849afe65be"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a38a786f5062625d020a39ec85158c3b9" id="r_a38a786f5062625d020a39ec85158c3b9"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a38a786f5062625d020a39ec85158c3b9">Gen</a> (cuda::std::span&lt; int4 &gt; cws, In &amp;tr, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf, size_t stride=1)</td></tr>
+<tr class="memdesc:a38a786f5062625d020a39ec85158c3b9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Generate split Cws from caller-owned initial seeds.  <br /></td></tr>
+<tr class="separator:a38a786f5062625d020a39ec85158c3b9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1ab76217ad09da002c0a429784b0e7bc" id="r_a1ab76217ad09da002c0a429784b0e7bc"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a1ab76217ad09da002c0a429784b0e7bc">Eval</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, In x, size_t stride=1)</td></tr>
+<tr class="memdesc:a1ab76217ad09da002c0a429784b0e7bc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate one point from split Cws.  <br /></td></tr>
+<tr class="separator:a1ab76217ad09da002c0a429784b0e7bc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1e4dc4f3443f01dce5a12048b10cdf6a" id="r_a1e4dc4f3443f01dce5a12048b10cdf6a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a1e4dc4f3443f01dce5a12048b10cdf6a">EvalAll</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, int4 ys[], int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:a1e4dc4f3443f01dce5a12048b10cdf6a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the full domain from split Cws.  <br /></td></tr>
+<tr class="separator:a1e4dc4f3443f01dce5a12048b10cdf6a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3a4d3a0c62f05a7d8cbd04a10220e6ea" id="r_a3a4d3a0c62f05a7d8cbd04a10220e6ea"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a3a4d3a0c62f05a7d8cbd04a10220e6ea">EvalRange</a> (bool b, In first, In last, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; int4 &gt; ys, int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:a3a4d3a0c62f05a7d8cbd04a10220e6ea"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the closed input interval [first, last] from split Cws.  <br /></td></tr>
+<tr class="separator:a3a4d3a0c62f05a7d8cbd04a10220e6ea"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8f75c6215fe85f920da349a97418b81c" id="r_a8f75c6215fe85f920da349a97418b81c"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</td></tr>
+<tr class="memitem:a8f75c6215fe85f920da349a97418b81c"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a8f75c6215fe85f920da349a97418b81c">EvalRangeGpu</a> (bool b, In first, In last, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; int4 &gt; ys, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a8f75c6215fe85f920da349a97418b81c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the closed interval [first, last] on the given CUDA stream from split device arrays.  <br /></td></tr>
+<tr class="separator:a8f75c6215fe85f920da349a97418b81c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a021dc818760cf17fc508b1c019de0ee9" id="r_a021dc818760cf17fc508b1c019de0ee9"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:a021dc818760cf17fc508b1c019de0ee9"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a021dc818760cf17fc508b1c019de0ee9">EvalAllGpu</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; int4 &gt; ys, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a021dc818760cf17fc508b1c019de0ee9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Launch full-domain CUDA evaluation from split device arrays.  <br /></td></tr>
+<tr class="separator:a021dc818760cf17fc508b1c019de0ee9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a971d45c4c3a2d8ba7960316dfc743678" id="r_a971d45c4c3a2d8ba7960316dfc743678"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:a971d45c4c3a2d8ba7960316dfc743678"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeDpf.html#a971d45c4c3a2d8ba7960316dfc743678">EvalAllGpuBatch</a> (bool b, cuda::std::span&lt; const int4 &gt; s0s, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; const In &gt; tr, cuda::std::span&lt; int4 &gt; ys, cudaStream_t stream=0, size_t stride=0) const</td></tr>
+<tr class="memdesc:a971d45c4c3a2d8ba7960316dfc743678"><td class="mdescLeft">&#160;</td><td class="mdescRight">Launch full-domain CUDA evaluation for s0s.size() keys from split device arrays.  <br /></td></tr>
+<tr class="separator:a971d45c4c3a2d8ba7960316dfc743678"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-attribs" name="pub-static-attribs"></a>
+Static Public Attributes</h2></td></tr>
+<tr class="memitem:aac110dd48187fa0f422336d062eadceb" id="r_aac110dd48187fa0f422336d062eadceb"><td class="memItemLeft" align="right" valign="top"><a id="aac110dd48187fa0f422336d062eadceb" name="aac110dd48187fa0f422336d062eadceb"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kCwCount</b> = in_bits + 1</td></tr>
+<tr class="memdesc:aac110dd48187fa0f422336d062eadceb"><td class="mdescLeft">&#160;</td><td class="mdescRight">Seed-component count <a class="el" href="classfss_1_1HalfTreeDpf.html#a38a786f5062625d020a39ec85158c3b9" title="Generate split Cws from caller-owned initial seeds.">Gen()</a> writes at stride 1: in_bits levels plus the terminal. <br /></td></tr>
+<tr class="separator:aac110dd48187fa0f422336d062eadceb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
-requires ((std::is_unsigned_v&lt;In&gt; || std::is_same_v&lt;In, __uint128_t&gt;) &amp;&amp; in_bits &lt;= sizeof(In) * 8 &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 1&gt;)<br />
-class fss::HalfTreeDpf&lt; in_bits, Group, Prg, In, par_depth &gt;</div><p>2-party DPF scheme using the Half-Tree construction. </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Hash, typename In = uint&gt;<br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)<br />
+class fss::HalfTreeDpf&lt; in_bits, Group, Hash, In &gt;</div><p>2-party DPF scheme using the Half-Tree construction. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">in_bits</td><td>Input domain bit size. </td></tr>
     <tr><td class="paramname">Group</td><td>Type for the output domain. See Groupable. </td></tr>
-    <tr><td class="paramname">Prg</td><td>See Prgable. Requires mul=1 (CCR hash, 128-&gt;128 bits). </td></tr>
-    <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1HalfTreeDpf.html#a360cd1684ed8369dd9e41fabee0bde9c" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1HalfTreeDpf.html#a360cd1684ed8369dd9e41fabee0bde9c" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
+    <tr><td class="paramname">Hash</td><td>Unary CCR hash backend. See CcrHashable. </td></tr>
+    <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t.</td></tr>
   </table>
   </dd>
 </dl>
-</div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="abe1696ea792f12c1f031bb2aefb12b4b" name="abe1696ea792f12c1f031bb2aefb12b4b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#abe1696ea792f12c1f031bb2aefb12b4b">&#9670;&#160;</a></span>Eval()</h2>
+<p><a class="el" href="classfss_1_1HalfTreeDpf.html#a38a786f5062625d020a39ec85158c3b9" title="Generate split Cws from caller-owned initial seeds.">Gen()</a> and scalar <a class="el" href="classfss_1_1HalfTreeDpf.html#a1ab76217ad09da002c0a429784b0e7bc" title="Evaluate one point from split Cws.">Eval()</a> are callable from host and device when the backend supports the execution space and all accessed storage is accessible there. <a class="el" href="classfss_1_1HalfTreeDpf.html#a1e4dc4f3443f01dce5a12048b10cdf6a" title="Evaluate the full domain from split Cws.">EvalAll()</a> and <a class="el" href="classfss_1_1HalfTreeDpf.html#a3a4d3a0c62f05a7d8cbd04a10220e6ea" title="Evaluate the closed input interval [first, last] from split Cws.">EvalRange()</a> are host operations. <a class="el" href="classfss_1_1HalfTreeDpf.html#a021dc818760cf17fc508b1c019de0ee9" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a> and <a class="el" href="classfss_1_1HalfTreeDpf.html#a971d45c4c3a2d8ba7960316dfc743678" title="Launch full-domain CUDA evaluation for s0s.size() keys from split device arrays.">EvalAllGpuBatch()</a> are host launch methods compiled with a CUDA compiler; they do not run on the device. </p>
+</div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a id="aa609268b88d0ffebde2a8e849afe65be" name="aa609268b88d0ffebde2a8e849afe65be"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa609268b88d0ffebde2a8e849afe65be">&#9670;&#160;</a></span>HalfTreeDpf()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">int4 <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Eval </td>
+          <td class="memname"><a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::HalfTreeDpf </td>
+          <td>(</td>
+          <td class="paramtype">Hash&#160;</td>
+          <td class="paramname"><em>hash</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>instance_seed</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">explicit</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Configure the CCR hash and public instance seed S. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">hash</td><td>Unary CCR hash backend used throughout generation and evaluation. </td></tr>
+    <tr><td class="paramname">instance_seed</td><td>Uniformly sampled public seed S, fixed for this instance. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
+<a id="a1ab76217ad09da002c0a429784b0e7bc" name="a1ab76217ad09da002c0a429784b0e7bc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1ab76217ad09da002c0a429784b0e7bc">&#9670;&#160;</a></span>Eval()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int4 <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::Eval </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -168,14 +252,32 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>x</em>&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>x</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -190,32 +292,48 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 </table>
 </div><div class="memdoc">
 
-<p>Evaluation method. </p>
+<p>Evaluate one point from split Cws. </p>
+<p>Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride]. Levels 0..in_bits-2 read only their seed correction word. The final tree level (in_bits - 1) reads SetLsb(HCW, LCW_0) from its layer entry and LCW_1 from bit in_bits-1 of tr; every other bit of tr is ignored. The terminal cws[in_bits*stride] is the output correction word as <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a104254b633541ec1081d8cbe02956732" title="Seed correction word, or final HCW with LCW_0 in its least significant bit.">Cw::s</a> stores it.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#a458d0e7407b70e149b0ca0dcc53807e6" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">x</td><td>Evaluated input. </td></tr>
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed from generation. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer l at index l*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed control bits; only bit in_bits-1 is read. </td></tr>
+    <tr><td class="paramname">x</td><td>Query point. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html" title="Correction word.">Cw</a> entries. </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>Output share. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>This party's output share. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>x is in [0, 2^in_bits). </dd>
+<dd>
+stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and cws has at least in_bits*stride+1 elements. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd>
+<dd>
+A stride, capacity, or terminal violation aborts with a diagnostic in Debug builds on both the host and the device, and is undefined behavior in Release builds. </dd></dl>
 
 </div>
 </div>
-<a id="a360cd1684ed8369dd9e41fabee0bde9c" name="a360cd1684ed8369dd9e41fabee0bde9c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a360cd1684ed8369dd9e41fabee0bde9c">&#9670;&#160;</a></span>EvalAll()</h2>
+<a id="a1e4dc4f3443f01dce5a12048b10cdf6a" name="a1e4dc4f3443f01dce5a12048b10cdf6a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1e4dc4f3443f01dce5a12048b10cdf6a">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::EvalAll </td>
+          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::EvalAll </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -223,14 +341,38 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
-          <td class="paramname"><em>ys</em>&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>ys</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -245,42 +387,464 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 </table>
 </div><div class="memdoc">
 
-<p>Full domain evaluation method. </p>
-<p>Evaluate the key on each input, i.e., 0b00...0 - 0b11...1.</p>
+<p>Evaluate the full domain from split Cws. </p>
+<p>Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride]. Levels 0..in_bits-2 read only their seed correction word. The final tree level (in_bits - 1) reads SetLsb(HCW, LCW_0) from its layer entry and LCW_1 from bit in_bits-1 of tr; every other bit of tr is ignored. The terminal cws[in_bits*stride] is the output correction word as <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a104254b633541ec1081d8cbe02956732" title="Seed correction word, or final HCW with LCW_0 in its least significant bit.">Cw::s</a> stores it.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1HalfTreeDpf.html#a458d0e7407b70e149b0ca0dcc53807e6" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits.</td></tr>
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed from generation. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer l at index l*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed control bits; only bit in_bits-1 is read. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output array of at least 2^in_bits elements. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html" title="Correction word.">Cw</a> entries. </td></tr>
   </table>
   </dd>
 </dl>
-<p>Support parallel using OpenMP. </p>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and cws has at least in_bits*stride+1 elements. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds and is undefined behavior in Release builds. </dd>
+<dd>
+The output element count and byte size fit size_t. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large or cws is shorter than in_bits*stride+1. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section post"><dt>Postcondition</dt><dd>ys[x] contains this party's output share for x. </dd></dl>
 
 </div>
 </div>
-<a id="a458d0e7407b70e149b0ca0dcc53807e6" name="a458d0e7407b70e149b0ca0dcc53807e6"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a458d0e7407b70e149b0ca0dcc53807e6">&#9670;&#160;</a></span>Gen()</h2>
+<a id="a021dc818760cf17fc508b1c019de0ee9" name="a021dc818760cf17fc508b1c019de0ee9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a021dc818760cf17fc508b1c019de0ee9">&#9670;&#160;</a></span>EvalAllGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Prg, In, par_depth &gt;::Gen </td>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::EvalAllGpu </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k0</em>, </td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k1</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Launch full-domain CUDA evaluation from split device arrays. </p>
+<p>Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride]. Levels 0..in_bits-2 read only their seed correction word. The final tree level (in_bits - 1) reads SetLsb(HCW, LCW_0) from its layer entry and LCW_1 from bit in_bits-1 of tr; every other bit of tr is ignored. The terminal cws[in_bits*stride] is the output correction word as <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a104254b633541ec1081d8cbe02956732" title="Seed correction word, or final HCW with LCW_0 in its least significant bit.">Cw::s</a> stores it. Hash values, resource rules and tuning rules match <a class="el" href="classfss_1_1HalfTreeDpf.html#a021dc818760cf17fc508b1c019de0ee9" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a>.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed, passed by value as a kernel argument. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device correction words, layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed control bits; only bit in_bits-1 is read. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device storage containing at least 2^in_bits output blocks. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html" title="Correction word.">Cw</a> entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Immediate CUDA launch status. Invalid buffer dimensions, strides, null used buffers, or unaddressable byte sizes return cudaErrorInvalidValue. Execution remains asynchronous; the caller observes completion errors through stream. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and cws holds at least in_bits*stride+1 elements. </dd>
+<dd>
+All referenced storage remains alive until the stream work completes. </dd></dl>
+
+</div>
+</div>
+<a id="a971d45c4c3a2d8ba7960316dfc743678" name="a971d45c4c3a2d8ba7960316dfc743678"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a971d45c4c3a2d8ba7960316dfc743678">&#9670;&#160;</a></span>EvalAllGpuBatch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::EvalAllGpuBatch </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>s0s</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const In &gt;&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>0</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Launch full-domain CUDA evaluation for s0s.size() keys from split device arrays. </p>
+<p>The batch uses the level-major layout: key k layer l is read from cws[l*stride + k], key k's packed control is tr[k], and key k's terminal is cws[in_bits*stride + k]. Levels 0..in_bits-2 read only their seed correction word, the final tree level (in_bits - 1) reads SetLsb(HCW, LCW_0) from its layer entry and LCW_1 from bit in_bits-1 of tr[k], and every other bit of tr[k] is ignored. stride selects the layout. 0 selects the dense level-major layout, in which the stride is the key count of this call. Any other value is a positive stride of at least s0s.size(). Resource and tuning rules match <a class="el" href="classfss_1_1HalfTreeDpf.html#a021dc818760cf17fc508b1c019de0ee9" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a>. The batch shares one party index and hash configuration. Every key produces the complete domain.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index shared by the batch. </td></tr>
+    <tr><td class="paramname">s0s</td><td>Device storage containing one seed per key. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device level-major correction words. </td></tr>
+    <tr><td class="paramname">tr</td><td>Device packed control bits, one value per key. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device key-major rows of 2^in_bits output blocks per key. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>0 for the dense level-major layout, where the stride is the key count of this call, or a positive element stride &gt;= s0s.size(). </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Immediate CUDA status. Empty batches succeed without reading buffers. Invalid dimensions, null used buffers, strides, or unaddressable counts and bytes return cudaErrorInvalidValue. Oversized grids return cudaErrorInvalidConfiguration. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride is 0 or at least s0s.size(). </dd>
+<dd>
+cws holds at least in_bits*stride + s0s.size() elements, where a stride of 0 counts as s0s.size(). </dd>
+<dd>
+All referenced storage remains alive until the stream work completes. </dd></dl>
+
+</div>
+</div>
+<a id="a3a4d3a0c62f05a7d8cbd04a10220e6ea" name="a3a4d3a0c62f05a7d8cbd04a10220e6ea"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3a4d3a0c62f05a7d8cbd04a10220e6ea">&#9670;&#160;</a></span>EvalRange()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::EvalRange </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>first</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>last</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate the closed input interval [first, last] from split Cws. </p>
+<p>Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride]. Levels 0..in_bits-2 read only their seed correction word. The final tree level (in_bits - 1) reads SetLsb(HCW, LCW_0) from its layer entry and LCW_1 from bit in_bits-1 of tr; every other bit of tr is ignored. The terminal cws[in_bits*stride] is the output correction word as <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a104254b633541ec1081d8cbe02956732" title="Seed correction word, or final HCW with LCW_0 in its least significant bit.">Cw::s</a> stores it.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">first</td><td>First input in the interval, inclusive. </td></tr>
+    <tr><td class="paramname">last</td><td>Last input in the interval, inclusive. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer l at index l*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed control bits; only bit in_bits-1 is read. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output storage for at least last - first + 1 shares. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html" title="Correction word.">Cw</a> entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>first &lt;= last and both endpoints belong to the input domain. </dd>
+<dd>
+stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and cws has at least in_bits*stride+1 elements. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds and is undefined behavior in Release builds. </dd>
+<dd>
+The output count and byte size fit size_t, and used pointers are nonnull. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large, cws is shorter than in_bits*stride+1, ys is null, first &gt; last, an endpoint is outside the input domain, or the interval does not fit size_t. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section post"><dt>Postcondition</dt><dd>ys[j] is this party's scalar share at first + j. Extra output capacity is untouched. </dd></dl>
+
+</div>
+</div>
+<a id="a8f75c6215fe85f920da349a97418b81c" name="a8f75c6215fe85f920da349a97418b81c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8f75c6215fe85f920da349a97418b81c">&#9670;&#160;</a></span>EvalRangeGpu()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::EvalRangeGpu </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>first</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>last</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate the closed interval [first, last] on the given CUDA stream from split device arrays. </p>
+<p>Output ys[j] corresponds to first+j.</p>
+<p>Layer l is read from cws[l*stride] and the terminal from cws[in_bits*stride]. Levels 0..in_bits-2 read only their seed correction word. The final tree level (in_bits - 1) reads SetLsb(HCW, LCW_0) from its layer entry and LCW_1 from bit in_bits-1 of tr; every other bit of tr is ignored. The terminal cws[in_bits*stride] is the output correction word as <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a104254b633541ec1081d8cbe02956732" title="Seed correction word, or final HCW with LCW_0 in its least significant bit.">Cw::s</a> stores it. Resources and asynchronous error handling follow <a class="el" href="classfss_1_1HalfTreeDpf.html#a021dc818760cf17fc508b1c019de0ee9" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a>.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">first</td><td>First input in the interval, inclusive. </td></tr>
+    <tr><td class="paramname">last</td><td>Last input in the interval, inclusive. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed, passed by value as a kernel argument. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device correction words, layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed control bits; only bit in_bits-1 is read. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output storage. Entry x - first receives this party's share at x. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html" title="Correction word.">Cw</a> entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Immediate CUDA status. Invalid endpoints, buffers, strides, counts or byte sizes return cudaErrorInvalidValue. Grid limits return cudaErrorInvalidConfiguration. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and cws holds at least in_bits*stride+1 elements. </dd>
+<dd>
+All referenced storage remains alive until the stream work completes. </dd></dl>
+
+</div>
+</div>
+<a id="a38a786f5062625d020a39ec85158c3b9" name="a38a786f5062625d020a39ec85158c3b9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a38a786f5062625d020a39ec85158c3b9">&#9670;&#160;</a></span>Gen()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeDpf.html">fss::HalfTreeDpf</a>&lt; in_bits, Group, Hash, In &gt;::Gen </td>
+          <td>(</td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In &amp;&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -298,7 +862,13 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>b_buf</em>&#160;</td>
+          <td class="paramname"><em>b_buf</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -313,16 +883,33 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, in
 </table>
 </div><div class="memdoc">
 
-<p><a class="el" href="structfss_1_1HalfTreeDpf_1_1Key.html" title="A party&#39;s key: the correction words, the output correction word, and the party&#39;s initial seed.">Key</a> generation method. </p>
+<p>Generate split Cws from caller-owned initial seeds. </p>
+<p>Layer l is stored at cws[l*stride] and the terminal at cws[in_bits*stride]. Levels 0..in_bits-2 store a plain seed correction word. The final tree level (in_bits - 1) stores SetLsb(HCW, LCW_0) exactly as <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a104254b633541ec1081d8cbe02956732" title="Seed correction word, or final HCW with LCW_0 in its least significant bit.">Cw::s</a> does, and LCW_1 moves out of <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a97203bf3bc0a7e556653f385923e4c4d" title="Final tree-level LCW_1. Ignored in earlier levels and the output correction word.">Cw::extra</a> into bit in_bits-1 of tr. The control component exists only at that level, so every other bit of tr is zero on output. The terminal cws[in_bits*stride] holds the plain output correction word in <a class="el" href="structfss_1_1HalfTreeDpf_1_1Cw.html#a104254b633541ec1081d8cbe02956732" title="Seed correction word, or final HCW with LCW_0 in its least significant bit.">Cw::s</a>.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
-    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
-    <tr><td class="paramname">a</td><td>The special point alpha. </td></tr>
-    <tr><td class="paramname">b_buf</td><td>The nonzero output value beta. Will be clamped and converted to the group element. </td></tr>
+    <tr><td class="paramname">cws</td><td>Output storage; its capacity includes in_bits*stride+1 elements. </td></tr>
+    <tr><td class="paramname">tr</td><td>Output packed control bits; only bit in_bits-1 is written. </td></tr>
+    <tr><td class="paramname">s0s</td><td>Two initial seeds, retained by the caller. </td></tr>
+    <tr><td class="paramname">a</td><td>The secret point. </td></tr>
+    <tr><td class="paramname">b_buf</td><td>Output value, clamped before conversion to Group. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. The default stride of 1 stores the components contiguously. </td></tr>
   </table>
   </dd>
 </dl>
+<dl class="section pre"><dt>Precondition</dt><dd>a is in [0, 2^in_bits). </dd>
+<dd>
+stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and cws has at least in_bits*stride+1 elements. </dd>
+<dd>
+Inputs and outputs do not overlap. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd>
+<dd>
+A stride or capacity violation aborts with a diagnostic in Debug builds on both the host and the device, and is undefined behavior in Release builds. </dd></dl>
+<dl class="section post"><dt>Postcondition</dt><dd>cws, tr and s0s[party] form the corresponding party's key. </dd>
+<dd>
+Only the described prefix is written, and storage beyond it is untouched. </dd></dl>
 
 </div>
 </div>

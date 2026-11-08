@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::HalfTreeGrottoDcf&lt; in_bits, Prg, In, par_depth &gt; Class Template Reference</title>
+<title>myl7/fss: fss::HalfTreeGrottoDcf&lt; in_bits, Hash, In &gt; Class Template Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -102,73 +102,121 @@ $(document).ready(function(){initNavTree('classfss_1_1HalfTreeGrottoDcf.html',''
 
 <div class="header">
   <div class="summary">
+<a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-types">Public Types</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
 <a href="#pub-static-attribs">Static Public Attributes</a> &#124;
 <a href="classfss_1_1HalfTreeGrottoDcf-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::HalfTreeGrottoDcf&lt; in_bits, Prg, In, par_depth &gt; Class Template Reference</div></div>
+  <div class="headertitle"><div class="title">fss::HalfTreeGrottoDcf&lt; in_bits, Hash, In &gt; Class Template Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
 <p>2-party DCF scheme over F2 from the packed Half-Tree DPF (Grotto construction).  
  <a href="classfss_1_1HalfTreeGrottoDcf.html#details">More...</a></p>
 <table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
+Classes</h2></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html">ParityTreeView</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Borrowed, read-only packed leaves and their block-parity tree.  <a href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
 Public Types</h2></td></tr>
-<tr class="memitem:a067daf95aad450dbcc3d68396d37ddc5" id="r_a067daf95aad450dbcc3d68396d37ddc5"><td class="memItemLeft" align="right" valign="top"><a id="a067daf95aad450dbcc3d68396d37ddc5" name="a067daf95aad450dbcc3d68396d37ddc5"></a>
-using&#160;</td><td class="memItemRight" valign="bottom"><b>Key</b> = typename <a class="el" href="structfss_1_1PackedHalfTreeDpf_1_1Key.html">DpfType::Key</a></td></tr>
-<tr class="memdesc:a067daf95aad450dbcc3d68396d37ddc5"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key, the <a class="el" href="classfss_1_1PackedHalfTreeDpf.html" title="2-party DPF scheme with packed sub-128-bit outputs, using the Half-Tree construction.">PackedHalfTreeDpf</a> key with out_bits = 1 and beta = 1. <br /></td></tr>
-<tr class="separator:a067daf95aad450dbcc3d68396d37ddc5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6ddda3f347f47378f3ecd0675b6077e3" id="r_a6ddda3f347f47378f3ecd0675b6077e3"><td class="memItemLeft" align="right" valign="top"><a id="a6ddda3f347f47378f3ecd0675b6077e3" name="a6ddda3f347f47378f3ecd0675b6077e3"></a>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>Cw</b> = typename <a class="el" href="structfss_1_1PackedHalfTreeDpf_1_1Cw.html">DpfType::Cw</a></td></tr>
+<tr class="memdesc:a6ddda3f347f47378f3ecd0675b6077e3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word type of the packed Half-Tree DPF. <br /></td></tr>
+<tr class="separator:a6ddda3f347f47378f3ecd0675b6077e3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2d642bdf6ed470ed00e4fd96177ef924" id="r_a2d642bdf6ed470ed00e4fd96177ef924"><td class="memItemLeft" align="right" valign="top"><a id="a2d642bdf6ed470ed00e4fd96177ef924" name="a2d642bdf6ed470ed00e4fd96177ef924"></a>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>Input</b> = In</td></tr>
+<tr class="memdesc:a2d642bdf6ed470ed00e4fd96177ef924"><td class="mdescLeft">&#160;</td><td class="mdescRight">The caller-facing input-domain type. <br /></td></tr>
+<tr class="separator:a2d642bdf6ed470ed00e4fd96177ef924"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a20a69a0e432a430acf2b145294c324b7" id="r_a20a69a0e432a430acf2b145294c324b7"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a20a69a0e432a430acf2b145294c324b7">Gen</a> (<a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a067daf95aad450dbcc3d68396d37ddc5">Key</a> &amp;k0, <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a067daf95aad450dbcc3d68396d37ddc5">Key</a> &amp;k1, cuda::std::span&lt; const int4, 2 &gt; s0s, In a)</td></tr>
-<tr class="memdesc:a20a69a0e432a430acf2b145294c324b7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method.  <br /></td></tr>
-<tr class="separator:a20a69a0e432a430acf2b145294c324b7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6b6d7607ec6ad0508201a169362fa110" id="r_a6b6d7607ec6ad0508201a169362fa110"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a6b6d7607ec6ad0508201a169362fa110">Eval</a> (bool b, const <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a067daf95aad450dbcc3d68396d37ddc5">Key</a> &amp;key, In x)</td></tr>
-<tr class="memdesc:a6b6d7607ec6ad0508201a169362fa110"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method, see "Evaluation" in the file details.  <br /></td></tr>
-<tr class="separator:a6b6d7607ec6ad0508201a169362fa110"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a83a2f7a67368add55d27cdbde3603768" id="r_a83a2f7a67368add55d27cdbde3603768"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a83a2f7a67368add55d27cdbde3603768">Gen</a> (cuda::std::span&lt; int4 &gt; cws, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, size_t stride=1)</td></tr>
+<tr class="memdesc:a83a2f7a67368add55d27cdbde3603768"><td class="mdescLeft">&#160;</td><td class="mdescRight">Key generation method for split Cws.  <br /></td></tr>
+<tr class="separator:a83a2f7a67368add55d27cdbde3603768"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae193fc71d9a0d25684da135ca63995c0" id="r_ae193fc71d9a0d25684da135ca63995c0"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ae193fc71d9a0d25684da135ca63995c0">Eval</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In x, size_t stride=1)</td></tr>
+<tr class="memdesc:ae193fc71d9a0d25684da135ca63995c0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method for split Cws, see "Evaluation" in the file details.  <br /></td></tr>
+<tr class="separator:ae193fc71d9a0d25684da135ca63995c0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a78c117d16cf624420601fa7f2626136e" id="r_a78c117d16cf624420601fa7f2626136e"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a78c117d16cf624420601fa7f2626136e">Preprocess</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, int4 blocks[], bool p[], int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:a78c117d16cf624420601fa7f2626136e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Build packed leaves and their parity tree from split Cws.  <br /></td></tr>
+<tr class="separator:a78c117d16cf624420601fa7f2626136e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad4c673161a13324fe2b6621c5454ffe5" id="r_ad4c673161a13324fe2b6621c5454ffe5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classfss_1_1OwnedPackedParityTree.html">OwnedPackedParityTree</a>&lt; <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">HalfTreeGrottoDcf</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ad4c673161a13324fe2b6621c5454ffe5">PreprocessOwned</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:ad4c673161a13324fe2b6621c5454ffe5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocate and populate packed leaves and their parity tree from split Cws.  <br /></td></tr>
+<tr class="separator:ad4c673161a13324fe2b6621c5454ffe5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8f2634141c77d44d02c0eed05ce347cc" id="r_a8f2634141c77d44d02c0eed05ce347cc"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a8f2634141c77d44d02c0eed05ce347cc">EvalAll</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, bool ys[], int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:a8f2634141c77d44d02c0eed05ce347cc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate all comparison shares from split Cws on the host.  <br /></td></tr>
+<tr class="separator:a8f2634141c77d44d02c0eed05ce347cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8176911f5ccf7a42fd918c0f3ce2f949" id="r_a8176911f5ccf7a42fd918c0f3ce2f949"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (<a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a201cbee72dae2f965fa5ea00d24e3a9c">kDepth</a> &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:a8176911f5ccf7a42fd918c0f3ce2f949"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a8176911f5ccf7a42fd918c0f3ce2f949">PreprocessGpu</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; int4 &gt; blocks, cuda::std::span&lt; bool &gt; tree, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a8176911f5ccf7a42fd918c0f3ce2f949"><td class="mdescLeft">&#160;</td><td class="mdescRight">Build packed leaves and their parity tree on the GPU from split Cws.  <br /></td></tr>
+<tr class="separator:a8176911f5ccf7a42fd918c0f3ce2f949"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9fd04a0ee6d72c1f304f79cc9d193d2f" id="r_a9fd04a0ee6d72c1f304f79cc9d193d2f"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:a9fd04a0ee6d72c1f304f79cc9d193d2f"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a9fd04a0ee6d72c1f304f79cc9d193d2f">EvalAllGpu</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; bool &gt; ys, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a9fd04a0ee6d72c1f304f79cc9d193d2f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate all comparison shares on the GPU from split Cws.  <br /></td></tr>
+<tr class="separator:a9fd04a0ee6d72c1f304f79cc9d193d2f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:a6379336b642c9fee22a0a53aa2ddf1ee" id="r_a6379336b642c9fee22a0a53aa2ddf1ee"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a6379336b642c9fee22a0a53aa2ddf1ee">LeafParity</a> (int4 block, In x)</td></tr>
-<tr class="memdesc:a6379336b642c9fee22a0a53aa2ddf1ee"><td class="mdescLeft">&#160;</td><td class="mdescRight">Leaf step of <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a6b6d7607ec6ad0508201a169362fa110" title="Evaluation method, see &quot;Evaluation&quot; in the file details.">Eval()</a>, shared with the GPU point launcher.  <br /></td></tr>
-<tr class="separator:a6379336b642c9fee22a0a53aa2ddf1ee"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1b6bbdbeaff20f86f9be537206f9bdf3" id="r_a1b6bbdbeaff20f86f9be537206f9bdf3"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a1b6bbdbeaff20f86f9be537206f9bdf3">Eval</a> (<a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html">ParityTreeView</a> pt, In x)</td></tr>
+<tr class="memdesc:a1b6bbdbeaff20f86f9be537206f9bdf3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Query a preprocessed tree without hash calls.  <br /></td></tr>
+<tr class="separator:a1b6bbdbeaff20f86f9be537206f9bdf3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac459cbb001563f3a9877db44df33a25e" id="r_ac459cbb001563f3a9877db44df33a25e"><td class="memItemLeft" align="right" valign="top">static void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ac459cbb001563f3a9877db44df33a25e">EvalAll</a> (<a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html">ParityTreeView</a> pt, bool ys[])</td></tr>
+<tr class="memdesc:ac459cbb001563f3a9877db44df33a25e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate all comparison shares from preprocessed packed leaves on the host.  <br /></td></tr>
+<tr class="separator:ac459cbb001563f3a9877db44df33a25e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac5342892e8b58c88f5682689c62067ae" id="r_ac5342892e8b58c88f5682689c62067ae"><td class="memTemplParams" colspan="2">template&lt;int threads_per_block = 256&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:ac5342892e8b58c88f5682689c62067ae"><td class="memTemplItemLeft" align="right" valign="top">static cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ac5342892e8b58c88f5682689c62067ae">EvalAllGpu</a> (<a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html">ParityTreeView</a> pt, cuda::std::span&lt; bool &gt; ys, cudaStream_t stream=0)</td></tr>
+<tr class="memdesc:ac5342892e8b58c88f5682689c62067ae"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate all comparison shares from device packed leaves.  <br /></td></tr>
+<tr class="separator:ac5342892e8b58c88f5682689c62067ae"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-attribs" name="pub-static-attribs"></a>
 Static Public Attributes</h2></td></tr>
-<tr class="memitem:a6a2401e5c4070273097d29a7e77f881c" id="r_a6a2401e5c4070273097d29a7e77f881c"><td class="memItemLeft" align="right" valign="top"><a id="a6a2401e5c4070273097d29a7e77f881c" name="a6a2401e5c4070273097d29a7e77f881c"></a>
+<tr class="memitem:a936ddf2884d9dc7fd0838fcd8d45b10c" id="r_a936ddf2884d9dc7fd0838fcd8d45b10c"><td class="memItemLeft" align="right" valign="top"><a id="a936ddf2884d9dc7fd0838fcd8d45b10c" name="a936ddf2884d9dc7fd0838fcd8d45b10c"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kLanes</b> = DpfType::kLanes</td></tr>
+<tr class="memdesc:a936ddf2884d9dc7fd0838fcd8d45b10c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Number of one-bit output lanes in each packed leaf block. <br /></td></tr>
+<tr class="separator:a936ddf2884d9dc7fd0838fcd8d45b10c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a201cbee72dae2f965fa5ea00d24e3a9c" id="r_a201cbee72dae2f965fa5ea00d24e3a9c"><td class="memItemLeft" align="right" valign="top"><a id="a201cbee72dae2f965fa5ea00d24e3a9c" name="a201cbee72dae2f965fa5ea00d24e3a9c"></a>
 static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kDepth</b> = DpfType::kDepth</td></tr>
-<tr class="memdesc:a6a2401e5c4070273097d29a7e77f881c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tree depth that is actually expanded, see <a class="el" href="classfss_1_1PackedHalfTreeDpf.html#a48521e7053ddf7ce36c9258af5fa579e" title="Tree depth that is actually expanded.">PackedHalfTreeDpf::kDepth</a>. <br /></td></tr>
-<tr class="separator:a6a2401e5c4070273097d29a7e77f881c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memdesc:a201cbee72dae2f965fa5ea00d24e3a9c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tree depth that is actually expanded, see <a class="el" href="classfss_1_1PackedHalfTreeDpf.html#aa498f25b24b2bc7193f68efea8899831" title="Tree depth that is actually expanded.">PackedHalfTreeDpf::kDepth</a>. <br /></td></tr>
+<tr class="separator:a201cbee72dae2f965fa5ea00d24e3a9c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9740e314aabaf0453b0a6c0d9b8b4d7a" id="r_a9740e314aabaf0453b0a6c0d9b8b4d7a"><td class="memItemLeft" align="right" valign="top"><a id="a9740e314aabaf0453b0a6c0d9b8b4d7a" name="a9740e314aabaf0453b0a6c0d9b8b4d7a"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kCwCount</b> = DpfType::kCwCount</td></tr>
+<tr class="memdesc:a9740e314aabaf0453b0a6c0d9b8b4d7a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Seed-component count <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a83a2f7a67368add55d27cdbde3603768" title="Key generation method for split Cws.">Gen()</a> writes at stride 1: kDepth levels plus the packed-output terminal. <br /></td></tr>
+<tr class="separator:a9740e314aabaf0453b0a6c0d9b8b4d7a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
-class fss::HalfTreeGrottoDcf&lt; in_bits, Prg, In, par_depth &gt;</div><p>2-party DCF scheme over F2 from the packed Half-Tree DPF (Grotto construction). </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Hash, typename In = uint&gt;<br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)<br />
+class fss::HalfTreeGrottoDcf&lt; in_bits, Hash, In &gt;</div><p>2-party DCF scheme over F2 from the packed Half-Tree DPF (Grotto construction). </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">in_bits</td><td>Input domain bit size. Must exceed 7, the levels a 1-bit output block covers. </td></tr>
-    <tr><td class="paramname">Prg</td><td>See Prgable. Requires mul=1 (CCR hash, 128-&gt;128 bits), as <a class="el" href="classfss_1_1PackedHalfTreeDpf.html" title="2-party DPF scheme with packed sub-128-bit outputs, using the Half-Tree construction.">PackedHalfTreeDpf</a>. </td></tr>
-    <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>Forwarded to <a class="el" href="classfss_1_1PackedHalfTreeDpf.html" title="2-party DPF scheme with packed sub-128-bit outputs, using the Half-Tree construction.">PackedHalfTreeDpf</a>, which fixes the Key type. <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a6b6d7607ec6ad0508201a169362fa110" title="Evaluation method, see &quot;Evaluation&quot; in the file details.">Eval()</a> does not use it. </td></tr>
+    <tr><td class="paramname">Hash</td><td>Unary CCR hash backend. See CcrHashable and <a class="el" href="classfss_1_1PackedHalfTreeDpf.html" title="2-party DPF scheme with packed sub-128-bit outputs, using the Half-Tree construction.">PackedHalfTreeDpf</a>. </td></tr>
+    <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t.</td></tr>
   </table>
   </dd>
 </dl>
+<p><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a83a2f7a67368add55d27cdbde3603768" title="Key generation method for split Cws.">Gen()</a> and scalar <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ae193fc71d9a0d25684da135ca63995c0" title="Evaluation method for split Cws, see &quot;Evaluation&quot; in the file details.">Eval()</a> are callable from host and device when the backend supports the execution space and all accessed storage is accessible there. <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a78c117d16cf624420601fa7f2626136e" title="Build packed leaves and their parity tree from split Cws.">Preprocess()</a> and both <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a8f2634141c77d44d02c0eed05ce347cc" title="Evaluate all comparison shares from split Cws on the host.">EvalAll()</a> overloads are host operations. For N = 2^in_bits and B = N/128, preprocessing stores B packed leaf blocks and a parity tree of 2*B-1 bool entries over whole blocks. Tree queries use O(kDepth) XOR operations and no hash calls. Raw scalar <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ae193fc71d9a0d25684da135ca63995c0" title="Evaluation method for split Cws, see &quot;Evaluation&quot; in the file details.">Eval()</a> and the leaf-prefix route can give different individual shares. Both parties must use the same route. Raw <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a8f2634141c77d44d02c0eed05ce347cc" title="Evaluate all comparison shares from split Cws on the host.">EvalAll()</a> and preprocessed evaluation use the same leaf-prefix route and give identical shares. </p>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="a6b6d7607ec6ad0508201a169362fa110" name="a6b6d7607ec6ad0508201a169362fa110"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6b6d7607ec6ad0508201a169362fa110">&#9670;&#160;</a></span>Eval()</h2>
+<a id="ae193fc71d9a0d25684da135ca63995c0" name="ae193fc71d9a0d25684da135ca63995c0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae193fc71d9a0d25684da135ca63995c0">&#9670;&#160;</a></span>Eval() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">bool <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Eval </td>
+          <td class="memname">bool <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::Eval </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -176,14 +224,26 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a067daf95aad450dbcc3d68396d37ddc5">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>x</em>&#160;</td>
+          <td class="paramname"><em>x</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -198,96 +258,46 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 </table>
 </div><div class="memdoc">
 
-<p>Evaluation method, see "Evaluation" in the file details. </p>
+<p>Evaluation method for split Cws, see "Evaluation" in the file details. </p>
+<p>Layer l is read from cws[l*stride] and the packed-output correction word from cws[kDepth*stride]. The construction carries no control bits, so there is no packed-control parameter.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a20a69a0e432a430acf2b145294c324b7" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">x</td><td>Query point. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed from generation. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer l at index l*stride and the packed-output correction word at index kDepth*stride. </td></tr>
+    <tr><td class="paramname">x</td><td>Query point in [0, 2^in_bits). </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between Cw entries. </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>bool share such that share_0 XOR share_1 = 1[alpha &lt;= x]. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/kDepth and cws has at least kDepth*stride+1 elements. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd>
+<dd>
+A stride or capacity violation aborts with a diagnostic in Debug builds on both the host and the device, and is undefined behavior in Release builds. </dd></dl>
 
 </div>
 </div>
-<a id="a20a69a0e432a430acf2b145294c324b7" name="a20a69a0e432a430acf2b145294c324b7"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a20a69a0e432a430acf2b145294c324b7">&#9670;&#160;</a></span>Gen()</h2>
+<a id="a1b6bbdbeaff20f86f9be537206f9bdf3" name="a1b6bbdbeaff20f86f9be537206f9bdf3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1b6bbdbeaff20f86f9be537206f9bdf3">&#9670;&#160;</a></span>Eval() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::Gen </td>
+          <td class="memname">bool <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::Eval </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a067daf95aad450dbcc3d68396d37ddc5">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k0</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a067daf95aad450dbcc3d68396d37ddc5">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k1</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; const int4, 2 &gt;&#160;</td>
-          <td class="paramname"><em>s0s</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>a</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-<p>Key generation method. </p>
-<p>Delegates to <a class="el" href="classfss_1_1PackedHalfTreeDpf.html#a64a9ea749fec2ff244c421f2a6e40613" title="Key generation method.">PackedHalfTreeDpf::Gen()</a> with beta = 1.</p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
-    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
-    <tr><td class="paramname">a</td><td>The secret comparison threshold. </td></tr>
-  </table>
-  </dd>
-</dl>
-
-</div>
-</div>
-<a id="a6379336b642c9fee22a0a53aa2ddf1ee" name="a6379336b642c9fee22a0a53aa2ddf1ee"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6379336b642c9fee22a0a53aa2ddf1ee">&#9670;&#160;</a></span>LeafParity()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<div class="memtemplate">
-template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&gt; </div>
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">static bool <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Prg, In, par_depth &gt;::LeafParity </td>
-          <td>(</td>
-          <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>block</em>, </td>
+          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html">ParityTreeView</a>&#160;</td>
+          <td class="paramname"><em>pt</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -308,20 +318,654 @@ template&lt;int in_bits, typename Prg , typename In  = uint, int par_depth = -1&
 </table>
 </div><div class="memdoc">
 
-<p>Leaf step of <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a6b6d7607ec6ad0508201a169362fa110" title="Evaluation method, see &quot;Evaluation&quot; in the file details.">Eval()</a>, shared with the GPU point launcher. </p>
+<p>Query a preprocessed tree without hash calls. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">block</td><td>x's output block. </td></tr>
-    <tr><td class="paramname">x</td><td>The evaluated input. </td></tr>
+    <tr><td class="paramname">pt</td><td>Borrowed packed parity tree. Both buffers must remain alive and accessible in the execution space of this call. </td></tr>
+    <tr><td class="paramname">x</td><td>Query point in [0, 2^in_bits). </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>The parity of the lanes of block up to and including x's lane when x's last tree bit is 0, or of the lanes above x's lane when it is 1. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>This party's XOR share of alpha &lt;= x, using the leaf-prefix route. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>Packed-block and parity-tree element counts and byte sizes fit size_t. </dd></dl>
+
+</div>
+</div>
+<a id="a8f2634141c77d44d02c0eed05ce347cc" name="a8f2634141c77d44d02c0eed05ce347cc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8f2634141c77d44d02c0eed05ce347cc">&#9670;&#160;</a></span>EvalAll() <span class="overload">[1/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::EvalAll </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>ys</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate all comparison shares from split Cws on the host. </p>
+<p>Layer l is read from cws[l*stride] and the packed-output correction word from cws[kDepth*stride]. The construction carries no control bits, so there is no packed-control parameter. Outputs match the Cw form share for share.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output array of at least 2^in_bits bool entries. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between Cw entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/kDepth and cws has at least kDepth*stride+1 elements. </dd>
+<dd>
+The output and packed-block element counts and byte sizes fit size_t. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large or cws is shorter than kDepth*stride+1. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section post"><dt>Postcondition</dt><dd>ys[x] is this party's XOR share of alpha &lt;= x, using the leaf-prefix route. </dd></dl>
+
+</div>
+</div>
+<a id="ac459cbb001563f3a9877db44df33a25e" name="ac459cbb001563f3a9877db44df33a25e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac459cbb001563f3a9877db44df33a25e">&#9670;&#160;</a></span>EvalAll() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::EvalAll </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html">ParityTreeView</a>&#160;</td>
+          <td class="paramname"><em>pt</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>ys</em>[]&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate all comparison shares from preprocessed packed leaves on the host. </p>
+<p>Uses O(2^in_bits) XOR work, no hash calls, and no additional allocation. </p><dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">pt</td><td>Borrowed parity tree with storage accessible on the host. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output array of at least 2^in_bits bool entries, disjoint from pt's storage. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>The output and packed-block element counts and byte sizes fit size_t. </dd></dl>
+<dl class="section post"><dt>Postcondition</dt><dd>ys matches raw <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a8f2634141c77d44d02c0eed05ce347cc" title="Evaluate all comparison shares from split Cws on the host.">EvalAll()</a> for the same party, configuration and key components. </dd></dl>
+
+</div>
+</div>
+<a id="a9fd04a0ee6d72c1f304f79cc9d193d2f" name="a9fd04a0ee6d72c1f304f79cc9d193d2f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9fd04a0ee6d72c1f304f79cc9d193d2f">&#9670;&#160;</a></span>EvalAllGpu() <span class="overload">[1/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::EvalAllGpu </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; bool &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate all comparison shares on the GPU from split Cws. </p>
+<p>Follows the leaf-prefix route, as in the Cw form. Per-party shares are not comparable across routes.</p>
+<p>Expands packed blocks, unpacks their bits, and scans their prefix XOR. Layer l is read from cws[l*stride] and the packed-output correction word from cws[kDepth*stride]. The host instance passes its hash value and instance seed to the packed evaluator. Referenced backend resources must already be device-accessible. Packed-block and CUB scan scratch are allocated and released on stream. No backend upload, deep copy, synchronization, or event management occurs.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed, passed by value. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device correction words, layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output of at least 2^in_bits bool entries, in input order. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream used for evaluation, scanning, and temporary storage. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between Cw entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and cws holds at least kDepth*stride+1 elements. </dd>
+<dd>
+Buffers and backend resources remain valid until queued work completes. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>The first immediate CUDA failure, including allocation or release. Invalid buffers/counts return cudaErrorInvalidValue. Work is asynchronous. </dd></dl>
+
+</div>
+</div>
+<a id="ac5342892e8b58c88f5682689c62067ae" name="ac5342892e8b58c88f5682689c62067ae"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac5342892e8b58c88f5682689c62067ae">&#9670;&#160;</a></span>EvalAllGpu() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int threads_per_block&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::EvalAllGpu </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html">ParityTreeView</a>&#160;</td>
+          <td class="paramname"><em>pt</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; bool &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate all comparison shares from device packed leaves. </p>
+<p>Unpacks blocks and scans their prefix XOR without hash calls. The parity entries pt.p are not read. Scan scratch is allocated and released on stream. </p><dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">threads_per_block</td><td>Power-of-two unpack block size in [1,1024], default 256. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">pt</td><td>Borrowed view with at least 2^kDepth device packed blocks. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output of at least 2^in_bits bool entries, disjoint from pt.blocks. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream used for unpacking, scanning, and temporary storage. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>Input and output buffers remain valid until queued work completes. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>The first immediate CUDA failure, including allocation or release. Invalid buffers/counts return cudaErrorInvalidValue. Work is asynchronous. </dd></dl>
+
+</div>
+</div>
+<a id="a83a2f7a67368add55d27cdbde3603768" name="a83a2f7a67368add55d27cdbde3603768"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a83a2f7a67368add55d27cdbde3603768">&#9670;&#160;</a></span>Gen()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::Gen </td>
+          <td>(</td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 2 &gt;&#160;</td>
+          <td class="paramname"><em>s0s</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>a</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Key generation method for split Cws. </p>
+<p>Delegates to <a class="el" href="classfss_1_1PackedHalfTreeDpf.html#a31abca47b3e1d241a10ced3e9ded8ded" title="Generate split Cws for the packed point function.">PackedHalfTreeDpf::Gen()</a> with beta = 1.</p>
+<p>Layer l is stored at cws[l*stride] and the packed-output correction word at cws[kDepth*stride]. The construction carries no control bits, so there is no packed-control parameter.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">cws</td><td>Output storage; its capacity includes kDepth*stride+1 elements. </td></tr>
+    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
+    <tr><td class="paramname">a</td><td>The secret comparison threshold in [0, 2^in_bits). </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. The default stride of 1 stores the components contiguously. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/kDepth and cws has at least kDepth*stride+1 elements. </dd>
+<dd>
+Inputs and outputs do not overlap. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd></dl>
+<dl class="section post"><dt>Postcondition</dt><dd>cws and s0s[party] form the corresponding party's key. </dd>
+<dd>
+Only the described prefix is written, and storage beyond it is untouched. </dd></dl>
+
+</div>
+</div>
+<a id="a78c117d16cf624420601fa7f2626136e" name="a78c117d16cf624420601fa7f2626136e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a78c117d16cf624420601fa7f2626136e">&#9670;&#160;</a></span>Preprocess()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::Preprocess </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>blocks</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>p</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Build packed leaves and their parity tree from split Cws. </p>
+<p>Layer l is read from cws[l*stride] and the packed-output correction word from cws[kDepth*stride]. The construction carries no control bits, so there is no packed-control parameter. The produced arrays match the Cw form entry for entry.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">blocks</td><td>Writable output array of at least 2^kDepth int4 entries. </td></tr>
+    <tr><td class="paramname">p</td><td>Writable output array of at least 2^(kDepth+1)-1 bool entries. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between Cw entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/kDepth and cws has at least kDepth*stride+1 elements. </dd>
+<dd>
+Packed-block and parity-tree element counts and byte sizes fit size_t. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large or cws is shorter than kDepth*stride+1. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section post"><dt>Postcondition</dt><dd><a class="el" href="structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html" title="Borrowed, read-only packed leaves and their block-parity tree.">ParityTreeView</a>{blocks, p} can be passed to <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ae193fc71d9a0d25684da135ca63995c0" title="Evaluation method for split Cws, see &quot;Evaluation&quot; in the file details.">Eval()</a> and <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a8f2634141c77d44d02c0eed05ce347cc" title="Evaluate all comparison shares from split Cws on the host.">EvalAll()</a>. </dd></dl>
+
+</div>
+</div>
+<a id="a8176911f5ccf7a42fd918c0f3ce2f949" name="a8176911f5ccf7a42fd918c0f3ce2f949"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8176911f5ccf7a42fd918c0f3ce2f949">&#9670;&#160;</a></span>PreprocessGpu()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (<a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a201cbee72dae2f965fa5ea00d24e3a9c">kDepth</a> &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (<a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a201cbee72dae2f965fa5ea00d24e3a9c">kDepth</a> &lt; sizeof(size_t) * 8)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::PreprocessGpu </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>blocks</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; bool &gt;&#160;</td>
+          <td class="paramname"><em>tree</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Build packed leaves and their parity tree on the GPU from split Cws. </p>
+<p>Reuses <a class="el" href="classfss_1_1PackedHalfTreeDpf.html#a5d90cc11263dc1f5f0eab3592bb47257" title="Launch full-domain CUDA evaluation from split device Cws.">PackedHalfTreeDpf::EvalAllGpu()</a>. Layer l is read from cws[l*stride] and the packed-output correction word from cws[kDepth*stride]. The hash value and instance seed are passed as kernel arguments; resources referenced by the hash must already be device-accessible and allow concurrent use. No allocation, upload, deep copy, or synchronization is performed.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed, passed by value to the kernel. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device correction words, layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">blocks</td><td>Device output of at least 2^kDepth packed int4 blocks. </td></tr>
+    <tr><td class="paramname">tree</td><td>Device output of at least 2^(kDepth+1)-1 bool parity entries. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between Cw entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and cws holds at least kDepth*stride+1 elements. </dd>
+<dd>
+Packed-block and parity-tree counts and byte counts fit size_t. </dd>
+<dd>
+Buffers and backend resources remain valid until queued work completes. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Immediate CUDA status. Invalid buffers or unaddressable counts return cudaErrorInvalidValue; oversized grids return cudaErrorInvalidConfiguration. Work remains asynchronous, and execution errors are observed on the stream. </dd></dl>
+
+</div>
+</div>
+<a id="ad4c673161a13324fe2b6621c5454ffe5" name="ad4c673161a13324fe2b6621c5454ffe5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad4c673161a13324fe2b6621c5454ffe5">&#9670;&#160;</a></span>PreprocessOwned()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptCcrHashable.html">CcrHashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classfss_1_1OwnedPackedParityTree.html">OwnedPackedParityTree</a>&lt; <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt; &gt; <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html">fss::HalfTreeGrottoDcf</a>&lt; in_bits, Hash, In &gt;::PreprocessOwned </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Allocate and populate packed leaves and their parity tree from split Cws. </p>
+<p>The returned owner holds independent storage; this instance keeps no key or preprocessed tree. Its View() is accepted by <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#ae193fc71d9a0d25684da135ca63995c0" title="Evaluation method for split Cws, see &quot;Evaluation&quot; in the file details.">Eval()</a> and <a class="el" href="classfss_1_1HalfTreeGrottoDcf.html#a8f2634141c77d44d02c0eed05ce347cc" title="Evaluate all comparison shares from split Cws on the host.">EvalAll()</a>. Layer l is read from cws[l*stride], as in the Cw form.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed from generation. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative CPU split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between Cw entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Move-only owner of the populated host storage. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and cws holds at least kDepth*stride+1 elements. </dd>
+<dd>
+All allocated element counts and byte sizes fit size_t. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large or cws is shorter than kDepth*stride+1. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="half__tree__grotto__dcf_8cuh_source.html">half_tree_grotto_dcf.cuh</a></li>
+<li>include/fss/<a class="el" href="half__tree__grotto__dcf_8cuh.html">half_tree_grotto_dcf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

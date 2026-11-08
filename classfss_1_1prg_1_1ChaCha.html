@@ -119,12 +119,12 @@ Public Member Functions</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int mul, int rounds = 20&gt;<br />
-requires (rounds % 2 == 0 &amp;&amp; (mul == 1 || mul == 2 || mul == 4))<br />
+requires (rounds &gt; 0 &amp;&amp; rounds % 2 == 0 &amp;&amp; (mul == 1 || mul == 2 || mul == 4))<br />
 class fss::prg::ChaCha&lt; mul, rounds &gt;</div><p>ChaCha as a PRG. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">mul</td><td>See Prgable mul. For this class, can only be 1, 2, or 4. </td></tr>
-    <tr><td class="paramname">rounds</td><td>Security parameter. The default value is secure enough and widely used, thus preferred. </td></tr>
+    <tr><td class="paramname">mul</td><td>Seed expansion factor. Gen() maps one 16 B seed to mul * 16 B. Supported factors are 1, 2, and 4. </td></tr>
+    <tr><td class="paramname">rounds</td><td>Positive even round count. The default value is secure enough and widely used, thus preferred. </td></tr>
   </table>
   </dd>
 </dl>

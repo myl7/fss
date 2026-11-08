@@ -113,14 +113,89 @@ $(document).ready(function(){initNavTree('classfss_1_1prp_1_1Aes128Feistel.html'
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:a7faa4d6d5de8a269dd6664cfd86d5d2c" id="r_a7faa4d6d5de8a269dd6664cfd86d5d2c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a7faa4d6d5de8a269dd6664cfd86d5d2c">Aes128Feistel</a> ()</td></tr>
+<tr class="memdesc:a7faa4d6d5de8a269dd6664cfd86d5d2c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Construct with a new OpenSSL cipher context.  <br /></td></tr>
+<tr class="separator:a7faa4d6d5de8a269dd6664cfd86d5d2c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a36accb3fceed68377170a5e3cf6fcf13" id="r_a36accb3fceed68377170a5e3cf6fcf13"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a36accb3fceed68377170a5e3cf6fcf13">Aes128Feistel</a> (const <a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html">Aes128Feistel</a> &amp;)</td></tr>
+<tr class="memdesc:a36accb3fceed68377170a5e3cf6fcf13"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copy by creating a new OpenSSL cipher context.  <br /></td></tr>
+<tr class="separator:a36accb3fceed68377170a5e3cf6fcf13"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8d5efd98237b58074887a824da2c92ba" id="r_a8d5efd98237b58074887a824da2c92ba"><td class="memItemLeft" align="right" valign="top">__uint128_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba">Permu</a> (int4 seed, __uint128_t x, __uint128_t domain)</td></tr>
 <tr class="memdesc:a8d5efd98237b58074887a824da2c92ba"><td class="mdescLeft">&#160;</td><td class="mdescRight">Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.  <br /></td></tr>
 <tr class="separator:a8d5efd98237b58074887a824da2c92ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Small-domain AES-128 Feistel PRP for Cuckoo hashing. </p>
-<p>This backend is host-only because it uses OpenSSL. It satisfies Permutable and is intended for VDMPF setup paths that need a permutation over a compact integer domain. </p>
-</div><h2 class="groupheader">Member Function Documentation</h2>
+<p>This backend is host-only because it uses OpenSSL. It satisfies Permutable and is intended for VDMPF setup paths that need a permutation over a compact integer domain. All special members and <a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba" title="Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.">Permu()</a> are <code>__host__ __device__</code>, so pure host use of schemes that hold a Prp by value builds without execution-space warnings. Device use of any of them, e.g. calling <a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba" title="Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.">Permu()</a> or copying the object in a kernel, fails to build with an unresolved-extern error that names <code>fss_host_only_Aes128Feistel_used_in_device_code</code>.</p>
+<p>After a move the source owns no context. It may be destroyed or assigned to. <a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba" title="Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.">Permu()</a> on a moved-from object is undefined behavior, and only a successful assignment restores the context. A failed assignment does not restore it. </p>
+</div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a id="a7faa4d6d5de8a269dd6664cfd86d5d2c" name="a7faa4d6d5de8a269dd6664cfd86d5d2c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7faa4d6d5de8a269dd6664cfd86d5d2c">&#9670;&#160;</a></span>Aes128Feistel() <span class="overload">[1/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">fss::prp::Aes128Feistel::Aes128Feistel </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Construct with a new OpenSSL cipher context. </p>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::runtime_error</td><td>if an OpenSSL context allocation or setup call fails. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a36accb3fceed68377170a5e3cf6fcf13" name="a36accb3fceed68377170a5e3cf6fcf13"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a36accb3fceed68377170a5e3cf6fcf13">&#9670;&#160;</a></span>Aes128Feistel() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">fss::prp::Aes128Feistel::Aes128Feistel </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html">Aes128Feistel</a> &amp;&#160;</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Copy by creating a new OpenSSL cipher context. </p>
+<p>Copy assignment reuses the destination context, or creates one when the destination is moved-from. </p><dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::runtime_error</td><td>if an OpenSSL context allocation or setup call fails. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
 <a id="a8d5efd98237b58074887a824da2c92ba" name="a8d5efd98237b58074887a824da2c92ba"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a8d5efd98237b58074887a824da2c92ba">&#9670;&#160;</a></span>Permu()</h2>
 
@@ -162,7 +237,7 @@ Public Member Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking. </p>
-<p>Host-only.</p>
+<p>Host-only. Device use fails to build with an unresolved-extern error naming <code>fss_host_only_Aes128Feistel_used_in_device_code</code>.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">seed</td><td>16-byte PRP key. </td></tr>
@@ -172,6 +247,9 @@ Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>Output in [0, domain). </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>x &lt; domain. A violation aborts with a diagnostic in Debug builds and is undefined behavior in Release builds. </dd>
+<dd>
+The object is not moved-from. A moved-from object needs a successful assignment to restore its context; a failed assignment does not restore it. </dd></dl>
 
 </div>
 </div>

@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['hashable_0',['Hashable',['../conceptHashable.html',1,'']]]
+  ['groupable_0',['Groupable',['../conceptGroupable.html',1,'']]]
 ];

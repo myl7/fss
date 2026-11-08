@@ -101,7 +101,7 @@ $(document).ready(function(){initNavTree('conceptPrgable.html',''); initResizabl
 </div>
 
 <div class="header">
-  <div class="headertitle"><div class="title">Prgable Concept Reference</div></div>
+  <div class="headertitle"><div class="title">Prgable Concept Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -112,13 +112,13 @@ $(document).ready(function(){initNavTree('conceptPrgable.html',''); initResizabl
 <div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptPrgable.html">Prgable</a> =  <span class="keyword">requires</span>(Prg prg, int4 seed) {</div>
 <div class="line">  { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
 <div class="line">}</div>
-<div class="ttc" id="aconceptPrgable_html"><div class="ttname"><a href="conceptPrgable.html">Prgable</a></div><div class="ttdoc">Pseudorandom generator (PRG) interface.</div><div class="ttdef"><b>Definition</b> prg.cuh:21</div></div>
+<div class="ttc" id="aconceptPrgable_html"><div class="ttname"><a href="conceptPrgable.html">Prgable</a></div><div class="ttdoc">Pseudorandom generator (PRG) interface.</div><div class="ttdef"><b>Definition</b> prg.cuh:24</div></div>
 </div><!-- fragment --><a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Pseudorandom generator (PRG) interface. </p>
 <p>Required to be cryptographically secure.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">mul</td><td>Requires the PRG to output mul times of the seed size, i.e., mul * 16 B. </td></tr>
+    <tr><td class="paramname">mul</td><td>Seed expansion factor. An int4 seed contains 16 B, and Gen() returns mul * 16 B. </td></tr>
   </table>
   </dd>
 </dl>

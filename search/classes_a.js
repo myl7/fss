@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['sha256_0',['Sha256',['../classfss_1_1hash_1_1Sha256.html',1,'fss::hash']]]
+  ['uint_0',['Uint',['../classfss_1_1group_1_1Uint.html',1,'fss::group']]],
+  ['uint128modulus_1',['Uint128Modulus',['../structfss_1_1group_1_1Uint128Modulus.html',1,'fss::group']]]
 ];

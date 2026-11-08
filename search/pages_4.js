@@ -1,7 +1,7 @@
 var searchData=
 [
-  ['benchmark_0',['dpf++ (rh3nry/dpfplusplus) CPU Benchmark',['../md_doc_2bench-dpfplusplus.html',1,'']]],
-  ['benchmark_20coverage_1',['Benchmark coverage',['../md_doc_2benchmarks.html',1,'']]],
-  ['benchmark_20curve_20methodology_2',['Benchmark curve methodology',['../md_doc_2bench__figures.html',1,'']]],
-  ['benchmarks_3',['Third-party DPF/DCF Library Benchmarks',['../md_doc_2bench__third__parties.html',1,'']]]
+  ['dcf_20library_20benchmarks_0',['Third-party DPF/DCF Library Benchmarks',['../md_doc_2bench__third__parties.html',1,'']]],
+  ['dpf_20dcf_20library_20benchmarks_1',['Third-party DPF/DCF Library Benchmarks',['../md_doc_2bench__third__parties.html',1,'']]],
+  ['dpf_20rh3nry_20dpfplusplus_20cpu_20benchmark_2',['dpf++ (rh3nry/dpfplusplus) CPU Benchmark',['../md_doc_2bench-dpfplusplus.html',1,'']]],
+  ['dpfplusplus_20cpu_20benchmark_3',['dpf++ (rh3nry/dpfplusplus) CPU Benchmark',['../md_doc_2bench-dpfplusplus.html',1,'']]]
 ];

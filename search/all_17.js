@@ -1,11 +1,12 @@
 var searchData=
 [
-  ['m_5frt_0',['m_rt',['../structfss_1_1Dmpf_1_1Key.html#ade0a5ef14a04142fef878d13dfa82e64',1,'fss::Dmpf::Key::m_rt'],['../structfss_1_1Vdmpf_1_1Key.html#a01ba1444ba6f4ca55e2bcce87b0708bf',1,'fss::Vdmpf::Key::m_rt']]],
-  ['mastic_20rust_1',['mastic (Rust)',['../md_doc_2bench__third__parties.html#autotoc_md81',1,'']]],
-  ['merkle_20fold_20accumulation_2',['8. The VDMPF Merkle-fold accumulation',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md117',1,'']]],
-  ['merkle_20fold_20proof_20accumulation_3a_20security_20analysis_3',['VDPF and VDMPF Merkle-fold proof accumulation: security analysis',['../md_doc_2vdpf__merkle__fold__security.html',1,'']]],
-  ['merkle_20fold_20prove_4',['3. The Merkle-fold Prove',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md110',1,'']]],
-  ['methodology_5',['Benchmark curve methodology',['../md_doc_2bench__figures.html',1,'']]],
-  ['mmo_20software_20prg_3a_20t_20table_20vs_20textbook_6',['AES-128 MMO Software PRG: T-table vs Textbook',['../md_doc_2bench__aes128__soft.html',1,'']]],
-  ['myl7_20fss_7',['myl7/fss',['../index.html',1,'']]]
+  ['on_20cuda_0',['Evaluate on CUDA',['../index.html#autotoc_md3',1,'']]],
+  ['operations_1',['Benchmarked Operations',['../md_doc_2bench__third__parties.html#autotoc_md51',1,'']]],
+  ['operator_2b_2',['operator+',['../classfss_1_1group_1_1Bytes.html#a422a29a60519ecce0851be5621b0f0b0',1,'fss::group::Bytes::operator+()'],['../classfss_1_1group_1_1Uint.html#a0b6073c9ace1e50de7cdde22a2af0cc0',1,'fss::group::Uint::operator+()']]],
+  ['operator_2d_3',['operator-',['../classfss_1_1group_1_1Bytes.html#ad684edc8b9728ae19dcae3584a48e1cd',1,'fss::group::Bytes::operator-()'],['../classfss_1_1group_1_1Uint.html#a5f0ff04d41f3ea45897e4f58694496de',1,'fss::group::Uint::operator-()']]],
+  ['original_20construction_4',['2. The original construction',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md92',1,'']]],
+  ['outputs_5',['Packed outputs',['../packed__half__tree__dpf_8cuh.html#autotoc_md28',1,'']]],
+  ['overview_6',['1. Overview',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md91',1,'']]],
+  ['ownedpackedparitytree_7',['ownedpackedparitytree',['../classfss_1_1OwnedPackedParityTree.html',1,'fss::OwnedPackedParityTree&lt; Scheme &gt;'],['../classfss_1_1OwnedPackedParityTree.html#a9c7b540d8e9141ac0de4ea844b521887',1,'fss::OwnedPackedParityTree::OwnedPackedParityTree()']]],
+  ['ownedparitytree_8',['ownedparitytree',['../classfss_1_1OwnedParityTree.html',1,'fss::OwnedParityTree&lt; Scheme &gt;'],['../classfss_1_1OwnedParityTree.html#a8ac48a024f4db9e7527b441c247032b6',1,'fss::OwnedParityTree::OwnedParityTree()']]]
 ];

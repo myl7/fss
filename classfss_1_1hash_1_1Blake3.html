@@ -120,8 +120,11 @@ Public Member Functions</h2></td></tr>
 <tr class="memdesc:a68147081131a2e3af1c0ff456bb060db"><td class="mdescLeft">&#160;</td><td class="mdescRight">Hash a 64B message.  <br /></td></tr>
 <tr class="separator:a68147081131a2e3af1c0ff456bb060db"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad64356509df9742d86cdf6c61183b904" id="r_ad64356509df9742d86cdf6c61183b904"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; int4, 4 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1hash_1_1Blake3.html#ad64356509df9742d86cdf6c61183b904">Hash</a> (cuda::std::tuple&lt; int4, const int4 &gt; msg)</td></tr>
-<tr class="memdesc:ad64356509df9742d86cdf6c61183b904"><td class="mdescLeft">&#160;</td><td class="mdescRight">XOR-collision-resistant hash.  <br /></td></tr>
+<tr class="memdesc:ad64356509df9742d86cdf6c61183b904"><td class="mdescLeft">&#160;</td><td class="mdescRight">Hash a 128+127-bit logical message into two 32B digests.  <br /></td></tr>
 <tr class="separator:ad64356509df9742d86cdf6c61183b904"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aaa449ef9aedf7c2d67ceaf01b753aef7" id="r_aaa449ef9aedf7c2d67ceaf01b753aef7"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; cuda::std::array&lt; int4, 2 &gt;, 4 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1hash_1_1Blake3.html#aaa449ef9aedf7c2d67ceaf01b753aef7">Hash4</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt;, 4 &gt; msgs)</td></tr>
+<tr class="memdesc:aaa449ef9aedf7c2d67ceaf01b753aef7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Hash four 64B messages.  <br /></td></tr>
+<tr class="separator:aaa449ef9aedf7c2d67ceaf01b753aef7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>BLAKE3 keyed hash (CPU+GPU). </p>
@@ -222,15 +225,51 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p>XOR-collision-resistant hash. </p>
-<p>Produces two 32B digests (one with LSB cleared, one with LSB set) and concatenates them into 64B.</p>
+<p>Hash a 128+127-bit logical message into two 32B digests. </p>
+<p>All 128 bits of a are message data. Bit 0 of b.w is reserved for domain separation; its supplied value is ignored. The other 127 bits of b are message data. Hash a followed by a copy of b with its reserved bit set to 0, then to 1, and concatenate the digests in that order. The input blocks are not modified. Each digest uses a 32B message, counter 0, and flags CHUNK_START | CHUNK_END | ROOT | KEYED_HASH under the configured IV.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">msg</td><td>Tuple of (a, b) where a's LSB is used for domain separation. </td></tr>
+    <tr><td class="paramname">msg</td><td>Tuple of (a, b), with the reserved bit in the second block. </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>4 int4 blocks (64B). </dd></dl>
+
+</div>
+</div>
+<a id="aaa449ef9aedf7c2d67ceaf01b753aef7" name="aaa449ef9aedf7c2d67ceaf01b753aef7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aaa449ef9aedf7c2d67ceaf01b753aef7">&#9670;&#160;</a></span>Hash4()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cuda::std::array&lt; cuda::std::array&lt; int4, 2 &gt;, 4 &gt; fss::hash::Blake3::Hash4 </td>
+          <td>(</td>
+          <td class="paramtype">cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt;, 4 &gt;&#160;</td>
+          <td class="paramname"><em>msgs</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Hash four 64B messages. </p>
+<p>Produces the same 32B digest as Hash for each message on this instance. The input is borrowed and the output is owned. Only for host side; device use fails to build with an unresolved-extern error naming <code>fss_host_only_Blake3_Hash4_used_in_device_code</code>.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">msgs</td><td>Four 64B messages. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Four 32B digests. </dd></dl>
 
 </div>
 </div>

@@ -114,43 +114,43 @@ $(document).ready(function(){initNavTree('dcf_8cuh.html',''); initResizable(); }
 <code>#include &lt;type_traits&gt;</code><br />
 <code>#include &lt;cstddef&gt;</code><br />
 <code>#include &lt;cassert&gt;</code><br />
-<code>#include &lt;omp.h&gt;</code><br />
 <code>#include &lt;vector&gt;</code><br />
 <code>#include &lt;cuda/std/array&gt;</code><br />
 <code>#include &lt;<a class="el" href="group_8cuh_source.html">fss/group.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="bytes_8cuh_source.html">fss/group/bytes.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="uint_8cuh_source.html">fss/group/uint.cuh</a>&gt;</code><br />
+<code>#include &lt;<a class="el" href="uint128_8cuh_source.html">fss/group/uint128.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="prg_8cuh_source.html">fss/prg.cuh</a>&gt;</code><br />
 <code>#include &lt;<a class="el" href="util_8cuh_source.html">fss/util.cuh</a>&gt;</code><br />
-</div>
-<p><a href="dcf_8cuh_source.html">Go to the source code of this file.</a></p>
-<table class="memberdecls">
+<code>#include &lt;<a class="el" href="constraints_8cuh_source.html">fss/constraints.cuh</a>&gt;</code><br />
+<code>#include &lt;cuda/std/span&gt;</code><br />
+<code>#include &lt;limits&gt;</code><br />
+<code>#include &lt;cstdint&gt;</code><br />
+<code>#include &lt;stdexcept&gt;</code><br />
+</div><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html">fss::Dcf&lt; in_bits, Group, Prg, In, pred &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">2-party DCF scheme.  <a href="classfss_1_1Dcf.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Dcf_1_1Cw.html">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::Cw</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Dcf_1_1Cw.html">fss::Dcf&lt; in_bits, Group, Prg, In, pred &gt;::Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1Dcf_1_1Cw.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Dcf_1_1Key.html">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::Key</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words plus the party's initial seed.  <a href="structfss_1_1Dcf_1_1Key.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="enum-members" name="enum-members"></a>
 Enumerations</h2></td></tr>
-<tr class="memitem:a8ecd2814907c1c2c4adc57eea3f37509" id="r_a8ecd2814907c1c2c4adc57eea3f37509"><td class="memItemLeft" align="right" valign="top">enum class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">fss::DcfPred</a> { <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509a79e0a0a6afb3ede6b7579b1c22fd5e66">kLt</a>
-, <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509af166c5f480408355d40fdedd40d08cd5">kGt</a>
+<tr class="memitem:ga8ecd2814907c1c2c4adc57eea3f37509" id="r_ga8ecd2814907c1c2c4adc57eea3f37509"><td class="memItemLeft" align="right" valign="top">enum class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">fss::DcfPred</a> { <a class="el" href="group__fss__api.html#gga8ecd2814907c1c2c4adc57eea3f37509a79e0a0a6afb3ede6b7579b1c22fd5e66">DcfPred::kLt</a>
+, <a class="el" href="group__fss__api.html#gga8ecd2814907c1c2c4adc57eea3f37509af166c5f480408355d40fdedd40d08cd5">DcfPred::kGt</a>
  }</td></tr>
-<tr class="memdesc:a8ecd2814907c1c2c4adc57eea3f37509"><td class="mdescLeft">&#160;</td><td class="mdescRight">Comparison predicate.  <a href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">More...</a><br /></td></tr>
-<tr class="separator:a8ecd2814907c1c2c4adc57eea3f37509"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memdesc:ga8ecd2814907c1c2c4adc57eea3f37509"><td class="mdescLeft">&#160;</td><td class="mdescRight">Comparison predicate.  <a href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">More...</a><br /></td></tr>
+<tr class="separator:ga8ecd2814907c1c2c4adc57eea3f37509"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>2-party distributed comparison function (DCF). </p>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2020/1392"><em>Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation</em></a> (<a class="el" href="dcf_8cuh.html#dcf">1: the published version</a>).</p>
-<h2><a class="anchor" id="autotoc_md17"></a>
+<h2><a class="anchor" id="autotoc_md9"></a>
 Definitions</h2>
 <p><b>Comparison function</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, \(a \in \sG_{in}\), and \(b \in \sG_{out}\), a comparison function \(f^&lt;_{a, b}\) is a function that for any input \(x\), the output \(y\) has \(y = b\) only when \(x &lt; a\), otherwise \(y = 0\).</p>
 <p><b>DCF</b>: for the input domain \(\sG_{in} = \{0, 1\}^n\), the output domain \((\sG_{out}, +)\) that is a group, \(a \in \sG_{in}\), \(b \in \sG_{out}\), and a security parameter \(\lambda\), 2-party DCF is a scheme consisting of the methods:</p>
@@ -164,48 +164,16 @@ Definitions</h2>
 <li>Privacy: Neither \(k_0\) nor \(k_1\) reveals any information about \(a\) or \(b\). Formally speaking, there exists a probabilistic polynomial time (PPT) simulator \(Sim\) that can generate output computationally indistinguishable from any strict subset of the keys output by \(Gen\).</li>
 </ul>
 <p>Similarly, we have \(f^&gt;_{a, b}\) and DCF for it.</p>
-<h2><a class="anchor" id="autotoc_md18"></a>
+<h2><a class="anchor" id="autotoc_md10"></a>
 Implementation Details</h2>
 <p>We fix the output domain size at 16B and always set the last word's LSB to 0, corresponding to \(\lambda = 127\). See Groupable for more details.</p>
 <p>We limit the max input domain bit size to 128. This is enough for most applications and allows us to represent the input as an integer.</p>
-<h2><a class="anchor" id="autotoc_md19"></a>
+<h2><a class="anchor" id="autotoc_md11"></a>
 References</h2>
 <ol type="1">
 <li>Elette Boyle, Nishanth Chandran, Niv Gilboa, Divya Gupta, Yuval Ishai, Nishant Kumar, Mayank Rathee: Function Secret Sharing for Mixed-Mode and Fixed-Point Secure Computation. EUROCRYPT (2) 2021: 871-900. <a href="https://doi.org/10.1007/978-3-030-77886-6_30">https://doi.org/10.1007/978-3-030-77886-6_30</a>.<a class="anchor" id="dcf"></a></li>
 </ol>
-</div><h2 class="groupheader">Enumeration Type Documentation</h2>
-<a id="a8ecd2814907c1c2c4adc57eea3f37509" name="a8ecd2814907c1c2c4adc57eea3f37509"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a8ecd2814907c1c2c4adc57eea3f37509">&#9670;&#160;</a></span>DcfPred</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">enum class <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">fss::DcfPred</a></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">strong</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-<p>Comparison predicate. </p>
-<p>For the input domain \(\sG_{in} = \{0, 1\}^n\) as bits and \(x, a \in \sG_{in}\), \(x &lt; a\) is defined as that the unsigned integer represented by \(x\) is less than that represented by \(a\), i.e., comparison starts from the most significant bit (MSB). </p>
-<table class="fieldtable">
-<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="a8ecd2814907c1c2c4adc57eea3f37509a79e0a0a6afb3ede6b7579b1c22fd5e66" name="a8ecd2814907c1c2c4adc57eea3f37509a79e0a0a6afb3ede6b7579b1c22fd5e66"></a>kLt&#160;</td><td class="fielddoc"><p>\(y = b\) when \(x &lt; a\) </p>
-</td></tr>
-<tr><td class="fieldname"><a id="a8ecd2814907c1c2c4adc57eea3f37509af166c5f480408355d40fdedd40d08cd5" name="a8ecd2814907c1c2c4adc57eea3f37509af166c5f480408355d40fdedd40d08cd5"></a>kGt&#160;</td><td class="fielddoc"><p>\(y = b\) when \(x &gt; a\) </p>
-</td></tr>
-</table>
-
-</div>
-</div>
-</div><!-- contents -->
+</div></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->
 <div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->

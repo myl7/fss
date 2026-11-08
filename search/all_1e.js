@@ -1,9 +1,5 @@
 var searchData=
 [
-  ['uint_0',['Uint',['../structfss_1_1group_1_1Uint.html',1,'fss::group']]],
-  ['uint_20tt_20as_20a_20tt_20_5f_5fglobal_5f_5f_20tt_20kernel_20template_20argument_1',['nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument',['../index.html#autotoc_md11',1,'']]],
-  ['uint_2ecuh_2',['uint.cuh',['../uint_8cuh.html',1,'']]],
-  ['usage_3',['GPU kernel register usage',['../md_doc_2benchmarks.html#autotoc_md65',1,'']]],
-  ['usage_20sm_5f120_4',['GPU Resource Usage (sm_120)',['../md_doc_2bench__aes128__soft.html#autotoc_md103',1,'']]],
-  ['util_2ecuh_5',['util.cuh',['../util_8cuh.html',1,'']]]
+  ['why_20nothing_20is_20vendored_0',['License status and why nothing is vendored',['../md_doc_2bench-dpfplusplus.html#autotoc_md77',1,'']]],
+  ['work_20and_20timing_1',['Work and timing',['../md_doc_2bench__figures.html#autotoc_md42',1,'']]]
 ];

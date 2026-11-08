@@ -1,8 +1,12 @@
 var classfss_1_1Dcf =
 [
-    [ "Cw", "structfss_1_1Dcf_1_1Cw.html", null ],
-    [ "Key", "structfss_1_1Dcf_1_1Key.html", null ],
-    [ "Eval", "classfss_1_1Dcf.html#acd33e7a155ff16c2c27d383fde7c176c", null ],
-    [ "EvalAll", "classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d", null ],
-    [ "Gen", "classfss_1_1Dcf.html#a4da44b816dfe617d3763b829f8f7e963", null ]
+    [ "Input", "classfss_1_1Dcf.html#a3d92b31a67c99479682e82562c15f436", null ],
+    [ "Dcf", "classfss_1_1Dcf.html#a599ab6254077b27cc89eef2ed803ab31", null ],
+    [ "Eval", "classfss_1_1Dcf.html#a16e9f5b5c6ac621cb3e9e3f746998d31", null ],
+    [ "EvalAll", "classfss_1_1Dcf.html#a06f534feca9dbc342231d1975b919c41", null ],
+    [ "EvalAllGpu", "classfss_1_1Dcf.html#a38f06771f9d0d80596818ce6dd2612ac", null ],
+    [ "EvalAllGpuBatch", "classfss_1_1Dcf.html#a214efde62743fb42e9f93bb2c01f65f1", null ],
+    [ "EvalRange", "classfss_1_1Dcf.html#a1196260687264b16295e77738e7b52a4", null ],
+    [ "EvalRangeGpu", "classfss_1_1Dcf.html#a317ddbb5ed85bcbc0aa6bb681e76ea5e", null ],
+    [ "Gen", "classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64", null ]
 ];

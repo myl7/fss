@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['run_0',['Run',['../structfss_1_1cuckoo__hash_1_1Compact.html#a293846bbdd7230b81fd1e5b980514143',1,'fss::cuckoo_hash::Compact']]]
+  ['minbucketsize_0',['MinBucketSize',['../cuckoo__hash_8cuh.html#a80f9ab4f0b8787a570e57612b1fc43ff',1,'fss::cuckoo_hash::detail']]]
 ];

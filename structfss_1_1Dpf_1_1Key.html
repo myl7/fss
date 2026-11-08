@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Key Struct Reference</title>
+<title>myl7/fss: fss::Dpf&lt; in_bits, Group, Prg, In &gt;::Key Struct Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -102,17 +102,30 @@ $(document).ready(function(){initNavTree('structfss_1_1Dpf_1_1Key.html',''); ini
 
 <div class="header">
   <div class="summary">
+<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structfss_1_1Dpf_1_1Key-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Key Struct Reference</div></div>
+  <div class="headertitle"><div class="title">fss::Dpf&lt; in_bits, Group, Prg, In &gt;::Key Struct Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
-<p>A party's key: the correction words plus the party's initial seed.  
+<p>One party's key in the aggregate <a class="el" href="structfss_1_1Dpf_1_1Cw.html" title="Correction word.">Cw</a> layout: the correction words plus the party's initial seed.  
  <a href="structfss_1_1Dpf_1_1Key.html#details">More...</a></p>
+<table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
+Public Attributes</h2></td></tr>
+<tr class="memitem:a5af943962b4adadfb64b91613dd849b5" id="r_a5af943962b4adadfb64b91613dd849b5"><td class="memItemLeft" align="right" valign="top"><a id="a5af943962b4adadfb64b91613dd849b5" name="a5af943962b4adadfb64b91613dd849b5"></a>
+<a class="el" href="structfss_1_1Dpf_1_1Cw.html">Cw</a>&#160;</td><td class="memItemRight" valign="bottom"><b>cws</b> [in_bits+1]</td></tr>
+<tr class="memdesc:a5af943962b4adadfb64b91613dd849b5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tree correction words followed by the output correction word. <br /></td></tr>
+<tr class="separator:a5af943962b4adadfb64b91613dd849b5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a48d7953dfbd8f192b37a44bef686c1ed" id="r_a48d7953dfbd8f192b37a44bef686c1ed"><td class="memItemLeft" align="right" valign="top"><a id="a48d7953dfbd8f192b37a44bef686c1ed" name="a48d7953dfbd8f192b37a44bef686c1ed"></a>
+int4&#160;</td><td class="memItemRight" valign="bottom"><b>s0</b></td></tr>
+<tr class="memdesc:a48d7953dfbd8f192b37a44bef686c1ed"><td class="mdescLeft">&#160;</td><td class="mdescRight">This party's initial seed. <br /></td></tr>
+<tr class="separator:a48d7953dfbd8f192b37a44bef686c1ed"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, int par_depth = -1&gt;<br />
-struct fss::Dpf&lt; in_bits, Group, Prg, In, par_depth &gt;::Key</div><p>A party's key: the correction words plus the party's initial seed. </p>
-<p>Both parties share the same correction words and differ in the seed. </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint&gt;<br />
+struct fss::Dpf&lt; in_bits, Group, Prg, In &gt;::Key</div><p>One party's key in the aggregate <a class="el" href="structfss_1_1Dpf_1_1Cw.html" title="Correction word.">Cw</a> layout: the correction words plus the party's initial seed. </p>
+<p><a class="el" href="classfss_1_1Dmpf.html" title="2-party DMPF scheme.">Dmpf</a> stores one of these per bucket as <a class="el" href="classfss_1_1Dmpf.html#ae835de83df51b59f47b10d86a2212ab6" title="One party&#39;s inner DPF key for a bucket.">Dmpf::BucketKey</a>; single-point callers pass component arrays to <a class="el" href="classfss_1_1Dpf.html#ad20241a6669e9327ba4d22b535c1254f" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> and <a class="el" href="classfss_1_1Dpf.html#a9ab2bfdfb0063b4a0102e234ab28c3e7" title="Evaluate one point using separate correction components.">Eval()</a> instead of this type. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
 <li>include/fss/<a class="el" href="dpf_8cuh_source.html">dpf.cuh</a></li>
 </ul>

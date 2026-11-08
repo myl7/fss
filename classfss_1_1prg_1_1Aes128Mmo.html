@@ -117,18 +117,24 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a797d22b22192bfdf2a8c3af16082dcfc" id="r_a797d22b22192bfdf2a8c3af16082dcfc"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a797d22b22192bfdf2a8c3af16082dcfc">Aes128Mmo</a> (cuda::std::span&lt; EVP_CIPHER_CTX *, mul &gt; ctxs)</td></tr>
 <tr class="memdesc:a797d22b22192bfdf2a8c3af16082dcfc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor.  <br /></td></tr>
 <tr class="separator:a797d22b22192bfdf2a8c3af16082dcfc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9e26eac0ad1ff2a1db8e6c96b0284a26" id="r_a9e26eac0ad1ff2a1db8e6c96b0284a26"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; int4, mul &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26">Gen</a> (int4 seed)</td></tr>
+<tr class="memdesc:a9e26eac0ad1ff2a1db8e6c96b0284a26"><td class="mdescLeft">&#160;</td><td class="mdescRight">Expand one seed into mul blocks.  <br /></td></tr>
+<tr class="separator:a9e26eac0ad1ff2a1db8e6c96b0284a26"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8e51655f7dcf002d9d29ac9adfb6a0db" id="r_a8e51655f7dcf002d9d29ac9adfb6a0db"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; int4, mul/2 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a8e51655f7dcf002d9d29ac9adfb6a0db">GenHalf</a> (int4 seed, bool right)</td></tr>
+<tr class="memdesc:a8e51655f7dcf002d9d29ac9adfb6a0db"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the selected half of <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26" title="Expand one seed into mul blocks.">Gen()</a> with the same call requirements.  <br /></td></tr>
+<tr class="separator:a8e51655f7dcf002d9d29ac9adfb6a0db"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:a59e602ac038fdd21c6ff7f64d6a1478c" id="r_a59e602ac038fdd21c6ff7f64d6a1478c"><td class="memItemLeft" align="right" valign="top">static cuda::std::array&lt; EVP_CIPHER_CTX *, mul &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a59e602ac038fdd21c6ff7f64d6a1478c">CreateCtxs</a> (const unsigned char *keys[mul])</td></tr>
-<tr class="memdesc:a59e602ac038fdd21c6ff7f64d6a1478c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create cipher contexts.  <br /></td></tr>
-<tr class="separator:a59e602ac038fdd21c6ff7f64d6a1478c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a30ce5665eaac27c32b08edbfe84ebc04" id="r_a30ce5665eaac27c32b08edbfe84ebc04"><td class="memItemLeft" align="right" valign="top">static cuda::std::array&lt; EVP_CIPHER_CTX *, mul &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a30ce5665eaac27c32b08edbfe84ebc04">CreateCtxs</a> (const unsigned char *keys[mul])</td></tr>
+<tr class="memdesc:a30ce5665eaac27c32b08edbfe84ebc04"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create cipher contexts.  <br /></td></tr>
+<tr class="separator:a30ce5665eaac27c32b08edbfe84ebc04"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int mul&gt;<br />
 class fss::prg::Aes128Mmo&lt; mul &gt;</div><p>AES-128 with Matyas-Meyer-Oseas and pre-initialized cipher contexts as a PRG. </p>
-<p>Only for host side.</p>
-<p>Concurrency: Gen() runs EVP_EncryptUpdate on the ctxs, and copies of an instance share the same ctxs. OpenSSL does not document one ctx as safe for concurrent updates even for full-block no-padding ECB, so Gen() must not run concurrently on instances sharing ctxs. Parallel host evaluation needs a PRG whose Gen() is safe to call concurrently, such as <a class="el" href="classfss_1_1prg_1_1ChaCha.html" title="ChaCha as a PRG.">ChaCha</a> or <a class="el" href="classfss_1_1prg_1_1Aes128MmoRaw.html" title="AES-128 with Matyas-Meyer-Oseas and AES-NI intrinsics as a PRG.">Aes128MmoRaw</a>.</p>
+<p>Host-only. Device use of <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26" title="Expand one seed into mul blocks.">Gen()</a> or <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a8e51655f7dcf002d9d29ac9adfb6a0db" title="Return the selected half of Gen() with the same call requirements.">GenHalf()</a> fails to build with an unresolved-extern error naming <code>fss_host_only_Aes128Mmo_used_in_device_code</code>.</p>
+<p>Concurrency: <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26" title="Expand one seed into mul blocks.">Gen()</a> runs EVP_EncryptUpdate on the ctxs, and copies of an instance share the same ctxs. OpenSSL does not document one ctx as safe for concurrent updates even for full-block no-padding ECB, so <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26" title="Expand one seed into mul blocks.">Gen()</a> must not run concurrently on instances sharing ctxs. Parallel host evaluation needs a PRG whose <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26" title="Expand one seed into mul blocks.">Gen()</a> is safe to call concurrently, such as <a class="el" href="classfss_1_1prg_1_1ChaCha.html" title="ChaCha as a PRG.">ChaCha</a> or <a class="el" href="classfss_1_1prg_1_1Aes128MmoRaw.html" title="AES-128 with Matyas-Meyer-Oseas and AES-NI intrinsics as a PRG.">Aes128MmoRaw</a>.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">mul</td><td>See Prgable mul. </td></tr>
@@ -165,7 +171,7 @@ template&lt;int mul&gt; </div>
 <p>Constructor. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">ctxs</td><td>Generated by <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a59e602ac038fdd21c6ff7f64d6a1478c" title="Create cipher contexts.">CreateCtxs()</a> and freed by FreeCtxs(). Read-only and can be shared by multiple instances. Users are responsible for managing their lifetime. </td></tr>
+    <tr><td class="paramname">ctxs</td><td>Generated by <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a30ce5665eaac27c32b08edbfe84ebc04" title="Create cipher contexts.">CreateCtxs()</a> and freed by FreeCtxs(). Copies borrow the same mutable contexts. Concurrent <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26" title="Expand one seed into mul blocks.">Gen()</a> calls require distinct contexts. Users are responsible for managing their lifetime. </td></tr>
   </table>
   </dd>
 </dl>
@@ -173,8 +179,8 @@ template&lt;int mul&gt; </div>
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
-<a id="a59e602ac038fdd21c6ff7f64d6a1478c" name="a59e602ac038fdd21c6ff7f64d6a1478c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a59e602ac038fdd21c6ff7f64d6a1478c">&#9670;&#160;</a></span>CreateCtxs()</h2>
+<a id="a30ce5665eaac27c32b08edbfe84ebc04" name="a30ce5665eaac27c32b08edbfe84ebc04"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a30ce5665eaac27c32b08edbfe84ebc04">&#9670;&#160;</a></span>CreateCtxs()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -185,7 +191,7 @@ template&lt;int mul&gt; </div>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">static cuda::std::array&lt; EVP_CIPHER_CTX *, mul &gt; <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a>&lt; mul &gt;::CreateCtxs </td>
+          <td class="memname">cuda::std::array&lt; EVP_CIPHER_CTX *, mul &gt; <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a>&lt; mul &gt;::CreateCtxs </td>
           <td>(</td>
           <td class="paramtype">const unsigned char *&#160;</td>
           <td class="paramname"><em>keys</em>[mul]</td><td>)</td>
@@ -206,10 +212,90 @@ template&lt;int mul&gt; </div>
   </table>
   </dd>
 </dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::runtime_error</td><td>if an OpenSSL context allocation or setup call fails. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
-<hr/>The documentation for this class was generated from the following file:<ul>
+<a id="a9e26eac0ad1ff2a1db8e6c96b0284a26" name="a9e26eac0ad1ff2a1db8e6c96b0284a26"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9e26eac0ad1ff2a1db8e6c96b0284a26">&#9670;&#160;</a></span>Gen()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int mul&gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname">cuda::std::array&lt; int4, mul &gt; <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a>&lt; mul &gt;::Gen </td>
+          <td>(</td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>seed</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Expand one seed into mul blocks. </p>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::runtime_error</td><td>if EVP_EncryptUpdate fails. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a8e51655f7dcf002d9d29ac9adfb6a0db" name="a8e51655f7dcf002d9d29ac9adfb6a0db"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8e51655f7dcf002d9d29ac9adfb6a0db">&#9670;&#160;</a></span>GenHalf()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int mul&gt; <br />
+requires (mul &gt; 0 &amp;&amp; mul % 2 == 0)</div>
+      <table class="memname">
+        <tr>
+          <td class="memname">cuda::std::array&lt; int4, mul/2 &gt; <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html">fss::prg::Aes128Mmo</a>&lt; mul &gt;::GenHalf </td>
+          <td>(</td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>seed</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>right</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Return the selected half of <a class="el" href="classfss_1_1prg_1_1Aes128Mmo.html#a9e26eac0ad1ff2a1db8e6c96b0284a26" title="Expand one seed into mul blocks.">Gen()</a> with the same call requirements. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">right</td><td>false selects the first half, true selects the second half. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::runtime_error</td><td>if EVP_EncryptUpdate fails. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<hr/>The documentation for this class was generated from the following files:<ul>
+<li>include/fss/hash/<a class="el" href="aes128__ccr_8cuh.html">aes128_ccr.cuh</a></li>
 <li>include/fss/prg/<a class="el" href="aes128__mmo_8cuh.html">aes128_mmo.cuh</a></li>
 </ul>
 </div><!-- contents -->

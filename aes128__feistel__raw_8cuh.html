@@ -102,7 +102,8 @@ $(document).ready(function(){initNavTree('aes128__feistel__raw_8cuh.html',''); i
 
 <div class="header">
   <div class="summary">
-<a href="#nested-classes">Classes</a>  </div>
+<a href="#nested-classes">Classes</a> &#124;
+<a href="#func-members">Functions</a>  </div>
   <div class="headertitle"><div class="title">aes128_feistel_raw.cuh File Reference</div></div>
 </div><!--header-->
 <div class="contents">
@@ -113,6 +114,7 @@ $(document).ready(function(){initNavTree('aes128__feistel__raw_8cuh.html',''); i
 <code>#include &lt;cuda_runtime.h&gt;</code><br />
 <code>#include &lt;cstdint&gt;</code><br />
 <code>#include &lt;cassert&gt;</code><br />
+<code>#include &lt;<a class="el" href="util_8cuh_source.html">fss/util.cuh</a>&gt;</code><br />
 <code>#include &lt;wmmintrin.h&gt;</code><br />
 <code>#include &lt;emmintrin.h&gt;</code><br />
 <code>#include &lt;smmintrin.h&gt;</code><br />
@@ -122,14 +124,41 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prp_1_1Aes128FeistelRaw.html">fss::prp::Aes128FeistelRaw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Small-domain AES-128 Feistel PRP for Cuckoo hashing, computed with AES-NI intrinsics.  <a href="classfss_1_1prp_1_1Aes128FeistelRaw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:a15a5b4df04dd814c6a2aa5443b832cb3" id="r_a15a5b4df04dd814c6a2aa5443b832cb3"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="aes128__feistel__raw_8cuh.html#a15a5b4df04dd814c6a2aa5443b832cb3">fss::prp::fss_host_only_Aes128FeistelRaw_used_in_device_code</a> ()</td></tr>
+<tr class="memdesc:a15a5b4df04dd814c6a2aa5443b832cb3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Declared and never defined.  <br /></td></tr>
+<tr class="separator:a15a5b4df04dd814c6a2aa5443b832cb3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Small-domain PRP via 4-round Feistel network with AES-128 round function and cycle-walking, computed with AES-NI intrinsics. </p>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
 <p>Bit-exact with Aes128Feistel: same construction (4-round Feistel, per-round key seed ^ round, cycle-walking), same AES-128 block cipher, but every AES block operation runs as ten aesenc intrinsics instead of an OpenSSL EVP call. The four per-round key schedules are expanded once per seed and cached in the instance, so a mapping build with a fixed sigma expands them a single time. The Permu seed parameter keeps its concept signature; passing a different seed than the cached one re-expands the schedules, so every call uses the seed it was given.</p>
-<p>Only for host side (x86-64 with AES-NI). Instances are trivially copyable; the cache makes concurrent Permu calls with differing seeds on one instance a data race, like Aes128Feistel's shared OpenSSL context. </p>
-</div></div><!-- contents -->
+<p>Only for host side (x86-64 with AES-NI). Instances are trivially copyable; the cache makes concurrent Permu calls with differing seeds on one instance a data race, like Aes128Feistel's shared OpenSSL context. Device use of Permu() fails to build with an unresolved-extern error naming <code>fss_host_only_Aes128FeistelRaw_used_in_device_code</code>. </p>
+</div><h2 class="groupheader">Function Documentation</h2>
+<a id="a15a5b4df04dd814c6a2aa5443b832cb3" name="a15a5b4df04dd814c6a2aa5443b832cb3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a15a5b4df04dd814c6a2aa5443b832cb3">&#9670;&#160;</a></span>fss_host_only_Aes128FeistelRaw_used_in_device_code()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void fss::prp::fss_host_only_Aes128FeistelRaw_used_in_device_code </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Declared and never defined. </p>
+<p>Device code that reaches it fails to link with an unresolved-extern error that names this symbol. </p>
+
+</div>
+</div>
+</div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->
 <div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->

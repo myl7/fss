@@ -102,54 +102,62 @@ $(document).ready(function(){initNavTree('cuckoo__hash_8cuh.html',''); initResiz
 
 <div class="header">
   <div class="summary">
-<a href="#nested-classes">Classes</a> &#124;
-<a href="#func-members">Functions</a>  </div>
+<a href="#func-members">Functions</a> &#124;
+<a href="#var-members">Variables</a>  </div>
   <div class="headertitle"><div class="title">cuckoo_hash.cuh File Reference</div></div>
 </div><!--header-->
 <div class="contents">
 
-<p>Cuckoo-hashing utility for VDMPF.  
+<p>Cuckoo-hashing utility for DMPF and VDMPF.  
 <a href="#details">More...</a></p>
 <div class="textblock"><code>#include &lt;cuda_runtime.h&gt;</code><br />
 <code>#include &lt;cmath&gt;</code><br />
+<code>#include &lt;limits&gt;</code><br />
 <code>#include &lt;span&gt;</code><br />
 <code>#include &lt;utility&gt;</code><br />
 <code>#include &lt;random&gt;</code><br />
 <code>#include &lt;<a class="el" href="prp_8cuh_source.html">fss/prp.cuh</a>&gt;</code><br />
+<code>#include &lt;stdexcept&gt;</code><br />
 </div>
 <p><a href="cuckoo__hash_8cuh_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
-Classes</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1LocateResult.html">fss::cuckoo_hash::LocateResult</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Locate result: a Locate() bucket and the position inside it.  <a href="structfss_1_1cuckoo__hash_1_1LocateResult.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1PrpHash.html">fss::cuckoo_hash::PrpHash&lt; Prp, In, kappa &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">PRP-based hash for Cuckoo hashing.  <a href="structfss_1_1cuckoo__hash_1_1PrpHash.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1cuckoo__hash_1_1Compact.html">fss::cuckoo_hash::Compact&lt; Prp, In, kappa &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1cuckoo__hash_1_1Compact.html" title="Compact Cuckoo hashing (Algorithm 4 from the paper).">Compact</a> Cuckoo hashing (Algorithm 4 from the paper).  <a href="structfss_1_1cuckoo__hash_1_1Compact.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a7276e4c3bd17951b3cb5ce92591d69bb" id="r_a7276e4c3bd17951b3cb5ce92591d69bb"><td class="memItemLeft" align="right" valign="top">constexpr int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cuckoo__hash_8cuh.html#a7276e4c3bd17951b3cb5ce92591d69bb">fss::cuckoo_hash::ChBucket</a> (int t, int lambda)</td></tr>
-<tr class="memdesc:a7276e4c3bd17951b3cb5ce92591d69bb"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compute the number of Cuckoo-hash buckets from Lemma 5 of the paper, simplified per Remark 1.  <br /></td></tr>
-<tr class="separator:a7276e4c3bd17951b3cb5ce92591d69bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga7276e4c3bd17951b3cb5ce92591d69bb" id="r_ga7276e4c3bd17951b3cb5ce92591d69bb"><td class="memItemLeft" align="right" valign="top">constexpr int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__fss__api.html#ga7276e4c3bd17951b3cb5ce92591d69bb">fss::cuckoo_hash::ChBucket</a> (int t, int lambda)</td></tr>
+<tr class="memdesc:ga7276e4c3bd17951b3cb5ce92591d69bb"><td class="mdescLeft">&#160;</td><td class="mdescRight">Estimate the number of buckets for three-choice Cuckoo hashing.  <br /></td></tr>
+<tr class="separator:ga7276e4c3bd17951b3cb5ce92591d69bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa4d456c5b82bda22b0103b0e0fc3af97" id="r_aa4d456c5b82bda22b0103b0e0fc3af97"><td class="memItemLeft" align="right" valign="top">constexpr __uint128_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cuckoo__hash_8cuh.html#aa4d456c5b82bda22b0103b0e0fc3af97">fss::cuckoo_hash::detail::CeilDiv</a> (__uint128_t num, __uint128_t den)</td></tr>
+<tr class="memdesc:aa4d456c5b82bda22b0103b0e0fc3af97"><td class="mdescLeft">&#160;</td><td class="mdescRight">Ceiling division of two positive integers, in the wrap-free form.  <br /></td></tr>
+<tr class="separator:aa4d456c5b82bda22b0103b0e0fc3af97"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa6e6edefd0eb2e9cb6e3d6ea16f262df" id="r_aa6e6edefd0eb2e9cb6e3d6ea16f262df"><td class="memItemLeft" align="right" valign="top">constexpr __uint128_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cuckoo__hash_8cuh.html#aa6e6edefd0eb2e9cb6e3d6ea16f262df">fss::cuckoo_hash::detail::BucketIndexBound</a> (__uint128_t n, int choices, __uint128_t bucket_size)</td></tr>
+<tr class="memdesc:aa6e6edefd0eb2e9cb6e3d6ea16f262df"><td class="mdescLeft">&#160;</td><td class="mdescRight">Exclusive upper bound on the bucket index of a located candidate.  <br /></td></tr>
+<tr class="separator:aa6e6edefd0eb2e9cb6e3d6ea16f262df"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a80f9ab4f0b8787a570e57612b1fc43ff" id="r_a80f9ab4f0b8787a570e57612b1fc43ff"><td class="memItemLeft" align="right" valign="top">constexpr __uint128_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cuckoo__hash_8cuh.html#a80f9ab4f0b8787a570e57612b1fc43ff">fss::cuckoo_hash::detail::MinBucketSize</a> (__uint128_t n, int choices, __uint128_t bucket_count)</td></tr>
+<tr class="memdesc:a80f9ab4f0b8787a570e57612b1fc43ff"><td class="mdescLeft">&#160;</td><td class="mdescRight">Smallest bucket domain size that keeps every located bucket in range.  <br /></td></tr>
+<tr class="separator:a80f9ab4f0b8787a570e57612b1fc43ff"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a941e229e1c8f3fb4a85d1ef3524e3ec0" id="r_a941e229e1c8f3fb4a85d1ef3524e3ec0"><td class="memItemLeft" align="right" valign="top">constexpr bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cuckoo__hash_8cuh.html#a941e229e1c8f3fb4a85d1ef3524e3ec0">fss::cuckoo_hash::detail::ValidBucketSize</a> (__uint128_t b_size_rt, __uint128_t bucket_size_min, int bucket_bits)</td></tr>
+<tr class="memdesc:a941e229e1c8f3fb4a85d1ef3524e3ec0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Test a key's runtime bucket domain size against a configuration.  <br /></td></tr>
+<tr class="separator:a941e229e1c8f3fb4a85d1ef3524e3ec0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
+Variables</h2></td></tr>
+<tr class="memitem:a22303512d66761d45fcbeabf7f8b211c" id="r_a22303512d66761d45fcbeabf7f8b211c"><td class="memItemLeft" align="right" valign="top">constexpr int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="cuckoo__hash_8cuh.html#a22303512d66761d45fcbeabf7f8b211c">fss::cuckoo_hash::detail::kRejectedBucket</a> = std::numeric_limits&lt;int&gt;::max()</td></tr>
+<tr class="memdesc:a22303512d66761d45fcbeabf7f8b211c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Bucket identifier of a rejected candidate.  <br /></td></tr>
+<tr class="separator:a22303512d66761d45fcbeabf7f8b211c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><p>Cuckoo-hashing utility for VDMPF. </p>
+<div class="textblock"><p>Cuckoo-hashing utility for DMPF and VDMPF. </p>
 <dl class="section copyright"><dt>Copyright</dt><dd>Apache License, Version 2.0. Copyright (C) 2026 Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a>. </dd></dl>
 <dl class="section author"><dt>Author</dt><dd>Yulong Ming <a href="#" onclick="location.href='mai'+'lto:'+'i@m'+'yl'+'7.o'+'rg'; return false;">i@myl<span class="obfuscator">.nosp@m.</span>7.or<span class="obfuscator">.nosp@m.</span>g</a></dd></dl>
 <p>The scheme is from the paper, <a href="https://eprint.iacr.org/2021/580"><em>Lightweight, Maliciously Secure Verifiable Function Secret Sharing</em></a> (<a class="el" href="cuckoo__hash_8cuh.html#cuckoo_hash">1: the published version</a>), Section 4.1 and Algorithm 4.</p>
-<h2><a class="anchor" id="autotoc_md16"></a>
+<h2><a class="anchor" id="autotoc_md8"></a>
 References</h2>
 <ol type="1">
 <li>Leo de Castro, Antigoni Polychroniadou: Lightweight, Maliciously Secure Verifiable Function Secret Sharing. EUROCRYPT 2022: 150-179. <a href="https://doi.org/10.1007/978-3-031-06944-4_6">https://doi.org/10.1007/978-3-031-06944-4_6</a>. <a class="anchor" id="cuckoo_hash"></a></li>
 </ol>
 </div><h2 class="groupheader">Function Documentation</h2>
-<a id="a7276e4c3bd17951b3cb5ce92591d69bb" name="a7276e4c3bd17951b3cb5ce92591d69bb"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7276e4c3bd17951b3cb5ce92591d69bb">&#9670;&#160;</a></span>ChBucket()</h2>
+<a id="aa6e6edefd0eb2e9cb6e3d6ea16f262df" name="aa6e6edefd0eb2e9cb6e3d6ea16f262df"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa6e6edefd0eb2e9cb6e3d6ea16f262df">&#9670;&#160;</a></span>BucketIndexBound()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -158,16 +166,22 @@ References</h2>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">constexpr int fss::cuckoo_hash::ChBucket </td>
+          <td class="memname">constexpr __uint128_t fss::cuckoo_hash::detail::BucketIndexBound </td>
           <td>(</td>
-          <td class="paramtype">int&#160;</td>
-          <td class="paramname"><em>t</em>, </td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>n</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">int&#160;</td>
-          <td class="paramname"><em>lambda</em>&#160;</td>
+          <td class="paramname"><em>choices</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>bucket_size</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -182,18 +196,198 @@ References</h2>
 </table>
 </div><div class="memdoc">
 
-<p>Compute the number of Cuckoo-hash buckets from Lemma 5 of the paper, simplified per Remark 1. </p>
-<p>This formula assumes kappa = 3 hash functions.</p>
-<p>For sufficiently large t (&gt;= 30), the Normal CDF factors in Lemma 5 become effectively 1, giving the simplified formula: lambda = 123.5 * e - 130 - log2(t) e = (lambda + 130 + log2(t)) / 123.5 m = ceil(e * t)</p>
-<p>This formula is monotonic in t, so ChBucket(max_t) &gt;= ChBucket(t) for all t &lt;= max_t.</p>
+<p>Exclusive upper bound on the bucket index of a located candidate. </p>
+<p>PrpHash::Locate() maps every candidate with a positive bucket domain size and an int-representable bucket index into [0, choices * n / bucket_size), so the largest such bucket is ceil(choices * n / bucket_size) - 1, and this is the smallest bucket count that covers every located bucket. A candidate outside that interval locates kRejectedBucket instead.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">t</td><td>Number of elements. Must be &gt;= 30. </td></tr>
-    <tr><td class="paramname">lambda</td><td>Cuckoo-hashing security parameter in bits. </td></tr>
+    <tr><td class="paramname">n</td><td>Original input domain size, at least 1. </td></tr>
+    <tr><td class="paramname">choices</td><td>Candidate count per input, at least 1. </td></tr>
+    <tr><td class="paramname">bucket_size</td><td>Positive bucket domain size carried by a key. </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>Number of buckets m. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>ceil(choices * n / bucket_size). </dd></dl>
+
+</div>
+</div>
+<a id="aa4d456c5b82bda22b0103b0e0fc3af97" name="aa4d456c5b82bda22b0103b0e0fc3af97"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa4d456c5b82bda22b0103b0e0fc3af97">&#9670;&#160;</a></span>CeilDiv()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">constexpr __uint128_t fss::cuckoo_hash::detail::CeilDiv </td>
+          <td>(</td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>num</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>den</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">constexpr</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Ceiling division of two positive integers, in the wrap-free form. </p>
+<p>(num - 1) / den + 1 equals ceil(num / den) for every num at least 1 and den at least 1. The direct form (num + den - 1) / den gives the same value for every in-range input, but wraps in __uint128_t once den exceeds 2^126 with num = 3 * 2^126.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">num</td><td>Positive dividend. </td></tr>
+    <tr><td class="paramname">den</td><td>Positive divisor. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>ceil(num / den). </dd></dl>
+
+</div>
+</div>
+<a id="a80f9ab4f0b8787a570e57612b1fc43ff" name="a80f9ab4f0b8787a570e57612b1fc43ff"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a80f9ab4f0b8787a570e57612b1fc43ff">&#9670;&#160;</a></span>MinBucketSize()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">constexpr __uint128_t fss::cuckoo_hash::detail::MinBucketSize </td>
+          <td>(</td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>n</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>choices</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>bucket_count</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">constexpr</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Smallest bucket domain size that keeps every located bucket in range. </p>
+<p>A candidate locates at bucket index ceil(choices * n / bucket_size) - 1 at most, so the smallest bucket domain size whose candidates all stay below bucket_count is ceil(choices * n / bucket_count). This is the inverse direction of BucketIndexBound(): it takes the bucket count a caller can allocate and returns the bucket domain size to require of a key.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">n</td><td>Original input domain size, at least 1. </td></tr>
+    <tr><td class="paramname">choices</td><td>Candidate count per input, at least 1. </td></tr>
+    <tr><td class="paramname">bucket_count</td><td>Positive number of allocated buckets. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>ceil(choices * n / bucket_count). </dd></dl>
+
+</div>
+</div>
+<a id="a941e229e1c8f3fb4a85d1ef3524e3ec0" name="a941e229e1c8f3fb4a85d1ef3524e3ec0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a941e229e1c8f3fb4a85d1ef3524e3ec0">&#9670;&#160;</a></span>ValidBucketSize()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">constexpr bool fss::cuckoo_hash::detail::ValidBucketSize </td>
+          <td>(</td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>b_size_rt</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">__uint128_t&#160;</td>
+          <td class="paramname"><em>bucket_size_min</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>bucket_bits</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">constexpr</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Test a key's runtime bucket domain size against a configuration. </p>
+<p>b_size_rt is exact-transport key metadata, like the correction-word arrays: no entry trusts the caller to pre-validate it, and the entries that do check it deduplicate the bound through this function. A candidate locates at bucket index ceil(choices*n/b_size_rt) - 1 at most, so every located bucket stays below the allocated bucket count exactly when b_size_rt is at least MinBucketSize(n, choices, bucket_count), and a within-bucket input is an index into a bucket of bucket_bits width, so b_size_rt must also fit bucket_bits.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b_size_rt</td><td>Bucket domain size carried by a key. </td></tr>
+    <tr><td class="paramname">bucket_size_min</td><td>Smallest usable bucket domain size, e.g. a scheme's kBucketSize. </td></tr>
+    <tr><td class="paramname">bucket_bits</td><td>Bucket domain bit width. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>True when b_size_rt is at least bucket_size_min and is at most 2^bucket_bits. </dd></dl>
+
+</div>
+</div>
+<h2 class="groupheader">Variable Documentation</h2>
+<a id="a22303512d66761d45fcbeabf7f8b211c" name="a22303512d66761d45fcbeabf7f8b211c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a22303512d66761d45fcbeabf7f8b211c">&#9670;&#160;</a></span>kRejectedBucket</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">constexpr int fss::cuckoo_hash::detail::kRejectedBucket = std::numeric_limits&lt;int&gt;::max()</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">constexpr</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Bucket identifier of a rejected candidate. </p>
+<p>PrpHash::Locate() returns it when the exact bucket index does not fit int, or when the bucket domain size is zero. It equals INT_MAX, so every caller filter of the form <code>bucket &gt;= bound</code>, whose bound is an int, rejects the candidate. </p>
 
 </div>
 </div>

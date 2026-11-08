@@ -1,6 +1,29 @@
 var searchData=
 [
-  ['native_20configurations_20and_20validation_0',['Native configurations and validation',['../md_doc_2bench__figures.html#autotoc_md60',1,'']]],
-  ['nothing_20is_20vendored_1',['License status and why nothing is vendored',['../md_doc_2bench-dpfplusplus.html#autotoc_md94',1,'']]],
-  ['nvcc_2012_208_3a_20tt_20uint_20tt_20as_20a_20tt_20_5f_5fglobal_5f_5f_20tt_20kernel_20template_20argument_2',['nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument',['../index.html#autotoc_md11',1,'']]]
+  ['p_0',['p',['../structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html#ab47491ec27cd068f5ea2853846d43bd2',1,'fss::HalfTreeGrottoDcf::ParityTreeView::p'],['../structfss_1_1GrottoDcf_1_1ParityTreeView.html#aa5bcdedf12ffe1bc68e58d7fa6fbf663',1,'fss::GrottoDcf::ParityTreeView::p']]],
+  ['packed_20outputs_1',['Packed outputs',['../packed__half__tree__dpf_8cuh.html#autotoc_md28',1,'']]],
+  ['packed_5fhalf_5ftree_5fdpf_2ecuh_2',['packed_half_tree_dpf.cuh',['../packed__half__tree__dpf_8cuh.html',1,'']]],
+  ['packedhalftreedpf_3',['packedhalftreedpf',['../classfss_1_1PackedHalfTreeDpf.html',1,'fss::PackedHalfTreeDpf&lt; in_bits, out_bits, Hash, In &gt;'],['../classfss_1_1PackedHalfTreeDpf.html#a6e9d76fc9a6086eaa381bcb0fc44e198',1,'fss::PackedHalfTreeDpf::PackedHalfTreeDpf()']]],
+  ['paritytreeview_4',['paritytreeview',['../structfss_1_1GrottoDcf_1_1ParityTreeView.html',1,'fss::GrottoDcf&lt; in_bits, Prg, In &gt;::ParityTreeView'],['../structfss_1_1HalfTreeGrottoDcf_1_1ParityTreeView.html',1,'fss::HalfTreeGrottoDcf&lt; in_bits, Hash, In &gt;::ParityTreeView']]],
+  ['party_20dpf_20dcf_20library_20benchmarks_5',['Third-party DPF/DCF Library Benchmarks',['../md_doc_2bench__third__parties.html',1,'']]],
+  ['performance_6',['Measure performance',['../index.html#autotoc_md6',1,'']]],
+  ['permu_7',['permu',['../classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba',1,'fss::prp::Aes128Feistel::Permu()'],['../classfss_1_1prp_1_1Aes128FeistelRaw.html#a82609e44548ea62a14709fe5e421d6ab',1,'fss::prp::Aes128FeistelRaw::Permu()'],['../classfss_1_1prp_1_1ChaChaFeistel.html#a0be3afecbca97bef37d616e511a22bee',1,'fss::prp::ChaChaFeistel::Permu()']]],
+  ['permutable_8',['Permutable',['../conceptPermutable.html',1,'']]],
+  ['plasma_20rust_9',['plasma (Rust)',['../md_doc_2bench__third__parties.html#autotoc_md65',1,'']]],
+  ['point_20function_10',['Generate and evaluate a point function',['../index.html#autotoc_md2',1,'']]],
+  ['preprocess_11',['preprocess',['../classfss_1_1GrottoDcf.html#ae3e53b3481577f8671dae2ac5be78242',1,'fss::GrottoDcf::Preprocess()'],['../classfss_1_1HalfTreeGrottoDcf.html#a78c117d16cf624420601fa7f2626136e',1,'fss::HalfTreeGrottoDcf::Preprocess()']]],
+  ['preprocessgpu_12',['preprocessgpu',['../classfss_1_1GrottoDcf.html#a8925e397052df9783552a34a850f62ee',1,'fss::GrottoDcf::PreprocessGpu()'],['../classfss_1_1HalfTreeGrottoDcf.html#a8176911f5ccf7a42fd918c0f3ce2f949',1,'fss::HalfTreeGrottoDcf::PreprocessGpu()']]],
+  ['preprocessowned_13',['preprocessowned',['../classfss_1_1GrottoDcf.html#ab13fe79331e5e170d2cd6ccb7c2a795e',1,'fss::GrottoDcf::PreprocessOwned()'],['../classfss_1_1HalfTreeGrottoDcf.html#ad4c673161a13324fe2b6621c5454ffe5',1,'fss::HalfTreeGrottoDcf::PreprocessOwned()']]],
+  ['prg_2ecuh_14',['prg.cuh',['../prg_8cuh.html',1,'']]],
+  ['prg_3a_20t_20table_20vs_20textbook_15',['AES-128 MMO Software PRG: T-table vs Textbook',['../md_doc_2bench__aes128__soft.html',1,'']]],
+  ['prgable_16',['Prgable',['../conceptPrgable.html',1,'']]],
+  ['proof_20accumulation_3a_20security_20analysis_17',['VDPF and VDMPF Merkle-fold proof accumulation: security analysis',['../md_doc_2vdpf__merkle__fold__security.html',1,'']]],
+  ['properties_18',['6. Required hash properties',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md98',1,'']]],
+  ['prove_19',['prove',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md93',1,'3. The Merkle-fold Prove'],['../classfss_1_1Vdpf.html#ae7ba0fa73ba7dc7fd9f8637831607b55',1,'fss::Vdpf::Prove()'],['../classfss_1_1Vdmpf.html#a25249a44c2bcd55bbbe50a05b48c720f',1,'fss::Vdmpf::Prove(int4 sigma, __uint128_t b_size_rt, cuda::std::span&lt; const int4 &gt; cs, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; const EvalProof &gt; proof_values, cuda::std::span&lt; int4, 4 &gt; pi)']]],
+  ['provemerkle_20',['provemerkle',['../classfss_1_1Vdmpf.html#a38ac5e16fe2dc370d53f7d244c73a53c',1,'fss::Vdmpf::ProveMerkle()'],['../classfss_1_1Vdpf.html#a4e4ca28046685ec4e7c4c3f24bb9832c',1,'fss::Vdpf::ProveMerkle()']]],
+  ['provenance_21',['Provenance',['../md_doc_2bench-dpfplusplus.html#autotoc_md76',1,'']]],
+  ['prp_2ecuh_22',['prp.cuh',['../prp_8cuh.html',1,'']]],
+  ['public_20api_23',['Public API',['../group__fss__api.html',1,'']]],
+  ['python_24',['Use Python',['../index.html#autotoc_md4',1,'']]],
+  ['python_20cuda_25',['GPU-DPF GPU (Python/CUDA)',['../md_doc_2bench__third__parties.html#autotoc_md57',1,'']]]
 ];

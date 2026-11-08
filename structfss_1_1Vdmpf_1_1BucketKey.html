@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::BucketKey Struct Reference</title>
+<title>myl7/fss: fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda &gt;::BucketKey Struct Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -102,18 +102,36 @@ $(document).ready(function(){initNavTree('structfss_1_1Vdmpf_1_1BucketKey.html',
 
 <div class="header">
   <div class="summary">
+<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structfss_1_1Vdmpf_1_1BucketKey-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::BucketKey Struct Reference</div></div>
+  <div class="headertitle"><div class="title">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda &gt;::BucketKey Struct Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
-<p>Per-bucket key with the released v1.2.0 field order and aggregate layout.  
+<p>Per-bucket VDPF key with shared correction words and one party's initial seed.  
  <a href="structfss_1_1Vdmpf_1_1BucketKey.html#details">More...</a></p>
+<table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
+Public Attributes</h2></td></tr>
+<tr class="memitem:abffb5a87f443f437dbe23bc4263d6dd4" id="r_abffb5a87f443f437dbe23bc4263d6dd4"><td class="memItemLeft" align="right" valign="top"><a id="abffb5a87f443f437dbe23bc4263d6dd4" name="abffb5a87f443f437dbe23bc4263d6dd4"></a>
+<a class="el" href="classfss_1_1Vdmpf.html#a0d6454377471f80c86faff080dda5a82">Cw</a>&#160;</td><td class="memItemRight" valign="bottom"><b>cws</b> [bucket_bits+1]</td></tr>
+<tr class="memdesc:abffb5a87f443f437dbe23bc4263d6dd4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tree correction words and the bucket's final output correction word. <br /></td></tr>
+<tr class="separator:abffb5a87f443f437dbe23bc4263d6dd4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6a56c07f01ed199126499baba88d52dc" id="r_a6a56c07f01ed199126499baba88d52dc"><td class="memItemLeft" align="right" valign="top"><a id="a6a56c07f01ed199126499baba88d52dc" name="a6a56c07f01ed199126499baba88d52dc"></a>
+int4&#160;</td><td class="memItemRight" valign="bottom"><b>cs</b> [4]</td></tr>
+<tr class="memdesc:a6a56c07f01ed199126499baba88d52dc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Shared correction seed for verifiable evaluation. <br /></td></tr>
+<tr class="separator:a6a56c07f01ed199126499baba88d52dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7ef0bb04c760829df257d63ffde41263" id="r_a7ef0bb04c760829df257d63ffde41263"><td class="memItemLeft" align="right" valign="top"><a id="a7ef0bb04c760829df257d63ffde41263" name="a7ef0bb04c760829df257d63ffde41263"></a>
+int4&#160;</td><td class="memItemRight" valign="bottom"><b>s0</b></td></tr>
+<tr class="memdesc:a7ef0bb04c760829df257d63ffde41263"><td class="mdescLeft">&#160;</td><td class="mdescRight">This party's initial seed. <br /></td></tr>
+<tr class="separator:a7ef0bb04c760829df257d63ffde41263"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename Prp, typename In = uint, int kappa = 3, int ch_lambda = 80&gt;<br />
-struct fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::BucketKey</div><p>Per-bucket key with the released v1.2.0 field order and aggregate layout. </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename Prp, typename In = uint, int ch_lambda = 80&gt;<br />
+struct fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda &gt;::BucketKey</div><p>Per-bucket VDPF key with shared correction words and one party's initial seed. </p>
+<p>Fields support direct access. Field order, padding, and binary serialization are not specified. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="vdmpf_8cuh_source.html">vdmpf.cuh</a></li>
+<li>include/fss/<a class="el" href="vdmpf_8cuh.html">vdmpf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

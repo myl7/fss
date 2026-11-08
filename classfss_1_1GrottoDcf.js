@@ -1,10 +1,13 @@
 var classfss_1_1GrottoDcf =
 [
-    [ "Key", "structfss_1_1GrottoDcf_1_1Key.html", null ],
-    [ "ParityTree", "structfss_1_1GrottoDcf_1_1ParityTree.html", null ],
-    [ "PreprocessedTree", "structfss_1_1GrottoDcf_1_1PreprocessedTree.html", null ],
-    [ "Eval", "classfss_1_1GrottoDcf.html#a1ab708434aed2fa7064df6ee5776316c", null ],
-    [ "EvalAll", "classfss_1_1GrottoDcf.html#a0f7de68279f447b7b4a3ec680af85b73", null ],
-    [ "Gen", "classfss_1_1GrottoDcf.html#a69e20460e207c18a0e40088e4c3a5f4f", null ],
-    [ "Preprocess", "classfss_1_1GrottoDcf.html#ad0d8de3a892938fd4a54562c9775a304", null ]
+    [ "Cw", "classfss_1_1GrottoDcf.html#af55817f99dc87d4658b9dc9cc192ea2c", null ],
+    [ "Input", "classfss_1_1GrottoDcf.html#a447f930ce148e075600adaf7f2805328", null ],
+    [ "GrottoDcf", "classfss_1_1GrottoDcf.html#a57e69d1e9feeec6a272de5f9831c67b6", null ],
+    [ "Eval", "classfss_1_1GrottoDcf.html#a2d10b98cecfdb4b98b61a0826ecf406a", null ],
+    [ "EvalAll", "classfss_1_1GrottoDcf.html#a3edc7f9112c77f23f7dd700d99cfbf3c", null ],
+    [ "EvalAllGpu", "classfss_1_1GrottoDcf.html#a7ad094bc7891040f82962042f221e784", null ],
+    [ "Gen", "classfss_1_1GrottoDcf.html#a6c9b9b7460e6e04011fe93436cb095e2", null ],
+    [ "Preprocess", "classfss_1_1GrottoDcf.html#ae3e53b3481577f8671dae2ac5be78242", null ],
+    [ "PreprocessGpu", "classfss_1_1GrottoDcf.html#a8925e397052df9783552a34a850f62ee", null ],
+    [ "PreprocessOwned", "classfss_1_1GrottoDcf.html#ab13fe79331e5e170d2cd6ccb7c2a795e", null ]
 ];

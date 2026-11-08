@@ -117,21 +117,51 @@ $(document).ready(function(){initNavTree('hash_8cuh_source.html',''); initResiza
 <div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &lt;cuda/std/tuple&gt;</span></div>
 <div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="preprocessor">#include &lt;concepts&gt;</span></div>
 <div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span> </div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
-<div class="foldopen" id="foldopen00019" data-start="{" data-end="}">
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno"><a class="line" href="conceptHashable.html">   19</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptHashable.html">Hashable</a> = <span class="keyword">requires</span>(Hash hash, cuda::std::span&lt;const int4, 4&gt; msg) {</div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 2&gt;&gt;;</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>};</div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
+<div class="foldopen" id="foldopen00020" data-start="{" data-end="}">
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno"><a class="line" href="conceptHashable.html">   20</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptHashable.html">Hashable</a> = <span class="keyword">requires</span>(Hash hash, cuda::std::span&lt;const int4, 4&gt; msg) {</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 2&gt;&gt;;</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>};</div>
 </div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
-<div class="foldopen" id="foldopen00027" data-start="{" data-end="}">
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno"><a class="line" href="conceptXorHashable.html">   27</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptXorHashable.html">XorHashable</a> = <span class="keyword">requires</span>(Hash hash, cuda::std::tuple&lt;int4, const int4&gt; msg) {</div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 4&gt;&gt;;</div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>};</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
+<div class="foldopen" id="foldopen00050" data-start="{" data-end="}">
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno"><a class="line" href="conceptHasHash4.html">   50</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptHasHash4.html">HasHash4</a> = <a class="code hl_concept" href="conceptHashable.html">Hashable&lt;Hash&gt;</a> &amp;&amp;</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    <span class="keyword">requires</span>(Hash hash, cuda::std::span&lt;const cuda::std::array&lt;int4, 4&gt;, 4&gt; msgs) {</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>  { hash.Hash4(msgs) } -&gt; std::same_as&lt;cuda::std::array&lt;cuda::std::array&lt;int4, 2&gt;, 4&gt;&gt;;</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>};</div>
 </div>
-<div class="ttc" id="aconceptHashable_html"><div class="ttname"><a href="conceptHashable.html">Hashable</a></div><div class="ttdoc">Collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:19</div></div>
-<div class="ttc" id="aconceptXorHashable_html"><div class="ttname"><a href="conceptXorHashable.html">XorHashable</a></div><div class="ttdoc">Collision-resistant and XOR-collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:27</div></div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
+<div class="foldopen" id="foldopen00072" data-start="{" data-end="}">
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno"><a class="line" href="conceptXorHashable.html">   72</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptXorHashable.html">XorHashable</a> = <span class="keyword">requires</span>(Hash hash, cuda::std::tuple&lt;int4, const int4&gt; msg) {</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 4&gt;&gt;;</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>};</div>
+</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span> </div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
+<div class="foldopen" id="foldopen00086" data-start="{" data-end="}">
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno"><a class="line" href="conceptCcrHashable.html">   86</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptCcrHashable.html">CcrHashable</a> = <span class="keyword">requires</span>(Hash hash, int4 block) {</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>  { hash.Hash(block) } -&gt; std::same_as&lt;int4&gt;;</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>};</div>
+</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span> </div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span><span class="comment">// -----------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span> </div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span><span class="keyword">namespace </span>fss::detail {</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span> </div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Hash&gt;</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>cuda::std::array&lt;int4, 8&gt; HashBatch(Hash &amp;hash, <span class="keyword">const</span> cuda::std::array&lt;int4, 8&gt; &amp;blocks) {</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>  cuda::std::array&lt;int4, 8&gt; out;</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; 8; ++i) out[i] = hash.Hash(blocks[i]);</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>  <span class="keywordflow">return</span> out;</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>}</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>}  <span class="comment">// namespace fss::detail</span></div>
+<div class="ttc" id="aconceptCcrHashable_html"><div class="ttname"><a href="conceptCcrHashable.html">CcrHashable</a></div><div class="ttdoc">Circular-correlation-robust (CCR) hash interface for HalfTree schemes.</div><div class="ttdef"><b>Definition</b> hash.cuh:86</div></div>
+<div class="ttc" id="aconceptHasHash4_html"><div class="ttname"><a href="conceptHasHash4.html">HasHash4</a></div><div class="ttdoc">Optional four-message batch extension of Hashable.</div><div class="ttdef"><b>Definition</b> hash.cuh:50</div></div>
+<div class="ttc" id="aconceptHashable_html"><div class="ttname"><a href="conceptHashable.html">Hashable</a></div><div class="ttdoc">Collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:20</div></div>
+<div class="ttc" id="aconceptXorHashable_html"><div class="ttname"><a href="conceptXorHashable.html">XorHashable</a></div><div class="ttdoc">Collision-resistant and XOR-collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:72</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

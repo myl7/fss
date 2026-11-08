@@ -200,7 +200,7 @@ Public Member Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking. </p>
-<p>Bit-exact with <a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba" title="Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.">Aes128Feistel::Permu</a>. Host-only.</p>
+<p>Bit-exact with <a class="el" href="classfss_1_1prp_1_1Aes128Feistel.html#a8d5efd98237b58074887a824da2c92ba" title="Small-domain PRP on [0, domain) using 4-round Feistel + cycle-walking.">Aes128Feistel::Permu</a>. Host-only. Device use fails to build with an unresolved-extern error naming <code>fss_host_only_Aes128FeistelRaw_used_in_device_code</code>.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">seed</td><td>16-byte PRP key. Round keys are expanded on first use per seed and cached, so repeated calls with one seed skip the expansion. </td></tr>
@@ -210,6 +210,7 @@ Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>Output in [0, domain). </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>x &lt; domain. A violation aborts with a diagnostic in Debug builds and is undefined behavior in Release builds. </dd></dl>
 
 </div>
 </div>

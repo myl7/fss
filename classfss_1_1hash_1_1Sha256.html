@@ -120,12 +120,12 @@ Public Member Functions</h2></td></tr>
 <tr class="memdesc:af68a5f6e43464d045ccc36e50c75155b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Hash a 64B message with the key.  <br /></td></tr>
 <tr class="separator:af68a5f6e43464d045ccc36e50c75155b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a48fda0329df62b351424896a709c12f7" id="r_a48fda0329df62b351424896a709c12f7"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; int4, 4 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1hash_1_1Sha256.html#a48fda0329df62b351424896a709c12f7">Hash</a> (cuda::std::tuple&lt; int4, const int4 &gt; msg)</td></tr>
-<tr class="memdesc:a48fda0329df62b351424896a709c12f7"><td class="mdescLeft">&#160;</td><td class="mdescRight">XOR-collision-resistant hash.  <br /></td></tr>
+<tr class="memdesc:a48fda0329df62b351424896a709c12f7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Hash a 128+127-bit logical message into two 32B digests.  <br /></td></tr>
 <tr class="separator:a48fda0329df62b351424896a709c12f7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>SHA-256 keyed hash. </p>
-<p>Only for host side. </p>
+<p>Only for host side. Device use fails to build with an unresolved-extern error naming <code>fss_host_only_Sha256_used_in_device_code</code>. </p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a1e31d36a519e0c469aba396646a4184a" name="a1e31d36a519e0c469aba396646a4184a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a1e31d36a519e0c469aba396646a4184a">&#9670;&#160;</a></span>Sha256()</h2>
@@ -194,6 +194,12 @@ Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>2 int4 blocks (32B) SHA-256 digest. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::runtime_error</td><td>if EVP_Digest fails. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
@@ -221,15 +227,21 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p>XOR-collision-resistant hash. </p>
-<p>Produces two 32B digests (one with LSB cleared, one with LSB set) and concatenates them into 64B.</p>
+<p>Hash a 128+127-bit logical message into two 32B digests. </p>
+<p>All 128 bits of a are message data. Bit 0 of b.w is reserved for domain separation; its supplied value is ignored. The other 127 bits of b are message data. Hash a followed by a copy of b with its reserved bit set to 0, then to 1, and concatenate the digests in that order. The input blocks are not modified. Each digest hashes the configured 16B key prefix followed by the two message blocks, for 48B total. This is a prefixed SHA-256 hash.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">msg</td><td>Tuple of (a, b) where a's LSB is used for domain separation. </td></tr>
+    <tr><td class="paramname">msg</td><td>Tuple of (a, b), with the reserved bit in the second block. </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>4 int4 blocks (64B). </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::runtime_error</td><td>if context allocation or a digest operation fails or returns an invalid length. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>

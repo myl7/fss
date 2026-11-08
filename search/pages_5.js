@@ -1,7 +1,5 @@
 var searchData=
 [
-  ['capabilities_20for_20v1_203_200_0',['API capabilities for v1.3.0',['../md_doc_2api-capabilities.html',1,'']]],
-  ['coverage_1',['Benchmark coverage',['../md_doc_2benchmarks.html',1,'']]],
-  ['cpu_20benchmark_2',['dpf++ (rh3nry/dpfplusplus) CPU Benchmark',['../md_doc_2bench-dpfplusplus.html',1,'']]],
-  ['curve_20methodology_3',['Benchmark curve methodology',['../md_doc_2bench__figures.html',1,'']]]
+  ['fold_20proof_20accumulation_3a_20security_20analysis_0',['VDPF and VDMPF Merkle-fold proof accumulation: security analysis',['../md_doc_2vdpf__merkle__fold__security.html',1,'']]],
+  ['fss_1',['myl7/fss',['../index.html',1,'']]]
 ];

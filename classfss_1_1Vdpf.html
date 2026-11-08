@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt; Class Template Reference</title>
+<title>myl7/fss: fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In &gt; Class Template Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -103,10 +103,12 @@ $(document).ready(function(){initNavTree('classfss_1_1Vdpf.html',''); initResiza
 <div class="header">
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
+<a href="#pub-types">Public Types</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
+<a href="#pub-static-attribs">Static Public Attributes</a> &#124;
 <a href="classfss_1_1Vdpf-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt; Class Template Reference</div></div>
+  <div class="headertitle"><div class="title">fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In &gt; Class Template Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -118,50 +120,83 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1Vdpf_1_1Cw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdpf_1_1EvalResult.html">EvalResult</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation result.  <a href="structfss_1_1Vdpf_1_1EvalResult.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words, the correction seeds, the output correction word, plus the party's initial seed.  <a href="structfss_1_1Vdpf_1_1Key.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
+Public Types</h2></td></tr>
+<tr class="memitem:a29a6a4a202f44c4a737287657dc28ac4" id="r_a29a6a4a202f44c4a737287657dc28ac4"><td class="memItemLeft" align="right" valign="top"><a id="a29a6a4a202f44c4a737287657dc28ac4" name="a29a6a4a202f44c4a737287657dc28ac4"></a>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>Input</b> = In</td></tr>
+<tr class="memdesc:a29a6a4a202f44c4a737287657dc28ac4"><td class="mdescLeft">&#160;</td><td class="mdescRight">The caller-facing input-domain type. <br /></td></tr>
+<tr class="separator:a29a6a4a202f44c4a737287657dc28ac4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a97a701f740b8dbec072fe43663810a90" id="r_a97a701f740b8dbec072fe43663810a90"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90">Gen</a> (<a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; int4, 2 &gt; s0s, In a, int4 b_buf, bool retry=true)</td></tr>
-<tr class="memdesc:a97a701f740b8dbec072fe43663810a90"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1Vdpf_1_1Key.html" title="A party&#39;s key: the correction words, the correction seeds, the output correction word,...">Key</a> generation method.  <br /></td></tr>
-<tr class="separator:a97a701f740b8dbec072fe43663810a90"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:acc5cfeb17a8a267d65852ff4dbbc4689" id="r_acc5cfeb17a8a267d65852ff4dbbc4689"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structfss_1_1Vdpf_1_1EvalResult.html">EvalResult</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689">Eval</a> (bool b, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, In x)</td></tr>
-<tr class="memdesc:acc5cfeb17a8a267d65852ff4dbbc4689"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
-<tr class="separator:acc5cfeb17a8a267d65852ff4dbbc4689"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a21b821af8d2b497f336a9922031ec162" id="r_a21b821af8d2b497f336a9922031ec162"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162">Prove</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt; pi_tildes, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
-<tr class="memdesc:a21b821af8d2b497f336a9922031ec162"><td class="mdescLeft">&#160;</td><td class="mdescRight">Proof accumulation method.  <br /></td></tr>
-<tr class="separator:a21b821af8d2b497f336a9922031ec162"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:acd47773ba1f49dd1d342db6df9f4261b" id="r_acd47773ba1f49dd1d342db6df9f4261b"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
-<tr class="memdesc:acd47773ba1f49dd1d342db6df9f4261b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
-<tr class="separator:acd47773ba1f49dd1d342db6df9f4261b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7306d2384b1abafac56d7b4598cfdc15" id="r_a7306d2384b1abafac56d7b4598cfdc15"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a7306d2384b1abafac56d7b4598cfdc15">EvalRange</a> (bool b, size_t L, size_t R, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
-<tr class="memdesc:a7306d2384b1abafac56d7b4598cfdc15"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate on a contiguous subset of the full domain.  <br /></td></tr>
-<tr class="separator:a7306d2384b1abafac56d7b4598cfdc15"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2ce19a82c664e9b48893c9b202b0dc74" id="r_a2ce19a82c664e9b48893c9b202b0dc74"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74">ProveMerkle</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt; pi_tildes, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
-<tr class="memdesc:a2ce19a82c664e9b48893c9b202b0dc74"><td class="mdescLeft">&#160;</td><td class="mdescRight">Proof accumulation method (Merkle fold).  <br /></td></tr>
-<tr class="separator:a2ce19a82c664e9b48893c9b202b0dc74"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa2321715d3edadbe33b2dc1ebf64c5cd" id="r_aa2321715d3edadbe33b2dc1ebf64c5cd"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd">EvalAllMerkle</a> (bool b, const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys, cuda::std::array&lt; int4, 4 &gt; &amp;pi)</td></tr>
-<tr class="memdesc:aa2321715d3edadbe33b2dc1ebf64c5cd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method with the Merkle-fold proof.  <br /></td></tr>
-<tr class="separator:aa2321715d3edadbe33b2dc1ebf64c5cd"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a0d48cb786bf872e86e9ad2761b208dc3" id="r_a0d48cb786bf872e86e9ad2761b208dc3"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a0d48cb786bf872e86e9ad2761b208dc3">Gen</a> (<a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a> cws[], cuda::std::array&lt; int4, 4 &gt; &amp;cs, int4 &amp;ocw, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf)</td></tr>
-<tr class="memdesc:a0d48cb786bf872e86e9ad2761b208dc3"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1Vdpf_1_1Key.html" title="A party&#39;s key: the correction words, the correction seeds, the output correction word,...">Key</a> generation core on the correction-word form.  <br /></td></tr>
-<tr class="separator:a0d48cb786bf872e86e9ad2761b208dc3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a312305af5f82b496991bec778821f32c" id="r_a312305af5f82b496991bec778821f32c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a312305af5f82b496991bec778821f32c">Vdpf</a> (Prg prg, XorHash xor_hash, Hash hash)</td></tr>
+<tr class="memdesc:a312305af5f82b496991bec778821f32c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Construct a scheme with configured backends.  <br /></td></tr>
+<tr class="separator:a312305af5f82b496991bec778821f32c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a94ce6cf662eaa92404e102d4c2c2a45d" id="r_a94ce6cf662eaa92404e102d4c2c2a45d"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d">Gen</a> (cuda::std::span&lt; int4 &gt; cws, In &amp;tr, cuda::std::span&lt; int4, 4 &gt; cs, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf, size_t stride=1)</td></tr>
+<tr class="memdesc:a94ce6cf662eaa92404e102d4c2c2a45d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Generate correction words in a caller-strided layout and packed control bits.  <br /></td></tr>
+<tr class="separator:a94ce6cf662eaa92404e102d4c2c2a45d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3079527ea722089dcb73e8cb70e1fcc4" id="r_a3079527ea722089dcb73e8cb70e1fcc4"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; int4, 4 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4">Eval</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, In x, int4 &amp;y, size_t stride=1)</td></tr>
+<tr class="memdesc:a3079527ea722089dcb73e8cb70e1fcc4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate one input from separate correction components.  <br /></td></tr>
+<tr class="separator:a3079527ea722089dcb73e8cb70e1fcc4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae7ba0fa73ba7dc7fd9f8637831607b55" id="r_ae7ba0fa73ba7dc7fd9f8637831607b55"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#ae7ba0fa73ba7dc7fd9f8637831607b55">Prove</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt; pi_tildes, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4, 4 &gt; pi)</td></tr>
+<tr class="memdesc:ae7ba0fa73ba7dc7fd9f8637831607b55"><td class="mdescLeft">&#160;</td><td class="mdescRight">Proof accumulation method.  <br /></td></tr>
+<tr class="separator:ae7ba0fa73ba7dc7fd9f8637831607b55"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aceba5147c58997eb0607079dca4fe673" id="r_aceba5147c58997eb0607079dca4fe673"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673">EvalAll</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:aceba5147c58997eb0607079dca4fe673"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the full domain and produce a chain proof from split correction words.  <br /></td></tr>
+<tr class="separator:aceba5147c58997eb0607079dca4fe673"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad4e926b71291d7464c30d3f8b007876c" id="r_ad4e926b71291d7464c30d3f8b007876c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#ad4e926b71291d7464c30d3f8b007876c">EvalRange</a> (bool b, In first, In last, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:ad4e926b71291d7464c30d3f8b007876c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the inclusive range [first, last] and produce a chain proof from split correction words.  <br /></td></tr>
+<tr class="separator:ad4e926b71291d7464c30d3f8b007876c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4e4ca28046685ec4e7c4c3f24bb9832c" id="r_a4e4ca28046685ec4e7c4c3f24bb9832c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a4e4ca28046685ec4e7c4c3f24bb9832c">ProveMerkle</a> (cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt; pi_tildes, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4, 4 &gt; pi, int par_depth=0)</td></tr>
+<tr class="memdesc:a4e4ca28046685ec4e7c4c3f24bb9832c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Proof accumulation method (Merkle fold).  <br /></td></tr>
+<tr class="separator:a4e4ca28046685ec4e7c4c3f24bb9832c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7968ecd797540944400aa14085842246" id="r_a7968ecd797540944400aa14085842246"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a7968ecd797540944400aa14085842246">BatchEval</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, size_t stride=1)</td></tr>
+<tr class="memdesc:a7968ecd797540944400aa14085842246"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate an arbitrary ordered query sequence and produce a chain proof from split correction words.  <br /></td></tr>
+<tr class="separator:a7968ecd797540944400aa14085842246"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abe410ae2bd188d9bc5c5225bdbcae10d" id="r_abe410ae2bd188d9bc5c5225bdbcae10d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#abe410ae2bd188d9bc5c5225bdbcae10d">BatchEvalMerkle</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, size_t stride=1)</td></tr>
+<tr class="memdesc:abe410ae2bd188d9bc5c5225bdbcae10d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate an arbitrary ordered query sequence and produce a Merkle proof from split correction words.  <br /></td></tr>
+<tr class="separator:abe410ae2bd188d9bc5c5225bdbcae10d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a51d355c74d2af8cf7f83ffb8932db747" id="r_a51d355c74d2af8cf7f83ffb8932db747"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a51d355c74d2af8cf7f83ffb8932db747">EvalAllMerkle</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:a51d355c74d2af8cf7f83ffb8932db747"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full-domain evaluation with the Merkle-fold proof from split correction words.  <br /></td></tr>
+<tr class="separator:a51d355c74d2af8cf7f83ffb8932db747"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7b2a74629374b15ae594ad93b0ba910f" id="r_a7b2a74629374b15ae594ad93b0ba910f"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:a7b2a74629374b15ae594ad93b0ba910f"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a7b2a74629374b15ae594ad93b0ba910f">EvalAllMerkleGpu</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a7b2a74629374b15ae594ad93b0ba910f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Launch full-domain CUDA evaluation with the canonical Merkle-fold proof from split device arrays.  <br /></td></tr>
+<tr class="separator:a7b2a74629374b15ae594ad93b0ba910f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae5a3ba5c7c4c953cd052d6460683c3c9" id="r_ae5a3ba5c7c4c953cd052d6460683c3c9"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#ae5a3ba5c7c4c953cd052d6460683c3c9">EvalRangeMerkle</a> (bool b, In first, In last, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:ae5a3ba5c7c4c953cd052d6460683c3c9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate [first, last] and apply ProveMerkle to its ordered corrected hashes, from split correction words.  <br /></td></tr>
+<tr class="separator:ae5a3ba5c7c4c953cd052d6460683c3c9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1defd0c7047a0d39ff06a8f283a6ddbe" id="r_a1defd0c7047a0d39ff06a8f283a6ddbe"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</td></tr>
+<tr class="memitem:a1defd0c7047a0d39ff06a8f283a6ddbe"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a1defd0c7047a0d39ff06a8f283a6ddbe">EvalRangeMerkleGpu</a> (bool b, In first, In last, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a1defd0c7047a0d39ff06a8f283a6ddbe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Launch range evaluation and the canonical ordered-sequence Merkle fold from split device arrays.  <br /></td></tr>
+<tr class="separator:a1defd0c7047a0d39ff06a8f283a6ddbe"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af5af718f27ac750adb260bcb5212aa77" id="r_af5af718f27ac750adb260bcb5212aa77"><td class="memTemplParams" colspan="2">template&lt;int threads_per_block = 256&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</td></tr>
+<tr class="memitem:af5af718f27ac750adb260bcb5212aa77"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#af5af718f27ac750adb260bcb5212aa77">BatchEvalMerkleGpu</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, In tr, cuda::std::span&lt; const int4, 4 &gt; cs, cuda::std::span&lt; const In &gt; xs, cuda::std::span&lt; int4 &gt; ys, cuda::std::span&lt; int4, 4 &gt; pi, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:af5af718f27ac750adb260bcb5212aa77"><td class="mdescLeft">&#160;</td><td class="mdescRight">Launch batch evaluation of an arbitrary ordered query sequence with the Merkle-fold proof, from split device arrays.  <br /></td></tr>
+<tr class="separator:af5af718f27ac750adb260bcb5212aa77"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:ab00eedee69bebec69e716c50a750bbc8" id="r_ab00eedee69bebec69e716c50a750bbc8"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8">Verify</a> (cuda::std::span&lt; const int4, 4 &gt; pi0, cuda::std::span&lt; const int4, 4 &gt; pi1)</td></tr>
-<tr class="memdesc:ab00eedee69bebec69e716c50a750bbc8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Verification method.  <br /></td></tr>
-<tr class="separator:ab00eedee69bebec69e716c50a750bbc8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a205508f2d2d30f067768ed923edf920b" id="r_a205508f2d2d30f067768ed923edf920b"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Vdpf.html#a205508f2d2d30f067768ed923edf920b">Verify</a> (cuda::std::span&lt; const int4, 4 &gt; pi0, cuda::std::span&lt; const int4, 4 &gt; pi1)</td></tr>
+<tr class="memdesc:a205508f2d2d30f067768ed923edf920b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Verification method.  <br /></td></tr>
+<tr class="separator:a205508f2d2d30f067768ed923edf920b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-attribs" name="pub-static-attribs"></a>
+Static Public Attributes</h2></td></tr>
+<tr class="memitem:a4c6cd26cbeda986f7f9438aa2e3a602b" id="r_a4c6cd26cbeda986f7f9438aa2e3a602b"><td class="memItemLeft" align="right" valign="top"><a id="a4c6cd26cbeda986f7f9438aa2e3a602b" name="a4c6cd26cbeda986f7f9438aa2e3a602b"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kCwCount</b> = in_bits + 1</td></tr>
+<tr class="memdesc:a4c6cd26cbeda986f7f9438aa2e3a602b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Seed-component count <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes at stride 1: in_bits layers plus the terminal. <br /></td></tr>
+<tr class="separator:a4c6cd26cbeda986f7f9438aa2e3a602b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In = uint, int par_depth = -1&gt;<br />
-requires ((std::is_unsigned_v&lt;In&gt; || std::is_same_v&lt;In, __uint128_t&gt;) &amp;&amp; in_bits &lt;= sizeof(In) * 8 &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)<br />
-class fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</div><p>2-party VDPF scheme. </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In = uint&gt;<br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)<br />
+class fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;</div><p>2-party VDPF scheme. </p>
+<p><a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> and scalar <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a> support host and device calls when their backends do. CPU full-domain, range, and proof accumulation run on the host. The Gpu methods launch asynchronous device evaluation. <a class="el" href="classfss_1_1Vdpf.html#ae7ba0fa73ba7dc7fd9f8637831607b55" title="Proof accumulation method.">Prove()</a>, <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>, and <a class="el" href="classfss_1_1Vdpf.html#ad4e926b71291d7464c30d3f8b007876c" title="Evaluate the inclusive range [first, last] and produce a chain proof from split correction words.">EvalRange()</a> use chain accumulation. <a class="el" href="classfss_1_1Vdpf.html#a4e4ca28046685ec4e7c4c3f24bb9832c" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a>, <a class="el" href="classfss_1_1Vdpf.html#a51d355c74d2af8cf7f83ffb8932db747" title="Full-domain evaluation with the Merkle-fold proof from split correction words.">EvalAllMerkle()</a>, and <a class="el" href="classfss_1_1Vdpf.html#ae5a3ba5c7c4c953cd052d6460683c3c9" title="Evaluate [first, last] and apply ProveMerkle to its ordered corrected hashes, from split correction w...">EvalRangeMerkle()</a> use a Merkle fold over a fixed ordered sequence. Both parties must use the same accumulator, key configuration, and ordered inputs. Chain and Merkle proofs have the same representation but different values. XorHash receives (packed coordinate, clamped leaf seed), in that order. Every coordinate bit is message data. Bit 0 of the seed's fourth word is reserved and passed as zero; the built-in backends use it for digest tags. Verification guarantees require the assumptions and accumulator-specific proof conditions in doc/vdpf_merkle_fold_security.md.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">in_bits</td><td>Input domain bit size. </td></tr>
@@ -170,24 +205,80 @@ class fss::Vdpf&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;</div>
     <tr><td class="paramname">XorHash</td><td>See XorHashable. Paper's \(H\): maps \((x, s)\) to \(4\lambda\) bits. </td></tr>
     <tr><td class="paramname">Hash</td><td>See Hashable. Paper's \(H&#39;\): maps \(4\lambda\) bits to \(2\lambda\) bits. </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>, <a class="el" href="classfss_1_1Vdpf.html#aa2321715d3edadbe33b2dc1ebf64c5cd" title="Full domain evaluation method with the Merkle-fold proof.">EvalAllMerkle()</a>, and <a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> use it. See <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
   </table>
   </dd>
 </dl>
-</div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="acc5cfeb17a8a267d65852ff4dbbc4689" name="acc5cfeb17a8a267d65852ff4dbbc4689"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#acc5cfeb17a8a267d65852ff4dbbc4689">&#9670;&#160;</a></span>Eval()</h2>
+</div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a id="a312305af5f82b496991bec778821f32c" name="a312305af5f82b496991bec778821f32c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a312305af5f82b496991bec778821f32c">&#9670;&#160;</a></span>Vdpf()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="structfss_1_1Vdpf_1_1EvalResult.html">EvalResult</a> <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Eval </td>
+          <td class="memname"><a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::Vdpf </td>
+          <td>(</td>
+          <td class="paramtype">Prg&#160;</td>
+          <td class="paramname"><em>prg</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">XorHash&#160;</td>
+          <td class="paramname"><em>xor_hash</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">Hash&#160;</td>
+          <td class="paramname"><em>hash</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">explicit</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Construct a scheme with configured backends. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">prg</td><td>Configured Prg backend. </td></tr>
+    <tr><td class="paramname">xor_hash</td><td>Configured XorHash backend. </td></tr>
+    <tr><td class="paramname">hash</td><td>Configured Hash backend. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
+<a id="a7968ecd797540944400aa14085842246" name="a7968ecd797540944400aa14085842246"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7968ecd797540944400aa14085842246">&#9670;&#160;</a></span>BatchEval()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::BatchEval </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -195,270 +286,1150 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>x</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-<p>Evaluation method. </p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">x</td><td>Evaluated input. \(x\). </td></tr>
-  </table>
-  </dd>
-</dl>
-<dl class="section return"><dt>Returns</dt><dd>The output share \(y_{i,x}\) plus the corrected per-point hash for proof accumulation. </dd></dl>
-
-</div>
-</div>
-<a id="acd47773ba1f49dd1d342db6df9f4261b" name="acd47773ba1f49dd1d342db6df9f4261b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#acd47773ba1f49dd1d342db6df9f4261b">&#9670;&#160;</a></span>EvalAll()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::EvalAll </td>
-          <td>(</td>
-          <td class="paramtype">bool&#160;</td>
-          <td class="paramname"><em>b</em>, </td>
+          <td class="paramname"><em>tr</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
-          <td class="paramname"><em>ys</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
-          <td class="paramname"><em>pi</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-<p>Full domain evaluation method. </p>
-<p>Evaluate the key on each input, i.e., 0b00...0 - 0b11...1. Store the outputs sequentially and accumulate the proof.</p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits. </td></tr>
-    <tr><td class="paramname">pi</td><td>Proof output.</td></tr>
-  </table>
-  </dd>
-</dl>
-<p>Support parallel using OpenMP for the tree traversal phase. The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads. par_depth = -1: use ceil(log(num of threads)). par_depth = 0: no parallelism, i.e., sequential execution. </p>
-
-</div>
-</div>
-<a id="aa2321715d3edadbe33b2dc1ebf64c5cd" name="aa2321715d3edadbe33b2dc1ebf64c5cd"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa2321715d3edadbe33b2dc1ebf64c5cd">&#9670;&#160;</a></span>EvalAllMerkle()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::EvalAllMerkle </td>
-          <td>(</td>
-          <td class="paramtype">bool&#160;</td>
-          <td class="paramname"><em>b</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
-          <td class="paramname"><em>ys</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
-          <td class="paramname"><em>pi</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-<p>Full domain evaluation method with the Merkle-fold proof. </p>
-<p>Same output shares as <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>; the proof comes from <a class="el" href="classfss_1_1Vdpf.html#a2ce19a82c664e9b48893c9b202b0dc74" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> over the corrected per-point hashes. The conversion phase and every fold level are OpenMP parallel honoring par_depth, unlike <a class="el" href="classfss_1_1Vdpf.html#acd47773ba1f49dd1d342db6df9f4261b" title="Full domain evaluation method.">EvalAll()</a>'s sequential phase 2. See doc/vdpf_merkle_fold_security.md.</p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits. </td></tr>
-    <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
-  </table>
-  </dd>
-</dl>
-
-</div>
-</div>
-<a id="a7306d2384b1abafac56d7b4598cfdc15" name="a7306d2384b1abafac56d7b4598cfdc15"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7306d2384b1abafac56d7b4598cfdc15">&#9670;&#160;</a></span>EvalRange()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::EvalRange </td>
-          <td>(</td>
-          <td class="paramtype">bool&#160;</td>
-          <td class="paramname"><em>b</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">size_t&#160;</td>
-          <td class="paramname"><em>L</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">size_t&#160;</td>
-          <td class="paramname"><em>R</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
-          <td class="paramname"><em>ys</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
-          <td class="paramname"><em>pi</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-<p>Evaluate on a contiguous subset of the full domain. </p>
-<p>Evaluate the key on the range \([L, R]\). Store the outputs sequentially and accumulate the proof for this range. A successful verification guarantees (except with negligible probability, under the VDPF security assumptions) that the reconstructed function has at most one nonzero output for \(x \in [L, R]\); no guarantee is made outside this range.</p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">L</td><td>lower bound. The vdpf will be evaluated on the range \([L, R]\) of the full domain. </td></tr>
-    <tr><td class="paramname">R</td><td>upper bound. The vdpf will be evaluated on the range \([L, R]\) of the full domain. </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least \(R - L + 1\). </td></tr>
-    <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
-  </table>
-  </dd>
-</dl>
-
-</div>
-</div>
-<a id="a0d48cb786bf872e86e9ad2761b208dc3" name="a0d48cb786bf872e86e9ad2761b208dc3"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a0d48cb786bf872e86e9ad2761b208dc3">&#9670;&#160;</a></span>Gen() <span class="overload">[1/2]</span></h2>
-
-<div class="memitem">
-<div class="memproto">
-<div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">int <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Gen </td>
-          <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1Vdpf_1_1Cw.html">Cw</a>&#160;</td>
-          <td class="paramname"><em>cws</em>[], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
           <td class="paramname"><em>cs</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">cuda::std::span&lt; const In &gt;&#160;</td>
+          <td class="paramname"><em>xs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate an arbitrary ordered query sequence and produce a chain proof from split correction words. </p>
+<p>One call over xs: <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a> for every input in the order given, then <a class="el" href="classfss_1_1Vdpf.html#ae7ba0fa73ba7dc7fd9f8637831607b55" title="Proof accumulation method.">Prove()</a> over the corrected per-point hashes in the same order. The result is bit-identical to calling <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a> per input and <a class="el" href="classfss_1_1Vdpf.html#ae7ba0fa73ba7dc7fd9f8637831607b55" title="Proof accumulation method.">Prove()</a> over the results on the same ordered xs. The order of xs is part of the contract: both parties must supply the same sequence, including duplicates.</p>
+<p>The cost is not <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>'s. A query sequence that is not a tree-structured set cannot prune, so every input pays its own root-to-leaf walk, exactly as <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a> does. This call does not inherit <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>'s property of visiting each internal node once.</p>
+<p>Internally buffers the corrected per-point hashes, 64 B per input.</p>
+<p>xs may be any nonempty sequence of inputs in [0, 2^in_bits), including sparse, unsorted, or repeated inputs. Both parties must use the same sequence, including its order and length, and the same proof accumulator and hash configuration. Both servers must obtain the same xs by a path the client cannot split. Any verification guarantee is restricted to the evaluated input values and requires the scheme's security assumptions. See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored.</p>
+<dl class="section pre"><dt>Precondition</dt><dd>xs is nonempty and xs[i] &lt; 2^in_bits for every i. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd></dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Shared correction seed returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">xs</td><td>Ordered input sequence; it may be sparse, unsorted, and contain duplicates. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output shares in xs order, with at least xs.size() entries. </td></tr>
+    <tr><td class="paramname">pi</td><td>Borrowed output storage for four chain-proof blocks. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large, cws is shorter than in_bits*stride+1, xs is empty, or ys is too short. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="abe410ae2bd188d9bc5c5225bdbcae10d" name="abe410ae2bd188d9bc5c5225bdbcae10d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abe410ae2bd188d9bc5c5225bdbcae10d">&#9670;&#160;</a></span>BatchEvalMerkle()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::BatchEvalMerkle </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const In &gt;&#160;</td>
+          <td class="paramname"><em>xs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate an arbitrary ordered query sequence and produce a Merkle proof from split correction words. </p>
+<p>Same evaluation and ordering contract as <a class="el" href="classfss_1_1Vdpf.html#a7968ecd797540944400aa14085842246" title="Evaluate an arbitrary ordered query sequence and produce a chain proof from split correction words.">BatchEval()</a>, with the proof coming from <a class="el" href="classfss_1_1Vdpf.html#a4e4ca28046685ec4e7c4c3f24bb9832c" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> over the corrected per-point hashes in xs order: bit-identical to calling <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a> per input and <a class="el" href="classfss_1_1Vdpf.html#a4e4ca28046685ec4e7c4c3f24bb9832c" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> over the results on the same ordered xs. Both parties must supply the same sequence and agree on the Merkle accumulator.</p>
+<p>The cost is not <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>'s. Every input pays its own root-to-leaf walk, as <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a> does; the fold over the sequence adds no tree-structured savings. This call does not inherit <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>'s property of visiting each internal node once.</p>
+<p>Internally buffers the corrected per-point hashes, 64 B per input.</p>
+<p>xs may be any nonempty sequence of inputs in [0, 2^in_bits), including sparse, unsorted, or repeated inputs. Both parties must use the same sequence, including its order and length, and the same proof accumulator and hash configuration. Both servers must obtain the same xs by a path the client cannot split. Any verification guarantee is restricted to the evaluated input values and requires the scheme's security assumptions. See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits. Each occurrence of a repeated input contributes its own leaf. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored.</p>
+<dl class="section pre"><dt>Precondition</dt><dd>xs is nonempty and xs[i] &lt; 2^in_bits for every i. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd></dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Shared correction seed returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">xs</td><td>Ordered input sequence; it may be sparse, unsorted, and contain duplicates. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output shares in xs order, with at least xs.size() entries. </td></tr>
+    <tr><td class="paramname">pi</td><td>Borrowed output storage for four Merkle-proof blocks. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large, cws is shorter than in_bits*stride+1, xs is empty, or ys is too short. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="af5af718f27ac750adb260bcb5212aa77" name="af5af718f27ac750adb260bcb5212aa77"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af5af718f27ac750adb260bcb5212aa77">&#9670;&#160;</a></span>BatchEvalMerkleGpu()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<div class="memtemplate">
+template&lt;int threads_per_block&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::BatchEvalMerkleGpu </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const In &gt;&#160;</td>
+          <td class="paramname"><em>xs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Launch batch evaluation of an arbitrary ordered query sequence with the Merkle-fold proof, from split device arrays. </p>
+<p>The outputs and proof match host <a class="el" href="classfss_1_1Vdpf.html#abe410ae2bd188d9bc5c5225bdbcae10d" title="Evaluate an arbitrary ordered query sequence and produce a Merkle proof from split correction words.">BatchEvalMerkle()</a> bit for bit on the same ordered xs, for any query sequence: sparse, unsorted, or duplicated. The order of xs is part of the contract; both parties must pass the same sequence and agree on the Merkle accumulator. Chain accumulation over a query sequence stays on the host, in <a class="el" href="classfss_1_1Vdpf.html#a7968ecd797540944400aa14085842246" title="Evaluate an arbitrary ordered query sequence and produce a chain proof from split correction words.">BatchEval()</a>.</p>
+<p>The cost is not <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>'s: a sparse query set cannot prune the tree, so every input pays its own root-to-leaf walk and no frontier is shared. That is why this entry takes no frontier_depth. Group, Prg, XorHash, and Hash must support device execution.</p>
+<p>Takes the raw key components s0, cws, tr, and cs as <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> returned them. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored. Uses caller-owned device arrays and backend resources. Temporary node buffers with 32*(M + ceil(M/2)) scratch bytes for M inputs are allocated and released on stream. No upload, deep copy, or synchronization occurs. Backend resources must support concurrent device calls and remain valid until the stream completes. The host instance supplies backend values.</p>
+<p>xs may be any nonempty sequence of inputs in [0, 2^in_bits), including sparse, unsorted, or repeated inputs. Both parties must use the same sequence, including its order and length, and the same proof accumulator and hash configuration. Both servers must obtain the same xs by a path the client cannot split. Any verification guarantee is restricted to the evaluated input values and requires the scheme's security assumptions. See doc/vdpf_merkle_fold_security.md for assumptions and instantiation limits. Each occurrence of a repeated input contributes its own leaf.</p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">threads_per_block</td><td>Power-of-two block size in [1, 1024]. Defaults to 256. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed, passed by value to the kernel. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Device storage containing the four shared correction-seed blocks. </td></tr>
+    <tr><td class="paramname">xs</td><td>Device storage of the ordered input sequence; it may be sparse, unsorted, and contain duplicates. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output storage with at least xs.size() int4 blocks. </td></tr>
+    <tr><td class="paramname">pi</td><td>Device output storage for the four-block Merkle proof. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>xs is nonempty and xs[i] &lt; 2^in_bits for every i. </dd>
+<dd>
+stride &gt; 0 and cws holds at least in_bits*stride+1 elements. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>First immediate CUDA error. Invalid buffers, strides, or empty xs return cudaErrorInvalidValue. An oversized grid returns cudaErrorInvalidConfiguration. Execution errors are observed by the caller when synchronizing stream. </dd></dl>
+
+</div>
+</div>
+<a id="a3079527ea722089dcb73e8cb70e1fcc4" name="a3079527ea722089dcb73e8cb70e1fcc4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3079527ea722089dcb73e8cb70e1fcc4">&#9670;&#160;</a></span>Eval()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cuda::std::array&lt; int4, 4 &gt; <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::Eval </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>x</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
           <td class="paramtype">int4 &amp;&#160;</td>
-          <td class="paramname"><em>ocw</em>, </td>
+          <td class="paramname"><em>y</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate one input from separate correction components. </p>
+<p>Root-order packed bit i is the right-control correction at layer i. The correction s LSB is the left-control correction. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride], which <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes as a plain int4 with its LSB zero. Packed bits at and above in_bits are ignored.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Shared correction seed returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">x</td><td>Input in the scheme's domain. </td></tr>
+    <tr><td class="paramname">y</td><td>Output share for this input. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive stride between correction entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Corrected per-point hash for <a class="el" href="classfss_1_1Vdpf.html#ae7ba0fa73ba7dc7fd9f8637831607b55" title="Proof accumulation method.">Prove()</a> or <a class="el" href="classfss_1_1Vdpf.html#a4e4ca28046685ec4e7c4c3f24bb9832c" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a>. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>x is in [0, 2^in_bits). </dd>
+<dd>
+stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and cws has at least in_bits*stride+1 elements. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd>
+<dd>
+A stride, capacity, or terminal violation aborts with a diagnostic in Debug builds on both the host and the device, and is undefined behavior in Release builds. </dd></dl>
+
+</div>
+</div>
+<a id="aceba5147c58997eb0607079dca4fe673" name="aceba5147c58997eb0607079dca4fe673"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aceba5147c58997eb0607079dca4fe673">&#9670;&#160;</a></span>EvalAll()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::EvalAll </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate the full domain and produce a chain proof from split correction words. </p>
+<p>Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Shared correction seed returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output shares in input order, with at least 2^in_bits entries. </td></tr>
+    <tr><td class="paramname">pi</td><td>Borrowed output storage for four chain-proof blocks. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>The full-domain output count and byte size fit size_t. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds before any traversal and is undefined behavior in Release builds. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large, cws is shorter than in_bits*stride+1, or ys is too short. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a51d355c74d2af8cf7f83ffb8932db747" name="a51d355c74d2af8cf7f83ffb8932db747"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a51d355c74d2af8cf7f83ffb8932db747">&#9670;&#160;</a></span>EvalAllMerkle()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::EvalAllMerkle </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Full-domain evaluation with the Merkle-fold proof from split correction words. </p>
+<p>Same output shares as <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>; the proof comes from <a class="el" href="classfss_1_1Vdpf.html#a4e4ca28046685ec4e7c4c3f24bb9832c" title="Proof accumulation method (Merkle fold).">ProveMerkle()</a> over the corrected per-point hashes. The conversion phase and every fold level are OpenMP parallel honoring par_depth, unlike <a class="el" href="classfss_1_1Vdpf.html#aceba5147c58997eb0607079dca4fe673" title="Evaluate the full domain and produce a chain proof from split correction words.">EvalAll()</a>'s sequential phase 2. See doc/vdpf_merkle_fold_security.md. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Shared correction seed returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits. </td></tr>
+    <tr><td class="paramname">pi</td><td>Borrowed output storage for four proof blocks. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>The full-domain output count, output bytes, and per-point proof scratch bytes fit size_t. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds before any traversal and is undefined behavior in Release builds. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large, cws is shorter than in_bits*stride+1, ys is too short, or the proof scratch does not fit size_t. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a7b2a74629374b15ae594ad93b0ba910f" name="a7b2a74629374b15ae594ad93b0ba910f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7b2a74629374b15ae594ad93b0ba910f">&#9670;&#160;</a></span>EvalAllMerkleGpu()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::EvalAllMerkleGpu </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Launch full-domain CUDA evaluation with the canonical Merkle-fold proof from split device arrays. </p>
+<p>Uses this host instance's backend values as kernel arguments. The caller prepares device-accessible key/output buffers and every resource referenced by the backends. Temporary block roots are allocated and released in the supplied stream. No backend upload, deep copy, or synchronization is performed. Group, Prg, XorHash, and Hash must support device execution. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored.</p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">frontier_depth</td><td>Frontier depth, capped at in_bits. Defaults to 16. </td></tr>
+    <tr><td class="paramname">threads_per_block</td><td>Power-of-two block size in [1, 1024], capped at the frontier width. Defaults to 256. The remaining tail has at most eight levels. The block-root depth is derived from these two values, and the number of block roots must not exceed the resolved threads per block. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed, passed by value to the kernel. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Device storage containing the four shared correction-seed blocks. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output storage with at least 2^in_bits int4 blocks. </td></tr>
+    <tr><td class="paramname">pi</td><td>Device output storage for the four-block Merkle proof. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and cws holds at least in_bits*stride+1 elements. </dd>
+<dd>
+this is host-accessible. Buffers and backend resources remain valid until work completes and permit the kernel's concurrent backend calls. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>The first immediate CUDA allocation, launch, or release status. Invalid buffers, strides, or unaddressable output storage return cudaErrorInvalidValue. Execution is asynchronous; the caller observes execution errors when synchronizing. </dd></dl>
+
+</div>
+</div>
+<a id="ad4e926b71291d7464c30d3f8b007876c" name="ad4e926b71291d7464c30d3f8b007876c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad4e926b71291d7464c30d3f8b007876c">&#9670;&#160;</a></span>EvalRange()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::EvalRange </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>first</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>last</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate the inclusive range [first, last] and produce a chain proof from split correction words. </p>
+<p>Under the VDPF security assumptions, successful verification guarantees at most one nonzero reconstructed output within this range, except with negligible probability. It makes no guarantee outside the range. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">first</td><td>First input, included in evaluation. </td></tr>
+    <tr><td class="paramname">last</td><td>Last input, included in evaluation. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Shared correction seed returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output shares in input order, with at least last - first + 1 entries. </td></tr>
+    <tr><td class="paramname">pi</td><td>Borrowed output storage for four chain-proof blocks for this range. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>first &lt;= last &lt; 2^in_bits. The range output count and byte size fit size_t. A small range is supported even when the full input domain cannot be materialized in addressable storage. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds before any traversal and is undefined behavior in Release builds. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if first &gt; last, last is outside the input domain, the interval does not fit size_t, stride is zero or too large, cws is shorter than in_bits*stride+1, or ys is too short. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="ae5a3ba5c7c4c953cd052d6460683c3c9" name="ae5a3ba5c7c4c953cd052d6460683c3c9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae5a3ba5c7c4c953cd052d6460683c3c9">&#9670;&#160;</a></span>EvalRangeMerkle()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::EvalRangeMerkle </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>first</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>last</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate [first, last] and apply ProveMerkle to its ordered corrected hashes, from split correction words. </p>
+<p>ys[j] is the share for first + j. Extra output capacity is unchanged. The proof tree covers this sequence, with odd nodes carried unchanged. Both parties must agree on the range, order, and accumulator externally. For M = last - first + 1, proof scratch payload is at most 96*M + 32*ceil(M/2) bytes, plus 16*M output bytes and allocator overhead. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored.</p>
+<dl class="section pre"><dt>Precondition</dt><dd>first &lt;= last &lt; 2^in_bits. Output and proof scratch bytes fit size_t. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd>
+<dd>
+cws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds before any traversal and is undefined behavior in Release builds. </dd></dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if first &gt; last, last is outside the input domain, the output or proof scratch does not fit size_t, stride is zero or too large, cws is shorter than in_bits*stride+1, or ys is too short. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a1defd0c7047a0d39ff06a8f283a6ddbe" name="a1defd0c7047a0d39ff06a8f283a6ddbe"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1defd0c7047a0d39ff06a8f283a6ddbe">&#9670;&#160;</a></span>EvalRangeMerkleGpu()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::EvalRangeMerkleGpu </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>first</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>last</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Launch range evaluation and the canonical ordered-sequence Merkle fold from split device arrays. </p>
+<p>Uses caller-owned device arrays and backend resources. Internal scratch is allocated and released on stream. No upload or synchronization occurs. Backend resources must support concurrent device calls and remain valid until the stream completes. The host instance supplies backend values. frontier_depth is relative to each aligned evaluation subtree, capped at its depth. Deep subtrees are split privately to leave at most eight tail levels and a block-root depth of at most 30. threads_per_block is a power of two in [1, 1024], capped at each subtree frontier width. Evaluation fuses share conversion and corrected leaf hashing. The ordered fold uses two buffers with 32*(M + ceil(M/2)) scratch bytes for M inputs, plus 16*M output bytes. These payload sizes exclude allocator overhead. The leaf kernel keeps a bounded depth-first pending-sibling stack of at most eight int4 states per thread and threads_per_block int4 shared frontier states per block. Layer i is read from cws[i*stride] and the terminal from cws[in_bits*stride]. Packed bit i of tr is the right-control correction at layer i, and the left-control correction is the LSB of the layer's cws entry, exactly as the component form of <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a> writes them. Bits of tr at and above in_bits are ignored. The proof uses actual inputs in increasing order and carries odd nodes. Both parties must agree on the range, order, and Merkle mode externally.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">first</td><td>First input in the interval. </td></tr>
+    <tr><td class="paramname">last</td><td>Last input in the interval, included in the output. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed, passed by value to the kernel. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device correction words, layer i at index i*stride and the terminal at index in_bits*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit i for layer i. </td></tr>
+    <tr><td class="paramname">cs</td><td>Device storage containing the four shared correction-seed blocks. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output storage. Entry x-first receives this party's share at x. </td></tr>
+    <tr><td class="paramname">pi</td><td>Device output storage for the four-block Merkle proof. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and cws holds at least in_bits*stride+1 elements. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>First immediate CUDA error. Invalid endpoints, buffers, strides, or byte counts return cudaErrorInvalidValue. An oversized grid returns cudaErrorInvalidConfiguration. Execution errors are observed by the caller when synchronizing stream. </dd></dl>
+
+</div>
+</div>
+<a id="a94ce6cf662eaa92404e102d4c2c2a45d" name="a94ce6cf662eaa92404e102d4c2c2a45d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a94ce6cf662eaa92404e102d4c2c2a45d">&#9670;&#160;</a></span>Gen()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::Gen </td>
+          <td>(</td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In &amp;&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>cs</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -476,84 +1447,13 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>b_buf</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-<p><a class="el" href="structfss_1_1Vdpf_1_1Key.html" title="A party&#39;s key: the correction words, the correction seeds, the output correction word,...">Key</a> generation core on the correction-word form. </p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">cws</td><td>Pre-allocated array of <a class="el" href="structfss_1_1Vdpf_1_1Cw.html" title="Correction word.">Cw</a> as returns. The array size must be in_bits. </td></tr>
-    <tr><td class="paramname">cs</td><td>Correction seed output ( \(4\lambda\) bits). </td></tr>
-    <tr><td class="paramname">ocw</td><td>Output correction word output. </td></tr>
-    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
-    <tr><td class="paramname">a</td><td>\(a\). </td></tr>
-    <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element. </td></tr>
-  </table>
-  </dd>
-</dl>
-<dl class="section return"><dt>Returns</dt><dd>0 on success, 1 if cs is all zeros or \(t_0 = t_1\) at the end (caller should resample seeds and retry).</dd></dl>
-<p>The key for party i consists of cws + cs + ocw + s0s[i]. </p>
-
-</div>
-</div>
-<a id="a97a701f740b8dbec072fe43663810a90" name="a97a701f740b8dbec072fe43663810a90"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a97a701f740b8dbec072fe43663810a90">&#9670;&#160;</a></span>Gen() <span class="overload">[2/2]</span></h2>
-
-<div class="memitem">
-<div class="memproto">
-<div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">int <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Gen </td>
-          <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k0</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="structfss_1_1Vdpf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k1</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">cuda::std::span&lt; int4, 2 &gt;&#160;</td>
-          <td class="paramname"><em>s0s</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>a</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int4&#160;</td>
           <td class="paramname"><em>b_buf</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">bool&#160;</td>
-          <td class="paramname"><em>retry</em> = <code>true</code>&#160;</td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -568,36 +1468,55 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </table>
 </div><div class="memdoc">
 
-<p><a class="el" href="structfss_1_1Vdpf_1_1Key.html" title="A party&#39;s key: the correction words, the correction seeds, the output correction word,...">Key</a> generation method. </p>
-<p>Retries automatically on the rare bad-seed cases (cs all zeros or \(t_0 = t_1\) at the end): up to 128 attempts, each deterministically perturbing the seeds from the previous one. The effective seeds of the successful attempt are written back to s0s, so after a successful call s0s holds the seeds the returned keys carry.</p>
+<p>Generate correction words in a caller-strided layout and packed control bits. </p>
+<p>Layer i is stored at cws[i*stride] and the terminal at cws[in_bits*stride]. tr receives root-order packed right-control bits: bit 0 is the root layer, bit i belongs to layer i, and bits at or above in_bits are zero. The layer LSB keeps the left-control correction. The terminal is stored unchanged as a plain int4. The default stride of 1 stores the correction words contiguously.</p>
+<dl class="section user"><dt>Retrying a failed attempt</dt><dd>On return 1, draw two fresh independent uniformly random seed blocks from a cryptographically secure random generator, replace both s0s entries, and call Gen again with the same a and b_buf. Incrementing seed words is not resampling. The caller chooses the attempt limit and handles exhaustion. Reuse of the output buffers is allowed, but discard all cws, tr, and cs values from a failed attempt. Only outputs from a successful call form a key.</dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
-    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. Written back with the effective seeds used by the successful attempt. </td></tr>
-    <tr><td class="paramname">a</td><td>\(a\). </td></tr>
-    <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element. </td></tr>
-    <tr><td class="paramname">retry</td><td>Whether to retry with perturbed seeds on failure. If false, Gen returns 1 immediately after the first failed attempt. </td></tr>
+    <tr><td class="paramname">cws</td><td>Output storage; its capacity includes in_bits*stride+1 elements. </td></tr>
+    <tr><td class="paramname">tr</td><td>Output packed right-control bits, with unused bits zero. </td></tr>
+    <tr><td class="paramname">cs</td><td>Correction seed output ( \(4\lambda\) bits). </td></tr>
+    <tr><td class="paramname">s0s</td><td>Two independent uniformly random initial seed blocks from a cryptographically secure random generator. Gen clears their control bits internally without modifying this input storage. </td></tr>
+    <tr><td class="paramname">a</td><td>Secret point in [0, 2^in_bits). </td></tr>
+    <tr><td class="paramname">b_buf</td><td>Payload, clamped and converted to the group element. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between correction-word entries. </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>0 on success, 1 if the first attempt failed (with retry = false) or all 128 attempts failed (with retry = true).</dd></dl>
-<p>Both parties share the returned cws, cs, and ocw and differ in s0. </p>
+<dl class="section return"><dt>Returns</dt><dd>0 on success, 1 if cs is all zeros or \(t_0 = t_1\) at the end (caller should resample seeds and retry). </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>a is in [0, 2^in_bits). </dd>
+<dd>
+stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and cws has at least in_bits*stride+1 elements. </dd>
+<dd>
+The input seeds are unchanged. </dd>
+<dd>
+Inputs and outputs do not overlap. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd>
+<dd>
+A stride or capacity violation aborts with a diagnostic in Debug builds on both the host and the device, and is undefined behavior in Release builds. </dd></dl>
+<dl class="section post"><dt>Postcondition</dt><dd>Only the described prefix is written, and storage beyond it is untouched. </dd>
+<dd>
+On success, the terminal at index in_bits*stride has its LSB zero. Correction-word, control-bit, and cs outputs are unspecified on failure. </dd></dl>
 
 </div>
 </div>
-<a id="a21b821af8d2b497f336a9922031ec162" name="a21b821af8d2b497f336a9922031ec162"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a21b821af8d2b497f336a9922031ec162">&#9670;&#160;</a></span>Prove()</h2>
+<a id="ae7ba0fa73ba7dc7fd9f8637831607b55" name="ae7ba0fa73ba7dc7fd9f8637831607b55"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae7ba0fa73ba7dc7fd9f8637831607b55">&#9670;&#160;</a></span>Prove()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Prove </td>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::Prove </td>
           <td>(</td>
           <td class="paramtype">cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt;&#160;</td>
           <td class="paramname"><em>pi_tildes</em>, </td>
@@ -611,7 +1530,7 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
           <td class="paramname"><em>pi</em>&#160;</td>
         </tr>
         <tr>
@@ -628,31 +1547,35 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </div><div class="memdoc">
 
 <p>Proof accumulation method. </p>
-<p>Accumulates corrected per-point hashes (from <a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689" title="Evaluation method.">Eval()</a>) into a single proof.</p>
+<p>Accumulates corrected per-point hashes (from <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a>) into a chain proof. Both parties must supply the same ordered input sequence.</p>
+<dl class="section pre"><dt>Precondition</dt><dd>pi_tildes is nonempty. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689" title="Evaluation method.">Eval()</a>. </td></tr>
-    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
+    <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a>. </td></tr>
+    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">pi</td><td>Borrowed output storage for four proof blocks. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a id="a2ce19a82c664e9b48893c9b202b0dc74" name="a2ce19a82c664e9b48893c9b202b0dc74"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2ce19a82c664e9b48893c9b202b0dc74">&#9670;&#160;</a></span>ProveMerkle()</h2>
+<a id="a4e4ca28046685ec4e7c4c3f24bb9832c" name="a4e4ca28046685ec4e7c4c3f24bb9832c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4e4ca28046685ec4e7c4c3f24bb9832c">&#9670;&#160;</a></span>ProveMerkle()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::ProveMerkle </td>
+          <td class="memname">void <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::ProveMerkle </td>
           <td>(</td>
           <td class="paramtype">cuda::std::span&lt; const cuda::std::array&lt; int4, 4 &gt; &gt;&#160;</td>
           <td class="paramname"><em>pi_tildes</em>, </td>
@@ -666,8 +1589,14 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">cuda::std::array&lt; int4, 4 &gt; &amp;&#160;</td>
-          <td class="paramname"><em>pi</em>&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; int4, 4 &gt;&#160;</td>
+          <td class="paramname"><em>pi</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -683,31 +1612,42 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </div><div class="memdoc">
 
 <p>Proof accumulation method (Merkle fold). </p>
-<p>Parallel alternative to <a class="el" href="classfss_1_1Vdpf.html#a21b821af8d2b497f336a9922031ec162" title="Proof accumulation method.">Prove()</a> over a fixed ordered sequence: hashes corrected per-point hashes into the leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the same hash level by level (an odd trailing node carries to the next level unchanged). The proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so <a class="el" href="classfss_1_1Vdpf.html#ab00eedee69bebec69e716c50a750bbc8" title="Verification method.">Verify()</a> is shared. Every level is an OpenMP parallel batch honoring par_depth, so a par_depth of 0 makes the fold sequential. See doc/vdpf_merkle_fold_security.md.</p>
+<p>Parallel alternative to <a class="el" href="classfss_1_1Vdpf.html#ae7ba0fa73ba7dc7fd9f8637831607b55" title="Proof accumulation method.">Prove()</a> over a fixed ordered sequence: hashes corrected per-point hashes into the leaves of a binary Merkle tree over the given sequence and folds adjacent nodes with the same hash level by level (an odd trailing node carries to the next level unchanged). The proof is {root, cs[2], cs[3]}, the same 64B shape as the chain's, so <a class="el" href="classfss_1_1Vdpf.html#a205508f2d2d30f067768ed923edf920b" title="Verification method.">Verify()</a> is shared. Every level is an OpenMP parallel batch honoring par_depth, so a par_depth of 0 makes the fold sequential. See doc/vdpf_merkle_fold_security.md.</p>
+<dl class="section pre"><dt>Precondition</dt><dd>pi_tildes is nonempty. </dd>
+<dd>
+The four cs blocks are not jointly all zero. </dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#acc5cfeb17a8a267d65852ff4dbbc4689" title="Evaluation method.">Eval()</a>. </td></tr>
-    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a97a701f740b8dbec072fe43663810a90" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">pi</td><td>Proof output. </td></tr>
+    <tr><td class="paramname">pi_tildes</td><td>Corrected per-point hashes returned by <a class="el" href="classfss_1_1Vdpf.html#a3079527ea722089dcb73e8cb70e1fcc4" title="Evaluate one input from separate correction components.">Eval()</a>. </td></tr>
+    <tr><td class="paramname">cs</td><td>Returned by <a class="el" href="classfss_1_1Vdpf.html#a94ce6cf662eaa92404e102d4c2c2a45d" title="Generate correction words in a caller-strided layout and packed control bits.">Gen()</a>. </td></tr>
+    <tr><td class="paramname">pi</td><td>Borrowed output storage for four proof blocks. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if pi_tildes is empty. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a id="ab00eedee69bebec69e716c50a750bbc8" name="ab00eedee69bebec69e716c50a750bbc8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab00eedee69bebec69e716c50a750bbc8">&#9670;&#160;</a></span>Verify()</h2>
+<a id="a205508f2d2d30f067768ed923edf920b" name="a205508f2d2d30f067768ed923edf920b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a205508f2d2d30f067768ed923edf920b">&#9670;&#160;</a></span>Verify()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In  = uint, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename XorHash , typename Hash , typename In &gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 2&gt; &amp;&amp; <a class="el" href="conceptXorHashable.html">XorHashable</a>&lt;XorHash&gt; &amp;&amp; <a class="el" href="conceptHashable.html">Hashable</a>&lt;Hash&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">static bool <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In, par_depth &gt;::Verify </td>
+          <td class="memname">bool <a class="el" href="classfss_1_1Vdpf.html">fss::Vdpf</a>&lt; in_bits, Group, Prg, XorHash, Hash, In &gt;::Verify </td>
           <td>(</td>
           <td class="paramtype">cuda::std::span&lt; const int4, 4 &gt;&#160;</td>
           <td class="paramname"><em>pi0</em>, </td>
@@ -732,6 +1672,13 @@ template&lt;int in_bits, typename Group , typename Prg , typename XorHash , type
 </div><div class="memdoc">
 
 <p>Verification method. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">pi0</td><td>Party 0 proof. </td></tr>
+    <tr><td class="paramname">pi1</td><td>Party 1 proof from the same accumulator and ordered inputs. </td></tr>
+  </table>
+  </dd>
+</dl>
 <dl class="section return"><dt>Returns</dt><dd>True if proofs match (Accept), false otherwise (Reject). </dd></dl>
 
 </div>

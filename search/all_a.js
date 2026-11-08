@@ -1,4 +1,32 @@
 var searchData=
 [
-  ['_5f_5fglobal_5f_5f_20tt_20kernel_20template_20argument_0',['nvcc 12.8: &lt;tt&gt;Uint&lt;/tt&gt; as a &lt;tt&gt;__global__&lt;/tt&gt; kernel template argument',['../index.html#autotoc_md11',1,'']]]
+  ['a_20point_20function_0',['Generate and evaluate a point function',['../index.html#autotoc_md2',1,'']]],
+  ['accumulation_1',['8. The VDMPF Merkle-fold accumulation',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md100',1,'']]],
+  ['accumulation_3a_20security_20analysis_2',['VDPF and VDMPF Merkle-fold proof accumulation: security analysis',['../md_doc_2vdpf__merkle__fold__security.html',1,'']]],
+  ['acquires_20the_20code_3',['How the bench acquires the code',['../md_doc_2bench-dpfplusplus.html#autotoc_md78',1,'']]],
+  ['aes_20128_20mmo_20software_20prg_3a_20t_20table_20vs_20textbook_4',['AES-128 MMO Software PRG: T-table vs Textbook',['../md_doc_2bench__aes128__soft.html',1,'']]],
+  ['aes_20dpf_20evaluation_5',['Software-AES DPF Evaluation',['../md_doc_2bench__aes128__soft.html#autotoc_md88',1,'']]],
+  ['aes128_5fccr_2ecuh_6',['aes128_ccr.cuh',['../aes128__ccr_8cuh.html',1,'']]],
+  ['aes128_5ffeistel_2ecuh_7',['aes128_feistel.cuh',['../aes128__feistel_8cuh.html',1,'']]],
+  ['aes128_5ffeistel_5fraw_2ecuh_8',['aes128_feistel_raw.cuh',['../aes128__feistel__raw_8cuh.html',1,'']]],
+  ['aes128_5fmmo_2ecuh_9',['aes128_mmo.cuh',['../aes128__mmo_8cuh.html',1,'']]],
+  ['aes128_5fmmo_5fraw_2ecuh_10',['aes128_mmo_raw.cuh',['../aes128__mmo__raw_8cuh.html',1,'']]],
+  ['aes128_5fmmo_5fsoft_2ecuh_11',['aes128_mmo_soft.cuh',['../aes128__mmo__soft_8cuh.html',1,'']]],
+  ['aes128ccr_12',['aes128ccr',['../classfss_1_1hash_1_1Aes128Ccr.html',1,'fss::hash::Aes128Ccr&lt; AesMmo &gt;'],['../classfss_1_1hash_1_1Aes128Ccr.html#ae2cdd09976212bd3f3864b5865783581',1,'fss::hash::Aes128Ccr::Aes128Ccr()']]],
+  ['aes128feistel_13',['aes128feistel',['../classfss_1_1prp_1_1Aes128Feistel.html',1,'fss::prp::Aes128Feistel'],['../classfss_1_1prp_1_1Aes128Feistel.html#a7faa4d6d5de8a269dd6664cfd86d5d2c',1,'fss::prp::Aes128Feistel::Aes128Feistel()'],['../classfss_1_1prp_1_1Aes128Feistel.html#a36accb3fceed68377170a5e3cf6fcf13',1,'fss::prp::Aes128Feistel::Aes128Feistel(const Aes128Feistel &amp;)']]],
+  ['aes128feistelraw_14',['aes128feistelraw',['../classfss_1_1prp_1_1Aes128FeistelRaw.html#abc673353b4277cf3885431e1529487c4',1,'fss::prp::Aes128FeistelRaw::Aes128FeistelRaw()'],['../classfss_1_1prp_1_1Aes128FeistelRaw.html',1,'fss::prp::Aes128FeistelRaw']]],
+  ['aes128mmo_15',['aes128mmo',['../classfss_1_1prg_1_1Aes128Mmo.html#a797d22b22192bfdf2a8c3af16082dcfc',1,'fss::prg::Aes128Mmo::Aes128Mmo()'],['../classfss_1_1prg_1_1Aes128Mmo.html',1,'fss::prg::Aes128Mmo&lt; mul &gt;']]],
+  ['aes128mmoraw_16',['aes128mmoraw',['../classfss_1_1prg_1_1Aes128MmoRaw.html',1,'fss::prg::Aes128MmoRaw&lt; mul &gt;'],['../classfss_1_1prg_1_1Aes128MmoRaw.html#a535ec1cc5c662523a08abd6881df3d89',1,'fss::prg::Aes128MmoRaw::Aes128MmoRaw()']]],
+  ['aes128soft_17',['aes128soft',['../classfss_1_1prg_1_1Aes128Soft.html',1,'fss::prg::Aes128Soft&lt; mul &gt;'],['../classfss_1_1prg_1_1Aes128Soft.html#ac3fca29a243a9d93ce1a07aa238fd5c7',1,'fss::prg::Aes128Soft::Aes128Soft()']]],
+  ['analysis_18',['analysis',['../md_doc_2bench__aes128__soft.html#autotoc_md89',1,'Analysis'],['../md_doc_2vdpf__merkle__fold__security.html',1,'VDPF and VDMPF Merkle-fold proof accumulation: security analysis']]],
+  ['and_20benchmark_20shape_19',['Build and benchmark shape',['../md_doc_2bench-dpfplusplus.html#autotoc_md80',1,'']]],
+  ['and_20evaluate_20a_20point_20function_20',['Generate and evaluate a point function',['../index.html#autotoc_md2',1,'']]],
+  ['and_20export_21',['Run and export',['../md_doc_2bench__figures.html#autotoc_md45',1,'']]],
+  ['and_20install_22',['Build and install',['../index.html#autotoc_md1',1,'']]],
+  ['and_20timing_23',['Work and timing',['../md_doc_2bench__figures.html#autotoc_md42',1,'']]],
+  ['and_20validation_24',['Native configurations and validation',['../md_doc_2bench__figures.html#autotoc_md43',1,'']]],
+  ['and_20vdmpf_20merkle_20fold_20proof_20accumulation_3a_20security_20analysis_25',['VDPF and VDMPF Merkle-fold proof accumulation: security analysis',['../md_doc_2vdpf__merkle__fold__security.html',1,'']]],
+  ['and_20why_20nothing_20is_20vendored_26',['License status and why nothing is vendored',['../md_doc_2bench-dpfplusplus.html#autotoc_md77',1,'']]],
+  ['api_27',['Public API',['../group__fss__api.html',1,'']]],
+  ['assumptions_28',['Assumptions',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md96',1,'']]]
 ];

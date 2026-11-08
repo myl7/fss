@@ -1,30 +1,13 @@
 var annotated_dup =
 [
     [ "fss", null, [
-      [ "cpu", null, [
-        [ "DpfPointKey", "structfss_1_1cpu_1_1DpfPointKey.html", null ],
-        [ "HalfTreeDpfPointKey", "structfss_1_1cpu_1_1HalfTreeDpfPointKey.html", null ]
-      ] ],
-      [ "cuckoo_hash", null, [
-        [ "Compact", "structfss_1_1cuckoo__hash_1_1Compact.html", "structfss_1_1cuckoo__hash_1_1Compact" ],
-        [ "LocateResult", "structfss_1_1cuckoo__hash_1_1LocateResult.html", "structfss_1_1cuckoo__hash_1_1LocateResult" ],
-        [ "PrpHash", "structfss_1_1cuckoo__hash_1_1PrpHash.html", "structfss_1_1cuckoo__hash_1_1PrpHash" ]
-      ] ],
-      [ "detail", null, [
-        [ "GrottoTurns", "structfss_1_1detail_1_1GrottoTurns.html", null ]
-      ] ],
-      [ "gpu", null, [
-        [ "detail", null, [
-          [ "GpuWorkspace", "classfss_1_1gpu_1_1detail_1_1GpuWorkspace.html", null ],
-          [ "GpuWorkspaceCache", "classfss_1_1gpu_1_1detail_1_1GpuWorkspaceCache.html", null ],
-          [ "GrottoXorScanOp", "structfss_1_1gpu_1_1detail_1_1GrottoXorScanOp.html", null ]
-        ] ]
-      ] ],
       [ "group", null, [
-        [ "Bytes", "structfss_1_1group_1_1Bytes.html", null ],
-        [ "Uint", "structfss_1_1group_1_1Uint.html", null ]
+        [ "Bytes", "classfss_1_1group_1_1Bytes.html", "classfss_1_1group_1_1Bytes" ],
+        [ "Uint", "classfss_1_1group_1_1Uint.html", "classfss_1_1group_1_1Uint" ],
+        [ "Uint128Modulus", "structfss_1_1group_1_1Uint128Modulus.html", "structfss_1_1group_1_1Uint128Modulus" ]
       ] ],
       [ "hash", null, [
+        [ "Aes128Ccr", "classfss_1_1hash_1_1Aes128Ccr.html", "classfss_1_1hash_1_1Aes128Ccr" ],
         [ "Blake3", "classfss_1_1hash_1_1Blake3.html", "classfss_1_1hash_1_1Blake3" ],
         [ "Sha256", "classfss_1_1hash_1_1Sha256.html", "classfss_1_1hash_1_1Sha256" ]
       ] ],
@@ -45,6 +28,8 @@ var annotated_dup =
       [ "GrottoDcf", "classfss_1_1GrottoDcf.html", "classfss_1_1GrottoDcf" ],
       [ "HalfTreeDpf", "classfss_1_1HalfTreeDpf.html", "classfss_1_1HalfTreeDpf" ],
       [ "HalfTreeGrottoDcf", "classfss_1_1HalfTreeGrottoDcf.html", "classfss_1_1HalfTreeGrottoDcf" ],
+      [ "OwnedPackedParityTree", "classfss_1_1OwnedPackedParityTree.html", "classfss_1_1OwnedPackedParityTree" ],
+      [ "OwnedParityTree", "classfss_1_1OwnedParityTree.html", "classfss_1_1OwnedParityTree" ],
       [ "PackedHalfTreeDpf", "classfss_1_1PackedHalfTreeDpf.html", "classfss_1_1PackedHalfTreeDpf" ],
       [ "Vdmpf", "classfss_1_1Vdmpf.html", "classfss_1_1Vdmpf" ],
       [ "Vdpf", "classfss_1_1Vdpf.html", "classfss_1_1Vdpf" ]

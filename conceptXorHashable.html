@@ -101,7 +101,7 @@ $(document).ready(function(){initNavTree('conceptXorHashable.html',''); initResi
 </div>
 
 <div class="header">
-  <div class="headertitle"><div class="title">XorHashable Concept Reference</div></div>
+  <div class="headertitle"><div class="title">XorHashable Concept Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -112,9 +112,10 @@ $(document).ready(function(){initNavTree('conceptXorHashable.html',''); initResi
 <div class="line"><span class="keyword">concept </span><a class="code hl_concept" href="conceptXorHashable.html">XorHashable</a> =  <span class="keyword">requires</span>(Hash hash, cuda::std::tuple&lt;int4, const int4&gt; msg) {</div>
 <div class="line">  { hash.Hash(msg) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, 4&gt;&gt;;</div>
 <div class="line">}</div>
-<div class="ttc" id="aconceptXorHashable_html"><div class="ttname"><a href="conceptXorHashable.html">XorHashable</a></div><div class="ttdoc">Collision-resistant and XOR-collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:27</div></div>
+<div class="ttc" id="aconceptXorHashable_html"><div class="ttname"><a href="conceptXorHashable.html">XorHashable</a></div><div class="ttdoc">Collision-resistant and XOR-collision-resistant hash interface.</div><div class="ttdef"><b>Definition</b> hash.cuh:72</div></div>
 </div><!-- fragment --><a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Collision-resistant and XOR-collision-resistant hash interface. </p>
+<p>VDPF and VDMPF pass the packed coordinate as the first block and the clamped leaf seed as the second block. All 128 bits of the first block and the 127 nonreserved bits of the second block are message data. Bit 0 of the second block's fourth word is reserved; the schemes pass it as zero. The built-in tuple backends use it for the two digest tags. A custom backend must preserve these message bits over the instantiated scheme's coordinate domain and satisfy the scheme's collision-resistance and XOR-collision-resistance assumptions. This concept checks only the expression and return type, not these semantic or cryptographic properties. </p>
 </div></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

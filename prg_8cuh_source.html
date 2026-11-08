@@ -114,40 +114,61 @@ $(document).ready(function(){initNavTree('prg_8cuh_source.html',''); initResizab
 <div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#include &lt;cuda_runtime.h&gt;</span></div>
 <div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;cuda/std/array&gt;</span></div>
 <div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &lt;concepts&gt;</span></div>
-<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
-<div class="foldopen" id="foldopen00021" data-start="{" data-end="}">
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno"><a class="line" href="conceptPrgable.html">   21</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptPrgable.html">Prgable</a> = <span class="keyword">requires</span>(Prg prg, int4 seed) {</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>  { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>};</div>
+<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &lt;cuda/std/span&gt;</span></div>
+<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span> </div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
+<div class="foldopen" id="foldopen00024" data-start="{" data-end="}">
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno"><a class="line" href="conceptPrgable.html">   24</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptPrgable.html">Prgable</a> = <span class="keyword">requires</span>(Prg prg, int4 seed) {</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>  { prg.Gen(seed) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul&gt;&gt;;</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>};</div>
 </div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">namespace </span>fss::detail {</div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
-<div class="foldopen" id="foldopen00034" data-start="{" data-end="}">
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno"><a class="line" href="conceptfss_1_1detail_1_1HasGen8.html">   34</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptfss_1_1detail_1_1HasGen8.html">HasGen8</a> = <span class="keyword">requires</span>(Prg prg, cuda::std::array&lt;int4, 8&gt; seeds) {</div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>  { prg.Gen8(seeds) } -&gt; std::same_as&lt;cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt;&gt;;</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>};</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span> </div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno"><a class="line" href="conceptHasGenHalf.html">   42</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptHasGenHalf.html">HasGenHalf</a> = mul &gt; 0 &amp;&amp; mul % 2 == 0 &amp;&amp; <a class="code hl_concept" href="conceptPrgable.html">Prgable&lt;Prg, mul&gt;</a> &amp;&amp; <span class="keyword">requires</span>(Prg prg, int4 seed, <span class="keywordtype">bool</span> right) {</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>  { prg.GenHalf(seed, right) } -&gt; std::same_as&lt;cuda::std::array&lt;int4, mul / 2&gt;&gt;;</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>};</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Prg, <span class="keywordtype">int</span> mul&gt;</div>
+<div class="foldopen" id="foldopen00082" data-start="{" data-end="}">
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno"><a class="line" href="conceptHasGen8.html">   82</a></span><span class="keyword">concept </span><a class="code hl_concept" href="conceptHasGen8.html">HasGen8</a> = <a class="code hl_concept" href="conceptPrgable.html">Prgable&lt;Prg, mul&gt;</a> &amp;&amp; <span class="keyword">requires</span>(Prg prg, cuda::std::span&lt;const int4, 8&gt; seeds) {</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>  { prg.Gen8(seeds) } -&gt; std::same_as&lt;cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt;&gt;;</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>};</div>
 </div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span> </div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> mul, <span class="keyword">typename</span> Prg&gt;</div>
-<div class="foldopen" id="foldopen00046" data-start="{" data-end="}">
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno"><a class="line" href="prg_8cuh.html#a50870addadffbc01b7b66d1dde68a4d6">   46</a></span>cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt; <a class="code hl_function" href="prg_8cuh.html#a50870addadffbc01b7b66d1dde68a4d6">GenBatch</a>(Prg &amp;prg, <span class="keyword">const</span> cuda::std::array&lt;int4, 8&gt; &amp;seeds) {</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>  <span class="keywordflow">if</span> <span class="keyword">constexpr</span> (<a class="code hl_concept" href="conceptfss_1_1detail_1_1HasGen8.html">HasGen8&lt;Prg, mul&gt;</a>) {</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keywordflow">return</span> prg.Gen8(seeds);</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt; out{};</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) out[j] = prg.Gen(seeds[j]);</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keywordflow">return</span> out;</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>  }</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>}</div>
-</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>}  <span class="comment">// namespace fss::detail</span></div>
-<div class="ttc" id="aconceptPrgable_html"><div class="ttname"><a href="conceptPrgable.html">Prgable</a></div><div class="ttdoc">Pseudorandom generator (PRG) interface.</div><div class="ttdef"><b>Definition</b> prg.cuh:21</div></div>
-<div class="ttc" id="aconceptfss_1_1detail_1_1HasGen8_html"><div class="ttname"><a href="conceptfss_1_1detail_1_1HasGen8.html">fss::detail::HasGen8</a></div><div class="ttdoc">Detection of a Prgable PRG that also provides an 8-way batched Gen8().</div><div class="ttdef"><b>Definition</b> prg.cuh:34</div></div>
-<div class="ttc" id="aprg_8cuh_html_a50870addadffbc01b7b66d1dde68a4d6"><div class="ttname"><a href="prg_8cuh.html#a50870addadffbc01b7b66d1dde68a4d6">fss::detail::GenBatch</a></div><div class="ttdeci">cuda::std::array&lt; cuda::std::array&lt; int4, mul &gt;, 8 &gt; GenBatch(Prg &amp;prg, const cuda::std::array&lt; int4, 8 &gt; &amp;seeds)</div><div class="ttdoc">Expands 8 seeds at once: forwards to Gen8() when the PRG provides it and loops Gen() over the seeds o...</div><div class="ttdef"><b>Definition</b> prg.cuh:46</div></div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span><span class="comment">// -----------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span><span class="keyword">namespace </span>fss::detail {</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span> </div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> mul, <span class="keyword">typename</span> Prg&gt;</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>  <span class="keyword">requires</span>(mul &gt; 0 &amp;&amp; mul % 2 == 0 &amp;&amp; <a class="code hl_concept" href="conceptPrgable.html">Prgable&lt;Prg, mul&gt;</a>)</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>__host__ __device__ <span class="keyword">inline</span> cuda::std::array&lt;int4, mul / 2&gt; GenHalf(Prg &amp;prg, int4 seed, <span class="keywordtype">bool</span> right) {</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>  <span class="keywordflow">if</span> <span class="keyword">constexpr</span> (<a class="code hl_concept" href="conceptHasGenHalf.html">HasGenHalf&lt;Prg, mul&gt;</a>) {</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    <span class="keywordflow">return</span> prg.GenHalf(seed, right);</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>  } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>    <span class="keyword">auto</span> full = prg.Gen(seed);</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>    cuda::std::array&lt;int4, mul / 2&gt; out{};</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>    <span class="keywordtype">int</span> offset = right ? mul / 2 : 0;</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; mul / 2; ++i) out[i] = full[i + offset];</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>    <span class="keywordflow">return</span> out;</div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>  }</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>}</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span> </div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span><span class="comment">// Keep the optional batched entry point outside the public PRG requirement.</span></div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> mul, <span class="keyword">typename</span> Prg&gt;</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt; GenBatch(Prg &amp;prg, cuda::std::span&lt;const int4, 8&gt; seeds) {</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>  <span class="keywordflow">if</span> <span class="keyword">constexpr</span> (<a class="code hl_concept" href="conceptHasGen8.html">HasGen8&lt;Prg, mul&gt;</a>) {</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>    <span class="keywordflow">return</span> prg.Gen8(seeds);</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>  } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>    cuda::std::array&lt;cuda::std::array&lt;int4, mul&gt;, 8&gt; out{};</div>
+<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; 8; ++j) out[j] = prg.Gen(seeds[j]);</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>    <span class="keywordflow">return</span> out;</div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>  }</div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>}</div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span> </div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>}  <span class="comment">// namespace fss::detail</span></div>
+<div class="ttc" id="aconceptHasGen8_html"><div class="ttname"><a href="conceptHasGen8.html">HasGen8</a></div><div class="ttdoc">Optional eight-seed batch extension of Prgable.</div><div class="ttdef"><b>Definition</b> prg.cuh:82</div></div>
+<div class="ttc" id="aconceptHasGenHalf_html"><div class="ttname"><a href="conceptHasGenHalf.html">HasGenHalf</a></div><div class="ttdoc">Optional selected-half extension of Prgable for positive even mul.</div><div class="ttdef"><b>Definition</b> prg.cuh:42</div></div>
+<div class="ttc" id="aconceptPrgable_html"><div class="ttname"><a href="conceptPrgable.html">Prgable</a></div><div class="ttdoc">Pseudorandom generator (PRG) interface.</div><div class="ttdef"><b>Definition</b> prg.cuh:24</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

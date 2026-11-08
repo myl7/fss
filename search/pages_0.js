@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['0_0',['API capabilities for v1.3.0',['../md_doc_2api-capabilities.html',1,'']]]
+  ['128_20mmo_20software_20prg_3a_20t_20table_20vs_20textbook_0',['AES-128 MMO Software PRG: T-table vs Textbook',['../md_doc_2bench__aes128__soft.html',1,'']]]
 ];

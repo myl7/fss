@@ -116,6 +116,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:ac3fca29a243a9d93ce1a07aa238fd5c7" id="r_ac3fca29a243a9d93ce1a07aa238fd5c7"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128Soft.html#ac3fca29a243a9d93ce1a07aa238fd5c7">Aes128Soft</a> (const uint8_t keys[][16], const uint32_t *te0, const uint8_t *sbox)</td></tr>
 <tr class="memdesc:ac3fca29a243a9d93ce1a07aa238fd5c7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor.  <br /></td></tr>
 <tr class="separator:ac3fca29a243a9d93ce1a07aa238fd5c7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acedd7e39152acf756cbe40189a7d052d" id="r_acedd7e39152acf756cbe40189a7d052d"><td class="memItemLeft" align="right" valign="top">cuda::std::array&lt; int4, mul/2 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1prg_1_1Aes128Soft.html#acedd7e39152acf756cbe40189a7d052d">GenHalf</a> (int4 seed, bool right)</td></tr>
+<tr class="memdesc:acedd7e39152acf756cbe40189a7d052d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the selected half of Gen() with the same call requirements.  <br /></td></tr>
+<tr class="separator:acedd7e39152acf756cbe40189a7d052d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;int mul&gt;<br />
@@ -183,7 +186,56 @@ template&lt;int mul&gt; </div>
 
 </div>
 </div>
-<hr/>The documentation for this class was generated from the following file:<ul>
+<h2 class="groupheader">Member Function Documentation</h2>
+<a id="acedd7e39152acf756cbe40189a7d052d" name="acedd7e39152acf756cbe40189a7d052d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acedd7e39152acf756cbe40189a7d052d">&#9670;&#160;</a></span>GenHalf()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int mul&gt; <br />
+requires (mul &gt; 0 &amp;&amp; mul % 2 == 0)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cuda::std::array&lt; int4, mul/2 &gt; <a class="el" href="classfss_1_1prg_1_1Aes128Soft.html">fss::prg::Aes128Soft</a>&lt; mul &gt;::GenHalf </td>
+          <td>(</td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>seed</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>right</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Return the selected half of Gen() with the same call requirements. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">right</td><td>false selects the first half, true selects the second half. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<hr/>The documentation for this class was generated from the following files:<ul>
+<li>include/fss/hash/<a class="el" href="aes128__ccr_8cuh.html">aes128_ccr.cuh</a></li>
 <li>include/fss/prg/<a class="el" href="aes128__mmo__soft_8cuh.html">aes128_mmo_soft.cuh</a></li>
 </ul>
 </div><!-- contents -->

@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['index_0',['index',['../structfss_1_1cuckoo__hash_1_1LocateResult.html#a3c432233f973d7aa31d97c8fa9f1381a',1,'fss::cuckoo_hash::LocateResult']]]
+  ['cs_0',['cs',['../structfss_1_1Vdmpf_1_1BucketKey.html#a6a56c07f01ed199126499baba88d52dc',1,'fss::Vdmpf::BucketKey']]],
+  ['cws_1',['cws',['../structfss_1_1Dpf_1_1Key.html#a5af943962b4adadfb64b91613dd849b5',1,'fss::Dpf::Key::cws'],['../structfss_1_1Vdmpf_1_1BucketKey.html#abffb5a87f443f437dbe23bc4263d6dd4',1,'fss::Vdmpf::BucketKey::cws']]]
 ];

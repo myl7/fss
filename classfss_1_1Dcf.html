@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt; Class Template Reference</title>
+<title>myl7/fss: fss::Dcf&lt; in_bits, Group, Prg, In, pred &gt; Class Template Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -103,9 +103,11 @@ $(document).ready(function(){initNavTree('classfss_1_1Dcf.html',''); initResizab
 <div class="header">
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
+<a href="#pub-types">Public Types</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-static-attribs">Static Public Attributes</a> &#124;
 <a href="classfss_1_1Dcf-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt; Class Template Reference</div></div>
+  <div class="headertitle"><div class="title">fss::Dcf&lt; in_bits, Group, Prg, In, pred &gt; Class Template Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -117,26 +119,59 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Dcf_1_1Cw.html">Cw</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Correction word.  <a href="structfss_1_1Dcf_1_1Cw.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A party's key: the correction words plus the party's initial seed.  <a href="structfss_1_1Dcf_1_1Key.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
+Public Types</h2></td></tr>
+<tr class="memitem:a3d92b31a67c99479682e82562c15f436" id="r_a3d92b31a67c99479682e82562c15f436"><td class="memItemLeft" align="right" valign="top"><a id="a3d92b31a67c99479682e82562c15f436" name="a3d92b31a67c99479682e82562c15f436"></a>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>Input</b> = In</td></tr>
+<tr class="memdesc:a3d92b31a67c99479682e82562c15f436"><td class="mdescLeft">&#160;</td><td class="mdescRight">The caller-facing input-domain type. <br /></td></tr>
+<tr class="separator:a3d92b31a67c99479682e82562c15f436"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a4da44b816dfe617d3763b829f8f7e963" id="r_a4da44b816dfe617d3763b829f8f7e963"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a4da44b816dfe617d3763b829f8f7e963">Gen</a> (<a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;k0, <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;k1, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf)</td></tr>
-<tr class="memdesc:a4da44b816dfe617d3763b829f8f7e963"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfss_1_1Dcf_1_1Key.html" title="A party&#39;s key: the correction words plus the party&#39;s initial seed.">Key</a> generation method.  <br /></td></tr>
-<tr class="separator:a4da44b816dfe617d3763b829f8f7e963"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:acd33e7a155ff16c2c27d383fde7c176c" id="r_acd33e7a155ff16c2c27d383fde7c176c"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#acd33e7a155ff16c2c27d383fde7c176c">Eval</a> (bool b, const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;key, In x)</td></tr>
-<tr class="memdesc:acd33e7a155ff16c2c27d383fde7c176c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluation method.  <br /></td></tr>
-<tr class="separator:acd33e7a155ff16c2c27d383fde7c176c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a0e17d5fd8c970b4e0ec6d49374022b6d" id="r_a0e17d5fd8c970b4e0ec6d49374022b6d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d">EvalAll</a> (bool b, const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;key, cuda::std::span&lt; int4 &gt; ys)</td></tr>
-<tr class="memdesc:a0e17d5fd8c970b4e0ec6d49374022b6d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Full domain evaluation method.  <br /></td></tr>
-<tr class="separator:a0e17d5fd8c970b4e0ec6d49374022b6d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a599ab6254077b27cc89eef2ed803ab31" id="r_a599ab6254077b27cc89eef2ed803ab31"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a599ab6254077b27cc89eef2ed803ab31">Dcf</a> (Prg prg)</td></tr>
+<tr class="memdesc:a599ab6254077b27cc89eef2ed803ab31"><td class="mdescLeft">&#160;</td><td class="mdescRight">Construct a scheme with configured backends.  <br /></td></tr>
+<tr class="separator:a599ab6254077b27cc89eef2ed803ab31"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad77ff2d715f277475ddceb22fa92fb64" id="r_ad77ff2d715f277475ddceb22fa92fb64"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64">Gen</a> (cuda::std::span&lt; int4 &gt; cws, cuda::std::span&lt; int4 &gt; vws, In &amp;tr, cuda::std::span&lt; const int4, 2 &gt; s0s, In a, int4 b_buf, size_t stride=1)</td></tr>
+<tr class="memdesc:ad77ff2d715f277475ddceb22fa92fb64"><td class="mdescLeft">&#160;</td><td class="mdescRight">Generate split correction arrays from caller-owned initial seeds.  <br /></td></tr>
+<tr class="separator:ad77ff2d715f277475ddceb22fa92fb64"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a16e9f5b5c6ac621cb3e9e3f746998d31" id="r_a16e9f5b5c6ac621cb3e9e3f746998d31"><td class="memItemLeft" align="right" valign="top">int4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a16e9f5b5c6ac621cb3e9e3f746998d31">Eval</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; const int4 &gt; vws, In tr, In x, size_t stride=1)</td></tr>
+<tr class="memdesc:a16e9f5b5c6ac621cb3e9e3f746998d31"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate one input from a seed and split correction arrays.  <br /></td></tr>
+<tr class="separator:a16e9f5b5c6ac621cb3e9e3f746998d31"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1196260687264b16295e77738e7b52a4" id="r_a1196260687264b16295e77738e7b52a4"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a1196260687264b16295e77738e7b52a4">EvalRange</a> (bool b, In first, In last, int4 s0, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; const int4 &gt; vws, In tr, cuda::std::span&lt; int4 &gt; ys, int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:a1196260687264b16295e77738e7b52a4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the closed input interval [first, last] in input order from split arrays.  <br /></td></tr>
+<tr class="separator:a1196260687264b16295e77738e7b52a4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a06f534feca9dbc342231d1975b919c41" id="r_a06f534feca9dbc342231d1975b919c41"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a06f534feca9dbc342231d1975b919c41">EvalAll</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; const int4 &gt; vws, In tr, int4 ys[], int par_depth=0, size_t stride=1)</td></tr>
+<tr class="memdesc:a06f534feca9dbc342231d1975b919c41"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the full domain from a seed and split correction arrays.  <br /></td></tr>
+<tr class="separator:a06f534feca9dbc342231d1975b919c41"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a317ddbb5ed85bcbc0aa6bb681e76ea5e" id="r_a317ddbb5ed85bcbc0aa6bb681e76ea5e"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</td></tr>
+<tr class="memitem:a317ddbb5ed85bcbc0aa6bb681e76ea5e"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a317ddbb5ed85bcbc0aa6bb681e76ea5e">EvalRangeGpu</a> (bool b, In first, In last, int4 s0, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; const int4 &gt; vws, In tr, cuda::std::span&lt; int4 &gt; ys, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a317ddbb5ed85bcbc0aa6bb681e76ea5e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Evaluate the closed interval [first, last] on the given CUDA stream from split device arrays.  <br /></td></tr>
+<tr class="separator:a317ddbb5ed85bcbc0aa6bb681e76ea5e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a38f06771f9d0d80596818ce6dd2612ac" id="r_a38f06771f9d0d80596818ce6dd2612ac"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:a38f06771f9d0d80596818ce6dd2612ac"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a38f06771f9d0d80596818ce6dd2612ac">EvalAllGpu</a> (bool b, int4 s0, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; const int4 &gt; vws, In tr, cuda::std::span&lt; int4 &gt; ys, cudaStream_t stream=0, size_t stride=1) const</td></tr>
+<tr class="memdesc:a38f06771f9d0d80596818ce6dd2612ac"><td class="mdescLeft">&#160;</td><td class="mdescRight">Launch full-domain CUDA evaluation from split device arrays.  <br /></td></tr>
+<tr class="separator:a38f06771f9d0d80596818ce6dd2612ac"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a214efde62743fb42e9f93bb2c01f65f1" id="r_a214efde62743fb42e9f93bb2c01f65f1"><td class="memTemplParams" colspan="2">template&lt;int frontier_depth = 16, int threads_per_block = 256&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</td></tr>
+<tr class="memitem:a214efde62743fb42e9f93bb2c01f65f1"><td class="memTemplItemLeft" align="right" valign="top">cudaError_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classfss_1_1Dcf.html#a214efde62743fb42e9f93bb2c01f65f1">EvalAllGpuBatch</a> (bool b, cuda::std::span&lt; const int4 &gt; s0s, cuda::std::span&lt; const int4 &gt; cws, cuda::std::span&lt; const int4 &gt; vws, cuda::std::span&lt; const In &gt; tr, cuda::std::span&lt; int4 &gt; ys, cudaStream_t stream=0, size_t stride=0) const</td></tr>
+<tr class="memdesc:a214efde62743fb42e9f93bb2c01f65f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Launch full-domain CUDA evaluation for s0s.size() keys from split device arrays.  <br /></td></tr>
+<tr class="separator:a214efde62743fb42e9f93bb2c01f65f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-attribs" name="pub-static-attribs"></a>
+Static Public Attributes</h2></td></tr>
+<tr class="memitem:a80ac0c695739f437883d09c67f3dcfc7" id="r_a80ac0c695739f437883d09c67f3dcfc7"><td class="memItemLeft" align="right" valign="top"><a id="a80ac0c695739f437883d09c67f3dcfc7" name="a80ac0c695739f437883d09c67f3dcfc7"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>kCwCount</b> = in_bits + 1</td></tr>
+<tr class="memdesc:a80ac0c695739f437883d09c67f3dcfc7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Seed- and value-component count <a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64" title="Generate split correction arrays from caller-owned initial seeds.">Gen()</a> writes at stride 1: in_bits layers plus the terminal. <br /></td></tr>
+<tr class="separator:a80ac0c695739f437883d09c67f3dcfc7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred = DcfPred::kLt, int par_depth = -1&gt;<br />
-requires ((std::is_unsigned_v&lt;In&gt; || std::is_same_v&lt;In, __uint128_t&gt;) &amp;&amp; in_bits &lt;= sizeof(In) * 8 &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)<br />
-class fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</div><p>2-party DCF scheme. </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, typename Group, typename Prg, typename In = uint, <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred = DcfPred::kLt&gt;<br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)<br />
+class fss::Dcf&lt; in_bits, Group, Prg, In, pred &gt;</div><p>2-party DCF scheme. </p>
+<p><a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64" title="Generate split correction arrays from caller-owned initial seeds.">Gen()</a> and scalar <a class="el" href="classfss_1_1Dcf.html#a16e9f5b5c6ac621cb3e9e3f746998d31" title="Evaluate one input from a seed and split correction arrays.">Eval()</a> support host and device calls when Prg does. <a class="el" href="classfss_1_1Dcf.html#a1196260687264b16295e77738e7b52a4" title="Evaluate the closed input interval [first, last] in input order from split arrays.">EvalRange()</a> and <a class="el" href="classfss_1_1Dcf.html#a06f534feca9dbc342231d1975b919c41" title="Evaluate the full domain from a seed and split correction arrays.">EvalAll()</a> are host operations and support both predicates. <a class="el" href="classfss_1_1Dcf.html#a38f06771f9d0d80596818ce6dd2612ac" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a> and <a class="el" href="classfss_1_1Dcf.html#a214efde62743fb42e9f93bb2c01f65f1" title="Launch full-domain CUDA evaluation for s0s.size() keys from split device arrays.">EvalAllGpuBatch()</a> are host CUDA launch methods.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">in_bits</td><td>Input domain bit size. </td></tr>
@@ -144,24 +179,62 @@ class fss::Dcf&lt; in_bits, Group, Prg, In, pred, par_depth &gt;</div><p>2-party
     <tr><td class="paramname">Prg</td><td>See Prgable. </td></tr>
     <tr><td class="paramname">In</td><td>Type for the input domain. From uint8_t to __uint128_t. </td></tr>
     <tr><td class="paramname">pred</td><td>See DcfPred. </td></tr>
-    <tr><td class="paramname">par_depth</td><td>-1 is to use ceil(log(num of threads)), which should be good enough. Only <a class="el" href="classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d" title="Full domain evaluation method.">EvalAll()</a> uses it. See <a class="el" href="classfss_1_1Dcf.html#a0e17d5fd8c970b4e0ec6d49374022b6d" title="Full domain evaluation method.">EvalAll()</a> for details. </td></tr>
   </table>
   </dd>
 </dl>
-</div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="acd33e7a155ff16c2c27d383fde7c176c" name="acd33e7a155ff16c2c27d383fde7c176c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#acd33e7a155ff16c2c27d383fde7c176c">&#9670;&#160;</a></span>Eval()</h2>
+</div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a id="a599ab6254077b27cc89eef2ed803ab31" name="a599ab6254077b27cc89eef2ed803ab31"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a599ab6254077b27cc89eef2ed803ab31">&#9670;&#160;</a></span>Dcf()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred = DcfPred::kLt, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">int4 <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::Eval </td>
+          <td class="memname"><a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::Dcf </td>
+          <td>(</td>
+          <td class="paramtype">Prg&#160;</td>
+          <td class="paramname"><em>prg</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">explicit</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Construct a scheme with configured backends. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">prg</td><td>Configured Prg backend. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
+<a id="a16e9f5b5c6ac621cb3e9e3f746998d31" name="a16e9f5b5c6ac621cb3e9e3f746998d31"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a16e9f5b5c6ac621cb3e9e3f746998d31">&#9670;&#160;</a></span>Eval()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int4 <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::Eval </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -169,14 +242,38 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>vws</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">In&#160;</td>
-          <td class="paramname"><em>x</em>&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>x</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -191,32 +288,47 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 </table>
 </div><div class="memdoc">
 
-<p>Evaluation method. </p>
+<p>Evaluate one input from a seed and split correction arrays. </p>
+<p>Layer l is read from cws[l*stride] and vws[l*stride]. cws carries the left-control correction in its LSB exactly as <a class="el" href="structfss_1_1Dcf_1_1Cw.html#a868d7603c06918ef6ab2ecb3f165471d" title="Seed correction with the left control correction in its reserved bit.">Cw::s</a> does, and vws holds the group value. The right-control correction is bit l of tr, and the layer LSBs of vws are ignored because the correction is read from tr; bits of tr at or above in_bits are ignored. The terminal is cws[in_bits*stride] = {0,0,0,0} and vws[in_bits*stride] = v_cw_np1, as <a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64" title="Generate split correction arrays from caller-owned initial seeds.">Gen()</a> writes them.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. \(i\). </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Dcf.html#a4da44b816dfe617d3763b829f8f7e963" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">x</td><td>Evaluated input. \(x\). </td></tr>
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Seed components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">vws</td><td>Group-value components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit l for layer l. </td></tr>
+    <tr><td class="paramname">x</td><td>Input in the scheme's domain. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>Output share. \(y_{i,x}\). </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>This party's output share for the selected predicate. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements. </dd>
+<dd>
+vws[in_bits*stride].w &amp; 1 == 0. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd>
+<dd>
+A stride, capacity, or terminal violation aborts with a diagnostic in Debug builds on both the host and the device, and is undefined behavior in Release builds. </dd></dl>
 
 </div>
 </div>
-<a id="a0e17d5fd8c970b4e0ec6d49374022b6d" name="a0e17d5fd8c970b4e0ec6d49374022b6d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a0e17d5fd8c970b4e0ec6d49374022b6d">&#9670;&#160;</a></span>EvalAll()</h2>
+<a id="a06f534feca9dbc342231d1975b919c41" name="a06f534feca9dbc342231d1975b919c41"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a06f534feca9dbc342231d1975b919c41">&#9670;&#160;</a></span>EvalAll()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred = DcfPred::kLt, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::EvalAll </td>
+          <td class="memname">void <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::EvalAll </td>
           <td>(</td>
           <td class="paramtype">bool&#160;</td>
           <td class="paramname"><em>b</em>, </td>
@@ -224,14 +336,44 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const <a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>key</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
-          <td class="paramname"><em>ys</em>&#160;</td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>vws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>ys</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -246,42 +388,497 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 </table>
 </div><div class="memdoc">
 
-<p>Full domain evaluation method. </p>
-<p>Evaluate the key on each input, i.e., 0b00...0 - 0b11...1. Store the outputs sequentially.</p>
+<p>Evaluate the full domain from a seed and split correction arrays. </p>
+<p>Layer l is read from cws[l*stride] and vws[l*stride]. cws carries the left-control correction in its LSB exactly as <a class="el" href="structfss_1_1Dcf_1_1Cw.html#a868d7603c06918ef6ab2ecb3f165471d" title="Seed correction with the left control correction in its reserved bit.">Cw::s</a> does, and vws holds the group value. The right-control correction is bit l of tr, and the layer LSBs of vws are ignored because the correction is read from tr; bits of tr at or above in_bits are ignored. The terminal is cws[in_bits*stride] = {0,0,0,0} and vws[in_bits*stride] = v_cw_np1, as <a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64" title="Generate split correction arrays from caller-owned initial seeds.">Gen()</a> writes them.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">b</td><td>Party index. False for 0 and true for 1. </td></tr>
-    <tr><td class="paramname">key</td><td>The party's key returned by <a class="el" href="classfss_1_1Dcf.html#a4da44b816dfe617d3763b829f8f7e963" title="Key generation method.">Gen()</a>. </td></tr>
-    <tr><td class="paramname">ys</td><td>Pre-allocated output array. Its size must be at least 2 ** in_bits.</td></tr>
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Seed components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">vws</td><td>Group-value components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit l for layer l. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output array with at least 2^in_bits entries, in input order. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. </td></tr>
   </table>
   </dd>
 </dl>
-<p>Support parallel using OpenMP. The task is divided to 2 ** par_depth parallel sub-tasks with the equal workloads. par_depth = -1: use ceil(log(num of threads)). par_depth = 0: no parallelism, i.e., sequential execution. </p>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements. </dd>
+<dd>
+vws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds and is undefined behavior in Release builds. </dd>
+<dd>
+The output element count and byte size fit size_t, and ys is allocated. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if stride is zero or too large or the arrays are shorter than in_bits*stride+1. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
-<a id="a4da44b816dfe617d3763b829f8f7e963" name="a4da44b816dfe617d3763b829f8f7e963"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a4da44b816dfe617d3763b829f8f7e963">&#9670;&#160;</a></span>Gen()</h2>
+<a id="a38f06771f9d0d80596818ce6dd2612ac" name="a38f06771f9d0d80596818ce6dd2612ac"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a38f06771f9d0d80596818ce6dd2612ac">&#9670;&#160;</a></span>EvalAllGpu()</h2>
 
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a class="el" href="dcf_8cuh.html#a8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred = DcfPred::kLt, int par_depth = -1&gt; </div>
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred, par_depth &gt;::Gen </td>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::EvalAllGpu </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k0</em>, </td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype"><a class="el" href="structfss_1_1Dcf_1_1Key.html">Key</a> &amp;&#160;</td>
-          <td class="paramname"><em>k1</em>, </td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>vws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Launch full-domain CUDA evaluation from split device arrays. </p>
+<p>Layer l is read from cws[l*stride] and vws[l*stride]. cws carries the left-control correction in its LSB exactly as <a class="el" href="structfss_1_1Dcf_1_1Cw.html#a868d7603c06918ef6ab2ecb3f165471d" title="Seed correction with the left control correction in its reserved bit.">Cw::s</a> does, and vws holds the group value. The right-control correction is bit l of tr, and the layer LSBs of vws are ignored because the correction is read from tr; bits of tr at or above in_bits are ignored. The terminal is cws[in_bits*stride] = {0,0,0,0} and vws[in_bits*stride] = v_cw_np1, as <a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64" title="Generate split correction arrays from caller-owned initial seeds.">Gen()</a> writes them. Backend values, resource rules and tuning rules match <a class="el" href="classfss_1_1Dcf.html#a38f06771f9d0d80596818ce6dd2612ac" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a>.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed, passed by value to the kernel. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device seed components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">vws</td><td>Device group-value components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit l for layer l. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output storage containing at least 2^in_bits int4 blocks. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Immediate CUDA status. Invalid dimensions, buffers, strides, null used buffers, and unaddressable byte sizes return cudaErrorInvalidValue. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and both arrays hold at least in_bits*stride+1 elements. </dd>
+<dd>
+All referenced storage remains alive until the stream work completes. </dd></dl>
+
+</div>
+</div>
+<a id="a214efde62743fb42e9f93bb2c01f65f1" name="a214efde62743fb42e9f93bb2c01f65f1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a214efde62743fb42e9f93bb2c01f65f1">&#9670;&#160;</a></span>EvalAllGpuBatch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (in_bits &lt; sizeof(size_t) * 8)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::EvalAllGpuBatch </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>s0s</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>vws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const In &gt;&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>0</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Launch full-domain CUDA evaluation for s0s.size() keys from split device arrays. </p>
+<p>The batch uses the level-major layout: key k layer l is read from cws[l*stride + k] and vws[l*stride + k], key k's packed control is tr[k], and key k's terminal is cws[in_bits*stride + k] = {0,0,0,0} and vws[in_bits*stride + k] = v_cw_np1. cws carries the left-control correction in its LSB exactly as <a class="el" href="structfss_1_1Dcf_1_1Cw.html#a868d7603c06918ef6ab2ecb3f165471d" title="Seed correction with the left control correction in its reserved bit.">Cw::s</a> does, and the layer LSBs of vws are ignored because the right-control correction is read from tr[k]; bits of tr[k] at or above in_bits are ignored. stride selects the layout. 0 selects the dense level-major layout, in which the stride is the key count of this call. Any other value is a positive stride of at least s0s.size(). Resource and tuning rules match <a class="el" href="classfss_1_1Dcf.html#a38f06771f9d0d80596818ce6dd2612ac" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a>. The batch shares one party index and backend configuration. Every key produces the complete domain.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index shared by the batch. </td></tr>
+    <tr><td class="paramname">s0s</td><td>Device storage containing this party's seed for each key. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device level-major seed components. </td></tr>
+    <tr><td class="paramname">vws</td><td>Device level-major group-value components. </td></tr>
+    <tr><td class="paramname">tr</td><td>Device packed right-control bits, one value per key. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device key-major rows of 2^in_bits output blocks per key. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>0 for the dense level-major layout, where the stride is the key count of this call, or a positive element stride &gt;= s0s.size(). </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Immediate CUDA status. An empty batch succeeds without reading buffers. Invalid dimensions, buffers, strides or byte sizes return cudaErrorInvalidValue; an oversized grid returns cudaErrorInvalidConfiguration. Work is asynchronous. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride is 0 or at least s0s.size(). </dd>
+<dd>
+Both arrays hold at least in_bits*stride + s0s.size() elements, where a stride of 0 counts as s0s.size(). </dd>
+<dd>
+All referenced storage remains alive until the stream work completes. </dd></dl>
+
+</div>
+</div>
+<a id="a1196260687264b16295e77738e7b52a4" name="a1196260687264b16295e77738e7b52a4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1196260687264b16295e77738e7b52a4">&#9670;&#160;</a></span>EvalRange()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::EvalRange </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>first</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>last</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>vws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>par_depth</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate the closed input interval [first, last] in input order from split arrays. </p>
+<p>Layer l is read from cws[l*stride] and vws[l*stride]. cws carries the left-control correction in its LSB exactly as <a class="el" href="structfss_1_1Dcf_1_1Cw.html#a868d7603c06918ef6ab2ecb3f165471d" title="Seed correction with the left control correction in its reserved bit.">Cw::s</a> does, and vws holds the group value. The right-control correction is bit l of tr, and the layer LSBs of vws are ignored because the correction is read from tr; bits of tr at or above in_bits are ignored. The terminal is cws[in_bits*stride] = {0,0,0,0} and vws[in_bits*stride] = v_cw_np1, as <a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64" title="Generate split correction arrays from caller-owned initial seeds.">Gen()</a> writes them.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">first</td><td>First input in the interval. </td></tr>
+    <tr><td class="paramname">last</td><td>Last input in the interval, inclusive. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's initial seed. </td></tr>
+    <tr><td class="paramname">cws</td><td>Seed components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">vws</td><td>Group-value components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit l for layer l. </td></tr>
+    <tr><td class="paramname">ys</td><td>Output storage. Entry x - first receives this party's share at x. Extra capacity beyond last - first + 1 entries is unchanged. </td></tr>
+    <tr><td class="paramname">par_depth</td><td>Nonnegative OpenMP split depth for this call. Zero runs sequentially on the calling thread. Positive depths require backends that support concurrent calls. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section pre"><dt>Precondition</dt><dd>first &lt;= last and both endpoints are in the input domain. </dd>
+<dd>
+stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements. </dd>
+<dd>
+vws[in_bits*stride].w &amp; 1 == 0. A violation aborts with a diagnostic in Debug builds and is undefined behavior in Release builds. </dd>
+<dd>
+The interval's output count and byte size fit size_t, and ys has at least that many entries. The full input domain need not fit size_t. </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>if first &gt; last, either endpoint is outside the input domain, the interval does not fit size_t, ys is too short, stride is zero or too large, or the arrays are shorter than in_bits*stride+1. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a317ddbb5ed85bcbc0aa6bb681e76ea5e" name="a317ddbb5ed85bcbc0aa6bb681e76ea5e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a317ddbb5ed85bcbc0aa6bb681e76ea5e">&#9670;&#160;</a></span>EvalRangeGpu()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</div>
+<div class="memtemplate">
+template&lt;int frontier_depth, int threads_per_block&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">cudaError_t <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::EvalRangeGpu </td>
+          <td>(</td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>b</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>first</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>last</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int4&#160;</td>
+          <td class="paramname"><em>s0</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; const int4 &gt;&#160;</td>
+          <td class="paramname"><em>vws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>ys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cudaStream_t&#160;</td>
+          <td class="paramname"><em>stream</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Evaluate the closed interval [first, last] on the given CUDA stream from split device arrays. </p>
+<p>Output ys[j] corresponds to first+j.</p>
+<p>Layer l is read from cws[l*stride] and vws[l*stride]. cws carries the left-control correction in its LSB exactly as <a class="el" href="structfss_1_1Dcf_1_1Cw.html#a868d7603c06918ef6ab2ecb3f165471d" title="Seed correction with the left control correction in its reserved bit.">Cw::s</a> does, and vws holds the group value. The right-control correction is bit l of tr, and the layer LSBs of vws are ignored because the correction is read from tr; bits of tr at or above in_bits are ignored. The terminal is cws[in_bits*stride] = {0,0,0,0} and vws[in_bits*stride] = v_cw_np1, as <a class="el" href="classfss_1_1Dcf.html#ad77ff2d715f277475ddceb22fa92fb64" title="Generate split correction arrays from caller-owned initial seeds.">Gen()</a> writes them. Resources and asynchronous error handling follow <a class="el" href="classfss_1_1Dcf.html#a38f06771f9d0d80596818ce6dd2612ac" title="Launch full-domain CUDA evaluation from split device arrays.">EvalAllGpu()</a>. frontier_depth is relative to each aligned evaluation subtree and is capped to its depth.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">b</td><td>Party index, false for party 0 and true for party 1. </td></tr>
+    <tr><td class="paramname">first</td><td>First input in the interval. </td></tr>
+    <tr><td class="paramname">last</td><td>Last input in the interval, inclusive. </td></tr>
+    <tr><td class="paramname">s0</td><td>This party's seed, passed by value to the kernel. </td></tr>
+    <tr><td class="paramname">cws</td><td>Device seed components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">vws</td><td>Device group-value components, with layer l at index l*stride. </td></tr>
+    <tr><td class="paramname">tr</td><td>Packed right-control bits, bit l for layer l. </td></tr>
+    <tr><td class="paramname">ys</td><td>Device output storage. Entry x - first receives this party's share at x. </td></tr>
+    <tr><td class="paramname">stream</td><td>Stream on the device owning the referenced resources. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Immediate CUDA status. Invalid endpoints, buffers, strides, counts or byte sizes return cudaErrorInvalidValue. Grid limits return cudaErrorInvalidConfiguration. </dd></dl>
+<dl class="section pre"><dt>Precondition</dt><dd>stride &gt; 0 and both arrays hold at least in_bits*stride+1 elements. </dd>
+<dd>
+All referenced storage remains alive until the stream work completes. </dd></dl>
+
+</div>
+</div>
+<a id="ad77ff2d715f277475ddceb22fa92fb64" name="ad77ff2d715f277475ddceb22fa92fb64"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad77ff2d715f277475ddceb22fa92fb64">&#9670;&#160;</a></span>Gen()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;int in_bits, typename Group , typename Prg , typename In , <a class="el" href="group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509">DcfPred</a> pred&gt; <br />
+requires (ValidForInputBits&lt;In, in_bits&gt; &amp;&amp; <a class="el" href="conceptGroupable.html">Groupable</a>&lt;Group&gt; &amp;&amp; <a class="el" href="conceptPrgable.html">Prgable</a>&lt;Prg, 4&gt;)</div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void <a class="el" href="classfss_1_1Dcf.html">fss::Dcf</a>&lt; in_bits, Group, Prg, In, pred &gt;::Gen </td>
+          <td>(</td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>cws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">cuda::std::span&lt; int4 &gt;&#160;</td>
+          <td class="paramname"><em>vws</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">In &amp;&#160;</td>
+          <td class="paramname"><em>tr</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -299,7 +896,13 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">int4&#160;</td>
-          <td class="paramname"><em>b_buf</em>&#160;</td>
+          <td class="paramname"><em>b_buf</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>stride</em> = <code>1</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -314,21 +917,39 @@ template&lt;int in_bits, typename Group , typename Prg , typename In  = uint, <a
 </table>
 </div><div class="memdoc">
 
-<p><a class="el" href="structfss_1_1Dcf_1_1Key.html" title="A party&#39;s key: the correction words plus the party&#39;s initial seed.">Key</a> generation method. </p>
+<p>Generate split correction arrays from caller-owned initial seeds. </p>
+<p>cws receives the seed components and vws the group-value components. Layer l is stored at cws[l*stride] and vws[l*stride]. cws keeps the left-control correction in its LSB exactly as <a class="el" href="structfss_1_1Dcf_1_1Cw.html#a868d7603c06918ef6ab2ecb3f165471d" title="Seed correction with the left control correction in its reserved bit.">Cw::s</a> does, and vws carries the pure group value with a zero LSB. The right-control bits move out of the v LSBs into tr, bit l for layer l, and unused high bits of tr are zero. The terminal is cws[in_bits*stride] = {0,0,0,0} and vws[in_bits*stride] = v_cw_np1.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">k0,k1</td><td>Returned keys of the two parties. </td></tr>
-    <tr><td class="paramname">s0s</td><td>2 initial seeds. Users can randomly sample them. </td></tr>
-    <tr><td class="paramname">a</td><td>\(a\). </td></tr>
-    <tr><td class="paramname">b_buf</td><td>\(b\). Will be clamped and converted to the group element. </td></tr>
+    <tr><td class="paramname">cws</td><td>Output seed components; its capacity includes in_bits*stride+1 elements. </td></tr>
+    <tr><td class="paramname">vws</td><td>Output group-value components, with the same layout as cws. </td></tr>
+    <tr><td class="paramname">tr</td><td>Output packed right-control bits, bit l for layer l. </td></tr>
+    <tr><td class="paramname">s0s</td><td>Two initial seeds, preserved by this call. </td></tr>
+    <tr><td class="paramname">a</td><td>Comparison threshold in the input domain. </td></tr>
+    <tr><td class="paramname">b_buf</td><td>Output value, clamped before conversion to Group. </td></tr>
+    <tr><td class="paramname">stride</td><td>Positive element stride between layer entries. The default stride of 1 stores the correction words contiguously. </td></tr>
   </table>
   </dd>
 </dl>
+<dl class="section pre"><dt>Precondition</dt><dd>a is in the input domain. </dd>
+<dd>
+stride &gt; 0. </dd>
+<dd>
+With M = numeric_limits&lt;size_t&gt;::max()/sizeof(int4), stride &lt;= (M-1)/in_bits and both arrays have at least in_bits*stride+1 elements. </dd>
+<dd>
+Inputs and outputs do not overlap. </dd>
+<dd>
+All accessed storage is accessible from the calling execution space. </dd>
+<dd>
+A stride or capacity violation aborts with a diagnostic in Debug builds on both the host and the device, and is undefined behavior in Release builds. </dd></dl>
+<dl class="section post"><dt>Postcondition</dt><dd>cws, vws, tr and s0s[party] form the corresponding party's key. </dd>
+<dd>
+Only the described prefix is written, and storage beyond it is untouched. </dd></dl>
 
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="dcf_8cuh_source.html">dcf.cuh</a></li>
+<li>include/fss/<a class="el" href="dcf_8cuh.html">dcf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

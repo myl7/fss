@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>myl7/fss: fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::Key Struct Reference</title>
+<title>myl7/fss: fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda &gt;::Key Struct Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -104,7 +104,7 @@ $(document).ready(function(){initNavTree('structfss_1_1Vdmpf_1_1Key.html',''); i
   <div class="summary">
 <a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structfss_1_1Vdmpf_1_1Key-members.html">List of all members</a>  </div>
-  <div class="headertitle"><div class="title">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::Key Struct Reference</div></div>
+  <div class="headertitle"><div class="title">fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda &gt;::Key Struct Reference<div class="ingroups"><a class="el" href="group__fss__api.html">Public API</a></div></div></div>
 </div><!--header-->
 <div class="contents">
 
@@ -113,20 +113,29 @@ $(document).ready(function(){initNavTree('structfss_1_1Vdmpf_1_1Key.html',''); i
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
-<tr class="memitem:a01ba1444ba6f4ca55e2bcce87b0708bf" id="r_a01ba1444ba6f4ca55e2bcce87b0708bf"><td class="memItemLeft" align="right" valign="top"><a id="a01ba1444ba6f4ca55e2bcce87b0708bf" name="a01ba1444ba6f4ca55e2bcce87b0708bf"></a>
+<tr class="memitem:a0fd598b915dc4338c9f3160dbf5efd6a" id="r_a0fd598b915dc4338c9f3160dbf5efd6a"><td class="memItemLeft" align="right" valign="top"><a id="a0fd598b915dc4338c9f3160dbf5efd6a" name="a0fd598b915dc4338c9f3160dbf5efd6a"></a>
+int4&#160;</td><td class="memItemRight" valign="bottom"><b>sigma</b></td></tr>
+<tr class="memdesc:a0fd598b915dc4338c9f3160dbf5efd6a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Shared seed for the Cuckoo-hash permutation. <br /></td></tr>
+<tr class="separator:a0fd598b915dc4338c9f3160dbf5efd6a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a419ba87c3ba3ec1c8c8b922ad0e1cbb1" id="r_a419ba87c3ba3ec1c8c8b922ad0e1cbb1"><td class="memItemLeft" align="right" valign="top"><a id="a419ba87c3ba3ec1c8c8b922ad0e1cbb1" name="a419ba87c3ba3ec1c8c8b922ad0e1cbb1"></a>
 int&#160;</td><td class="memItemRight" valign="bottom"><b>m_rt</b></td></tr>
-<tr class="memdesc:a01ba1444ba6f4ca55e2bcce87b0708bf"><td class="mdescLeft">&#160;</td><td class="mdescRight">Runtime bucket count used during Gen. <br /></td></tr>
-<tr class="separator:a01ba1444ba6f4ca55e2bcce87b0708bf"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa0a3d3e3cf82da9f8c578a7c3f8129f0" id="r_aa0a3d3e3cf82da9f8c578a7c3f8129f0"><td class="memItemLeft" align="right" valign="top"><a id="aa0a3d3e3cf82da9f8c578a7c3f8129f0" name="aa0a3d3e3cf82da9f8c578a7c3f8129f0"></a>
-int&#160;</td><td class="memItemRight" valign="bottom"><b>b_size_rt</b></td></tr>
-<tr class="memdesc:aa0a3d3e3cf82da9f8c578a7c3f8129f0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Runtime bucket size used during Gen. <br /></td></tr>
-<tr class="separator:aa0a3d3e3cf82da9f8c578a7c3f8129f0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memdesc:a419ba87c3ba3ec1c8c8b922ad0e1cbb1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Runtime bucket count used during Gen. <br /></td></tr>
+<tr class="separator:a419ba87c3ba3ec1c8c8b922ad0e1cbb1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7df4eca5ed153983bf1331cc182ccc96" id="r_a7df4eca5ed153983bf1331cc182ccc96"><td class="memItemLeft" align="right" valign="top"><a id="a7df4eca5ed153983bf1331cc182ccc96" name="a7df4eca5ed153983bf1331cc182ccc96"></a>
+__uint128_t&#160;</td><td class="memItemRight" valign="bottom"><b>b_size_rt</b></td></tr>
+<tr class="memdesc:a7df4eca5ed153983bf1331cc182ccc96"><td class="mdescLeft">&#160;</td><td class="mdescRight">Runtime bucket size used during Gen. <br /></td></tr>
+<tr class="separator:a7df4eca5ed153983bf1331cc182ccc96"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afacb4daad01a09a713a133af68b61563" id="r_afacb4daad01a09a713a133af68b61563"><td class="memItemLeft" align="right" valign="top"><a id="afacb4daad01a09a713a133af68b61563" name="afacb4daad01a09a713a133af68b61563"></a>
+<a class="el" href="structfss_1_1Vdmpf_1_1BucketKey.html">BucketKey</a>&#160;</td><td class="memItemRight" valign="bottom"><b>bks</b> [<a class="el" href="classfss_1_1Vdmpf.html#a1d4799d450b9f905b89b42d0736c0b2d">kBucketCount</a>]</td></tr>
+<tr class="memdesc:afacb4daad01a09a713a133af68b61563"><td class="mdescLeft">&#160;</td><td class="mdescRight">Inner VDPF key for every allocated bucket. <br /></td></tr>
+<tr class="separator:afacb4daad01a09a713a133af68b61563"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename Prp, typename In = uint, int kappa = 3, int ch_lambda = 80&gt;<br />
-struct fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, kappa, ch_lambda &gt;::Key</div><p>VDMPF key for one party, containing the PRP seed and per-bucket keys. </p>
+<div class="textblock"><div class="compoundTemplParams">template&lt;int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename Prp, typename In = uint, int ch_lambda = 80&gt;<br />
+struct fss::Vdmpf&lt; in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda &gt;::Key</div><p>VDMPF key for one party, containing the PRP seed and per-bucket keys. </p>
+<p>Fields support direct access. Field order, padding, and binary serialization are not specified. </p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
-<li>include/fss/<a class="el" href="vdmpf_8cuh_source.html">vdmpf.cuh</a></li>
+<li>include/fss/<a class="el" href="vdmpf_8cuh.html">vdmpf.cuh</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->
