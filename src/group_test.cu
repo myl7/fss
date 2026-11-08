@@ -211,6 +211,84 @@ TEST(Uint128Behavior, ModulusHalvesCombineInOrder) {
       ClampedBlockOf(0));
 }
 
+#if FSS_ENABLE_V1_COMPAT
+// The deprecated v1.3.0 wide-storage spellings, restored only for uint64-range
+// positive moduli as forwardings to Uint128. Aliases keep this suite's build
+// log readable; the direct spellings and their deprecation diagnostic are
+// covered by uint_compat_compile_check.cu, and the rejected moduli by
+// uint_reject_compile_fail.cu.
+using LegacyUint128Small = fss::group::Uint<__uint128_t, 17>;
+using LegacyUint128Cross = fss::group::Uint<__uint128_t, (uint64_t{1} << 32) + 15>;
+using LegacyUint128Pow63m1 = fss::group::Uint<__uint128_t, (uint64_t{1} << 63) - 1>;
+using LegacyUint128Pow63 = fss::group::Uint<__uint128_t, uint64_t{1} << 63>;
+using LegacyUint128MaxM58 = fss::group::Uint<__uint128_t, UINT64_MAX - 58>;
+using LegacyUint128U64Max = fss::group::Uint<__uint128_t, UINT64_MAX>;
+
+static_assert(sizeof(LegacyUint128Small) == 16 && sizeof(LegacyUint128Cross) == 16 &&
+    sizeof(LegacyUint128Pow63m1) == 16 && sizeof(LegacyUint128Pow63) == 16 &&
+    sizeof(LegacyUint128MaxM58) == 16 && sizeof(LegacyUint128U64Max) == 16);
+static_assert(Groupable<LegacyUint128Small> && Groupable<LegacyUint128Cross> && Groupable<LegacyUint128Pow63m1>);
+static_assert(Groupable<LegacyUint128Pow63> && Groupable<LegacyUint128MaxM58> && Groupable<LegacyUint128U64Max>);
+// The operators and conversions keep the legacy group and clamped-block types.
+static_assert(std::is_same_v<LegacyUint128Small, decltype(LegacyUint128Small{} + LegacyUint128Small{})>);
+static_assert(std::is_same_v<LegacyUint128Small, decltype(-LegacyUint128Small{})>);
+static_assert(std::is_same_v<LegacyUint128Small, decltype(LegacyUint128Small::From(int4{}))>);
+static_assert(std::is_same_v<int4, decltype(LegacyUint128Small{}.Into())>);
+static_assert(std::is_same_v<__uint128_t, decltype(LegacyUint128Small{}.Value())>);
+
+// One legacy spelling and its Uint128 forwarding target must agree on every
+// operation for the same inputs.
+template <__uint128_t mod>
+static void ExpectLegacyMatchesModernOnBlock(const int4 &block) {
+  using Legacy = fss::group::Uint<__uint128_t, mod>;
+  using Modern = fss::group::Uint128<fss::group::Uint128Modulus{static_cast<uint64_t>(mod), 0}>;
+  const Legacy legacy = Legacy::From(block);
+  const Modern modern = Modern::From(block);
+  ExpectUint128Value("From value", legacy.Value(), modern.Value());
+  ExpectBoundaryBlock(legacy.Into(), modern.Into());
+  const Legacy legacy_neg = -legacy;
+  const Modern modern_neg = -modern;
+  ExpectBoundaryBlock(legacy_neg.Into(), modern_neg.Into());
+}
+
+TEST(UintCompatBehavior, ForwardsToUint128WithSameModulus) {
+  const __uint128_t max127 = (static_cast<__uint128_t>(1) << 127) - 1;
+  ExpectLegacyMatchesModernOnBlock<17>(ClampedBlockOf(max127));
+  ExpectLegacyMatchesModernOnBlock<17>(ClampedBlockOf(5));
+  ExpectLegacyMatchesModernOnBlock<(uint64_t{1} << 32) + 15>(ClampedBlockOf(max127));
+  ExpectLegacyMatchesModernOnBlock<(uint64_t{1} << 63) - 1>(ClampedBlockOf(max127));
+  ExpectLegacyMatchesModernOnBlock<uint64_t{1} << 63>(ClampedBlockOf(max127));
+  ExpectLegacyMatchesModernOnBlock<UINT64_MAX - 58>(ClampedBlockOf(max127));
+  ExpectLegacyMatchesModernOnBlock<UINT64_MAX>(ClampedBlockOf(max127));
+}
+
+TEST(UintCompatBehavior, ModulusBoundariesReduceWrapAndNegate) {
+  // From() reduces the modulus itself and values just above it.
+  ExpectBoundaryBlock(LegacyUint128Small::From(ClampedBlockOf(17)).Into(), ClampedBlockOf(0));
+  ExpectBoundaryBlock(LegacyUint128Small::From(ClampedBlockOf(22)).Into(), ClampedBlockOf(5));
+  // A 127-bit input reduces through the full modulo path of the forwarding target.
+  const __uint128_t max127 = (static_cast<__uint128_t>(1) << 127) - 1;
+  ExpectUint128Value("max127 mod 17", LegacyUint128Small::From(ClampedBlockOf(max127)).Value(), max127 % 17);
+  // mod - 1 plus one wraps to zero at the low and high edges of the restored range.
+  ExpectBoundaryBlock(
+      (LegacyUint128Pow63::From(ClampedBlockOf((uint64_t{1} << 63) - 1)) +
+          LegacyUint128Pow63::From(BoundaryBlock(1, 0, 0, 0))).Into(),
+      ClampedBlockOf(0));
+  ExpectBoundaryBlock(
+      (LegacyUint128U64Max::From(ClampedBlockOf(UINT64_MAX - 1)) +
+          LegacyUint128U64Max::From(BoundaryBlock(1, 0, 0, 0))).Into(),
+      ClampedBlockOf(0));
+  // The additive inverse of 5 is mod - 5, and zero inverts to zero.
+  ExpectUint128Value("negate 5 mod 17", (-LegacyUint128Small::From(ClampedBlockOf(5))).Value(), 12);
+  ExpectUint128Value("negate 0", (-LegacyUint128Small::From(ClampedBlockOf(0))).Value(), 0);
+  // A carry across the low 32-bit words stays inside the low 64 bits.
+  ExpectBoundaryBlock(
+      (LegacyUint128U64Max::From(BoundaryBlock(0xfffffffeU, 0, 0, 0)) +
+          LegacyUint128U64Max::From(BoundaryBlock(3, 0, 0, 0))).Into(),
+      ClampedBlockOf(static_cast<__uint128_t>(0xffffffffU) + 2));
+}
+#endif  // FSS_ENABLE_V1_COMPAT
+
 #ifndef NDEBUG
 // The zero LSB is a caller precondition of the shared leaf conversion: Debug
 // builds abort with a diagnostic, and Release builds do not check it.

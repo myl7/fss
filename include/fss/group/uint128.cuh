@@ -14,8 +14,9 @@
 namespace fss::group {
 
 /**
- * The modulus of a @ref Uint128 group, split into two 64-bit halves because
- * CUDA host stubs cannot spell a __uint128_t non-type template parameter.
+ * The modulus of a @ref Uint128 group, split into two 64-bit halves: the
+ * structural form keeps host stubs from having to spell a wide integral
+ * non-type template parameter.
  */
 struct Uint128Modulus {
   uint64_t low;  ///< Low 64 bits of the modulus.

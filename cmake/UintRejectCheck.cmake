@@ -15,6 +15,11 @@ foreach(dir IN LISTS INCLUDE_DIRS)
     list(APPEND flags "-I${dir}")
 endforeach()
 list(APPEND flags "-D${CASE}")
+# Optional strict-switch pass-through for cases that must also fail with the
+# compatibility entries compiled out.
+if(DEFINED COMPAT)
+    list(APPEND flags "-DFSS_ENABLE_V1_COMPAT=${COMPAT}")
+endif()
 
 execute_process(
     COMMAND ${NVCC} ${flags} -c ${SOURCE} -o ${OBJECT}

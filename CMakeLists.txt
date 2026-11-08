@@ -208,11 +208,20 @@ if(BUILD_TESTING)
     target_link_libraries(uint128_launch_test PRIVATE fss)
     add_custom_target(uint128_launch_test_compile ALL DEPENDS uint128_launch_test)
 
+    # Compile-only coverage for the deprecated wide-storage Uint compat Group
+    # in CUDA host stubs. The source builds an empty file when
+    # FSS_ENABLE_V1_COMPAT is 0, so the same target compiles in both switch
+    # configurations.
+    add_library(uint_compat_launch_test OBJECT src/uint_compat_launch_test.cu)
+    target_link_libraries(uint_compat_launch_test PRIVATE fss)
+    add_custom_target(uint_compat_launch_test_compile ALL DEPENDS uint_compat_launch_test)
+
     # Uint storage and Uint128 modulus contracts reject at compile time. Each
     # case compiles one rejected group type with nvcc and must fail on the
     # unsatisfied requires-clause.
     if(CMAKE_CUDA_COMPILER)
-        set(uint_reject_cases UINT128_STORAGE UINT128_STORAGE_MOD MOD_ZERO MOD_ABOVE_2_127)
+        set(uint_reject_cases
+            UINT128_STORAGE UINT128_STORAGE_MOD UINT128_MOD_ABOVE_U64 MOD_ZERO MOD_ABOVE_2_127)
         foreach(case IN LISTS uint_reject_cases)
             string(TOLOWER ${case} case_lower)
             add_test(NAME uint_reject_${case_lower}_fails
@@ -225,6 +234,41 @@ if(BUILD_TESTING)
                 -DCASE=FSS_UINT_REJECT_${case}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UintRejectCheck.cmake)
         endforeach()
+        # The same strict rejection with the compatibility entries compiled out.
+        add_test(NAME uint_reject_uint128_small_mod_strict_fails
+            COMMAND ${CMAKE_COMMAND}
+            -DNVCC=${CMAKE_CUDA_COMPILER}
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/src/uint_reject_compile_fail.cu
+            -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/uint_reject_uint128_small_mod_strict.o
+            "-DINCLUDE_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/include"
+            -DARCH=${CMAKE_CUDA_ARCHITECTURES}
+            -DCASE=FSS_UINT_REJECT_UINT128_SMALL_MOD_STRICT
+            -DCOMPAT=0
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UintRejectCheck.cmake)
+
+        # The deprecated wide-storage Uint entry must compile with its
+        # deprecation diagnostic on direct spellings, and current-only use
+        # must stay free of it.
+        add_test(NAME uint_compat_deprecated_warns
+            COMMAND ${CMAKE_COMMAND}
+            -DNVCC=${CMAKE_CUDA_COMPILER}
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/src/uint_compat_compile_check.cu
+            -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/uint_compat_deprecated.o
+            "-DINCLUDE_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/include"
+            -DARCH=${CMAKE_CUDA_ARCHITECTURES}
+            -DCASE=FSS_UINT_COMPAT_CHECK_DEPRECATED
+            -DREQUIRE_DEPRECATED=1
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UintCompatCheck.cmake)
+        add_test(NAME uint_compat_modern_no_warn
+            COMMAND ${CMAKE_COMMAND}
+            -DNVCC=${CMAKE_CUDA_COMPILER}
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/src/uint_compat_compile_check.cu
+            -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/uint_compat_modern.o
+            "-DINCLUDE_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/include"
+            -DARCH=${CMAKE_CUDA_ARCHITECTURES}
+            -DCASE=FSS_UINT_COMPAT_CHECK_MODERN
+            -DREQUIRE_DEPRECATED=0
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UintCompatCheck.cmake)
     endif()
 
     # Host-only backends must fail to link when device code reaches them. Each test compiles
