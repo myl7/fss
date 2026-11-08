@@ -10,37 +10,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `fss::group::Uint128<mod>`, the clamped 127-bit modular integer group in 128-bit storage. The modulus is the structural `fss::group::Uint128Modulus{low, high}` non-type template parameter (`(high << 64) | low`, default `2^127`), so the type is usable directly as a CUDA kernel template argument.
+- A v1.3.0 compatibility layer behind the numeric macro `FSS_ENABLE_V1_COMPAT`, on by default: the v1.3.0 aggregate Cw-form and aggregate-Key entries, nested types, legacy constants, and `Uint<__uint128_t, mod>` spelling stay available as deprecated declarations that convert to the current component API, without the automatic-retry Key generation overloads. Define the macro to the same value in every translation unit of a program; 0 leaves the current API only. doc/migration.md covers the full scope and the breaks that remain with the switch on.
 - Closed-interval host evaluation for DPF, DCF, `HalfTreeDpf`, `PackedHalfTreeDpf`, and VDPF, with CUDA range evaluation for DCF.
 - VDPF sparse-batch and range Merkle accumulation on CPU and CUDA.
 - Single-path Grotto DCF evaluation without preprocessing, and the experimental `HalfTreeGrottoDcf` scheme with Python bindings.
+- The `Aes128Ccr` CCR-hash backend, which implements the CCR-hash contract that `HalfTreeDpf` and `PackedHalfTreeDpf` now require.
 - Public optional primitive extensions through `HasGenHalf`, `HasGen8`, and `HasHash4`, with scalar fallbacks.
+- DMPF and VDMPF accept `bucket_bits` up to 127 and run their inner schemes on `__uint128_t` inputs, widening the supported per-bucket domains.
 - Standalone Python Group, PRG, hash, and PRP operations, and explicit primitive configuration for schemes.
 - Python precompilation and scoped compiled-plugin caches, including read-only cache reuse.
 
 ### Changed
 
-- Scheme operations use caller-owned component buffers instead of aggregate Key-taking overloads. Correction arrays include terminal data, and host parallel depth is a per-call argument.
-- The paired public Cw overloads are removed; the strided component operations with the stride=1 single-key and stride=0 dense batch defaults are the only public forms. VDPF gained component forms for every previously Cw-only operation. DMPF and VDMPF keep their bucket Cw contracts.
-- Python single-point schemes store keys as opaque component bytes: 16-byte correction-component rows plus a packed-control row (DCF adds the value-component rows, changing its row count). Previously persisted native key bytes are not compatible and must be regenerated.
+- Scheme operations take caller-owned component buffers. Correction arrays include the terminal data, a positive stride parameter supports batched correction storage, and host full-domain and preprocessing operations take the OpenMP split depth as a per-call nonnegative `par_depth` argument.
+- Scheme classes take their backends through an `explicit` constructor and keep them private. The v1.3.0 public backend fields (`prg`, `xor_hash`, `hash`, `prp`, and `hash_key`) are gone, so code that default-constructed a scheme or reassigned a backend field constructs a configured scheme instead.
+- `HalfTreeDpf` and `PackedHalfTreeDpf` run on a CCR-hash backend satisfying `CcrHashable` instead of a PRG backend satisfying `Prgable`, configured together with the instance seed. The v1.3.0 PRG backends do not satisfy the new contract.
+- VDPF, DMPF, and VDMPF generation makes a single attempt, never rewrites the caller's seeds or sigma, and leaves retrying to the caller, who checks the returned status and resamples the relevant randomness before calling again. The component `Vdmpf::Gen` reports a new status 2 when an inner VDPF generation fails; the deprecated aggregate-Key `Vdmpf::Gen()` maps both statuses to the old failure code.
+- DMPF and VDMPF keys keep their names but store wider data: `b_size_rt` is now `__uint128_t`, and a VDMPF `BucketKey` carries `bucket_bits + 1` correction words with the terminal merged into the last entry and the correction seed as `int4 cs[4]`, so the separate `ocw` field is gone.
 - Grotto preprocessing uses explicit parity-tree views and owned trees whose `View()` methods expose borrowed storage.
-- VDPF and VDMPF generation preserve caller-supplied seeds and report a single attempt's status; callers resample and retry failed attempts.
-- Python scheme methods fill caller-owned tensors and select CPU or CUDA from their tensor arguments. Mixed devices are rejected instead of copied automatically.
 - Host boundary entries report `std::invalid_argument` for buffer, range, bucket, and count metadata in Debug and Release builds. Low-level algorithms, including split Gen/Eval layouts, terminal group values, PRP input domains, `Bytes::From`, and `Vdmpf::Eval`, treat these requirements as caller preconditions: Debug builds abort with a diagnostic on both the host and the device, and Release builds have undefined behavior. Terminal validation runs before parallel traversal.
 - VDPF and VDMPF evaluation and proof entry points document nonzero correction seeds as a precondition; keys from a successful `Gen()` satisfy it.
+- Host-only primitive backends, including the AES MMO PRGs, `Sha256`, and the AES Feistel PRPs, fail device use at link time through undefined device symbols instead of trapping at runtime.
 - OpenSSL backend failures report `std::runtime_error`, and failed context setup releases allocated resources.
+- Python single-point schemes store keys as opaque component bytes: 16-byte correction-component rows plus a packed-control row (DCF adds the value-component rows, changing its row count). Previously persisted native key bytes are not compatible and must be regenerated.
+- Python scheme methods fill caller-owned tensors and select CPU or CUDA from their tensor arguments. Mixed devices are rejected instead of copied automatically.
 - Python packaging requires setuptools >= 84.1.0, filelock == 3.20.3 on Python 3.10, and filelock >= 4.2.1 on newer Python versions.
+
+### Deprecated
+
+- Under the default `FSS_ENABLE_V1_COMPAT`, the v1.3.0 aggregate Cw-form and aggregate-Key entries of `Dpf`, `Dcf`, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, `Vdpf`, `Dmpf`, and `Vdmpf`, together with their v1.3.0 nested types (the aggregate `Key`, `Vdpf::EvalResult`, the Grotto `ParityTree` and `PreprocessedTree`) and the legacy constants `m`, `n`, `b_size`, `kBetaMax`, `kTopDepth`, `kMerkleChunkSize`, and `kParDepth`. Every entry carries the standard deprecation attribute naming its current replacement; doc/migration.md lists the full scope.
+- The wide-storage spelling `Uint<__uint128_t, mod>` for `0 < mod <= 2^64 - 1`; use `fss::group::Uint128` instead.
 
 ### Fixed
 
-- Preserved every coordinate bit in Blake3 and Sha256 tuple hashing used by VDPF and VDMPF, fixing the loss of bit 96 for 97- to 128-bit coordinates.
+- Preserved every coordinate bit in Blake3 and Sha256 tuple hashing used by VDPF and VDMPF, fixing the loss of bit 96 for 97- to 128-bit coordinates. The domain-separation tag also moved, so keys and proofs generated by v1.3.0 are not compatible with this version. Regenerate persisted key and proof material.
 - Copy assignment into a moved-from `Aes128Feistel` now recreates its cipher context and restores the object to a usable state.
 
 ### Removed
 
-- `__uint128_t` storage support from `fss::group::Uint`, which now accepts `uint8_t` through `uint64_t`; use `fss::group::Uint128` for the 127-bit group. The internal GPU group tags and kernel launch descriptors that worked around the wide-modulus stub limitation are gone, and kernels take the scheme or group types directly.
-- The aggregate `Key` structs of DCF, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, and VDPF; `Dpf::Key` remains as the `Dmpf::BucketKey` bucket storage. Schemes expose `kCwCount` for sizing component arrays instead.
-- Public `RelayoutGpu` and `RepackGpu` preparation helpers; generate layouts with the split or strided Gen overloads.
-- Public point-launcher helpers; launchers in `gpu::detail` are implementation details.
+- The trailing `par_depth` template parameter of DPF, DCF, Half-Tree DPF, packed Half-Tree DPF, Grotto DCF, VDPF, and DMPF, and the `kappa` template parameter of DMPF and VDMPF. Host operations take a nonnegative per-call `par_depth`, and the Cuckoo candidate count is fixed at 3, so positional template arguments after the input type shift meaning or exceed the new parameter list.
+- The public `InnerDpf` and `InnerVdpf` aliases of DMPF and VDMPF and the public `PackBeta` helper of packed Half-Tree DPF. Use the current `BucketKey` and `Cw` names and pack betas by the `out_bits` lane rule.
+- The public `val` fields of `Uint` and `Bytes`. Read a value through `Value()` or `Into()`.
+- The non-owning pointer-nonce constructor of `ChaCha`. The constructor copies the nonce values.
+- `Uint<__uint128_t, mod>` moduli above `2^64 - 1`. Use `fss::group::Uint128` for wide moduli such as the 2^127 group.
 - Python `DmpfKey` and `VdmpfKey` wrappers.
 
 ## [1.3.0] - 2026-10-18
