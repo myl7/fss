@@ -216,6 +216,55 @@ class FigureSweepTest(unittest.TestCase):
                 validate(point, "fss/GPU/DPF-bytes/Eval", **{field: value})
         validate(self.case(platform="cpu", operation="Eval", num_keys=1), "fss/CPU/DPF-bytes/PackedKey/Prepare", key_count=1, query_count=0)
 
+    def test_point_eval_logical_outputs_alias_is_not_a_domain_claim(self):
+        # A real GPU point-Eval receipt reports one logical output per key
+        # through logical_outputs_per_iteration; unified_counters aliases it to
+        # domain_outputs. The point contract validates that aliased count
+        # against the evaluated queries and the 128-bit output width, while
+        # the legacy domain_outputs counter stays a full-domain claim.
+        raw = self.directory / "point.json"
+        case = self.case(operation="Eval")
+        receipt = dict(name="fss/GPU/DPF-bytes/Eval/manual_time", work_schema_version=1,
+                       key_count=262144, keys_per_iteration=262144,
+                       query_count=262144, queries_per_iteration=262144,
+                       logical_outputs_per_iteration=262144,
+                       output_bytes_per_iteration=262144 * 16,
+                       threads_per_block=256, domain_bits=12)
+        raw.write_text(json.dumps({"benchmarks": [receipt]}))
+        sweep.validate_native_configuration(case, raw)
+        malformed = dict(receipt, logical_outputs_per_iteration=1,
+                         output_bytes_per_iteration=16)
+        raw.write_text(json.dumps({"benchmarks": [malformed]}))
+        with self.assertRaisesRegex(ValueError, "logical_outputs_per_iteration"):
+            sweep.validate_native_configuration(case, raw)
+        wrong_width = dict(receipt, output_bytes_per_iteration=16)
+        raw.write_text(json.dumps({"benchmarks": [wrong_width]}))
+        with self.assertRaisesRegex(ValueError, "output_bytes_per_iteration"):
+            sweep.validate_native_configuration(case, raw)
+        legacy = dict(receipt, domain_outputs=262144)
+        raw.write_text(json.dumps({"benchmarks": [legacy]}))
+        with self.assertRaisesRegex(ValueError, "domain_outputs"):
+            sweep.validate_native_configuration(case, raw)
+        both_zero = dict(receipt, domain_outputs=0,
+                         logical_outputs_per_iteration=0, output_bytes_per_iteration=0)
+        raw.write_text(json.dumps({"benchmarks": [both_zero]}))
+        with self.assertRaisesRegex(ValueError, "logical_outputs_per_iteration"):
+            sweep.validate_native_configuration(case, raw)
+        missing_bytes = {k: v for k, v in receipt.items() if k != "output_bytes_per_iteration"}
+        raw.write_text(json.dumps({"benchmarks": [missing_bytes]}))
+        with self.assertRaisesRegex(ValueError, "output_bytes_per_iteration"):
+            sweep.validate_native_configuration(case, raw)
+        generation = self.case(operation="Gen")
+        gen = dict(name="fss/GPU/DPF-bytes/Gen/manual_time", work_schema_version=1,
+                   key_count=262144, keys_per_iteration=262144, queries_per_iteration=0,
+                   logical_outputs_per_iteration=0, threads_per_block=256, domain_bits=12)
+        raw.write_text(json.dumps({"benchmarks": [gen]}))
+        sweep.validate_native_configuration(generation, raw)
+        bad_gen = dict(gen, logical_outputs_per_iteration=1)
+        raw.write_text(json.dumps({"benchmarks": [bad_gen]}))
+        with self.assertRaisesRegex(ValueError, "logical_outputs_per_iteration"):
+            sweep.validate_native_configuration(generation, raw)
+
     def test_google_median_prefers_aggregate_over_repetitions(self):
         raw = self.directory / "raw.json"
         raw.write_text(json.dumps({"benchmarks": [

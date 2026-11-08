@@ -677,8 +677,37 @@ def validate_native_configuration(case, raw):
             if batch and "VDMPF" in name and operation == "EvalAll":
                 queries = case["domain_size"]
             expected_counts = {"key_count": keys, "query_count": queries,
-                               "domain_outputs": case["domain_size"] if operation == "EvalAll" else 0,
                                "keys_per_launch": keys}
+            # The wrapper's own output contract, checked on the raw receipt
+            # field independently of any legacy counter: point Eval produces
+            # one logical output per evaluated query, Gen and Prepare produce
+            # no function outputs, and EvalAll covers the configured domain.
+            expected_outputs = (queries if operation == "Eval" else
+                                case["domain_size"] if operation == "EvalAll" else 0)
+            if "logical_outputs_per_iteration" in value \
+                    and value["logical_outputs_per_iteration"] != expected_outputs:
+                raise ValueError(f"benchmark logical_outputs_per_iteration "
+                                 f"{value['logical_outputs_per_iteration']} does not match the "
+                                 f"{expected_outputs} outputs expected for {operation}")
+            # The legacy domain_outputs counter keeps its full-domain meaning.
+            if "domain_outputs" in value \
+                    and value["domain_outputs"] != (case["domain_size"] if operation == "EvalAll" else 0):
+                raise ValueError(f"benchmark domain_outputs {value['domain_outputs']} does not match "
+                                 f"configured {case['domain_size'] if operation == 'EvalAll' else 0}")
+            if operation == "Eval" and "logical_outputs_per_iteration" in value \
+                    and "GrottoDCF" not in name:
+                # The byte and integer groups store one 128-bit output per
+                # point evaluation. Grotto DCF point rows emit bool shares and
+                # are out of this width contract.
+                if "output_bytes_per_iteration" not in value:
+                    raise ValueError(f"benchmark {name}: point Eval receipt with "
+                                     f"{value['logical_outputs_per_iteration']} logical outputs is missing "
+                                     f"output_bytes_per_iteration")
+                if value["output_bytes_per_iteration"] != 16 * value["logical_outputs_per_iteration"]:
+                    raise ValueError(f"benchmark output_bytes_per_iteration "
+                                     f"{value['output_bytes_per_iteration']} does not match "
+                                     f"{16 * value['logical_outputs_per_iteration']} bytes for "
+                                     f"{value['logical_outputs_per_iteration']} point outputs")
             for field, expected in expected_counts.items():
                 if field not in counters:
                     continue
