@@ -37,7 +37,7 @@ class BenchmarkResultsTest(unittest.TestCase):
                  "command": ["--benchmark_out=/old/host/raw.json"],
                  "status": status, "log": "raw.log"}
         if status != "ok":
-            entry["error"] = "process exited with status 1"
+            entry["error"] = "command exited with status 1; see run.log"
         return entry, data
 
     def value(self, unit="ns", **extra):
@@ -323,6 +323,111 @@ class BenchmarkResultsTest(unittest.TestCase):
         entry["required_work_schema"] = 1
         rows, errors = bench.result_rows(entry, data)
         self.assertEqual(errors, [])
+
+    def test_cpu_vdpf_point_row_needs_no_point_hash_bytes(self):
+        # Mirrors a real main CPU receipt row: CPU VDPF point evaluation carries
+        # work counters but no point-hash bytes, which the contract requires
+        # only on the GPU point rows.
+        point = dict(name="BM_VdpfEval_Uint_Aes_Blake3/20", real_time=604.0,
+                     cpu_time=604.0, time_unit="ns", work_schema_version=1,
+                     api_calls_per_iteration=2, keys_per_iteration=1,
+                     queries_per_iteration=1, logical_outputs_per_iteration=1,
+                     output_bytes_per_iteration=16)
+        entry, data = self.google([point], library="main", device="cpu")
+        entry["required_work_schema"] = 1
+        rows, errors = bench.result_rows(entry, data)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][13], "domain_outputs")
+        self.assertEqual(rows[0][21], "")
+        entry, data = self.google([point], library="main", device="gpu")
+        entry["required_work_schema"] = 1
+        with self.assertRaisesRegex(ValueError, "point_hash_bytes_per_iteration"):
+            bench.result_rows(entry, data)
+
+    def test_summarize_recovers_post_processing_failure(self):
+        point = dict(name="BM_VdpfEval_Uint_Aes_Blake3/20", real_time=604.0,
+                     cpu_time=604.0, time_unit="ns", work_schema_version=1,
+                     api_calls_per_iteration=2, keys_per_iteration=1,
+                     queries_per_iteration=1, logical_outputs_per_iteration=1,
+                     output_bytes_per_iteration=16)
+        entry, data = self.google([point], library="main", device="cpu")
+        entry["required_work_schema"] = 1
+        entry["status"] = "failed"
+        entry["error"] = ("BM_VdpfEval_Uint_Aes_Blake3/20: new main GPU VDPF point receipt "
+                          "is missing point_hash_bytes_per_iteration")
+        entry["process_exit"] = 0
+        (self.directory / "run.json").write_text(json.dumps({"commands": [entry]}))
+        self.assertEqual(bench.summarize(self.directory), 0)
+        recovered = json.loads((self.directory / "run.json").read_text())["commands"][0]
+        self.assertEqual(recovered["status"], "ok")
+        self.assertNotIn("error", recovered)
+
+    def test_summarize_keeps_execution_failures_failed(self):
+        for error in ("KeyboardInterrupt", "[Errno 2] No such file or directory: 'bench'",
+                      "command exited with status 1; see run.log"):
+            entry, data = self.google([self.value()], library="fss", device="cpu")
+            entry["status"] = "failed"
+            entry["error"] = error
+            (self.directory / "run.json").write_text(json.dumps({"commands": [entry]}))
+            self.assertEqual(bench.summarize(self.directory), 1, error)
+            failed = json.loads((self.directory / "run.json").read_text())["commands"][0]
+            self.assertEqual(failed["status"], "failed", error)
+            self.assertEqual(failed["error"], error)
+
+    def test_summarize_keeps_failed_exit_code_failed(self):
+        entry, data = self.google([self.value()], library="fss", device="cpu")
+        entry["status"] = "failed"
+        entry["error"] = "command exited with status 1; see run.log"
+        entry["process_exit"] = 1
+        (self.directory / "run.json").write_text(json.dumps({"commands": [entry]}))
+        self.assertEqual(bench.summarize(self.directory), 1)
+        failed = json.loads((self.directory / "run.json").read_text())["commands"][0]
+        self.assertEqual(failed["status"], "failed")
+
+    def test_summarize_recovers_known_cpu_point_hash_error(self):
+        # The pre-process_exit record() flow wrote this exact error only after
+        # execute() returned, so on a main CPU entry it positively identifies
+        # the known normalization failure of the recovered 2026-11-09 run.
+        point = dict(name="BM_VdpfEval_Uint_Aes_Blake3/20", real_time=604.0,
+                     cpu_time=604.0, time_unit="ns", work_schema_version=1,
+                     api_calls_per_iteration=2, keys_per_iteration=1,
+                     queries_per_iteration=1, logical_outputs_per_iteration=1,
+                     output_bytes_per_iteration=16)
+        entry, data = self.google([point], library="main", device="cpu")
+        entry["required_work_schema"] = 1
+        entry["status"] = "failed"
+        entry["error"] = ("BM_VdpfEval_Uint_Aes_Blake3/20: new main GPU VDPF point receipt "
+                          "is missing point_hash_bytes_per_iteration")
+        (self.directory / "run.json").write_text(json.dumps({"commands": [entry]}))
+        self.assertEqual(bench.summarize(self.directory), 0)
+        recovered = json.loads((self.directory / "run.json").read_text())["commands"][0]
+        self.assertEqual(recovered["status"], "ok")
+        self.assertIn("known CPU point-hash normalization error", recovered["recovery"])
+        # The same message on a GPU entry is a genuine missing-field rejection
+        # and must stay failed.
+        entry, data = self.google([self.value()], library="main", device="gpu")
+        entry["status"] = "failed"
+        entry["error"] = ("BM_VdpfEval_Uint_ChaCha_Blake3/20: new main GPU VDPF point receipt "
+                          "is missing point_hash_bytes_per_iteration")
+        (self.directory / "run.json").write_text(json.dumps({"commands": [entry]}))
+        self.assertEqual(bench.summarize(self.directory), 1)
+        failed = json.loads((self.directory / "run.json").read_text())["commands"][0]
+        self.assertEqual(failed["status"], "failed")
+
+    def test_summarize_keeps_historical_execution_failures_failed(self):
+        for error in ("KeyboardInterrupt",
+                      "command exited with status 7; see run.log",
+                      "[Errno 2] No such file or directory: 'bench'"):
+            entry, data = self.google([self.value()], library="main", device="cpu")
+            entry["status"] = "failed"
+            entry["error"] = error
+            (self.directory / "run.json").write_text(json.dumps({"commands": [entry]}))
+            self.assertEqual(bench.summarize(self.directory), 1, error)
+            failed = json.loads((self.directory / "run.json").read_text())["commands"][0]
+            self.assertEqual(failed["status"], "failed", error)
+            self.assertEqual(failed["error"], error)
+            self.assertNotIn("recovery", failed)
 
     def test_cpu_native_rate_is_validated_on_cpu_time(self):
         value = dict(name="fss/CPU/DCF-bytes/EvalAll", real_time=127316862.11191118,

@@ -478,12 +478,15 @@ def record(args, name, device, directory, commands):
         started = time.monotonic()
         try:
             execute(command, cwd=source(name), env=env, log=log)
+            entry["process_exit"] = 0
         except (RuntimeError, OSError) as error:
             entry.update(status="failed", error=str(error))
+            entry["process_exit"] = error.returncode if isinstance(error, CommandError) else None
             # Preserve known failures as failures, and still measure other processes.
             print(f"error: {name}/{device}: {error}", file=sys.stderr)
         except BaseException as error:
             entry.update(status="failed", error=str(error) or type(error).__name__)
+            entry["process_exit"] = None
             raise
         finally:
             entry["process_wall_seconds"] = round(time.monotonic() - started, 3)
@@ -585,7 +588,7 @@ def result_rows(entry, data):
             if batch_keys and batch_keys != benchmark_policy.FULL_EVAL_BATCH_KEYS:
                 raise ValueError(f"{benchmark}: executed batch_keys {batch_keys} does not match "
                                  f"the planned {benchmark_policy.FULL_EVAL_BATCH_KEYS} batch keys")
-            if (entry.get("required_work_schema") and "VdpfEval" in benchmark
+            if (entry.get("required_work_schema") and device == "gpu" and "VdpfEval" in benchmark
                     and "EvalAll" not in benchmark and "EvalPoint" not in benchmark
                     and "point_hash_bytes_per_iteration" not in value):
                 raise ValueError(f"{benchmark}: new main GPU VDPF point receipt is missing "
@@ -712,6 +715,13 @@ def result_rows(entry, data):
     return rows, errors
 
 
+# The exact normalization error the pre-process_exit record() flow could write
+# only after execute() returned, so on a main CPU entry this message is itself
+# evidence that the process ran to completion and the failure is the known
+# parser bug. It is a whitelist of one, not a pattern for raw-file inference.
+KNOWN_CPU_POINT_HASH_ERROR = "new main GPU VDPF point receipt is missing point_hash_bytes_per_iteration"
+
+
 def summarize(directory):
     directory = directory.resolve()
     manifest = json.loads((directory / "run.json").read_text())
@@ -723,6 +733,20 @@ def summarize(directory):
             rows.extend(parsed)
             if errors and entry["status"] == "ok":
                 entry.update(status="failed", error="; ".join(errors))
+            elif not errors and entry["status"] == "failed" and (
+                    entry.get("process_exit") == 0
+                    or ("process_exit" not in entry
+                        and entry.get("library") == "main" and entry.get("device") == "cpu"
+                        and str(entry.get("error", "")).endswith(": " + KNOWN_CPU_POINT_HASH_ERROR))):
+                # A zero process exit, or the one known historical parser error
+                # that the old flow wrote only after a completed execution,
+                # means the failure came from normalization; a clean re-parse
+                # recovers it. Every other historical failure stays failed.
+                if "process_exit" not in entry:
+                    entry["recovery"] = ("known CPU point-hash normalization error "
+                                         "after a clean re-parse")
+                entry.update(status="ok")
+                entry.pop("error", None)
         except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
             if entry["status"] == "ok":
                 entry.update(status="failed", error=str(error))
