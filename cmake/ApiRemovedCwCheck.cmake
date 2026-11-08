@@ -4,10 +4,14 @@
 # the compile to fail on the removed Cw overload argument sequences.
 # Run as `cmake -DNVCC=... -DSOURCE=... -DOBJECT=... -DINCLUDE_DIRS=... -DARCH=... -DCASE=... -P`.
 #
+# The deprecated Cw-form entries come back under FSS_ENABLE_V1_COMPAT, so the
+# probes pin the switch to 0: they check that the strict modern API alone
+# rejects every removed argument sequence.
+#
 # This runs nvcc directly instead of nesting a build tool in the test, because
 # the failing compile is meant to fail; see HostOnlyDeviceUseCheck.cmake.
 
-set(flags -std=c++20 -O2 -DNDEBUG)
+set(flags -std=c++20 -O2 -DNDEBUG -DFSS_ENABLE_V1_COMPAT=0)
 if(ARCH MATCHES "^([0-9]+)")
     list(APPEND flags "--generate-code=arch=compute_${CMAKE_MATCH_1},code=[compute_${CMAKE_MATCH_1},sm_${CMAKE_MATCH_1}]")
 endif()

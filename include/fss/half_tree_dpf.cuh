@@ -28,6 +28,7 @@
 #include <fss/hash.cuh>
 #include <fss/util.cuh>
 #include <fss/constraints.cuh>
+#include <fss/compat.cuh>
 #include <cuda/std/span>
 #include <limits>
 
@@ -334,6 +335,25 @@ public:
       cuda::std::span<int4> ys, cudaStream_t stream = 0,
       size_t stride = 0) const
     requires(in_bits < sizeof(size_t) * 8);
+
+#if FSS_ENABLE_V1_COMPAT
+  // Deprecated v1.3.0 aggregate-Cw compatibility entries; see fss/compat.cuh.
+  // Each converts through a compile-time-sized scratch buffer and the current
+  // split-component method above at stride 1. cws has in_bits entries, and the
+  // output correction word leaves through the separate ocw parameter.
+
+  /** Generate correction words in the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, int4, size_t) overload")]]
+  __host__ __device__ void Gen(Cw cws[], int4 &ocw, const int4 s0s[2], In a, int4 b_buf);
+
+  /** Evaluate one point from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, In, size_t) overload")]]
+  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], int4 ocw, In x);
+
+  /** Evaluate the full domain from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
+  void EvalAll(bool b, int4 s0, const Cw cws[], int4 ocw, int4 ys[]);
+#endif  // FSS_ENABLE_V1_COMPAT
 
 private:
   friend class detail::SchemeAccess;
@@ -1573,5 +1593,54 @@ __host__ inline cudaError_t HalfTreeDpf<in_bits, Group, Hash, In>::EvalAllGpuBat
   return cudaErrorNotSupported;
 #endif
 }
+
+#if FSS_ENABLE_V1_COMPAT
+
+// Deprecated v1.3.0 aggregate-Cw entries. Every wrapper copies between the
+// caller's Cw layout and a compile-time-sized split-component scratch buffer,
+// then runs the current public method at stride 1. The old layout kept the
+// output correction word in the caller's separate ocw and the last tree
+// level's LCW_1 in Cw::extra, which is bit in_bits - 1 of the split control.
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+__host__ __device__ inline void HalfTreeDpf<in_bits, Group, Hash, In>::Gen(
+    Cw cws[], int4 &ocw, const int4 s0s[2], In a, int4 b_buf) {
+  int4 seed[in_bits + 1];
+  In tr;
+  Gen(cuda::std::span<int4>(seed, in_bits + 1), tr,
+      cuda::std::span<const int4, 2>(s0s, 2), a, b_buf);
+  for (int i = 0; i < in_bits - 1; ++i) cws[i] = {seed[i], false};
+  cws[in_bits - 1] = {seed[in_bits - 1], ((tr >> (in_bits - 1)) & 1) != 0};
+  ocw = seed[in_bits];
+}
+
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+__host__ __device__ inline int4 HalfTreeDpf<in_bits, Group, Hash, In>::Eval(
+    bool b, int4 s0, const Cw cws[], int4 ocw, In x) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) seed[i] = cws[i].s;
+  seed[in_bits] = ocw;
+  tr |= static_cast<In>(cws[in_bits - 1].extra) << (in_bits - 1);
+  return Eval(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, x);
+}
+
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(
+    bool b, int4 s0, const Cw cws[], int4 ocw, int4 ys[]) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) seed[i] = cws[i].s;
+  seed[in_bits] = ocw;
+  tr |= static_cast<In>(cws[in_bits - 1].extra) << (in_bits - 1);
+  EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys);
+}
+
+#endif  // FSS_ENABLE_V1_COMPAT
 
 }  // namespace fss

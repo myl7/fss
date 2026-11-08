@@ -70,6 +70,13 @@ if(BUILD_TESTING)
     target_link_libraries(api_contract_test GTest::gtest_main fss)
     gtest_discover_tests(api_contract_test)
 
+    # Behavior coverage of the deprecated Cw-form entries. The source builds an
+    # empty suite when FSS_ENABLE_V1_COMPAT is 0, so both switch configurations
+    # link the same target.
+    add_executable(cw_compat_test src/cw_compat_test.cu)
+    target_link_libraries(cw_compat_test GTest::gtest_main fss)
+    gtest_discover_tests(cw_compat_test)
+
     # Every removed public Cw overload argument sequence must fail to compile.
     # One direct-nvcc case per sequence; see cmake/ApiRemovedCwCheck.cmake.
     if(CMAKE_CUDA_COMPILER)

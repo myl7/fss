@@ -52,6 +52,7 @@
 #include <fss/util.cuh>
 #include <fss/constraints.cuh>
 #include <fss/dpf.cuh>
+#include <fss/compat.cuh>
 #include <stdexcept>
 
 namespace fss {
@@ -661,6 +662,36 @@ public:
       cuda::std::span<const In> xs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi,
       cudaStream_t stream = 0, size_t stride = 1) const;
+
+#if FSS_ENABLE_V1_COMPAT
+  // Deprecated v1.3.0 aggregate-Cw compatibility entries; see fss/compat.cuh.
+  // Each converts through a compile-time-sized scratch buffer and the current
+  // split-component method above at stride 1. cws has in_bits entries, and the
+  // output correction word leaves through the separate ocw parameter.
+
+  /**
+   * Generate a key in the deprecated aggregate Cw layout.
+   *
+   * Single-attempt entry from release v1.3.0: on return 1 the outputs are
+   * unspecified and the caller resamples the seeds and retries, exactly as the
+   * current Gen() documents. cs is written directly as the current entry does.
+   */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, In&, cuda::std::span<int4, 4>, cuda::std::span<const int4, 2>, In, int4, size_t) overload")]]
+  __host__ __device__ int Gen(Cw cws[], cuda::std::array<int4, 4> &cs, int4 &ocw,
+      cuda::std::span<const int4, 2> s0s, In a, int4 b_buf);
+
+  /** Evaluate one point from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, cuda::std::span<const int4, 4>, In, int4&, size_t) overload")]]
+  __host__ __device__ cuda::std::array<int4, 4> Eval(bool b, int4 s0,
+      cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs, int4 ocw,
+      In x, int4 &y);
+
+  /** Evaluate the full domain from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, cuda::std::span<const int4, 4>, cuda::std::span<int4>, cuda::std::span<int4, 4>, int, size_t) overload")]]
+  void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws,
+      cuda::std::span<const int4, 4> cs, int4 ocw, cuda::std::span<int4> ys,
+      cuda::std::array<int4, 4> &pi);
+#endif  // FSS_ENABLE_V1_COMPAT
 
 private:
   friend class detail::SchemeAccess;
@@ -2260,5 +2291,64 @@ __host__ inline cudaError_t Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::BatchE
   return cudaErrorNotSupported;
 #endif
 }
+
+#if FSS_ENABLE_V1_COMPAT
+
+// Deprecated v1.3.0 aggregate-Cw entries. Every wrapper copies between the
+// caller's Cw layout and a compile-time-sized split-component scratch buffer,
+// then runs the current public method at stride 1. The old layout holds only
+// the in_bits tree correction words, so a caller span of at least in_bits
+// entries suffices and the output correction word travels through ocw. On a
+// failed single-attempt Gen() the scratch is unspecified and is never read to
+// fabricate outputs; the failure code passes through unchanged.
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+__host__ __device__ inline int Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Gen(
+    Cw cws[], cuda::std::array<int4, 4> &cs, int4 &ocw,
+    cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+  int4 seed[in_bits + 1];
+  In tr;
+  const int res = Gen(cuda::std::span<int4>(seed, in_bits + 1), tr,
+      cuda::std::span<int4, 4>(cs), s0s, a, b_buf);
+  if (res != 0) return res;
+  for (int i = 0; i < in_bits; ++i) cws[i] = {seed[i], ((tr >> i) & 1) != 0};
+  ocw = seed[in_bits];
+  return res;
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+__host__ __device__ inline cuda::std::array<int4, 4> Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Eval(
+    bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+    int4 ocw, In x, int4 &y) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = cws[i].s;
+    tr |= static_cast<In>(cws[i].tr) << i;
+  }
+  seed[in_bits] = ocw;
+  return Eval(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, cs, x, y);
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAll(
+    bool b, int4 s0, cuda::std::span<const Cw> cws, cuda::std::span<const int4, 4> cs,
+    int4 ocw, cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = cws[i].s;
+    tr |= static_cast<In>(cws[i].tr) << i;
+  }
+  seed[in_bits] = ocw;
+  EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, cs, ys, pi);
+}
+
+#endif  // FSS_ENABLE_V1_COMPAT
 
 }  // namespace fss

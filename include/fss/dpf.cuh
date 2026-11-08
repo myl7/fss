@@ -52,6 +52,7 @@
 #include <cuda/std/span>
 #include <limits>
 #include <fss/constraints.cuh>
+#include <fss/compat.cuh>
 
 #include <cstdint>
 #include <stdexcept>
@@ -372,6 +373,24 @@ public:
       cuda::std::span<const int4> cws, cuda::std::span<const In> tr,
       cuda::std::span<int4> ys, cudaStream_t stream = 0, size_t stride = 0) const
     requires(in_bits < sizeof(size_t) * 8);
+
+#if FSS_ENABLE_V1_COMPAT
+  // Deprecated v1.3.0 aggregate-Cw compatibility entries; see fss/compat.cuh.
+  // Each converts through a compile-time-sized scratch buffer and the current
+  // split-component method above at stride 1. cws has in_bits + 1 entries.
+
+  /** Generate correction words in the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, int4, size_t) overload")]]
+  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf);
+
+  /** Evaluate one point from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, In, size_t) overload")]]
+  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
+
+  /** Evaluate the full domain from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
+  void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]);
+#endif  // FSS_ENABLE_V1_COMPAT
 
 private:
   friend class detail::SchemeAccess;
@@ -1569,5 +1588,51 @@ __host__ inline cudaError_t Dpf<in_bits, Group, Prg, In>::EvalAllGpuBatch(
   return cudaErrorNotSupported;
 #endif
 }
+
+#if FSS_ENABLE_V1_COMPAT
+
+// Deprecated v1.3.0 aggregate-Cw entries. Every wrapper copies between the
+// caller's Cw layout and a compile-time-sized split-component scratch buffer,
+// then runs the current public method at stride 1. The scratch copies are the
+// compatibility cost and never enter the core algorithms.
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+__host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Gen(
+    Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
+  int4 seed[in_bits + 1];
+  In tr;
+  Gen(cuda::std::span<int4>(seed, in_bits + 1), tr,
+      cuda::std::span<const int4, 2>(s0s, 2), a, b_buf);
+  for (int i = 0; i < in_bits; ++i) cws[i] = {seed[i], ((tr >> i) & 1) != 0};
+  // The terminal is a plain group value; its unused tr bit is false.
+  cws[in_bits] = {seed[in_bits], false};
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+__host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(
+    bool b, int4 s0, const Cw cws[], In x) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i <= in_bits; ++i) seed[i] = cws[i].s;
+  for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(cws[i].tr) << i;
+  return Eval(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, x);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+inline void Dpf<in_bits, Group, Prg, In>::EvalAll(
+    bool b, int4 s0, const Cw cws[], int4 ys[]) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i <= in_bits; ++i) seed[i] = cws[i].s;
+  for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(cws[i].tr) << i;
+  EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys);
+}
+
+#endif  // FSS_ENABLE_V1_COMPAT
 
 }  // namespace fss

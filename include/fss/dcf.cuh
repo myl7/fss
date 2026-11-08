@@ -55,6 +55,7 @@
 #include <fss/prg.cuh>
 #include <fss/util.cuh>
 #include <fss/constraints.cuh>
+#include <fss/compat.cuh>
 #include <cuda/std/span>
 #include <limits>
 
@@ -398,6 +399,24 @@ public:
       cuda::std::span<const In> tr, cuda::std::span<int4> ys,
       cudaStream_t stream = 0, size_t stride = 0) const
     requires(in_bits < sizeof(size_t) * 8);
+
+#if FSS_ENABLE_V1_COMPAT
+  // Deprecated v1.3.0 aggregate-Cw compatibility entries; see fss/compat.cuh.
+  // Each converts through a compile-time-sized scratch buffer and the current
+  // split-component method above at stride 1. cws has in_bits + 1 entries.
+
+  /** Generate correction words in the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, int4, size_t) overload")]]
+  __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a, int4 b_buf);
+
+  /** Evaluate one point from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, cuda::std::span<const int4>, In, In, size_t) overload")]]
+  __host__ __device__ int4 Eval(bool b, int4 s0, const Cw cws[], In x);
+
+  /** Evaluate the full domain from the deprecated aggregate Cw layout. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
+  void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]);
+#endif  // FSS_ENABLE_V1_COMPAT
 
 private:
   friend class detail::SchemeAccess;
@@ -1837,5 +1856,68 @@ __host__ inline cudaError_t Dcf<in_bits, Group, Prg, In, pred>::EvalAllGpuBatch(
   return cudaErrorNotSupported;
 #endif
 }
+
+#if FSS_ENABLE_V1_COMPAT
+
+// Deprecated v1.3.0 aggregate-Cw entries. Every wrapper copies between the
+// caller's Cw layout and compile-time-sized split-component scratch buffers,
+// then runs the current public method at stride 1. The old layout kept the
+// right-control bit in the LSB of each layer's v; the split form carries it in
+// bit i of tr, and the terminal seed is zero as the current form writes it.
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+__host__ __device__ inline void Dcf<in_bits, Group, Prg, In, pred>::Gen(
+    Cw cws[], const int4 s0s[2], In a, int4 b_buf) {
+  int4 seed[in_bits + 1];
+  int4 value[in_bits + 1];
+  In tr;
+  Gen(cuda::std::span<int4>(seed, in_bits + 1), cuda::std::span<int4>(value, in_bits + 1),
+      tr, cuda::std::span<const int4, 2>(s0s, 2), a, b_buf);
+  for (int i = 0; i < in_bits; ++i) {
+    cws[i] = {seed[i], util::SetLsb(value[i], ((tr >> i) & 1) != 0)};
+  }
+  cws[in_bits] = {int4{0, 0, 0, 0}, value[in_bits]};
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+__host__ __device__ inline int4 Dcf<in_bits, Group, Prg, In, pred>::Eval(
+    bool b, int4 s0, const Cw cws[], In x) {
+  int4 seed[in_bits + 1];
+  int4 value[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = cws[i].s;
+    value[i] = util::SetLsb(cws[i].v, false);
+    tr |= static_cast<In>(util::GetLsb(cws[i].v)) << i;
+  }
+  seed[in_bits] = int4{0, 0, 0, 0};
+  value[in_bits] = cws[in_bits].v;
+  return Eval(b, s0, cuda::std::span<const int4>(seed, in_bits + 1),
+      cuda::std::span<const int4>(value, in_bits + 1), tr, x);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAll(
+    bool b, int4 s0, const Cw cws[], int4 ys[]) {
+  int4 seed[in_bits + 1];
+  int4 value[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = cws[i].s;
+    value[i] = util::SetLsb(cws[i].v, false);
+    tr |= static_cast<In>(util::GetLsb(cws[i].v)) << i;
+  }
+  seed[in_bits] = int4{0, 0, 0, 0};
+  value[in_bits] = cws[in_bits].v;
+  EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1),
+      cuda::std::span<const int4>(value, in_bits + 1), tr, ys);
+}
+
+#endif  // FSS_ENABLE_V1_COMPAT
 
 }  // namespace fss
