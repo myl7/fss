@@ -363,35 +363,75 @@ public:
     requires(in_bits < sizeof(size_t) * 8);
 
 #if FSS_ENABLE_V1_COMPAT
-  // Deprecated v1.3.0 aggregate-Cw compatibility entries; see fss/compat.cuh.
-  // Each converts through a compile-time-sized scratch buffer and the current
-  // split-component method above at stride 1. cws has in_bits + 1 entries.
+  // Deprecated v1.3.0 aggregate-Cw and aggregate-Key compatibility entries; see
+  // fss/compat.cuh. Each converts through a compile-time-sized scratch buffer
+  // and the current split-component method above at stride 1. cws has
+  // in_bits + 1 entries. The Key, ParityTree, and PreprocessedTree aliases
+  // expose compat records under the legacy nested names, while the method
+  // declarations spell the record types so a deprecated name never enters a
+  // member signature. EvalAll() runs sequentially, as the current
+  // split-component default does; the old automatic thread-count split is not
+  // restored.
 
   /** Generate correction words in the deprecated aggregate Cw layout. */
   [[deprecated("use the split-component Gen(cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, size_t) overload")]]
   __host__ __device__ void Gen(Cw cws[], const int4 s0s[2], In a);
 
   /**
-   * Party-tagged parity-tree destination of the deprecated Cw-form Preprocess().
+   * Party-tagged parity-tree view under its deprecated v1.3.0 name.
    * pt.p receives 2^(in_bits + 1) - 1 entries in level order, and pt.b carries
    * the party index the current entry takes as its first parameter.
-   *
-   * Not itself marked deprecated: instantiating the scheme already parses this
-   * member's type, and a deprecated parameter type would warn every modern
-   * caller. The deprecated Preprocess() below is the entry that warns.
    */
-  struct ParityTree {
-    bool *p;  ///< Borrowed parity-tree storage, 2^(in_bits + 1) - 1 entries.
-    bool b;  ///< Party index of the shares written into p.
-  };
+  using ParityTree [[deprecated("use ParityTreeView, which drops the party tag")]] =
+      compat::detail::ParityTreeRecord<GrottoDcf>;
+
+  /**
+   * Deprecated v1.3.0 aggregate key: the Cw array plus the party seed.
+   * The tree payload is queried through the ParityTree and PreprocessedTree
+   * entries below.
+   */
+  using Key [[deprecated("use the split-component Gen/EvalAll/Preprocess with separate cws and tr arrays")]] =
+      compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1>;
+
+  /**
+   * Host-owned preprocessing result under its deprecated v1.3.0 name.
+   * p owns the 2^(in_bits + 1) - 1 parity entries, b records the party index,
+   * and view() borrows both.
+   */
+  using PreprocessedTree [[deprecated("use PreprocessOwned() and OwnedParityTree::View()")]] =
+      compat::detail::PreprocessedTreeRecord<GrottoDcf>;
 
   /** Build a parity tree in the deprecated party-tagged ParityTree destination. */
   [[deprecated("use the split-component Preprocess(bool, int4, cuda::std::span<const int4>, In, bool*, int, size_t) overload")]]
-  void Preprocess(ParityTree &pt, int4 s0, const Cw cws[]);
+  void Preprocess(compat::detail::ParityTreeRecord<GrottoDcf> &pt, int4 s0, const Cw cws[]);
+
+  /** Generate a deprecated aggregate-Key pair from two initial seeds. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, size_t) overload")]]
+  __host__ __device__ void Gen(compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &k0,
+      compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &k1,
+      cuda::std::span<const int4, 2> s0s, In a);
+
+  /** Build a deprecated host-owned PreprocessedTree from the deprecated aggregate Key. */
+  [[deprecated("use the split-component PreprocessOwned(bool, int4, cuda::std::span<const int4>, In, int, size_t)")]]
+  compat::detail::PreprocessedTreeRecord<GrottoDcf> Preprocess(
+      bool b, const compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &key);
+
+  /** Prefix-parity query on a deprecated party-tagged ParityTree. */
+  [[deprecated("use the ParityTreeView Eval(ParityTreeView, In) overload")]]
+  __host__ __device__ static bool Eval(const compat::detail::ParityTreeRecord<GrottoDcf> &pt, In x);
+
+  /** Prefix-parity query on a deprecated host-owned PreprocessedTree. */
+  [[deprecated("use OwnedParityTree::View() and the ParityTreeView Eval(ParityTreeView, In) overload")]]
+  static bool Eval(const compat::detail::PreprocessedTreeRecord<GrottoDcf> &tree, In x);
 
   /** Evaluate the full domain from the deprecated aggregate Cw layout. */
   [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, bool[], int, size_t) overload")]]
   void EvalAll(bool b, int4 s0, const Cw cws[], bool ys[]);
+
+  /** Evaluate the full domain from the deprecated aggregate Key. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, bool[], int, size_t) overload")]]
+  void EvalAll(bool b, const compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &key,
+      cuda::std::span<bool> ys);
 #endif  // FSS_ENABLE_V1_COMPAT
 
 private:
@@ -1195,12 +1235,71 @@ __host__ __device__ inline void GrottoDcf<in_bits, Prg, In>::Gen(
 template <int in_bits, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
 inline void GrottoDcf<in_bits, Prg, In>::Preprocess(
-    ParityTree &pt, int4 s0, const Cw cws[]) {
+    compat::detail::ParityTreeRecord<GrottoDcf> &pt, int4 s0, const Cw cws[]) {
   int4 seed[in_bits + 1];
   In tr = 0;
   for (int i = 0; i <= in_bits; ++i) seed[i] = cws[i].s;
   for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(cws[i].tr) << i;
   Preprocess(pt.b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, pt.p);
+}
+
+// Deprecated v1.3.0 aggregate-Key entries. Same Cw conversion as above; the
+// Key entries additionally spread the shared correction words over both keys
+// and take the party seeds from s0s. The owner allocates exactly the parity
+// tree and fills it through the current caller-owned Preprocess; no hidden
+// device copy exists. The old Eval() never read the party tag, so the query
+// goes through ParityTreeView directly.
+template <int in_bits, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
+__host__ __device__ inline void GrottoDcf<in_bits, Prg, In>::Gen(
+    compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &k0,
+    compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &k1,
+    cuda::std::span<const int4, 2> s0s, In a) {
+  int4 seed[in_bits + 1];
+  In tr;
+  Gen(cuda::std::span<int4>(seed, in_bits + 1), tr, s0s, a);
+  for (int i = 0; i < in_bits; ++i) {
+    const Cw layer = {seed[i], ((tr >> i) & 1) != 0};
+    k0.cws[i] = layer;
+    k1.cws[i] = layer;
+  }
+  const Cw terminal = {seed[in_bits], false};
+  k0.cws[in_bits] = terminal;
+  k1.cws[in_bits] = terminal;
+  k0.s0 = s0s[0];
+  k1.s0 = s0s[1];
+}
+
+template <int in_bits, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
+inline compat::detail::PreprocessedTreeRecord<GrottoDcf<in_bits, Prg, In>>
+GrottoDcf<in_bits, Prg, In>::Preprocess(
+    bool b, const compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &key) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i <= in_bits; ++i) seed[i] = key.cws[i].s;
+  for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(key.cws[i].tr) << i;
+
+  compat::detail::PreprocessedTreeRecord<GrottoDcf> pt;
+  constexpr size_t kTreeSize = (size_t{2} << in_bits) - 1;
+  pt.p = std::make_unique<bool[]>(kTreeSize);
+  pt.b = b;
+  Preprocess(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, pt.p.get());
+  return pt;
+}
+
+template <int in_bits, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
+__host__ __device__ inline bool GrottoDcf<in_bits, Prg, In>::Eval(
+    const compat::detail::ParityTreeRecord<GrottoDcf> &pt, In x) {
+  return Eval(ParityTreeView{pt.p}, x);
+}
+
+template <int in_bits, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
+inline bool GrottoDcf<in_bits, Prg, In>::Eval(
+    const compat::detail::PreprocessedTreeRecord<GrottoDcf> &tree, In x) {
+  return Eval(ParityTreeView{tree.p.get()}, x);
 }
 
 template <int in_bits, typename Prg, typename In>
@@ -1212,6 +1311,18 @@ inline void GrottoDcf<in_bits, Prg, In>::EvalAll(
   for (int i = 0; i <= in_bits; ++i) seed[i] = cws[i].s;
   for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(cws[i].tr) << i;
   EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys);
+}
+
+template <int in_bits, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> && Prgable<Prg, 2>)
+inline void GrottoDcf<in_bits, Prg, In>::EvalAll(
+    bool b, const compat::detail::CwsKeyRecord<GrottoDcf, Cw, in_bits + 1> &key,
+    cuda::std::span<bool> ys) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i <= in_bits; ++i) seed[i] = key.cws[i].s;
+  for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(key.cws[i].tr) << i;
+  EvalAll(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys.data());
 }
 
 #endif  // FSS_ENABLE_V1_COMPAT

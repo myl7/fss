@@ -53,6 +53,7 @@
 #include <fss/dpf.cuh>
 #include <fss/cuckoo_hash.cuh>
 #include <fss/constraints.cuh>
+#include <fss/compat.cuh>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -295,6 +296,45 @@ public:
       cuda::std::span<const Cw> cws, cuda::std::span<int4> ys,
       cudaStream_t stream = 0) const
     requires(in_bits <= 38 && in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8);
+
+#if FSS_ENABLE_V1_COMPAT
+  // Deprecated v1.3.0 names and aggregate-Key entries; see fss/compat.cuh.
+  // The Key type itself stays the current public storage type; only the entry
+  // points and constant names below are deprecated. The constants alias the
+  // current spellings with the legacy types and values; b_size is expressible
+  // only when kBucketSize fits an int, and referencing it under a wider
+  // configuration is a compile-time error, exactly as the legacy domain was.
+  // The aggregate-Key Gen() of the release, with its automatic retry, is not
+  // restored, and the legacy public InnerDpf alias is not restored either: the
+  // old name also covered the removed par_depth template tail, and a
+  // legacy-domain-only alias cannot be provided without breaking wide-domain
+  // instantiation under the default switch.
+
+  /// Deprecated v1.3.0 allocated bucket count, under its legacy name and int type.
+  [[deprecated("use kBucketCount")]]
+  static constexpr int m = kBucketCount;
+
+  /// Deprecated v1.3.0 input domain size, under its legacy name.
+  [[deprecated("use kDomainSize")]]
+  static constexpr __uint128_t n = kDomainSize;
+
+  /// Deprecated v1.3.0 bucket size, under its legacy name and int type. The
+  /// domain check runs only where this constant is referenced: a
+  /// configuration whose kBucketSize does not fit an int fails there, while
+  /// wide modern configurations that never use the legacy name compile.
+  [[deprecated("use kBucketSize")]]
+  static constexpr int b_size = compat::detail::LegacyBucketSize<kBucketSize>();
+
+  /** Batch-evaluate the deprecated aggregate-Key form. */
+  [[deprecated("use the component BatchEval(bool, int4, __uint128_t, cuda::std::span<const int4, kBucketCount>, cuda::std::span<const Cw>, cuda::std::span<const In>, cuda::std::span<int4>)")]]
+  void BatchEval(bool b, const Key &key,
+      cuda::std::span<const In> xs, cuda::std::span<int4> ys);
+
+  /** Evaluate the full domain from the deprecated aggregate-Key form. */
+  [[deprecated("use the component EvalAll(bool, int4, __uint128_t, cuda::std::span<const int4, kBucketCount>, cuda::std::span<const Cw>, cuda::std::span<int4>, int)")]]
+  void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys)
+    requires(in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8);
+#endif  // FSS_ENABLE_V1_COMPAT
 
 private:
   friend class detail::SchemeAccess;
@@ -756,5 +796,58 @@ __host__ inline cudaError_t Dmpf<in_bits, max_points, bucket_bits, Group, Prg, P
   return cudaErrorNotSupported;
 #endif
 }
+
+#if FSS_ENABLE_V1_COMPAT
+
+// Deprecated v1.3.0 aggregate-Key entries. Every wrapper gathers the per-bucket
+// aggregate keys into the contiguous component arrays the current public
+// entries consume; the gather is the compatibility cost. EvalAll() runs
+// sequentially, as the current component default does.
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In,
+    int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && Permutable<Prp>)
+inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::BatchEval(
+    bool b, const Key &key, cuda::std::span<const In> xs, cuda::std::span<int4> ys) {
+  std::vector<int4> s0s(kBucketCount);
+  std::vector<Cw> cws(size_t{kBucketCount} * (bucket_bits + 1));
+  for (int i = 0; i < kBucketCount; ++i) {
+    s0s[i] = key.bks[i].s0;
+    for (int l = 0; l <= bucket_bits; ++l)
+      cws[static_cast<size_t>(i) * (bucket_bits + 1) + l] = key.bks[i].cws[l];
+  }
+  BatchEval(b, key.sigma, key.b_size_rt,
+      cuda::std::span<const int4, kBucketCount>(s0s.data(), kBucketCount),
+      cuda::std::span<const Cw>(cws.data(), cws.size()), xs, ys);
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename Prp, typename In,
+    int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && Permutable<Prp>)
+inline void Dmpf<in_bits, max_points, bucket_bits, Group, Prg, Prp, In, ch_lambda>::EvalAll(
+    bool b, const Key &key, cuda::std::span<int4> ys)
+  requires(in_bits < sizeof(size_t) * 8 && bucket_bits < sizeof(size_t) * 8) {
+  std::vector<int4> s0s(kBucketCount);
+  std::vector<Cw> cws(size_t{kBucketCount} * (bucket_bits + 1));
+  for (int i = 0; i < kBucketCount; ++i) {
+    s0s[i] = key.bks[i].s0;
+    for (int l = 0; l <= bucket_bits; ++l)
+      cws[static_cast<size_t>(i) * (bucket_bits + 1) + l] = key.bks[i].cws[l];
+  }
+  EvalAll(b, key.sigma, key.b_size_rt,
+      cuda::std::span<const int4, kBucketCount>(s0s.data(), kBucketCount),
+      cuda::std::span<const Cw>(cws.data(), cws.size()), ys);
+}
+
+#endif  // FSS_ENABLE_V1_COMPAT
 
 }  // namespace fss

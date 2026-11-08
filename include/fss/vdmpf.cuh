@@ -57,6 +57,7 @@
 #include <fss/vdpf.cuh>
 #include <fss/cuckoo_hash.cuh>
 #include <fss/constraints.cuh>
+#include <fss/compat.cuh>
 
 #include <cstdint>
 #include <limits>
@@ -660,6 +661,71 @@ public:
       cuda::std::span<const int4> s0s, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4> cs, cuda::std::span<const In> xs,
       cuda::std::span<int4> ys, cuda::std::span<int4, 4> pi, cudaStream_t stream = 0) const;
+
+#if FSS_ENABLE_V1_COMPAT
+  // Deprecated v1.3.0 names and aggregate-Key entries; see fss/compat.cuh.
+  // The Key and BucketKey types stay the current public storage types, so the
+  // restored entries read and write the current bucket layout; the old
+  // per-bucket aggregate layout, its separate ocw, and its cs array assignment
+  // are not restored. The constants alias the current spellings with the
+  // legacy types and values; b_size is expressible only when kBucketSize fits
+  // an int, and referencing it under a wider configuration is a compile-time
+  // error, exactly as the legacy domain was. The mutable-seed Gen() with the
+  // retry flag of the release is not restored; the entry below is the
+  // release's const-seed single-attempt form. Status 2 of the current Gen(),
+  // an inner-Gen failure, maps to the legacy failure code 1. The legacy public
+  // InnerVdpf alias is not restored: a legacy-domain-only alias cannot be
+  // provided without breaking wide-domain instantiation under the default
+  // switch.
+
+  /// Deprecated v1.3.0 allocated bucket count, under its legacy name and int type.
+  [[deprecated("use kBucketCount")]]
+  static constexpr int m = kBucketCount;
+
+  /// Deprecated v1.3.0 input domain size, under its legacy name.
+  [[deprecated("use kDomainSize")]]
+  static constexpr __uint128_t n = kDomainSize;
+
+  /// Deprecated v1.3.0 bucket size, under its legacy name and int type. The
+  /// domain check runs only where this constant is referenced: a
+  /// configuration whose kBucketSize does not fit an int fails there, while
+  /// wide modern configurations that never use the legacy name compile.
+  [[deprecated("use kBucketSize")]]
+  static constexpr int b_size = compat::detail::LegacyBucketSize<kBucketSize>();
+
+  /// Deprecated v1.3.0 leaf count of one Merkle-fold chunk.
+  [[deprecated("the constant described the removed chunked-fold implementation and makes no cross-version proof promise")]]
+  static constexpr int kMerkleChunkSize = 256;
+
+  /**
+   * Generate a deprecated aggregate-Key pair in one attempt.
+   *
+   * The release's const-seed single-attempt form: sigma and s0s are inputs only
+   * and are never written back, a failed attempt returns 1 without writing
+   * keys, and the current protocol's outputs fill the current Key layout. The
+   * old retrying overload is not restored.
+   */
+  [[deprecated("use the component Gen(cuda::std::span<Cw>, cuda::std::span<int4>, int&, __uint128_t&, int4, cuda::std::span<const int4>, cuda::std::span<const In>, cuda::std::span<const int4>, int, int)")]]
+  int Gen(Key &k0, Key &k1, int4 sigma,
+      cuda::std::span<const cuda::std::array<int4, 2>, kBucketCount> s0s,
+      std::span<const In> as, std::span<const int4> b_bufs, int t, int ch_retry = 1000);
+
+  /** Batch-evaluate with a chain proof from the deprecated aggregate-Key form. */
+  [[deprecated("use the component BatchEval(bool, int4, __uint128_t, cuda::std::span<const int4, kBucketCount>, cuda::std::span<const Cw>, cuda::std::span<const int4>, cuda::std::span<const In>, cuda::std::span<int4>, cuda::std::span<int4, 4>)")]]
+  void BatchEval(bool b, const Key &key, std::span<const In> xs, std::span<int4> ys,
+      cuda::std::array<int4, 4> &pi);
+
+  /** Batch-evaluate with a chain proof from the deprecated aggregate-Key form, fixed-extent spans. */
+  template <size_t x_extent, size_t y_extent>
+  [[deprecated("use the component BatchEval(bool, int4, __uint128_t, cuda::std::span<const int4, kBucketCount>, cuda::std::span<const Cw>, cuda::std::span<const int4>, cuda::std::span<const In>, cuda::std::span<int4>, cuda::std::span<int4, 4>)")]]
+  void BatchEval(bool b, const Key &key, cuda::std::span<const In, x_extent> xs,
+      cuda::std::span<int4, y_extent> ys, cuda::std::array<int4, 4> &pi);
+
+  /** Batch-evaluate with a Merkle proof from the deprecated aggregate-Key form. */
+  [[deprecated("use the component BatchEvalMerkle(bool, int4, __uint128_t, cuda::std::span<const int4, kBucketCount>, cuda::std::span<const Cw>, cuda::std::span<const int4>, cuda::std::span<const In>, cuda::std::span<int4>, cuda::std::span<int4, 4>)")]]
+  void BatchEvalMerkle(bool b, const Key &key, cuda::std::span<const In> xs,
+      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi);
+#endif  // FSS_ENABLE_V1_COMPAT
 
 private:
   friend class detail::SchemeAccess;
@@ -2260,5 +2326,150 @@ __host__ inline cudaError_t Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, 
   return cudaErrorNotSupported;
 #endif
 }
+
+#if FSS_ENABLE_V1_COMPAT
+
+// Deprecated v1.3.0 aggregate-Key entries. Gen() rearranges the legacy
+// bucket-major seed pairs into the current party-major flat layout, runs the
+// current public single-attempt Gen(), and, only on success, spreads the
+// shared correction words and correction seeds over the current Key layout
+// with each party's seeds. A failed attempt writes no key fields and returns
+// the legacy failure code; the half-written history and retry write-back of
+// the release are not reproduced. The evaluation entries gather the same
+// component arrays from the Key and call the current public entries, so the
+// proofs follow the current protocol.
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline int Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::Gen(
+    Key &k0, Key &k1, int4 sigma,
+    cuda::std::span<const cuda::std::array<int4, 2>, kBucketCount> s0s,
+    std::span<const In> as, std::span<const int4> b_bufs, int t, int ch_retry) {
+  std::vector<int4> seeds(2 * kBucketCount);
+  for (int i = 0; i < kBucketCount; ++i) {
+    seeds[i] = s0s[i][0];
+    seeds[kBucketCount + i] = s0s[i][1];
+  }
+  std::vector<Cw> cws(size_t{kBucketCount} * (bucket_bits + 1));
+  std::vector<int4> cs(size_t{kBucketCount} * 4);
+  int m_rt;
+  __uint128_t b_size_rt;
+  const int res = Gen(cuda::std::span<Cw>(cws.data(), cws.size()),
+      cuda::std::span<int4>(cs.data(), cs.size()), m_rt, b_size_rt, sigma,
+      cuda::std::span<const int4>(seeds.data(), seeds.size()),
+      cuda::std::span<const In>(as.data(), as.size()),
+      cuda::std::span<const int4>(b_bufs.data(), b_bufs.size()), t, ch_retry);
+  if (res != 0) return 1;
+
+  k0.sigma = sigma;
+  k1.sigma = sigma;
+  k0.m_rt = m_rt;
+  k1.m_rt = m_rt;
+  k0.b_size_rt = b_size_rt;
+  k1.b_size_rt = b_size_rt;
+  for (int i = 0; i < kBucketCount; ++i) {
+    for (int l = 0; l <= bucket_bits; ++l) {
+      const Cw layer = cws[static_cast<size_t>(i) * (bucket_bits + 1) + l];
+      k0.bks[i].cws[l] = layer;
+      k1.bks[i].cws[l] = layer;
+    }
+    for (int j = 0; j < 4; ++j) {
+      const int4 seed_block = cs[4 * i + j];
+      k0.bks[i].cs[j] = seed_block;
+      k1.bks[i].cs[j] = seed_block;
+    }
+    k0.bks[i].s0 = seeds[i];
+    k1.bks[i].s0 = seeds[kBucketCount + i];
+  }
+  return 0;
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::BatchEval(
+    bool b, const Key &key, std::span<const In> xs, std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+  std::vector<int4> s0s(kBucketCount);
+  std::vector<Cw> cws(size_t{kBucketCount} * (bucket_bits + 1));
+  std::vector<int4> cs(size_t{kBucketCount} * 4);
+  for (int i = 0; i < kBucketCount; ++i) {
+    s0s[i] = key.bks[i].s0;
+    for (int l = 0; l <= bucket_bits; ++l) cws[static_cast<size_t>(i) * (bucket_bits + 1) + l] = key.bks[i].cws[l];
+    for (int j = 0; j < 4; ++j) cs[4 * i + j] = key.bks[i].cs[j];
+  }
+  BatchEval(b, key.sigma, key.b_size_rt,
+      cuda::std::span<const int4, kBucketCount>(s0s.data(), kBucketCount),
+      cuda::std::span<const Cw>(cws.data(), cws.size()),
+      cuda::std::span<const int4>(cs.data(), cs.size()),
+      cuda::std::span<const In>(xs.data(), xs.size()),
+      cuda::std::span<int4>(ys.data(), ys.size()), cuda::std::span<int4, 4>(pi));
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+template <size_t x_extent, size_t y_extent>
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::BatchEval(
+    bool b, const Key &key, cuda::std::span<const In, x_extent> xs,
+    cuda::std::span<int4, y_extent> ys, cuda::std::array<int4, 4> &pi) {
+  std::vector<int4> s0s(kBucketCount);
+  std::vector<Cw> cws(size_t{kBucketCount} * (bucket_bits + 1));
+  std::vector<int4> cs(size_t{kBucketCount} * 4);
+  for (int i = 0; i < kBucketCount; ++i) {
+    s0s[i] = key.bks[i].s0;
+    for (int l = 0; l <= bucket_bits; ++l) cws[static_cast<size_t>(i) * (bucket_bits + 1) + l] = key.bks[i].cws[l];
+    for (int j = 0; j < 4; ++j) cs[4 * i + j] = key.bks[i].cs[j];
+  }
+  BatchEval(b, key.sigma, key.b_size_rt,
+      cuda::std::span<const int4, kBucketCount>(s0s.data(), kBucketCount),
+      cuda::std::span<const Cw>(cws.data(), cws.size()),
+      cuda::std::span<const int4>(cs.data(), cs.size()),
+      cuda::std::span<const In>(xs.data(), xs.size()),
+      cuda::std::span<int4>(ys.data(), ys.size()), cuda::std::span<int4, 4>(pi));
+}
+
+template <int in_bits, int max_points, int bucket_bits, typename Group, typename Prg, typename XorHash, typename Hash,
+    typename Prp, typename In, int ch_lambda>
+  requires(ValidForInputBits<In, in_bits> && in_bits <= 126 &&
+      max_points >= 30 && ch_lambda >= 0 && 1 <= bucket_bits && bucket_bits <= 127 &&
+      cuckoo_hash::ChBucket(max_points, ch_lambda) > 0 &&
+      (((__uint128_t{3} << in_bits) + cuckoo_hash::ChBucket(max_points, ch_lambda) - 1) /
+          cuckoo_hash::ChBucket(max_points, ch_lambda)) <= (__uint128_t{1} << bucket_bits) &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash> && Permutable<Prp>)
+inline void Vdmpf<in_bits, max_points, bucket_bits, Group, Prg, XorHash, Hash, Prp, In, ch_lambda>::BatchEvalMerkle(
+    bool b, const Key &key, cuda::std::span<const In> xs, cuda::std::span<int4> ys,
+    cuda::std::array<int4, 4> &pi) {
+  std::vector<int4> s0s(kBucketCount);
+  std::vector<Cw> cws(size_t{kBucketCount} * (bucket_bits + 1));
+  std::vector<int4> cs(size_t{kBucketCount} * 4);
+  for (int i = 0; i < kBucketCount; ++i) {
+    s0s[i] = key.bks[i].s0;
+    for (int l = 0; l <= bucket_bits; ++l) cws[static_cast<size_t>(i) * (bucket_bits + 1) + l] = key.bks[i].cws[l];
+    for (int j = 0; j < 4; ++j) cs[4 * i + j] = key.bks[i].cs[j];
+  }
+  BatchEvalMerkle(b, key.sigma, key.b_size_rt,
+      cuda::std::span<const int4, kBucketCount>(s0s.data(), kBucketCount),
+      cuda::std::span<const Cw>(cws.data(), cws.size()),
+      cuda::std::span<const int4>(cs.data(), cs.size()),
+      cuda::std::span<const In>(xs.data(), xs.size()),
+      cuda::std::span<int4>(ys.data(), ys.size()), cuda::std::span<int4, 4>(pi));
+}
+
+#endif  // FSS_ENABLE_V1_COMPAT
 
 }  // namespace fss

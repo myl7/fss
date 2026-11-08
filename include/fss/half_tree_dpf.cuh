@@ -353,6 +353,32 @@ public:
   /** Evaluate the full domain from the deprecated aggregate Cw layout. */
   [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ocw, int4 ys[]);
+
+  // Deprecated v1.3.0 aggregate-Key entries; see fss/compat.cuh. The Key alias
+  // exposes the compat record under the legacy nested name, while the method
+  // declarations spell the record type so a deprecated name never enters a
+  // member signature. EvalAll() runs sequentially, as the current
+  // split-component default does; the old automatic thread-count split is not
+  // restored.
+
+  /** Deprecated v1.3.0 aggregate key: the Cw array, the output correction word, and the party seed. */
+  using Key [[deprecated("use the split-component Gen/Eval/EvalAll with separate cws and tr arrays")]] =
+      compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits>;
+
+  /** Generate a deprecated aggregate-Key pair from two initial seeds. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, int4, size_t) overload")]]
+  __host__ __device__ void Gen(compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &k0,
+      compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &k1,
+      cuda::std::span<const int4, 2> s0s, In a, int4 b_buf);
+
+  /** Evaluate one point from the deprecated aggregate Key. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, In, size_t) overload")]]
+  __host__ __device__ int4 Eval(bool b, const compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &key, In x);
+
+  /** Evaluate the full domain from the deprecated aggregate Key. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
+  void EvalAll(bool b, const compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &key,
+      cuda::std::span<int4> ys);
 #endif  // FSS_ENABLE_V1_COMPAT
 
 private:
@@ -1639,6 +1665,60 @@ inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(
   seed[in_bits] = ocw;
   tr |= static_cast<In>(cws[in_bits - 1].extra) << (in_bits - 1);
   EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys);
+}
+
+// Deprecated v1.3.0 aggregate-Key entries. Same conversion as the Cw entries
+// above; the Key entries additionally spread the shared correction words and
+// output correction word over both keys and take the party seeds from s0s.
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+__host__ __device__ inline void HalfTreeDpf<in_bits, Group, Hash, In>::Gen(
+    compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &k0,
+    compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &k1,
+    cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+  int4 seed[in_bits + 1];
+  In tr;
+  Gen(cuda::std::span<int4>(seed, in_bits + 1), tr, s0s, a, b_buf);
+  for (int i = 0; i < in_bits - 1; ++i) {
+    const Cw layer = {seed[i], false};
+    k0.cws[i] = layer;
+    k1.cws[i] = layer;
+  }
+  const Cw last = {seed[in_bits - 1], ((tr >> (in_bits - 1)) & 1) != 0};
+  k0.cws[in_bits - 1] = last;
+  k1.cws[in_bits - 1] = last;
+  k0.ocw = seed[in_bits];
+  k1.ocw = seed[in_bits];
+  k0.s0 = s0s[0];
+  k1.s0 = s0s[1];
+}
+
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+__host__ __device__ inline int4 HalfTreeDpf<in_bits, Group, Hash, In>::Eval(
+    bool b, const compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &key, In x) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) seed[i] = key.cws[i].s;
+  seed[in_bits] = key.ocw;
+  tr |= static_cast<In>(key.cws[in_bits - 1].extra) << (in_bits - 1);
+  return Eval(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, x);
+}
+
+template <int in_bits, typename Group, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && CcrHashable<Hash>)
+inline void HalfTreeDpf<in_bits, Group, Hash, In>::EvalAll(
+    bool b, const compat::detail::OcwKeyRecord<HalfTreeDpf, Cw, in_bits> &key,
+    cuda::std::span<int4> ys) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) seed[i] = key.cws[i].s;
+  seed[in_bits] = key.ocw;
+  tr |= static_cast<In>(key.cws[in_bits - 1].extra) << (in_bits - 1);
+  EvalAll(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys.data());
 }
 
 #endif  // FSS_ENABLE_V1_COMPAT

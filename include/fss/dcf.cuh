@@ -416,6 +416,32 @@ public:
   /** Evaluate the full domain from the deprecated aggregate Cw layout. */
   [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]);
+
+  // Deprecated v1.3.0 aggregate-Key entries; see fss/compat.cuh. The Key alias
+  // exposes the compat record under the legacy nested name, while the method
+  // declarations spell the record type so a deprecated name never enters a
+  // member signature. EvalAll() runs sequentially, as the current
+  // split-component default does; the old automatic thread-count split is not
+  // restored.
+
+  /** Deprecated v1.3.0 aggregate key: the Cw array plus the party seed. */
+  using Key [[deprecated("use the split-component Gen/Eval/EvalAll with separate cws, vws, and tr arrays")]] =
+      compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1>;
+
+  /** Generate a deprecated aggregate-Key pair from two initial seeds. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, int4, size_t) overload")]]
+  __host__ __device__ void Gen(compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &k0,
+      compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &k1,
+      cuda::std::span<const int4, 2> s0s, In a, int4 b_buf);
+
+  /** Evaluate one point from the deprecated aggregate Key. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, cuda::std::span<const int4>, In, In, size_t) overload")]]
+  __host__ __device__ int4 Eval(bool b, const compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &key, In x);
+
+  /** Evaluate the full domain from the deprecated aggregate Key. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
+  void EvalAll(bool b, const compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &key,
+      cuda::std::span<int4> ys);
 #endif  // FSS_ENABLE_V1_COMPAT
 
 private:
@@ -1916,6 +1942,72 @@ inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAll(
   value[in_bits] = cws[in_bits].v;
   EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1),
       cuda::std::span<const int4>(value, in_bits + 1), tr, ys);
+}
+
+// Deprecated v1.3.0 aggregate-Key entries. Same conversion as the Cw entries
+// above; the Key entries additionally spread the shared correction words over
+// both keys and take the party seeds from s0s.
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+__host__ __device__ inline void Dcf<in_bits, Group, Prg, In, pred>::Gen(
+    compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &k0,
+    compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &k1,
+    cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+  int4 seed[in_bits + 1];
+  int4 value[in_bits + 1];
+  In tr;
+  Gen(cuda::std::span<int4>(seed, in_bits + 1), cuda::std::span<int4>(value, in_bits + 1),
+      tr, s0s, a, b_buf);
+  for (int i = 0; i < in_bits; ++i) {
+    const Cw layer = {seed[i], util::SetLsb(value[i], ((tr >> i) & 1) != 0)};
+    k0.cws[i] = layer;
+    k1.cws[i] = layer;
+  }
+  const Cw terminal = {int4{0, 0, 0, 0}, value[in_bits]};
+  k0.cws[in_bits] = terminal;
+  k1.cws[in_bits] = terminal;
+  k0.s0 = s0s[0];
+  k1.s0 = s0s[1];
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+__host__ __device__ inline int4 Dcf<in_bits, Group, Prg, In, pred>::Eval(
+    bool b, const compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &key, In x) {
+  int4 seed[in_bits + 1];
+  int4 value[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = key.cws[i].s;
+    value[i] = util::SetLsb(key.cws[i].v, false);
+    tr |= static_cast<In>(util::GetLsb(key.cws[i].v)) << i;
+  }
+  seed[in_bits] = int4{0, 0, 0, 0};
+  value[in_bits] = key.cws[in_bits].v;
+  return Eval(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1),
+      cuda::std::span<const int4>(value, in_bits + 1), tr, x);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 4>)
+inline void Dcf<in_bits, Group, Prg, In, pred>::EvalAll(
+    bool b, const compat::detail::CwsKeyRecord<Dcf, Cw, in_bits + 1> &key,
+    cuda::std::span<int4> ys) {
+  int4 seed[in_bits + 1];
+  int4 value[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = key.cws[i].s;
+    value[i] = util::SetLsb(key.cws[i].v, false);
+    tr |= static_cast<In>(util::GetLsb(key.cws[i].v)) << i;
+  }
+  seed[in_bits] = int4{0, 0, 0, 0};
+  value[in_bits] = key.cws[in_bits].v;
+  EvalAll(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1),
+      cuda::std::span<const int4>(value, in_bits + 1), tr, ys.data());
 }
 
 #endif  // FSS_ENABLE_V1_COMPAT

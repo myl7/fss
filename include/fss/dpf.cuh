@@ -137,6 +137,13 @@ public:
   struct Key {
     Cw cws[in_bits + 1];  ///< Tree correction words followed by the output correction word.
     int4 s0;  ///< This party's initial seed.
+#if FSS_ENABLE_V1_COMPAT
+    /// Deprecated v1.3.0 default-template parallel split depth; see fss/compat.cuh.
+    /// The truth value is the old default template argument; explicit old template
+    /// configurations are not represented by the current class.
+    [[deprecated("the par_depth template parameter is gone; pass par_depth to EvalAll() instead")]]
+    static constexpr int kParDepth = -1;
+#endif  // FSS_ENABLE_V1_COMPAT
   };
 
   /// Seed-component count Gen() writes at stride 1: in_bits layers plus the terminal.
@@ -390,6 +397,25 @@ public:
   /** Evaluate the full domain from the deprecated aggregate Cw layout. */
   [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
   void EvalAll(bool b, int4 s0, const Cw cws[], int4 ys[]);
+
+  // Deprecated v1.3.0 aggregate-Key entries. They keep the current public Key
+  // type, which the modern bucket APIs still use, and convert through the same
+  // compile-time scratch buffer as the Cw entries above. EvalAll() runs
+  // sequentially, as the current split-component default does; the old
+  // automatic thread-count split is not restored.
+
+  /** Generate a deprecated aggregate-Key pair from two initial seeds. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, In&, cuda::std::span<const int4, 2>, In, int4, size_t) overload")]]
+  __host__ __device__ void Gen(Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s,
+      In a, int4 b_buf);
+
+  /** Evaluate one point from the deprecated aggregate Key. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, In, size_t) overload")]]
+  __host__ __device__ int4 Eval(bool b, const Key &key, In x);
+
+  /** Evaluate the full domain from the deprecated aggregate Key. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, int4[], int, size_t) overload")]]
+  void EvalAll(bool b, const Key &key, cuda::std::span<int4> ys);
 #endif  // FSS_ENABLE_V1_COMPAT
 
 private:
@@ -1631,6 +1657,53 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalAll(
   for (int i = 0; i <= in_bits; ++i) seed[i] = cws[i].s;
   for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(cws[i].tr) << i;
   EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys);
+}
+
+// Deprecated v1.3.0 aggregate-Key entries. Same conversion as the Cw entries
+// above; the Key entries additionally spread the shared correction words over
+// both keys and take the party seeds from s0s. The bodies spell the current
+// public Key type, which stays undeprecated.
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+__host__ __device__ inline void Dpf<in_bits, Group, Prg, In>::Gen(
+    Key &k0, Key &k1, cuda::std::span<const int4, 2> s0s, In a, int4 b_buf) {
+  int4 seed[in_bits + 1];
+  In tr;
+  Gen(cuda::std::span<int4>(seed, in_bits + 1), tr, s0s, a, b_buf);
+  for (int i = 0; i < in_bits; ++i) {
+    k0.cws[i] = {seed[i], ((tr >> i) & 1) != 0};
+    k1.cws[i] = k0.cws[i];
+  }
+  // The terminal is a plain group value; its unused tr bit is false.
+  k0.cws[in_bits] = {seed[in_bits], false};
+  k1.cws[in_bits] = k0.cws[in_bits];
+  k0.s0 = s0s[0];
+  k1.s0 = s0s[1];
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+__host__ __device__ inline int4 Dpf<in_bits, Group, Prg, In>::Eval(
+    bool b, const Key &key, In x) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i <= in_bits; ++i) seed[i] = key.cws[i].s;
+  for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(key.cws[i].tr) << i;
+  return Eval(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, x);
+}
+
+template <int in_bits, typename Group, typename Prg, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2>)
+inline void Dpf<in_bits, Group, Prg, In>::EvalAll(
+    bool b, const Key &key, cuda::std::span<int4> ys) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i <= in_bits; ++i) seed[i] = key.cws[i].s;
+  for (int i = 0; i < in_bits; ++i) tr |= static_cast<In>(key.cws[i].tr) << i;
+  EvalAll(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, ys.data());
 }
 
 #endif  // FSS_ENABLE_V1_COMPAT

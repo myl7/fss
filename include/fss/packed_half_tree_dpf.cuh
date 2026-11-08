@@ -48,7 +48,7 @@
  * masks, and the leaf conversion is
  * fused into the final expansion so each output block is written once. The
  * level-order node index equals the in-order leaf index the DFS walk produces,
- * so the ys layout is identical. Domains with kDepth <= kTopDepth never fill a
+ * so the ys layout is identical. Domains with kDepth <= kBatchTopDepth never fill a
  * frontier and evaluate one point per block.
  *
  * ## Complexity
@@ -74,6 +74,7 @@
 #include <fss/hash.cuh>
 #include <fss/util.cuh>
 #include <fss/constraints.cuh>
+#include <fss/compat.cuh>
 #include <cuda/std/span>
 #include <limits>
 
@@ -365,6 +366,44 @@ public:
       cudaStream_t stream = 0, size_t stride = 0) const
     requires(kDepth < sizeof(size_t) * 8);
 
+#if FSS_ENABLE_V1_COMPAT
+  // Deprecated v1.3.0 aggregate-Key entries and public constants; see
+  // fss/compat.cuh. The Key alias exposes the compat record under the legacy
+  // nested name, while the method declarations spell the record type so a
+  // deprecated name never enters a member signature. The constants restore the
+  // legacy public names over the renamed private spellings; kTopDepth was a
+  // constant of the old implementation and does not steer the current
+  // scheduling. EvalAll() runs sequentially, as the current split-component
+  // default does; the old automatic thread-count split is not restored.
+
+  /** Deprecated v1.3.0 aggregate key: the Cw array, the packed-output correction word, and the party seed. */
+  using Key [[deprecated("use the split-component Gen/Eval/EvalAll with the packed-output terminal in the cws array")]] =
+      compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth>;
+
+  /** Largest beta that fits in out_bits bits, under its deprecated v1.3.0 name. */
+  [[deprecated("beta must fit in out_bits bits; express the bound from out_bits instead")]]
+  static constexpr uint64_t kBetaMax = out_bits == 64 ? ~0ULL : (1ULL << out_bits) - 1;
+
+  /** Scalar top depth of the deprecated v1.3.0 batched EvalAll() implementation. */
+  [[deprecated("the constant described the removed scalar-top implementation and does not steer the current scheduling")]]
+  static constexpr int kTopDepth = 3;
+
+  /** Generate a deprecated aggregate-Key pair from two initial seeds. */
+  [[deprecated("use the split-component Gen(cuda::std::span<int4>, cuda::std::span<const int4, 2>, In, uint64_t, size_t) overload")]]
+  __host__ __device__ void Gen(compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &k0,
+      compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &k1,
+      cuda::std::span<const int4, 2> s0s, In a, uint64_t beta);
+
+  /** Evaluate one packed block from the deprecated aggregate Key. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, size_t) overload")]]
+  __host__ __device__ int4 Eval(bool b, const compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &key, In x);
+
+  /** Evaluate all packed blocks from the deprecated aggregate Key. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, int4[], int, size_t) overload")]]
+  void EvalAll(bool b, const compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &key,
+      cuda::std::span<int4> ys);
+#endif  // FSS_ENABLE_V1_COMPAT
+
 private:
   friend class detail::SchemeAccess;
 
@@ -426,9 +465,12 @@ private:
     requires(ValidForInputBits<OtherIn, other_bits> && CcrHashable<OtherHash>)
   friend class HalfTreeGrottoDcf;
 
-  static constexpr uint64_t kBetaMax = out_bits == 64 ? ~0ULL : (1ULL << out_bits) - 1;
+  // The private spellings below back the deprecated public aliases kBetaMax
+  // and kTopDepth of the compatibility section; the values and every use are
+  // unchanged by the rename.
+  static constexpr uint64_t kBetaLimit = out_bits == 64 ? ~0ULL : (1ULL << out_bits) - 1;
   // Three scalar levels produce the eight parents consumed by Expand8().
-  static constexpr int kTopDepth = 3;
+  static constexpr int kBatchTopDepth = 3;
 
   static __host__ __device__ int4 PackBeta(In a, uint64_t beta);
 
@@ -539,7 +581,7 @@ template <int in_bits, int out_bits, typename Hash, typename In>
 template <typename Writer>
 __host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Generate(
     Writer writer, const int4 *s0s, In a, uint64_t beta) {
-  util::RequireArg(beta <= kBetaMax, "PackedHalfTreeDpf::Gen: beta exceeds kBetaMax");
+  util::RequireArg(beta <= kBetaLimit, "PackedHalfTreeDpf::Gen: beta exceeds kBetaMax");
 
   int4 packed_beta = PackBeta(a, beta);
 
@@ -656,7 +698,7 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllCws(
   static_assert(detail::FitsFullDomain<int4, kDepth>(),
       "packed output count and byte size must fit in size_t");
   int4 fcw = cws[kDepth].s;
-  if constexpr (kDepth > kTopDepth) {
+  if constexpr (kDepth > kBatchTopDepth) {
     EvalAllFrontier(b, s0, cws, fcw, ys, par_depth);
   } else {
     // Domains too shallow to fill an 8-wide frontier evaluate one point per
@@ -793,9 +835,9 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllFrontier(
   if (scratch.size() < num_blocks) scratch.resize(num_blocks);
   int4 *bufs[2] = {scratch.data(), scratch.data() + num_blocks / 2};
 
-  // Scalar top: the root becomes the 2^kTopDepth level-kTopDepth frontier in bufs[kTopDepth & 1].
+  // Scalar top: the root becomes the 2^kBatchTopDepth level-kBatchTopDepth frontier in bufs[kBatchTopDepth & 1].
   bufs[0][0] = util::SetLsb(s0, b);
-  for (int i = 0; i < kTopDepth; ++i) {
+  for (int i = 0; i < kBatchTopDepth; ++i) {
     size_t count = size_t{1} << i;
     for (size_t j = 0; j < count; ++j) {
       ExpandNode(bufs[i & 1][j], cws[i].s, bufs[(i + 1) & 1][2 * j], bufs[(i + 1) & 1][2 * j + 1]);
@@ -806,7 +848,7 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllFrontier(
   // sequential branch avoids an inactive OpenMP region as well as workers.
   int depth = fss::detail::ResolveParDepth(par_depth, kDepth);
   if (depth == 0) {
-    for (int i = kTopDepth; i < kDepth; ++i) {
+    for (int i = kBatchTopDepth; i < kDepth; ++i) {
       const int4 *src = bufs[i & 1];
       int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) & 1];
       size_t batches = (size_t{1} << i) / 8;
@@ -820,7 +862,7 @@ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAllFrontier(
   int threads = fss::detail::ResolveParThreads(depth, num_blocks / 16);
 #pragma omp parallel num_threads(threads)
   {
-    for (int i = kTopDepth; i < kDepth; ++i) {
+    for (int i = kBatchTopDepth; i < kDepth; ++i) {
       const int4 *src = bufs[i & 1];
       int4 *dst = i + 1 == kDepth ? ys : bufs[(i + 1) & 1];
       size_t batches = (size_t{1} << i) / 8;
@@ -1227,5 +1269,56 @@ __host__ inline cudaError_t PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval
   return cudaErrorNotSupported;
 #endif
 }
+
+#if FSS_ENABLE_V1_COMPAT
+
+// Deprecated v1.3.0 aggregate-Key entries. Every wrapper copies between the
+// caller's Key layout and a compile-time-sized split-component scratch buffer,
+// then runs the current public method at stride 1. The old layout kept the
+// packed-output correction word in the caller's separate fcw.
+template <int in_bits, int out_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
+__host__ __device__ inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Gen(
+    compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &k0,
+    compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &k1,
+    cuda::std::span<const int4, 2> s0s, In a, uint64_t beta) {
+  int4 seed[kDepth + 1];
+  Gen(cuda::std::span<int4>(seed, kDepth + 1), s0s, a, beta);
+  for (int i = 0; i < kDepth; ++i) {
+    const Cw layer = {seed[i]};
+    k0.cws[i] = layer;
+    k1.cws[i] = layer;
+  }
+  k0.fcw = seed[kDepth];
+  k1.fcw = seed[kDepth];
+  k0.s0 = s0s[0];
+  k1.s0 = s0s[1];
+}
+
+template <int in_bits, int out_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
+__host__ __device__ inline int4 PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::Eval(
+    bool b, const compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &key, In x) {
+  int4 seed[kDepth + 1];
+  for (int i = 0; i < kDepth; ++i) seed[i] = key.cws[i].s;
+  seed[kDepth] = key.fcw;
+  return Eval(b, key.s0, cuda::std::span<const int4>(seed, kDepth + 1), x);
+}
+
+template <int in_bits, int out_bits, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
+inline void PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::EvalAll(
+    bool b, const compat::detail::FcwKeyRecord<PackedHalfTreeDpf, Cw, kDepth> &key,
+    cuda::std::span<int4> ys) {
+  int4 seed[kDepth + 1];
+  for (int i = 0; i < kDepth; ++i) seed[i] = key.cws[i].s;
+  seed[kDepth] = key.fcw;
+  EvalAll(b, key.s0, cuda::std::span<const int4>(seed, kDepth + 1), ys.data());
+}
+
+#endif  // FSS_ENABLE_V1_COMPAT
 
 }  // namespace fss

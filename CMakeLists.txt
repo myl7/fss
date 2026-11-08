@@ -77,6 +77,13 @@ if(BUILD_TESTING)
     target_link_libraries(cw_compat_test GTest::gtest_main fss)
     gtest_discover_tests(cw_compat_test)
 
+    # Behavior coverage of the deprecated aggregate-Key entries and legacy
+    # names. The source builds an empty suite when FSS_ENABLE_V1_COMPAT is 0,
+    # so both switch configurations link the same target.
+    add_executable(key_compat_test src/key_compat_test.cu)
+    target_link_libraries(key_compat_test GTest::gtest_main fss OpenSSL::Crypto)
+    gtest_discover_tests(key_compat_test)
+
     # Every removed public Cw overload argument sequence must fail to compile.
     # One direct-nvcc case per sequence; see cmake/ApiRemovedCwCheck.cmake.
     if(CMAKE_CUDA_COMPILER)
@@ -103,6 +110,46 @@ if(BUILD_TESTING)
                 -DARCH=${CMAKE_CUDA_ARCHITECTURES}
                 -DCASE=FSS_API_REMOVED_CW_${case}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ApiRemovedCwCheck.cmake)
+        endforeach()
+
+        # The deprecated v1.3.0 aggregate-Key entries and legacy names must be
+        # absent with the switch off, and every restored entry must produce a
+        # real deprecation diagnostic with the switch on. One direct-nvcc case
+        # per entry and check; see cmake/ApiRemovedCwCheck.cmake (which drives
+        # the shared removal harness) and cmake/KeyCompatDeprecatedCheck.cmake.
+        set(key_compat_cases
+            DPF_KEY_GEN DPF_KEY_EVAL DPF_KEY_EVALALL DPF_KEY_KPARDEPTH
+            DCF_KEY_GEN DCF_KEY_EVAL DCF_KEY_EVALALL
+            HT_KEY_GEN HT_KEY_EVAL HT_KEY_EVALALL HT_KEY_KPARDEPTH
+            PHT_KEY_GEN PHT_KEY_EVAL PHT_KEY_EVALALL PHT_KBETAMAX PHT_KTOPDEPTH
+            GROTTO_KEY_GEN GROTTO_KEY_PREPROCESS GROTTO_KEY_EVAL_PARITYTREE
+            GROTTO_KEY_EVAL_PREPROCESSED GROTTO_KEY_EVALALL
+            VDPF_KEY_EVALRESULT VDPF_KEY_EVAL VDPF_KEY_EVALALL VDPF_KEY_EVALALL_MERKLE
+            DMPF_KEY_BATCHEVAL DMPF_KEY_EVALALL
+            DMPF_CONST_M DMPF_CONST_N DMPF_CONST_B_SIZE
+            VDMPF_KEY_GEN VDMPF_KEY_BATCHEVAL_STD VDMPF_KEY_BATCHEVAL_EXTENT
+            VDMPF_KEY_BATCHEVAL_MERKLE
+            VDMPF_CONST_M VDMPF_CONST_N VDMPF_CONST_B_SIZE VDMPF_CONST_MERKLE_CHUNK)
+        foreach(case IN LISTS key_compat_cases)
+            string(TOLOWER ${case} case_lower)
+            add_test(NAME api_removed_key_${case_lower}_fails
+                COMMAND ${CMAKE_COMMAND}
+                -DNVCC=${CMAKE_CUDA_COMPILER}
+                -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/src/api_removed_key_compile_fail.cu
+                -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/api_removed_key_${case_lower}.o
+                "-DINCLUDE_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/include"
+                -DARCH=${CMAKE_CUDA_ARCHITECTURES}
+                -DCASE=FSS_API_REMOVED_KEY_${case}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ApiRemovedCwCheck.cmake)
+            add_test(NAME key_compat_deprecated_${case_lower}_warns
+                COMMAND ${CMAKE_COMMAND}
+                -DNVCC=${CMAKE_CUDA_COMPILER}
+                -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/src/key_compat_deprecated_warn.cu
+                -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/key_compat_deprecated_${case_lower}.o
+                "-DINCLUDE_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/include"
+                -DARCH=${CMAKE_CUDA_ARCHITECTURES}
+                -DCASE=FSS_KEY_COMPAT_WARN_${case}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/KeyCompatDeprecatedCheck.cmake)
         endforeach()
     endif()
 

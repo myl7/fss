@@ -691,6 +691,38 @@ public:
   void EvalAll(bool b, int4 s0, cuda::std::span<const Cw> cws,
       cuda::std::span<const int4, 4> cs, int4 ocw, cuda::std::span<int4> ys,
       cuda::std::array<int4, 4> &pi);
+
+  // Deprecated v1.3.0 aggregate-Key entries; see fss/compat.cuh. The Key and
+  // EvalResult aliases expose compat records under the legacy nested names,
+  // while the method declarations spell the record types so a deprecated name
+  // never enters a member signature. The aggregate-Key Gen() of the release,
+  // with its automatic retry, is not restored; generate through the
+  // split-component Gen() and keep the components, or assemble this Key form
+  // from its outputs. Evaluations and proofs follow the current protocol; the
+  // old proof wire identity is not preserved.
+
+  /** Deprecated v1.3.0 aggregate key: the Cw array, the correction seed, the output correction word, and the party seed. */
+  using Key [[deprecated("use the split-component Gen/Eval/EvalAll with separate cws, tr, and cs arrays")]] =
+      compat::detail::VdpfKeyRecord<Vdpf, Cw, in_bits>;
+
+  /** Deprecated v1.3.0 evaluation result: the output share and the corrected per-point hash. */
+  using EvalResult [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, cuda::std::span<const int4, 4>, In, int4&, size_t) overload")]] =
+      compat::detail::EvalResultRecord<Vdpf>;
+
+  /** Evaluate one point from the deprecated aggregate Key. */
+  [[deprecated("use the split-component Eval(bool, int4, cuda::std::span<const int4>, In, cuda::std::span<const int4, 4>, In, int4&, size_t) overload")]]
+  __host__ __device__ compat::detail::EvalResultRecord<Vdpf> Eval(
+      bool b, const compat::detail::VdpfKeyRecord<Vdpf, Cw, in_bits> &key, In x);
+
+  /** Evaluate the full domain with a chain proof from the deprecated aggregate Key. */
+  [[deprecated("use the split-component EvalAll(bool, int4, cuda::std::span<const int4>, In, cuda::std::span<const int4, 4>, cuda::std::span<int4>, cuda::std::span<int4, 4>, int, size_t) overload")]]
+  void EvalAll(bool b, const compat::detail::VdpfKeyRecord<Vdpf, Cw, in_bits> &key,
+      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi);
+
+  /** Evaluate the full domain with a Merkle proof from the deprecated aggregate Key. */
+  [[deprecated("use the split-component EvalAllMerkle(bool, int4, cuda::std::span<const int4>, In, cuda::std::span<const int4, 4>, cuda::std::span<int4>, cuda::std::span<int4, 4>, int, size_t) overload")]]
+  void EvalAllMerkle(bool b, const compat::detail::VdpfKeyRecord<Vdpf, Cw, in_bits> &key,
+      cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi);
 #endif  // FSS_ENABLE_V1_COMPAT
 
 private:
@@ -2347,6 +2379,63 @@ inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAll(
   }
   seed[in_bits] = ocw;
   EvalAll(b, s0, cuda::std::span<const int4>(seed, in_bits + 1), tr, cs, ys, pi);
+}
+
+// Deprecated v1.3.0 aggregate-Key entries. Same conversion as the Cw entries
+// above, with the correction seed and output correction word carried by the
+// Key record. The old Key layout holds exactly in_bits tree correction words,
+// so the conversion never reads a terminal entry from cws.
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+__host__ __device__ inline compat::detail::EvalResultRecord<Vdpf<in_bits, Group, Prg, XorHash, Hash, In>>
+Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::Eval(
+    bool b, const compat::detail::VdpfKeyRecord<Vdpf, Cw, in_bits> &key, In x) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = key.cws[i].s;
+    tr |= static_cast<In>(key.cws[i].tr) << i;
+  }
+  seed[in_bits] = key.ocw;
+  compat::detail::EvalResultRecord<Vdpf> result;
+  result.pi_tilde = Eval(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr,
+      cuda::std::span<const int4, 4>(key.cs), x, result.y);
+  return result;
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAll(
+    bool b, const compat::detail::VdpfKeyRecord<Vdpf, Cw, in_bits> &key,
+    cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = key.cws[i].s;
+    tr |= static_cast<In>(key.cws[i].tr) << i;
+  }
+  seed[in_bits] = key.ocw;
+  EvalAll(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr,
+      cuda::std::span<const int4, 4>(key.cs), ys, cuda::std::span<int4, 4>(pi));
+}
+
+template <int in_bits, typename Group, typename Prg, typename XorHash, typename Hash, typename In>
+  requires(ValidForInputBits<In, in_bits> &&
+      Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
+inline void Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::EvalAllMerkle(
+    bool b, const compat::detail::VdpfKeyRecord<Vdpf, Cw, in_bits> &key,
+    cuda::std::span<int4> ys, cuda::std::array<int4, 4> &pi) {
+  int4 seed[in_bits + 1];
+  In tr = 0;
+  for (int i = 0; i < in_bits; ++i) {
+    seed[i] = key.cws[i].s;
+    tr |= static_cast<In>(key.cws[i].tr) << i;
+  }
+  seed[in_bits] = key.ocw;
+  EvalAllMerkle(b, key.s0, cuda::std::span<const int4>(seed, in_bits + 1), tr,
+      cuda::std::span<const int4, 4>(key.cs), ys, cuda::std::span<int4, 4>(pi));
 }
 
 #endif  // FSS_ENABLE_V1_COMPAT
