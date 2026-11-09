@@ -889,9 +889,58 @@ def strip_retired_provenance(value):
     return value
 
 
+def failure_identity(row):
+    """Identify one failed benchmark configuration, ignoring repetition rows.
+
+    The identity carries the measurement configuration and the run source, so
+    failures of different libraries, platforms, variants, PRGs, launch
+    settings, or source runs never merge, while the repetition rows of one
+    configuration share every one of these fields.
+    """
+    config = row.get("config", row)
+    return (row.get("library"), row.get("platform"), row.get("benchmark"), row.get("variant"),
+            row.get("scheme"), row.get("group"), row.get("prg"), row.get("status"),
+            row.get("error"), row.get("operation"), row.get("domain_bits"),
+            row.get("num_keys"), row.get("cpu_prg"),
+            row.get("requested_threads_per_block") or row.get("threads_per_block"),
+            row.get("raw_result"), row.get("raw"),
+            config.get("scheme") if isinstance(config, dict) else None)
+
+
+def collapse_repeated_failures(rows):
+    """Represent one failed configuration once, counting its repetitions.
+
+    Google Benchmark reports an error row per repetition, so an unsupported or
+    known-failure configuration can appear as several identical records. The
+    exported dataset keeps the first record with the repetition count in
+    failure_repetitions; the raw receipts keep every failed repetition. The
+    count sums any existing failure_repetitions values, so collapsing already
+    collapsed records is idempotent and mixed inputs count correctly.
+    """
+    counts = {}
+    for row in rows:
+        if row.get("status") in ("unsupported", "known_failure"):
+            key = failure_identity(row)
+            counts[key] = counts.get(key, 0) + int(row.get("failure_repetitions") or 1)
+    seen = set()
+    collapsed = []
+    for row in rows:
+        if row.get("status") not in ("unsupported", "known_failure"):
+            collapsed.append(row)
+            continue
+        key = failure_identity(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        row = dict(row)
+        row["failure_repetitions"] = counts[key]
+        collapsed.append(row)
+    return collapsed
+
+
 def write_export(directory, metadata, rows):
     directory.mkdir(parents=True, exist_ok=True)
-    rows = [strip_retired_provenance(polish_metadata(row)) for row in rows]
+    rows = collapse_repeated_failures([strip_retired_provenance(polish_metadata(row)) for row in rows])
     metadata = strip_retired_provenance(metadata)
     output = dict(schema_version=1, metadata=metadata, records=rows)
     (directory / "chart-data.json").write_text(json.dumps(output, indent=2) + "\n")

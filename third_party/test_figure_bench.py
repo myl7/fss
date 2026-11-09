@@ -1264,5 +1264,81 @@ class FigurePolicyTest(unittest.TestCase):
         self.assertTrue(all(case["interleaving"] is False for case in decision["cases"]))
 
 
+class FailureCollapseTest(unittest.TestCase):
+    def setUp(self):
+        (sweep.ROOT / "build").mkdir(exist_ok=True)
+        temp = tempfile.TemporaryDirectory(dir=sweep.ROOT / "build")
+        self.addCleanup(temp.cleanup)
+        self.directory = Path(temp.name)
+
+    def test_repeated_failure_repetitions_collapse_to_one_configuration(self):
+        base = dict(library="fss", platform="gpu", domain_bits=20, domain_size=1 << 20,
+                    scan="threads", sweep="block", scheme="DPF", group="bytes",
+                    prg="ChaCha20-x2", configured_num_keys=262144,
+                    config=dict(library="fss", platform="gpu", operation="EvalAll", domain_bits=20,
+                                domain_size=1 << 20, configured_num_keys=262144, num_keys=1,
+                                threads_per_block=128, cpu_prg="aes-ni", sweep="block", scan="threads"))
+        ok = dict(base, benchmark="fss/GPU/DPF-bytes/EvalAll/manual_time",
+                  status="ok", operation="EvalAll", median_ns=1000.0,
+                  num_keys=1, cpu_prg="aes-ni", threads_per_block=128, variant="v")
+        failed = dict(base, benchmark="fss/GPU/DPF-bytes/AesSoft/Eval/manual_time",
+                      status="unsupported", operation="Eval", median_ns=None,
+                      num_keys=262144, cpu_prg="aes-ni", threads_per_block=1024, variant="w",
+                      error="unsupported: insufficient software AES kernel resources for the block size")
+        other = dict(failed, benchmark="fss/GPU/GrottoDCF/EvalAll/manual_time",
+                      scheme="GrottoDCF", error="too many resources requested for launch")
+        rows = [ok, failed, dict(failed), dict(failed), dict(failed), dict(failed), other]
+        sweep.write_export(self.directory, {}, rows)
+        out = json.loads((self.directory / "chart-data.json").read_text())["records"]
+        self.assertEqual(len(out), 3)
+        aessoft = [r for r in out if "AesSoft" in str(r.get("benchmark"))]
+        other = [r for r in out if r["status"] == "unsupported" and "AesSoft" not in str(r.get("benchmark"))]
+        ok_rows = [r for r in out if r["status"] == "ok"]
+        self.assertEqual(len(aessoft), 1)
+        self.assertEqual(aessoft[0]["failure_repetitions"], 5)
+        self.assertEqual(len(other), 1)
+        self.assertEqual(other[0]["failure_repetitions"], 1)
+        self.assertNotIn("failure_repetitions", ok_rows[0])
+
+    def test_collapse_is_idempotent_and_sums_mixed_inputs(self):
+        base = dict(library="fss", platform="gpu", domain_bits=20, domain_size=1 << 20,
+                    scan="threads", sweep="block", scheme="DPF", group="bytes",
+                    prg="ChaCha20-x2", configured_num_keys=262144,
+                    raw_result="run/raw-0.json",
+                    config=dict(library="fss", platform="gpu", operation="Eval", domain_bits=20,
+                                domain_size=1 << 20, configured_num_keys=262144,
+                                num_keys=262144, threads_per_block=1024, cpu_prg="aes-ni",
+                                sweep="block", scan="threads"))
+        failed = dict(base, benchmark="fss/GPU/DPF-bytes/AesSoft/Eval/manual_time",
+                      status="unsupported", operation="Eval", median_ns=None,
+                      num_keys=262144, cpu_prg="aes-ni", threads_per_block=1024,
+                      error="unsupported: insufficient software AES kernel resources for the block size")
+        collapsed_once = sweep.collapse_repeated_failures([failed] * 5)
+        self.assertEqual(len(collapsed_once), 1)
+        self.assertEqual(collapsed_once[0]["failure_repetitions"], 5)
+        again = sweep.collapse_repeated_failures(collapsed_once)
+        self.assertEqual(again[0]["failure_repetitions"], 5)
+        mixed = sweep.collapse_repeated_failures(collapsed_once + [dict(failed), dict(failed)])
+        self.assertEqual(len(mixed), 1)
+        self.assertEqual(mixed[0]["failure_repetitions"], 7)
+
+    def test_collapse_keeps_distinct_configurations_and_sources_separate(self):
+        def failure(**over):
+            row = dict(library="fss", platform="gpu", benchmark="f/X/Eval",
+                       status="unsupported", error="e", operation="Eval", domain_bits=20,
+                       num_keys=262144, cpu_prg="aes-ni", threads_per_block=1024,
+                       variant="DPF-bytes-ChaCha20-x2", scheme="DPF", group="bytes",
+                       prg="ChaCha20-x2", raw_result="run-a/raw-0.json")
+            row.update(over)
+            return row
+        rows = [failure(),
+                failure(library="fss_v070"),
+                failure(platform="cpu"),
+                failure(variant="DPF-uint-ChaCha20-x4", prg="ChaCha20-x4"),
+                failure(raw_result="run-b/raw-0.json")]
+        out = sweep.collapse_repeated_failures(rows + [failure()])
+        self.assertEqual(len(out), 5)
+        self.assertEqual(sorted(r["failure_repetitions"] for r in out), [1, 1, 1, 1, 2])
+
 if __name__ == "__main__":
     unittest.main()
