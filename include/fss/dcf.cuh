@@ -1756,6 +1756,7 @@ template <int in_bits, typename Group, typename Prg, typename In, DcfPred pred>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 4>)
 template <int frontier_depth, int threads_per_block>
+/// Launch geometry constants shared by this scheme's device kernels.
 struct Dcf<in_bits, Group, Prg, In, pred>::GpuLaunchShape {
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(1 <= threads_per_block && threads_per_block <= 1024 && (threads_per_block & (threads_per_block - 1)) == 0,

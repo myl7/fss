@@ -117,7 +117,7 @@ public:
    * Gen() accepts every t in [kMinPoints, max_points]. The lower bound is
    * at least 30, where the Cuckoo bucket-count estimate applies. Fewer
    * points use fewer buckets and can require a larger per-bucket domain.
-   * The capacity condition is ceil(3*kDomainSize/ChBucket(t, ch_lambda))
+   * The capacity condition is `ceil(3*kDomainSize/ChBucket(t, ch_lambda))`
    * <= 2^bucket_bits. The shared buffer of correction words contains
    * kBucketCount*(bucket_bits+1)*sizeof(Cw) bytes, so each extra bucket bit
    * adds kBucketCount*sizeof(Cw) bytes without changing the bucket count.
@@ -201,7 +201,7 @@ public:
    * @pre as.size() >= t and b_bufs.size() >= t.
    * @pre The first t alpha values are distinct and belong to [0, kDomainSize).
    * @pre max_evictions is nonnegative.
-   * @pre ceil(3*kDomainSize/cuckoo_hash::ChBucket(t, ch_lambda)) <= 2^bucket_bits.
+   * @pre `ceil(3*kDomainSize/cuckoo_hash::ChBucket(t, ch_lambda)) <= 2^bucket_bits`.
    * @throws std::invalid_argument if cws is shorter than
    * kBucketCount*(bucket_bits+1), s0s is shorter than 2*kBucketCount, t is
    * outside [kMinPoints, max_points], or the bucket size does not fit bucket_bits.

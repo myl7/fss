@@ -1176,6 +1176,7 @@ template <int in_bits, int out_bits, typename Hash, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       CcrHashable<Hash> && out_bits >= 1 && out_bits <= 64 && (out_bits & (out_bits - 1)) == 0)
 template <int frontier_depth, int threads_per_block>
+/// Launch geometry constants shared by this scheme's device kernels.
 struct PackedHalfTreeDpf<in_bits, out_bits, Hash, In>::GpuLaunchShape {
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&

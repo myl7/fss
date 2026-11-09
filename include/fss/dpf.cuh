@@ -1249,6 +1249,9 @@ inline void Dpf<in_bits, Group, Prg, In>::EvalAllCws(
   if constexpr (in_bits < kBatchPrefix + kBatchTail) {
     // Domains too small to fill an 8-wide frontier evaluate per input; the
     // point walk is cheaper than the batched machinery at this size.
+    // The Walk call is host-only (it runs inside EvalAllCws's host ParallelFor),
+    // so nvcc's #20013-D on the host lambda passed to the host/device Walk
+    // template below is a known false alarm for this instantiation.
     constexpr size_t n = size_t{1} << in_bits;
     const int4 terminal = cws[in_bits].s;
     fss::detail::ParallelFor(par_depth, n, [&](size_t x) {
@@ -1460,6 +1463,7 @@ template <int in_bits, typename Group, typename Prg, typename In>
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2>)
 template <int frontier_depth, int threads_per_block>
+/// Launch geometry constants shared by this scheme's device kernels.
 struct Dpf<in_bits, Group, Prg, In>::GpuLaunchShape {
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(1 <= threads_per_block && threads_per_block <= 1024 && (threads_per_block & (threads_per_block - 1)) == 0,

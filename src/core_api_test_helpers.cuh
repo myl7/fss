@@ -139,10 +139,10 @@ __host__ __device__ CcrBackend<Backend> Ccr(Backend backend) {
 }
 
 
-// nvcc reports #20011-D and #20014-D here because host tests pass std::vector to the
+// nvcc reports #20013-D and #20015-D here because host tests pass std::vector to the
 // __host__ __device__ GenPair helpers, which instantiates Data() with a host-only data().
 // No device code passes a host container, so the warning is a known false alarm.
-// A new #20011-D or #20014-D elsewhere is not this one.
+// A new #20013-D or #20015-D elsewhere is not this one.
 // If this one changes, check whether device code started passing a host container.
 template <typename Buffer>
 __host__ __device__ auto Data(Buffer &buffer) {

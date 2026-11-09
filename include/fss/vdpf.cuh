@@ -533,6 +533,16 @@ public:
    * left-control correction is the LSB of the layer's cws entry, exactly as the
    * component form of Gen() writes them. Bits of tr at and above in_bits are ignored.
    *
+   * @param b Party index, false for party 0 and true for party 1.
+   * @param first First input, included in evaluation.
+   * @param last Last input, included in evaluation.
+   * @param s0 This party's initial seed.
+   * @param cws Correction words, layer i at index i*stride and the
+   * terminal at index in_bits*stride.
+   * @param tr Packed right-control bits, bit i for layer i.
+   * @param cs Shared correction seed returned by Gen().
+   * @param ys Output shares in input order, with at least last - first + 1 entries.
+   * @param pi Borrowed output storage for four Merkle-proof blocks for this range.
    * @pre first <= last < 2^in_bits. Output and proof scratch bytes fit size_t.
    * @pre The four cs blocks are not jointly all zero.
    * @pre cws[in_bits*stride].w & 1 == 0. A violation aborts with a diagnostic in
@@ -2156,6 +2166,7 @@ template <int in_bits, typename Group, typename Prg, typename XorHash, typename 
   requires(ValidForInputBits<In, in_bits> &&
       Groupable<Group> && Prgable<Prg, 2> && XorHashable<XorHash> && Hashable<Hash>)
 template <int frontier_depth, int threads_per_block>
+/// Launch geometry constants shared by this scheme's device kernels.
 struct Vdpf<in_bits, Group, Prg, XorHash, Hash, In>::GpuLaunchShape {
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");
   static_assert(1 <= threads_per_block && threads_per_block <= 1024 &&

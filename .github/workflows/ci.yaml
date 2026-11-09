@@ -98,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -127,13 +127,13 @@ jobs:
           echo "CUDAHOSTCXX=${{ matrix.cxx }}" >> "$GITHUB_ENV"
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: pip-${{ matrix.python }}-${{ matrix.torch }}
 
       - name: Cache JIT extensions
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/fss_crypto
           key: jit-${{ matrix.python }}-${{ matrix.torch }}-${{ matrix.cuda }}-${{ hashFiles('fss_crypto/**', 'include/fss/**') }}
@@ -146,6 +146,9 @@ jobs:
         run: |
           pip install --upgrade pip setuptools wheel
           pip install ${{ matrix.torch }} ${{ matrix.index }}
+          # NumPy is a CI test-environment extra: torch logs a missing-numpy
+          # warning on import; the library keeps no runtime NumPy dependency.
+          pip install numpy
           pip install --no-build-isolation -e '.[dev]'
 
       - name: Test
@@ -161,11 +164,21 @@ jobs:
       - name: Install Doxygen
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen graphviz
+          sudo apt-get install -y graphviz
+          # Ubuntu 24.04's doxygen 1.9.8 rejects the 1.15.0-generated config
+          # (unsupported tags, MathJax fallback); use the official 1.15.0 binary.
+          mkdir -p build
+          curl -fsSL -o build/doxygen.tar.gz \
+            https://github.com/doxygen/doxygen/releases/download/Release_1_15_0/doxygen-1.15.0.linux.bin.tar.gz
+          tar -xzf build/doxygen.tar.gz -C build
+          # The official binary appends its build id in parentheses after the
+          # numeric version; compare the numeric field and reject anything else.
+          version="$(build/doxygen-1.15.0/bin/doxygen --version)"
+          test "${version%% *}" = "1.15.0" || { echo "unexpected doxygen version: $version"; exit 1; }
 
       - name: Build documentation
         run: |
-          doxygen
+          build/doxygen-1.15.0/bin/doxygen
 
       - name: Assemble pages
         run: |
@@ -179,7 +192,7 @@ jobs:
           done
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           publish_dir: build/pages

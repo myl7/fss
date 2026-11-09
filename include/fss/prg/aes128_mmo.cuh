@@ -70,6 +70,7 @@ public:
   /**
    * Return the selected half of Gen() with the same call requirements.
    *
+   * @param seed Seed block to expand, the same input Gen() takes.
    * @param right false selects the first half, true selects the second half.
    * @throws std::runtime_error if EVP_EncryptUpdate fails.
    */

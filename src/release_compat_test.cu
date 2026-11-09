@@ -121,7 +121,7 @@ TEST(ReleaseCompatibility, RawDpfAndDcfKeepSplitOutputsAndOrder) {
   auto dpf_prg = fss::prg::ChaCha<2>{1, 2};
   Dpf dpf{dpf_prg};
   Dcf dcf{fss::prg::ChaCha<4>{1, 2}};
-  int4 dcws[9], dcvws[9], ccws[9], ccvws[9];
+  int4 dcws[9], ccws[9], ccvws[9];
   uint16_t dtr = 0, ctr = 0;
   fss_test::ComponentKey<Dpf> dk0, dk1;
   fss_test::ComponentKey<Dcf> ck0, ck1;

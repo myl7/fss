@@ -400,8 +400,8 @@ class OwnedPackedParityTree {
 public:
   /**
    * Take ownership of populated packed leaves and block-parity entries.
-   * @param blocks Array of 2^Scheme::kDepth packed leaf blocks.
-   * @param p Level-order parity tree with 2^(Scheme::kDepth+1)-1 bool entries.
+   * @param blocks Array of `2^Scheme::kDepth` packed leaf blocks.
+   * @param p Level-order parity tree with `2^(Scheme::kDepth+1)-1` bool entries.
    */
   explicit OwnedPackedParityTree(std::unique_ptr<int4[]> blocks, std::unique_ptr<bool[]> p);
 

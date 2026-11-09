@@ -14,7 +14,7 @@
 namespace fss::group {
 
 /**
- * The modulus of a @ref Uint128 group, split into two 64-bit halves: the
+ * The modulus of a `Uint128` group, split into two 64-bit halves: the
  * structural form keeps host stubs from having to spell a wide integral
  * non-type template parameter.
  */

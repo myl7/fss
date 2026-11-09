@@ -499,6 +499,8 @@ private:
 
 namespace gpu::detail {
 
+/// Compile-time launch geometry (capped frontier depth, block size, derived
+/// subtree depths) shared by the Grotto device kernels.
 template <int tree_depth, int frontier_depth, int threads_per_block>
 struct GrottoGpuLaunchShape {
   static_assert(frontier_depth >= 0, "gpu frontier depth must be nonnegative");

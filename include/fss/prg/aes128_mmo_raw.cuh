@@ -60,6 +60,7 @@ public:
   /**
    * Return the selected half of Gen() with the same call requirements.
    *
+   * @param seed Seed block to expand, the same input Gen() takes.
    * @param right false selects the first half, true selects the second half.
    */
   __host__ __device__ cuda::std::array<int4, mul / 2> GenHalf(int4 seed, bool right)
