@@ -34,7 +34,7 @@ static int4 Reconstruct(int4 y0, int4 y1) {
   return (Group::From(y0) + Group::From(y1)).Into();
 }
 
-static void DpfSample() {
+static bool DpfSample() {
   printf("=== DPF Sample ===\n");
 
   // Create AES cipher contexts with 2 keys (mul=2 for DPF)
@@ -59,31 +59,36 @@ static void DpfSample() {
   }
 
   // Key generation (done by a trusted dealer)
-  int4 cws[kInBits + 1];
+  int4 cws[Dpf::kCwCount];
   In tr = 0;
-  dpf.Gen(cuda::std::span<int4>(cws, kInBits + 1), tr,
+  dpf.Gen(cuda::std::span<int4>(cws, Dpf::kCwCount), tr,
       cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
+
+  // One shared read-only view; every Eval and EvalAll below reuses it.
+  const auto key = cuda::std::span<const int4>(cws, Dpf::kCwCount);
 
   // Evaluation (each party runs independently)
   // At x == alpha: y0 + y1 == beta
-  int4 y0 = dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, alpha);
-  int4 y1 = dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, alpha);
+  int4 y0 = dpf.Eval(false, seeds[0], key, tr, alpha);
+  int4 y1 = dpf.Eval(true, seeds[1], key, tr, alpha);
   int4 sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
+  const bool eq_beta = Equal(sum, beta);
+  printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, eq_beta ? "yes" : "NO");
 
   // At x != alpha: y0 + y1 == 0
   int4 zero = {0, 0, 0, 0};
   In x = 100;
-  y0 = dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, x);
-  y1 = dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, x);
+  y0 = dpf.Eval(false, seeds[0], key, tr, x);
+  y1 = dpf.Eval(true, seeds[1], key, tr, x);
   sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, Equal(sum, zero) ? "yes" : "NO");
+  const bool eq_zero = Equal(sum, zero);
+  printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, eq_zero ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
   int4 ys1[1 << kInBits];
-  dpf.EvalAll(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, ys0);
-  dpf.EvalAll(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, ys1);
+  dpf.EvalAll(false, seeds[0], key, tr, ys0);
+  dpf.EvalAll(true, seeds[1], key, tr, ys1);
 
   int mismatches = 0;
   for (int i = 0; i < (1 << kInBits); ++i) {
@@ -95,9 +100,10 @@ static void DpfSample() {
   printf("  EvalAll: mismatches over 2^%d inputs: %d\n", kInBits, mismatches);
 
   DpfPrg::FreeCtxs(ctxs);
+  return eq_beta & eq_zero & (mismatches == 0);
 }
 
-static void DcfSample() {
+static bool DcfSample() {
   printf("=== DCF Sample ===\n");
 
   // Create AES cipher contexts with 4 keys (mul=4 for DCF)
@@ -124,9 +130,9 @@ static void DcfSample() {
   }
 
   // Key generation
-  int4 cws[kInBits + 1], vws[kInBits + 1];
+  int4 cws[Dcf::kCwCount], vws[Dcf::kCwCount];
   In tr = 0;
-  dcf.Gen(cuda::std::span<int4>(cws, kInBits + 1), cuda::std::span<int4>(vws, kInBits + 1), tr,
+  dcf.Gen(cuda::std::span<int4>(cws, Dcf::kCwCount), cuda::std::span<int4>(vws, Dcf::kCwCount), tr,
       cuda::std::span<const int4, 2>(seeds, 2), alpha, beta);
 
   // Evaluation
@@ -134,25 +140,28 @@ static void DcfSample() {
 
   // x < alpha: y0 + y1 == beta
   In x_lt = 10;
-  const auto key = cuda::std::span<const int4>(cws, kInBits + 1);
-  const auto values = cuda::std::span<const int4>(vws, kInBits + 1);
+  const auto key = cuda::std::span<const int4>(cws, Dcf::kCwCount);
+  const auto values = cuda::std::span<const int4>(vws, Dcf::kCwCount);
   int4 y0 = dcf.Eval(false, seeds[0], key, values, tr, x_lt);
   int4 y1 = dcf.Eval(true, seeds[1], key, values, tr, x_lt);
   int4 sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d  < alpha): y0+y1 == beta? %s\n", x_lt, Equal(sum, beta) ? "yes" : "NO");
+  const bool eq_lt = Equal(sum, beta);
+  printf("  Eval(x=%d  < alpha): y0+y1 == beta? %s\n", x_lt, eq_lt ? "yes" : "NO");
 
   // x == alpha: y0 + y1 == 0
   y0 = dcf.Eval(false, seeds[0], key, values, tr, alpha);
   y1 = dcf.Eval(true, seeds[1], key, values, tr, alpha);
   sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d == alpha): y0+y1 == 0?    %s\n", alpha, Equal(sum, zero) ? "yes" : "NO");
+  const bool eq_alpha = Equal(sum, zero);
+  printf("  Eval(x=%d == alpha): y0+y1 == 0?    %s\n", alpha, eq_alpha ? "yes" : "NO");
 
   // x > alpha: y0 + y1 == 0
   In x_gt = 200;
   y0 = dcf.Eval(false, seeds[0], key, values, tr, x_gt);
   y1 = dcf.Eval(true, seeds[1], key, values, tr, x_gt);
   sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d > alpha): y0+y1 == 0?    %s\n", x_gt, Equal(sum, zero) ? "yes" : "NO");
+  const bool eq_gt = Equal(sum, zero);
+  printf("  Eval(x=%d > alpha): y0+y1 == 0?    %s\n", x_gt, eq_gt ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
@@ -170,11 +179,12 @@ static void DcfSample() {
   printf("  EvalAll: mismatches over 2^%d inputs: %d\n", kInBits, mismatches);
 
   DcfPrg::FreeCtxs(ctxs);
+  return eq_lt & eq_alpha & eq_gt & (mismatches == 0);
 }
 
 int main() {
-  DpfSample();
+  bool ok = DpfSample();
   printf("\n");
-  DcfSample();
-  return 0;
+  ok &= DcfSample();
+  return ok ? 0 : 1;
 }

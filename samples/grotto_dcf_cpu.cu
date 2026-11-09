@@ -58,12 +58,14 @@ int main() {
   // Evaluation: the parties XOR their bool shares; the result is x >= alpha
   bool y0 = Gdcf::Eval(tree0.View(), alpha);
   bool y1 = Gdcf::Eval(tree1.View(), alpha);
-  printf("  Eval(x=%d == alpha): y0^y1 == 1? %s\n", alpha, (y0 ^ y1) ? "yes" : "NO");
+  const bool eq_at = y0 ^ y1;
+  printf("  Eval(x=%d == alpha): y0^y1 == 1? %s\n", alpha, eq_at ? "yes" : "NO");
 
   In x = 10;
   y0 = Gdcf::Eval(tree0.View(), x);
   y1 = Gdcf::Eval(tree1.View(), x);
-  printf("  Eval(x=%d  < alpha): y0^y1 == 0? %s\n", x, !(y0 ^ y1) ? "yes" : "NO");
+  const bool eq_below = !(y0 ^ y1);
+  printf("  Eval(x=%d  < alpha): y0^y1 == 0? %s\n", x, eq_below ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   auto ys0 = std::make_unique<bool[]>(N);
@@ -81,5 +83,5 @@ int main() {
   printf("  EvalAll: mismatches over 2^%d inputs: %d\n", kInBits, mismatches);
 
   GdcfPrg::FreeCtxs(ctxs);
-  return 0;
+  return (eq_at & eq_below & (mismatches == 0)) ? 0 : 1;
 }

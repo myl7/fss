@@ -67,13 +67,15 @@ int main() {
   int4 y0 = dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, alpha);
   int4 y1 = dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, alpha);
   int4 sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
+  const bool eq_beta = Equal(sum, beta);
+  printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, eq_beta ? "yes" : "NO");
 
   In x = 100;
   y0 = dpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr, x);
   y1 = dpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr, x);
   sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, Equal(sum, zero) ? "yes" : "NO");
+  const bool eq_zero = Equal(sum, zero);
+  printf("  Eval(x=%d != alpha): y0+y1 == 0?    %s\n", x, eq_zero ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
@@ -91,5 +93,5 @@ int main() {
   printf("  EvalAll: mismatches over 2^%d inputs: %d\n", kInBits, mismatches);
 
   HtDpfPrg::FreeCtxs(ctxs);
-  return 0;
+  return (eq_beta & eq_zero & (mismatches == 0)) ? 0 : 1;
 }

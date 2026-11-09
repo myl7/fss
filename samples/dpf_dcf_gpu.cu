@@ -141,7 +141,7 @@ static void ToHost(T *host, const T *dev, int n) {
   CUDA_CHECK(cudaMemcpy(host, dev, sizeof(T) * n, cudaMemcpyDeviceToHost));
 }
 
-static void DpfSample() {
+static bool DpfSample() {
   printf("=== DPF GPU Sample (%d instances) ===\n", kN);
 
   // Prepare host data
@@ -206,16 +206,17 @@ static void DpfSample() {
   }
   printf("  Verification: %d/%d correct\n", correct, kN);
 
-  cudaFree(d_seeds);
-  cudaFree(d_alphas);
-  cudaFree(d_betas);
-  cudaFree(d_xs);
-  cudaFree(d_k0s);
-  cudaFree(d_k1s);
-  cudaFree(d_ys);
+  CUDA_CHECK(cudaFree(d_seeds));
+  CUDA_CHECK(cudaFree(d_alphas));
+  CUDA_CHECK(cudaFree(d_betas));
+  CUDA_CHECK(cudaFree(d_xs));
+  CUDA_CHECK(cudaFree(d_k0s));
+  CUDA_CHECK(cudaFree(d_k1s));
+  CUDA_CHECK(cudaFree(d_ys));
+  return correct == kN;
 }
 
-static void DcfSample() {
+static bool DcfSample() {
   printf("=== DCF GPU Sample (%d instances) ===\n", kN);
 
   // Prepare host data
@@ -279,47 +280,51 @@ static void DcfSample() {
   }
   printf("  Verification: %d/%d correct\n", correct, kN);
 
-  cudaFree(d_seeds);
-  cudaFree(d_alphas);
-  cudaFree(d_betas);
-  cudaFree(d_xs);
-  cudaFree(d_k0s);
-  cudaFree(d_k1s);
-  cudaFree(d_ys);
+  CUDA_CHECK(cudaFree(d_seeds));
+  CUDA_CHECK(cudaFree(d_alphas));
+  CUDA_CHECK(cudaFree(d_betas));
+  CUDA_CHECK(cudaFree(d_xs));
+  CUDA_CHECK(cudaFree(d_k0s));
+  CUDA_CHECK(cudaFree(d_k1s));
+  CUDA_CHECK(cudaFree(d_ys));
+  return correct == kN;
 }
 
 // Full-domain launches do not require the caller to write an evaluation kernel.
 // ChaCha is self-contained, so this host scheme has no borrowed device tables.
 template <typename Scheme>
-static void FullDomainSample(Scheme scheme, const char *name, bool comparison) {
+static bool FullDomainSample(Scheme scheme, const char *name, bool comparison) {
   constexpr int kKeys = 2;
   constexpr int kOutputs = 1 << kInBits;
-  constexpr int kCwPerKey = kInBits + 1;
+  constexpr int kCwPerKey = Scheme::kCwCount;
   int4 seeds[kKeys][2];
   if (RAND_bytes(reinterpret_cast<unsigned char *>(seeds), sizeof(seeds)) != 1) {
     fprintf(stderr, "seed generation failed\n");
     exit(1);
   }
   // The batch entry consumes the dense level-major layout: layer i of key k is
-  // cws[i * kKeys + k], with the packed control per key in trs[k].
-  int4 cws[kKeys][kCwPerKey];
-  int4 vws[kKeys][kCwPerKey];
+  // cws[i * kKeys + k], with the packed control per key in trs[k]. Each key
+  // generates at stride kKeys, so its span must hold in_bits*kKeys+1 entries.
+  int4 cws[kKeys * kCwPerKey];
+  [[maybe_unused]] int4 vws[kKeys * kCwPerKey];
   In trs[kKeys];
   int4 party0[kKeys], party1[kKeys];
   const int4 beta = {7, 0, 0, 0};
   for (int i = 0; i < kKeys; ++i) {
+    const auto cw_i = cuda::std::span<int4>(cws + i, kKeys * kCwPerKey - i);
     if constexpr (kHasValueWords<Scheme>) {
-      scheme.Gen(cuda::std::span<int4>(cws[i], kCwPerKey), cuda::std::span<int4>(vws[i], kCwPerKey),
-          trs[i], cuda::std::span<const int4, 2>(seeds[i], 2), static_cast<In>(42 + i), beta, kKeys);
+      scheme.Gen(cw_i, cuda::std::span<int4>(vws + i, kKeys * kCwPerKey - i), trs[i],
+          cuda::std::span<const int4, 2>(seeds[i], 2), static_cast<In>(42 + i), beta, kKeys);
     } else {
-      scheme.Gen(cuda::std::span<int4>(cws[i], kCwPerKey), trs[i],
+      scheme.Gen(cw_i, trs[i],
           cuda::std::span<const int4, 2>(seeds[i], 2), static_cast<In>(42 + i), beta, kKeys);
     }
     party0[i] = seeds[i][0];
     party1[i] = seeds[i][1];
   }
-  auto *device_cws = ToDevice(&cws[0][0], kKeys * kCwPerKey);
-  auto *device_vws = ToDevice(&vws[0][0], kKeys * kCwPerKey);
+  auto *device_cws = ToDevice(cws, kKeys * kCwPerKey);
+  int4 *device_vws = nullptr;
+  if constexpr (kHasValueWords<Scheme>) device_vws = ToDevice(vws, kKeys * kCwPerKey);
   auto *device_trs = ToDevice(trs, kKeys);
   auto *device_seeds = ToDevice(party0, kKeys);
   int4 *device_y0, *device_y1;
@@ -367,16 +372,19 @@ static void FullDomainSample(Scheme scheme, const char *name, bool comparison) {
   }
   printf("  %s EvalAllGpu/Batch: mismatches: %d\n", name, mismatches);
   CUDA_CHECK(cudaFree(device_cws));
+  if (device_vws) CUDA_CHECK(cudaFree(device_vws));
+  CUDA_CHECK(cudaFree(device_trs));
   CUDA_CHECK(cudaFree(device_seeds));
   CUDA_CHECK(cudaFree(device_y0));
   CUDA_CHECK(cudaFree(device_y1));
+  return mismatches == 0;
 }
 
 int main() {
-  DpfSample();
+  bool ok = DpfSample();
   printf("\n");
-  DcfSample();
-  FullDomainSample(Dpf{DpfPrg{kNonce0, kNonce1}}, "DPF", false);
-  FullDomainSample(Dcf{DcfPrg{kNonce0, kNonce1}}, "DCF", true);
-  return 0;
+  ok &= DcfSample();
+  ok &= FullDomainSample(Dpf{DpfPrg{kNonce0, kNonce1}}, "DPF", false);
+  ok &= FullDomainSample(Dcf{DcfPrg{kNonce0, kNonce1}}, "DCF", true);
+  return ok ? 0 : 1;
 }

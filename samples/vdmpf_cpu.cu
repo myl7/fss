@@ -121,6 +121,7 @@ int main() {
     }
   }
   printf("  BatchEval at points: mismatches: %d, proof match: %s\n", mismatches, proofs_match ? "yes" : "NO");
+  bool ok = mismatches == 0 && proofs_match;
 
   // Batch evaluation away from the points: y0+y1 == 0
   In non_alphas[kT] = {11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57,
@@ -141,5 +142,5 @@ int main() {
   printf("  BatchEval off points: mismatches: %d, proof match: %s\n", mismatches, proofs_match ? "yes" : "NO");
 
   VdmpfPrg::FreeCtxs(ctxs);
-  return 0;
+  return (ok && mismatches == 0 && proofs_match) ? 0 : 1;
 }

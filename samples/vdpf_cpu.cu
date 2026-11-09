@@ -59,7 +59,7 @@ int main() {
   int4 beta = {7, 0, 0, 0};
 
   // The sample owns its retry budget. Each attempt uses two fresh seeds.
-  int4 cws[kInBits + 1];
+  int4 cws[Vdpf::kCwCount];
   In tr = 0;
   int4 cs[4];
   int4 seeds[2];
@@ -71,7 +71,7 @@ int main() {
       VdpfPrg::FreeCtxs(ctxs);
       return 1;
     }
-    status = vdpf.Gen(cuda::std::span<int4>(cws, kInBits + 1), tr, cuda::std::span<int4, 4>(cs),
+    status = vdpf.Gen(cuda::std::span<int4>(cws, Vdpf::kCwCount), tr, cuda::std::span<int4, 4>(cs),
         cuda::std::span<const int4, 2>(seeds), alpha, beta);
     if (status == 0) break;
   }
@@ -81,14 +81,18 @@ int main() {
     return 1;
   }
 
+  // One shared read-only view; every Eval and EvalAll below reuses it.
+  const auto key = cuda::std::span<const int4>(cws, Vdpf::kCwCount);
+
   // Evaluation with proof. Each party also gets pi_tilde at every point.
   int4 y0, y1;
-  auto pi_tilde0 = vdpf.Eval(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+  auto pi_tilde0 = vdpf.Eval(false, seeds[0], key, tr,
       cuda::std::span<const int4, 4>(cs), alpha, y0);
-  auto pi_tilde1 = vdpf.Eval(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+  auto pi_tilde1 = vdpf.Eval(true, seeds[1], key, tr,
       cuda::std::span<const int4, 4>(cs), alpha, y1);
   int4 sum = Reconstruct(y0, y1);
-  printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, Equal(sum, beta) ? "yes" : "NO");
+  const bool eq_beta = Equal(sum, beta);
+  printf("  Eval(x=%d == alpha): y0+y1 == beta? %s\n", alpha, eq_beta ? "yes" : "NO");
 
   // Prove: combine the per-point pi_tildes of each party into a single proof.
   // With one evaluation the proof just aggregates that point's pi_tilde.
@@ -99,15 +103,16 @@ int main() {
       cuda::std::span<const int4, 4>(cs), pi1);
 
   // Compare proofs accumulated with the same method and ordered query inputs.
-  printf("  Verify(pi0, pi1) == true?           %s\n",
-      Vdpf::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)) ? "yes" : "NO");
+  const bool verified_point = Vdpf::Verify(cuda::std::span<const int4, 4>(pi0),
+      cuda::std::span<const int4, 4>(pi1));
+  printf("  Verify(pi0, pi1) == true?           %s\n", verified_point ? "yes" : "NO");
 
   // Full-domain evaluation over all 2^8 inputs
   int4 ys0[1 << kInBits];
   int4 ys1[1 << kInBits];
-  vdpf.EvalAll(false, seeds[0], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+  vdpf.EvalAll(false, seeds[0], key, tr,
       cuda::std::span<const int4, 4>(cs), cuda::std::span<int4>(ys0), pi0);
-  vdpf.EvalAll(true, seeds[1], cuda::std::span<const int4>(cws, kInBits + 1), tr,
+  vdpf.EvalAll(true, seeds[1], key, tr,
       cuda::std::span<const int4, 4>(cs), cuda::std::span<int4>(ys1), pi1);
 
   int4 zero = {0, 0, 0, 0};
@@ -119,9 +124,10 @@ int main() {
     }
   }
   printf("  EvalAll: mismatches over 2^%d inputs: %d\n", kInBits, mismatches);
-  printf("  EvalAll: Verify(pi0, pi1) == true?  %s\n",
-      Vdpf::Verify(cuda::std::span<const int4, 4>(pi0), cuda::std::span<const int4, 4>(pi1)) ? "yes" : "NO");
+  const bool verified_all = Vdpf::Verify(cuda::std::span<const int4, 4>(pi0),
+      cuda::std::span<const int4, 4>(pi1));
+  printf("  EvalAll: Verify(pi0, pi1) == true?  %s\n", verified_all ? "yes" : "NO");
 
   VdpfPrg::FreeCtxs(ctxs);
-  return 0;
+  return (eq_beta & verified_point & (mismatches == 0) & verified_all) ? 0 : 1;
 }

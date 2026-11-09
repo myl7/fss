@@ -5,6 +5,11 @@ add_library(fss INTERFACE)
 target_include_directories(fss INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 target_compile_features(fss INTERFACE cxx_std_20 cuda_std_20)
 
+# Guard for the modern split API: configure with -DFSS_ENABLE_V1_COMPAT=0 to
+# prove no sample depends on a deprecated compatibility entry.
+option(FSS_ENABLE_V1_COMPAT "Build against the deprecated v1 compatibility entries" ON)
+target_compile_definitions(fss INTERFACE FSS_ENABLE_V1_COMPAT=$<BOOL:${FSS_ENABLE_V1_COMPAT}>)
+
 find_package(OpenSSL REQUIRED)
 
 # EvalAll uses OpenMP on the host side; nvcc needs the flags passed through
