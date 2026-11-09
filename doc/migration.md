@@ -3,11 +3,11 @@
 This guide is for C++ callers.
 Python code is out of scope.
 The newest migration is listed first.
-To upgrade from v1.2.0 to v2.0.0, first follow [v1.2.0 to v1.3.0](#v120-to-v130), then [v1.3.0 to v2.0.0](#v130-to-v200-unreleased).
+To upgrade from v1.2.0 to v2.0.0, first follow [v1.2.0 to v1.3.0](#v120-to-v130), then [v1.3.0 to v2.0.0](#v130-to-v200).
 
-<a name="v130-to-v200-unreleased"></a>
+<a name="v130-to-v200"></a>
 
-## v1.3.0 to v2.0.0 (unreleased)
+## v1.3.0 to v2.0.0
 
 This section is for callers of v1.3.0.
 It lists the v1.3.0 declarations that still compile, the ones that are gone, and the current API to move each one to.

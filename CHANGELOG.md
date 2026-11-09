@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-09
+
 ### Added
 
 - `fss::group::Uint128<mod>`, the clamped 127-bit modular integer group in 128-bit storage. The modulus is the structural `fss::group::Uint128Modulus{low, high}` non-type template parameter (`(high << 64) | low`, default `2^127`), so the type is usable directly as a CUDA kernel template argument.
@@ -55,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Uint<__uint128_t, mod>` moduli above `2^64 - 1`. Use `fss::group::Uint128` for wide moduli such as the 2^127 group.
 - Python `DmpfKey` and `VdmpfKey` wrappers.
 
-Migration notes: [v1.3.0 to v2.0.0 (unreleased)](doc/migration.md#v130-to-v200-unreleased).
+Migration notes: [v1.3.0 to v2.0.0](doc/migration.md#v130-to-v200).
 
 ## [1.3.0] - 2026-10-18
 
@@ -129,7 +131,8 @@ Migration notes: [v1.2.0 to v1.3.0](doc/migration.md#v120-to-v130).
 
 ## [1.0.0] - 2026-03-05
 
-[unreleased]: https://github.com/myl7/fss/compare/v1.3.0...HEAD
+[unreleased]: https://github.com/myl7/fss/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/myl7/fss/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/myl7/fss/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/myl7/fss/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/myl7/fss/releases/tag/v1.1.0

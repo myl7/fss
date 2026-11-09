@@ -345,7 +345,7 @@ The [Python samples](https://github.com/myl7/fss/tree/main/samples/python) show 
 
 ### Comparison curves
 
-FSS curves show v2.0.0 (unreleased).
+FSS curves show v2.0.0.
 CPU runs use an AMD EPYC 9115, and GPU runs use an NVIDIA RTX A6000 with CUDA 12.6.
 The comparison lists the library versions and configurations for the third-party curves.
 
