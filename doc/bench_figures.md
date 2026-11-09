@@ -1,11 +1,14 @@
 # Benchmark curve methodology
 
+The current FSS curves measure v2.0.0 (unreleased).
+Their raw results retain the earlier build label `1.3.0-unreleased`, which identifies the same development collection, not the released v1.3.0 API.
+
 Use `third_party/figure_bench.py` to reproduce the time curves. Run from the
 repository root on Linux after following the
 [pinned dependency and toolchain setup](bench_third_parties.md).
 CPU curves use `cs659b`: AMD EPYC 9115, NVIDIA RTX PRO 5000, SM 120, and
 CUDA 13.2. The current collection, taken on 2026-11-08 UTC (2026-11-09 HKT)
-at library version 1.3.0-unreleased, pins CPU operations to CPU 25 (sibling
+for v2.0.0 (unreleased), pins CPU operations to CPU 25 (sibling
 57, NUMA node 1) with one CPU thread and the `performance` governor; the
 historical third-party rows below were collected pinned to CPU 24 with the
 same governor, so cross-collection comparisons are not strictly placed on the
@@ -296,7 +299,7 @@ The supplementary block sweep fixes `N = 2^20` and varies actual threads per
 block T: point `Eval` (including software AES) amortized over `K = 262,144`
 keys, and full-domain `EvalAll` with `K = 1` for the DCF, DPF, HalfTreeDPF,
 packed, VDPF, and Grotto schemes. The published sweep is the fresh
-2026-11-08 to 09 collection at library version 1.3.0-unreleased; the earlier
+2026-11-08 to 09 collection for v2.0.0 (unreleased); the earlier
 2026-10-18 sweep also carried optional integer-group rows that this
 collection does not include. Fixed-256-thread DMPF/VDMPF kernels are
 excluded from this sensitivity sweep. The sweep adjusts the block
@@ -367,7 +370,7 @@ uses the same supported-case registry as `--scheme`, and includes DMPF and
 VDMPF. Explicit scheme selection skips unsupported operations. Prepare rows
 are collected alongside the ordinary CPU Eval sweep, keeping the CLI's three
 ordinary operation defaults unchanged. The current published curves are the
-2026-11-08 to 09 UTC collection at library version 1.3.0-unreleased: a full
+2026-11-08 to 09 UTC collection for v2.0.0 (unreleased): a full
 CPU domain sweep on cs659b, a full GPU domain sweep on cs11369a whose
 point-Eval cases come from a second run after a collection-side fix, and a
 fresh GPU block sweep whose scheme-isolated T=1024 full-domain supplements

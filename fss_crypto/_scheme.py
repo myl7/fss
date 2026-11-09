@@ -97,7 +97,7 @@ class _Scheme:
         DCF value components after the seed components and one packed-control
         row at the end for the schemes that have one; treat the tensor as
         opaque bytes produced by ``gen``. Contents are uninitialized until a
-        successful ``gen`` call.
+        successful ``gen`` call. This storage is not a portable serialized key.
 
         The single-point encoding changed from the previous Cw records to this
         component layout. Key bytes persisted by an older release are not

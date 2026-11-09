@@ -95,7 +95,8 @@ class HalfTreeGrottoDcf(_Scheme):
         Each party's shares can differ from raw scalar ``eval``.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         CUDA calls ignore par_depth and use frontier_depth/threads_per_block.
         CPU calls ignore frontier_depth/threads_per_block.
         """
@@ -115,7 +116,8 @@ class HalfTreeGrottoDcf(_Scheme):
         Counts and bytes must fit tensor address limits.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         CUDA calls ignore par_depth and use frontier_depth/threads_per_block.
         CPU calls ignore frontier_depth/threads_per_block.
         """
@@ -129,7 +131,8 @@ class HalfTreeGrottoDcf(_Scheme):
         The owner object and allocator overhead are separate.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         """
         return OwnedPackedParityTree._from_native(*self._native.preprocess_owned(b, s0, self._cws(cws), _parallel_depth(par_depth)))
 

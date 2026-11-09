@@ -1,6 +1,6 @@
-# Third-party DPF/DCF Library Benchmarks
+# Benchmark runner and third-party comparisons
 
-The historical tables below use in_bits=20 (domain size 2^20 = 1,048,576).
+The native suite and third-party adapters use `in_bits=20` by default, a domain of 1,048,576 inputs.
 See [benchmark methodology and comparison curves](bench_figures.md) for the
 current adapters, additive uint128 DCF measurements, and domain sweeps.
 
@@ -106,14 +106,17 @@ separate operation.
 | Setting          | Value                                                              |
 | ---------------- | ------------------------------------------------------------------ |
 | in_bits          | 20                                                                 |
-| out_bits         | 128 (XorWrapper<uint128>)                                          |
+| out_bits         | 128                                          |
 | PRG              | AES-128 MMO (Matyas-Meyer-Oseas), 3 instances (left, right, value) |
 | PRG acceleration | AES-NI (BoringSSL) + SIMD (Highway library), up to 64 AES blocks per fill         |
-| Output group     | XOR<uint128>                                                       |
+| Output group     | DPF: XOR<uint128>; DCF: additive uint128                                                       |
 | Threading        | Single-thread (no rayon/OpenMP); SIMD parallelism via Highway      |
 | Build            | Bazel, `-c opt`                                                    |
 | Toolchain        | Bazel's configured C++ compiler                                    |
 | Bench framework  | Google Benchmark 1.8.3 (Bazel module)                              |
+
+The former Google DCF XOR configuration failed reconstruction and its timings are invalid.
+The current DCF adapter uses additive uint128 outputs.
 
 ### GPU-DPF CPU (C++)
 
@@ -378,6 +381,91 @@ omitting unused SCI/SEAL and neural-network backends. GPU RNG and AES remain
 the pinned EzPC CUDA implementations. Its compile commands and link map are
 saved with the build.
 
+### Run the native suite
+
+Build the native binaries with `-DBUILD_BENCH=ON` and run them directly, or use the Makefile to select a CPU and GPU through the runner:
+
+```bash
+CPU_ID=0 make bench_cpu
+GPU_ID=1 CUDA_ARCH=86 make bench_gpu
+```
+
+Select idle devices allowed by your host.
+Direct binary invocations leave CPU affinity and the governor to the caller.
+Both Makefile targets use the `decision` profile by default.
+Set `BENCH_PROFILE=publication BENCH_WORKLOAD=legacy` to restore historical sampling and full-domain workloads.
+Set `CUDA_ARCH` only when CMake cannot infer it.
+
+### Native benchmark coverage
+
+`bench_cpu` and `bench_gpu` cover DPF, DCF, VDPF, Half-Tree DPF, packed Half-Tree DPF, Grotto DCF, Half-Tree Grotto DCF, DMPF, and VDMPF.
+The CPU suite compares OpenSSL AES, AES-NI, software AES, and ChaCha PRGs.
+The GPU suite uses the device-callable software AES and ChaCha backends.
+The suite also measures VDPF proof aggregation, Grotto preprocessing, and independent-key GPU batches.
+Internal compact point-evaluation experiments are separate from the public `Eval` rows and are not public APIs.
+
+Native names identify the scheme, operation, output group, PRG, and domain bits.
+For example, `BM_DcfEval_Uint_AesRaw/17` evaluates DCF over a 2^17 domain with the `Uint` group and AES-NI PRG.
+PRG suffixes are `Aes` for OpenSSL, `AesRaw` for AES-NI, `AesSoft` for software AES, and `ChaCha`.
+Grotto rows omit the output group because they produce F2 shares.
+
+A batch row times the whole API call, while its item counter may count keys, queries, or domain outputs.
+Packing and other preparation may happen outside the timed call.
+Check the timing boundary and denominator before comparing throughput or deriving latency per item.
+
+### Run profiles
+
+Both Python runners resolve a shared profile through `third_party/benchmark_policy.py`.
+Explicit `--min-time` and `--repetitions` values (and `--warmup` on the figure runner) always override the profile timing, and explicit selection arguments always override the profile selection.
+
+| Profile | Timing defaults | Selection defaults |
+| --- | --- | --- |
+| `decision` (default) | 0.3 s minimum measurement, one repetition, no extra warmup | current library only: `--libraries main` for `bench.py`; the FSS wrapper at `n = 8, 20` on the figure runner |
+| `smoke` | 0.01 s, one repetition | current library, full-domain rows included |
+| `publication` | `bench.py`: 1 s and five repetitions; figure runner: 0.1 s measurement, 0.1 s warmup, five repetitions | each runner's historical default selection |
+
+`--smoke` remains an alias for `--profile smoke`; combining it with a different explicit profile fails.
+The `decision` default excludes the internal compact-path and point-launcher experiment rows (names containing `EvalPoint`) from the `main` library; an explicit `--filter` and the `publication` profile keep the full selection.
+The filters are plain POSIX extended alternations over the registered operation names, because the native binaries compile `--benchmark_filter` with a regex backend that rejects lookaround.
+Smoke includes the full-domain rows instead of excluding them, so one correctness run covers at least one real `n = 20` full evaluation.
+Explicit `--min-time` and `--repetitions` values reach the native commands unchanged in every profile, including smoke.
+When the resolved repetitions exceed one, the current library's native commands (`main` and the FSS wrapper) run their repeated samples with Google Benchmark random interleaving, one `--benchmark_enable_random_interleaving=true` per command; a single repetition, third-party adapters, and the historical FSS binaries carry no such flag.
+An explicit `--benchmark_enable_random_interleaving=false|true` after `--` overrides the mode for the run, is resolved before `--plan` prints, and the command carries exactly one such flag.
+Interleaving shuffles the repetitions of the rows selected within one native command; it does not interleave independent processes, binaries, or cases, and is not a global A/B schedule or a precision guarantee.
+The resolved mode is recorded per command in `--plan` and the run manifest.
+
+`--plan` prints the resolved libraries, exact filters, timing budget, and work configuration without building or touching hardware.
+A `--benchmark_filter=` value passed after `--` is folded into the plan before it is printed, so the plan always shows the exact filter the run would use.
+The native result-row count is printed as unresolved because it is known only after the run.
+
+#### Full-domain launch control
+
+The main GPU batch full-domain rows process the `2^20`-key fixture through 1024-key API calls.
+The fixture's alphas and evaluation points are masked to the configured input domain, and the receipt records that fixture domain.
+`--workload daily` (default) runs one full API call per iteration, `--workload legacy` restores the historical 1024 calls per iteration, and `--full-launches N` selects 1 to 1024 calls explicitly.
+The runner forwards the resolved value through `FSS_BENCH_FULL_LAUNCHES` and records it in the run manifest and `--plan`; the executed `calls_per_iteration` and `batch_keys` counters are checked against that plan, and batch keys stay 1024.
+The four batch full-domain rows (DPF, DCF, HalfTree DPF, packed HalfTree DPF) must carry both counters; a receipt missing either fails the run.
+The single-key full-domain rows (Grotto DCF, VDPF Merkle) are exempt.
+`--workload legacy` conflicts with an explicit `--full-launches` other than 1024.
+The daily row keeps real batch throughput semantics with a workload identity different from the legacy row, and its 1024-key batch cost divided by 1024 is an amortized per-key cost, not single-key latency.
+
+New main and FSS receipts carry per-iteration work counters with `work_schema_version = 1`; a new `main` or `fss` collection whose receipts lack the marker fails instead of falling back to the legacy reading.
+The runner normalizes them as time per iteration divided by work per iteration, keeps logical output counts, output bytes, proof counts, proof bytes, point-hash bytes, and GPU host wall time in separate summary columns, and records the process wall time per command separately.
+The work unit names the primary metric: keys or PRG calls, queries, domain outputs, prepared leaves for preprocess rows, or proofs for proof rows.
+Proof rows report their real zero keys and zero logical output bytes with the proof count and proof bytes in their own columns, and leave the key columns empty, because they process no keys.
+`output_bytes` counts logical output storage bytes, not DRAM traffic; `proof_bytes` counts final proof storage; `point_hash_bytes` counts the raw corrected per-point hash material `Eval` stores, which is the input to `Prove`, not a proof.
+The main GPU VDPF point rows carry `point_hash_bytes_per_iteration` with 64 hash bytes per key next to their 16 logical output bytes per key, and a new main collection missing it on those rows fails; the single-key full-domain Merkle row reports different fields.
+Native `items_per_second` is cross-checked on CPU against `cpu_time` and on GPU against the manual event time, each raw repetition on its own, and never overwrites the wall-normalized rate.
+Rows without the schema marker, including historical receipts and unchanged third-party adapters, keep the legacy name-based reading and are marked `legacy` in the summary.
+
+Reproduce the historical workload and sampling together with `--profile publication --workload legacy`.
+
+`make ptx_info` collects current compiler resource reports in `build/ptx_info.log`.
+`make profile_gpu` records an Nsight Systems trace for `GPU_PROFILE_BENCH`.
+See the README's Flamegraph section for CPU profiling.
+
+### Run third-party comparisons
+
 From a fresh checkout, run:
 
 ```bash
@@ -470,95 +558,6 @@ set of results.
 
 ## Results
 
-### Hardware
-
-Measured on cs659b on 2026-10-10 (Asia/Hong_Kong).
-
-| Component | Value |
-| --- | --- |
-| CPU | 2 × AMD EPYC 9115, 16 cores/socket, 64 hardware threads total |
-| CPU placement | CPU cases: `taskset -c 24`, performance governor, one thread |
-| GPU | NVIDIA RTX PRO 5000 72GB Blackwell, sm_120, GPU 0, driver 595.71.05 |
-| GPU host placement | `taskset -c 16`, performance governor |
-| CUDA | 13.2, nvcc V13.2.78 |
-| Build | Release, CUDA architecture 120 |
-
-The tables use medians: five repetitions for Google Benchmark and Python, and
-Criterion's median estimate from 100 samples with a 3-second warm-up and at
-least a 1-second measurement window. Each input domain has 2^20 points.
-
-### CPU
-
-Times are per key. `EvalAll` and Rust `FullEval` materialize the full domain.
-Groups, output widths, and PRGs differ as listed in Settings: libdpf packs
-1-bit XOR outputs, libfss uses a prime field, and the other CPU rows use their
-128-bit XOR or modular groups. GPU-DPF's native CPU row uses software AES.
-
-| Library | DPF Gen | DPF Eval | DPF EvalAll | DCF Gen | DCF Eval | DCF EvalAll |
-| --- | --- | --- | --- | --- | --- | --- |
-| libdpf | 1.12 µs | 437 ns | 92.2 µs | — | — | — |
-| libfss | 59.1 µs | 5.54 µs | 5.8 s | — | — | — |
-| google_dpf | 3.15 µs | 857 ns | 37.5 ms | invalid[^google-dcf] | invalid[^google-dcf] | — |
-| GPU-DPF (software AES) | 454 µs | 19.7 µs | 20.6 s | — | — | — |
-| fss-rs 0.6.0 (bytes) | 573 ns | 431 ns | 45.9 ms | 684 ns | 507 ns | 57 ms |
-| fss-rs 0.6.0 (uint) | 580 ns | 430 ns | 45.2 ms | invalid[^rust-dcf] | invalid[^rust-dcf] | invalid[^rust-dcf] |
-| fss 0.7.0 (bytes) | 1 µs | 1.09 µs | — | 1.43 µs | 926 ns | — |
-| fss 0.7.0 (uint) | 990 ns | 1.1 µs | — | 1.91 µs | 996 ns | — |
-| fss (bytes) | 1.68 µs | 501 ns | 38.2 ms | 1.71 µs | 928 ns | — |
-| fss (uint) | 978 ns | 501 ns | 39.8 ms | 2.02 µs | 943 ns | — |
-
-### GPU
-
-Times below are the median call duration divided by the number of keys in
-that call, except GPU-DPF generation, which is a separately measured CPU call
-processing one key.
-CUDA events time the native GPU kernels. GPU-DPF uses synchronized Python
-wall time including key conversion, host/device transfers, table reduction,
-and CPU result construction.
-
-| Library | Keys/call | DPF Gen/key | DPF Eval/key | Materialized DPF EvalAll/key | DPF full-domain reduction/key | DCF Gen/key | DCF Eval/key |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| GPU-DPF | 512 | 86.2 µs (CPU, one key) | — | — | 115 µs | — | — |
-| EzPC | 1024 | 142 ns | 64.9 ns | — | 31.3 µs | 219 ns | 72.2 ns |
-| EzPC (262144 keys/call) | 262144 | 11.4 ns | 7.94 ns | — | — | 14.2 ns | 8.22 ns |
-| fss 0.7.0 (bytes) | 1048576 | 54.6 ns | 19.1 ns | — | — | 140 ns | 45.5 ns |
-| fss 0.7.0 (uint) | 1048576 | 54.4 ns | 19 ns | — | — | NA[^legacy-dcf] | NA[^legacy-dcf] |
-| fss (bytes) | 1048576 | 1.86 ns | 1.34 ns | — | — | 1.96 ns | 1.35 ns |
-| fss (uint) | 1048576 | 1.89 ns | 1.34 ns | — | — | 2.23 ns | 1.33 ns |
-
-GPU-DPF's ChaCha12 Python generation takes 86.2 µs per key on
-host CPU 16. Its reduction reads a nonzero 2^20 × 1 int32 table, padded to 16
-columns by upstream. EzPC's `EvalAll` returns a packed reduction bit per key.
-Their reduction throughput counts keys, while materialized `EvalAll`
-throughput can count domain outputs. The [new full-output adapters](bench_figures.md)
-materialize each domain output and report that work separately from these
-historical native reductions.
-GPU-DPF has 128-bit internal arithmetic and int32 table results. EzPC has
-1-bit outputs. fss 0.7.0 and fss retain their respective groups and PRGs from
-Settings.
-
-The fss software-AES DPF evaluation is reported separately in
-[the software AES comparison](bench_aes128_soft.md). Raw PRG calls are also
-reported there.
-
-The source reports are under `build/third_party/results/`: `comparison-cpu-performance/summary.csv`, `comparison-cpu-rust-google-performance/summary.csv`, `comparison-gpu-performance/summary.csv`, `comparison-fss070-cpu-correct-provider/summary.csv`, `comparison-fss070-gpu-correct-provider/summary.csv`.
-The fss 0.7.0 rows use the corrected provider adapter. Earlier CPU and GPU
-DPF measurements are superseded because the adapter supplied PRG buffer sizes
-that could overrun their allocations. The corrected adapter uses each
-provider's required block count and initialization length. The pinned upstream
-algorithms are unchanged.
-
-[^legacy-dcf]: fss 0.7.0 uint GPU DCF Gen and Eval both fail with a CUDA
-    misaligned-address error. Its packed 33-byte correction-word stride contains
-    a `__uint128_t` access at byte offset 16 that can be unaligned. These cases
-    have no timings or fallback results. The run records exactly two failed
-    processes. The valid DPF and bytes DCF cases use separate processes.
-
-[^google-dcf]: The historical Google DCF XOR adapter was an unsupported
-    configuration. Its old Gen (8.28 µs) and Eval (4 µs) timings are invalid
-    and superseded by the [additive uint128 curves](bench_figures.md).
-
-[^rust-dcf]: The fss-rs 0.6.0 additive uint DCF has a native reconstruction
-    failure. Its old Gen (698 ns), Eval (499 ns), and FullEval (51.3 ms)
-    timings are invalid. The [current comparison](bench_figures.md) records
-    that failure without fallback measurements.
+The [interactive comparison](https://myl7.github.io/fss/bench/) shows measured values, collection dates, and the configurations of each method.
+See the [curve methodology](bench_figures.md) for the current figures, timing boundaries, and differences between collections.
+Software AES has a separate [historical implementation comparison](bench_aes128_soft.md).

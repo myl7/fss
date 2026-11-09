@@ -1,6 +1,7 @@
-# AES-128 MMO Software PRG: T-table vs Textbook
+# Software AES-128 MMO: T-table and textbook implementations
 
-Benchmark comparing two software AES-128 implementations used as PRGs
+This page records the October 10, 2026 comparison, not a measurement of the current library.
+It compares two software AES-128 implementations used as PRGs
 with Matyas-Meyer-Oseas (MMO) mode: `out = AES(key, seed) XOR seed`.
 Both use mul=2 (two outputs per call, matching DPF usage).
 
@@ -118,7 +119,7 @@ implementation's key expansion and the T-table kernel's shared-memory setup.
 
 The T-table combines SubBytes and MixColumns through Te0 lookups. The textbook
 implementation performs the byte substitutions, row shifts, and MixColumns
-arithmetic separately. The current T-table kernel uses 80 registers per
+arithmetic separately. The measured T-table kernel used 80 registers per
 thread compared with 123 for the textbook kernel. Both report zero spill
 stores and loads, with stack frames of 624 and 608 bytes respectively. The
 T-table kernel uses 1280 bytes of shared memory per block. These compiler
@@ -128,5 +129,4 @@ occupancy or a specific bottleneck would require kernel profiling.
 The raw source rows are in
 `build/third_party/results/comparison-cpu-performance/summary.csv` and
 `build/third_party/results/comparison-gpu-performance/summary.csv`. The separate
-software-AES DPF rows come from those same reports. GPU-DPF and EzPC reduction
-timings are in [the third-party comparison](bench_third_parties.md#gpu).
+software-AES DPF rows come from those same reports. See the [interactive comparison](https://myl7.github.io/fss/bench/) for the GPU-DPF and EzPC measurements.

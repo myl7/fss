@@ -72,7 +72,7 @@ Migration notes: [v1.3.0 to v2.0.0 (unreleased)](doc/migration.md#v130-to-v200-u
 - AES-NI raw Feistel PRP backend (`Aes128FeistelRaw`)
 - Python bindings for every scheme, including CUDA evaluation and device-side VDPF Merkle proofs
 - Keyword-only Python `par_depth` controls, explicit VDMPF `batch_eval_merkle`, and verification without constructing or compiling a scheme
-- Static benchmark comparison site (doc/site), scheme-family comparison figures, and benchmark coverage page (doc/benchmarks.md)
+- Static benchmark comparison site (doc/site), scheme-family comparison figures, and benchmark runner guide (doc/bench_third_parties.md)
 - CPU benchmark curves for the newer schemes, with the Servan-Schreiber VDPF reference and the Mastic, PLASMA, sycret, dpf-cpp, and dpfplusplus (fetched on demand) baselines
 - README figures render on the Doxygen pages
 - Record of the attempt to replace the VDPF/VDMPF proof hash with an AES or ChaCha construction (doc/vdpf_proof_hash_exploration.md): the constructions were reviewed and measured, both approved candidates lost the performance comparison, and Blake3 stays

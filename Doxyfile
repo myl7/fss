@@ -1009,13 +1009,11 @@ WARN_LOGFILE           =
 INPUT                  = README.md \
                          include \
                          doc/bench_figures.md \
-                         doc/benchmarks.md \
                          doc/bench_third_parties.md \
                          doc/bench-dpfplusplus.md \
                          doc/bench_aes128_soft.md \
-                         doc/cuda_usage.md \
-                         doc/python.md \
-                         doc/running_benchmarks.md \
+                         doc/migration.md \
+                         doc/vdpf_proof_hash_exploration.md \
                          doc/vdpf_merkle_fold_security.md
 
 # This tag can be used to specify the character encoding of the source files

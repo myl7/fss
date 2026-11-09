@@ -93,7 +93,8 @@ class PackedHalfTreeDpf(_Scheme):
         Read input x with ``extract(ys[x // kLanes], x)``.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         CUDA calls ignore par_depth and use frontier_depth/threads_per_block.
         CPU calls ignore frontier_depth/threads_per_block.
         """

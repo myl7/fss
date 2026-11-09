@@ -5,6 +5,8 @@ Python code is out of scope.
 The newest migration is listed first.
 To upgrade from v1.2.0 to v2.0.0, first follow [v1.2.0 to v1.3.0](#v120-to-v130), then [v1.3.0 to v2.0.0](#v130-to-v200-unreleased).
 
+<a name="v130-to-v200-unreleased"></a>
+
 ## v1.3.0 to v2.0.0 (unreleased)
 
 This section is for callers of v1.3.0.
@@ -234,6 +236,8 @@ int4 y = dpf.Eval(false, s0s[0], cuda::std::span<const int4>(cws, 9), tr, x);
 
 The correction array now includes the terminal at `cws[in_bits]`, and the per-layer control bits arrive packed in `tr`.
 Each scheme's current usage is in `samples/`: `dpf_dcf_cpu.cu`, `half_tree_dpf_cpu.cu`, `packed_half_tree_dpf_cpu.cu`, `grotto_dcf_cpu.cu`, `vdpf_cpu.cu`, `dmpf_cpu.cu`, and `vdmpf_cpu.cu`, with GPU usage in `dpf_dcf_gpu.cu`.
+
+<a name="v120-to-v130"></a>
 
 ## v1.2.0 to v1.3.0
 

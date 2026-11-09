@@ -75,7 +75,8 @@ class Vdpf(_Scheme):
         Execution geometry does not change the proof tree.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         CUDA calls ignore par_depth.
         """
         self._native.prove_merkle(pi_tildes, cs, pi, _parallel_depth(par_depth, pi))
@@ -84,7 +85,8 @@ class Vdpf(_Scheme):
         """Write all shares and the chain proof on CPU into caller storage.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         This chain-proof operation requires CPU buffers and rejects CUDA buffers.
         """
         self._native.eval_all(b, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth, pi))
@@ -96,7 +98,8 @@ class Vdpf(_Scheme):
         The range's output count and byte size must fit addressable storage.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         This chain-proof operation requires CPU buffers and rejects CUDA buffers.
         """
         self._native.eval_range(b, first, last, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth))
@@ -125,7 +128,8 @@ class Vdpf(_Scheme):
         CUDA uses frontier_depth/threads_per_block. CPU ignores these values.
 
         par_depth controls CPU partitioning; 0 is sequential.
-        Positive values require OpenMP and a parallel-safe backend.
+        With OpenMP enabled, positive values use parallel evaluation and require
+        a parallel-safe backend. Otherwise evaluation remains sequential.
         CUDA calls ignore par_depth.
         """
         self._execution_native(ys, frontier_depth, threads_per_block).eval_all_merkle(b, s0, self._cws(cws), cs, ys, pi, _parallel_depth(par_depth, pi))

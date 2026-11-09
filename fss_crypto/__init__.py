@@ -1,8 +1,12 @@
 """Thin PyTorch bindings for the public FSS C++ API.
 
 Scheme operations select CPU or CUDA from their tensor arguments.
-All tensor arguments must be on exactly the same device, including the CUDA
-index. Operations never copy tensors between devices automatically.
+Tensor buffers must be contiguous and on exactly the same device, including
+its CUDA index. Operations never copy tensors between devices automatically
+or fall back to CPU for an unsupported CUDA backend.
+CUDA operations use PyTorch's current stream. Launch-state initialization
+and scalar reads may synchronize. Returning Python scalars or bytes from
+CUDA tensors requires a transfer to the CPU.
 Shared evaluation entry points ignore ``par_depth`` on CUDA and ignore
 ``frontier_depth`` and ``threads_per_block`` on CPU, where those options exist.
 Chain-proof operations require CPU tensors and reject CUDA tensors.

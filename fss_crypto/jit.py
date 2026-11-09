@@ -70,12 +70,32 @@ def _overlaps(left: Path, right: Path) -> bool:
 @contextmanager
 def cache(*, read_roots: Sequence[str | PathLike[str]] = (),
           write_root: str | PathLike[str] | None) -> Iterator[None]:
-    """Select ordered read-only roots and an optional writable output root.
+    """Select read-only plugin directories and an optional writable directory.
 
-    Paths are fixed on entry. Nested scopes restore the previous locations.
-    A new thread must establish its own scope. Read-only mode still checks
-    the current compiler and header identities and requires the same toolchain.
-    Explicit precompile calls materialize their full closure in write_root.
+    Outside a scope, plugins use ``~/.cache/fss_crypto``. Lookups search
+    ``read_roots`` in order, then ``write_root`` when present. Read roots
+    receive no files or locks and must not overlap the write root.
+    With ``write_root=None``, a missing plugin raises an error instead of
+    compiling. Reuse requires compatible headers, compiler settings, Python,
+    and PyTorch. Runtime keys, nonces, and instance seeds are not cached.
+
+    ``Scheme.precompile`` prepares the scheme's primitive dependencies and
+    default launch specialization. Pass launch options to prepare another
+    specialization. Preparation with a write root materializes every required
+    plugin there, including modules already loaded in memory.
+
+    For example, prepare DPF plugins and then load them without compilation::
+
+        from fss_crypto import Dpf, group, jit, prg
+
+        with jit.cache(write_root="./build/fss-plugins"):
+            Dpf.precompile(8, group.Bytes(), prg.ChaCha(nonce=(0, 0), mul=2))
+        with jit.cache(read_roots=("./build/fss-plugins",), write_root=None):
+            dpf = Dpf(8, group.Bytes(), prg.ChaCha(nonce=(19, 27), mul=2))
+
+    Paths resolve on entry. Nested scopes restore the preceding directories.
+    A new thread must establish its own scope. A scheme retains the directories
+    selected during construction for later launch specializations.
     """
     if isinstance(read_roots, (str, bytes, PathLike)) or not isinstance(read_roots, Sequence):
         raise TypeError("read_roots must be a sequence of paths")
