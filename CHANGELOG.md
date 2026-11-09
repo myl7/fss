@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Python packaging declares Ninja as a runtime dependency for JIT compilation.
+
 ## [2.0.0] - 2026-11-09
 
 ### Added
