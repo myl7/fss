@@ -16,6 +16,7 @@ for (const [value, unit, expected] of [[999, 'ns', 999], [1000, 'µs', 1], [9999
 assert.deepEqual(variantQualifiers({...measured, variant: 'VDMPF-bytes-AES-NI-chains-rawprp'}), ['chain', 'raw PRP']);
 const cpuRow = (scheme, operation, library = 'fss', suffix = '') => ({...measured, platform: 'cpu', scheme,
   operation, library, prg: 'AES-NI', variant: `${scheme}-bytes-AES-NI${suffix}`});
+const gpuRow = (scheme, operation) => ({...measured, scheme, operation, variant: `${scheme}-bytes-ChaCha20-x2`});
 const records = normalizeRecords({records: [cpuRow('DCF', 'EvalAll'), cpuRow('GrottoDCF', 'EvalAll'),
   cpuRow('DPF', 'EvalAll'), cpuRow('HalfTreeDPF', 'EvalAll'), cpuRow('PackedHalfTreeDPF', 'EvalAll'),
   cpuRow('DPF', 'EvalAll', 'libdpf'), cpuRow('DMPF', 'EvalAll'), cpuRow('VDMPF', 'Gen'),
@@ -28,6 +29,20 @@ assert.deepEqual(overview.panels.find(panel => panel.family === 'dpf' && panel.o
 assert.equal(overview.panels.find(panel => panel.family === 'vdpf').rows.length, 2);
 assert.equal(figures.find(figure => figure.id === 'cpu-prepared').panels[0].rows.length, 3);
 assert.equal(figures.find(figure => figure.id === 'cpu-proof').panels[0].rows.length, 2);
+assert.deepEqual(overview.panels.map(panel => [panel.row, panel.column]),
+  [[0, 2], [1, 1], [1, 2], [2, 2], [3, 2], [4, 0], [4, 2]], 'CPU sparse rows keep their family positions');
+const gpuOverview = figureGroups(normalizeRecords({records: ['DCF', 'DPF'].flatMap(scheme => ['Gen', 'Eval', 'EvalAll'].map(operation => gpuRow(scheme, operation)))
+  .concat([gpuRow('PackedHalfTreeDPF', 'EvalAll'), gpuRow('VDPF', 'EvalAll'), gpuRow('DMPF', 'Eval'), gpuRow('DMPF', 'EvalAll')])}))
+  .find(figure => figure.id === 'gpu-operations');
+assert.deepEqual(gpuOverview.panels.map(panel => `${panel.family}-${panel.operation}:${panel.row},${panel.column}`),
+  ['dcf-gen:0,0', 'dcf-eval:0,1', 'dcf-eval_all:0,2', 'dpf-gen:1,0', 'dpf-eval:1,1', 'dpf-eval_all:1,2',
+    'packed-eval_all:2,0', 'vdpf-eval_all:2,1', 'dmpf-eval:3,0', 'dmpf-eval_all:3,1'],
+  'GPU partial rows are re-dealt into two-column rows');
+assert.deepEqual(gpuOverview.rowLegends.map(legend => legend.rowIndex), [0, 1, 2, 3]);
+assert.equal(gpuOverview.rowLegends[2].entries.length, 3);
+const partialSingleFamily = figureGroups(normalizeRecords({records: [gpuRow('DCF', 'Eval'), gpuRow('DCF', 'EvalAll')]}))
+  .find(figure => figure.id === 'gpu-operations');
+assert.deepEqual(partialSingleFamily.panels.map(panel => [panel.row, panel.column]), [[0, 0], [0, 1]]);
 for (const figure of figures) for (const panel of figure.panels) assertPanelIdentities(panel.rows);
 const inventory = methodInventory(records, figures);
 assert(inventory.every(method => method.figures.length > 0));

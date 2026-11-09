@@ -66,6 +66,18 @@ try {
   await page.setContent(`<main id="chart"></main><script>${d3}</script><script>${renderSource};renderFigures(d3,${JSON.stringify(figures)},{});</script>`);
   const paths = await page.locator('[data-layer="curve"]').evaluateAll(nodes => nodes.map(node => node.getAttribute('d')));
   assert(paths.length > 0 && paths.every(path => (path.match(/M/g) ?? []).length === 2 && !path.includes('L')), 'static curves must not bridge an entirely missing N');
+  const halfTreeOnly = figureGroups(normalizeRecords({records: [{library: 'fss', scheme: 'HalfTreeDPF',
+    variant: 'HalfTreeDPF-bytes-AES-NI-packedkey', platform: 'cpu', operation: 'Eval', group: 'bytes', prg: 'AES-NI',
+    domain_bits: 8, num_keys: 4, median_ns: 2000000, ns_per_key: 500000, status: 'ok'}]}));
+  await page.evaluate(figureList => renderFigures(d3, figureList, {}), halfTreeOnly);
+  const yLabels = await page.locator('svg[data-figure="cpu-prepared"] [data-name="y-label"]').allTextContents();
+  assert.deepEqual(yLabels, ['Time (µs/query)'], 'a prepared row that starts past column 0 must keep its y-axis label');
+  const sparseCpu = figureGroups(normalizeRecords({records: [{...fixture, status: 'ok'},
+    {...fixture, scheme: 'DCF', variant: 'DCF-bytes-AES-NI', operation: 'Gen', status: 'ok'}]}));
+  await page.evaluate(figureList => renderFigures(d3, figureList, {}), sparseCpu);
+  const sparseWidths = await page.locator('svg[data-figure="cpu-operations"]').last().locator('[data-layer="frame"]')
+    .evaluateAll(nodes => nodes.map(node => Number(node.getAttribute('width'))));
+  assert.deepEqual(sparseWidths, [274, 274], 'sparse CPU rows keep the figure-wide panel width');
   console.log(`site selector identities and 1,000,000 ns = 1 ms table/axis and whole-panel missing-N gap checks passed (${labels.length} CPU variants)`);
 } finally {
   await browser.close();

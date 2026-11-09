@@ -71,6 +71,16 @@ function panelsFor(selected, operations, families = FAMILIES) {
   });
   return panels;
 }
+function compactPartialRows(panels, columns) {
+  if (columns < 3) return panels;
+  const rows = new Map();
+  for (const panel of panels) rows.set(panel.row, [...(rows.get(panel.row) ?? []), panel]);
+  const layout = [...rows.values()].filter(rowPanels => rowPanels.length === columns);
+  const fullRows = layout.length;
+  panels.filter(panel => rows.get(panel.row).length !== columns)
+    .forEach((panel, index) => (layout[fullRows + Math.floor(index / 2)] ??= []).push(panel));
+  return layout.flatMap((rowPanels, row) => rowPanels.map((panel, column) => ({...panel, row, column})));
+}
 export function figureGroups(records) {
   const figures = [];
   for (const device of ['cpu', 'gpu']) {
@@ -78,8 +88,9 @@ export function figureGroups(records) {
     const overview = selected.filter(row => !prepared(row) && !extra(row) && !['mastic', 'plasma', 'dpf-cpp', 'dpfplusplus'].includes(row.library));
     // The ordinary DPF reference is repeated in the packed row where measured.
     const packedReference = overview.filter(row => row.library === 'fss' && row.scheme === 'DPF' && overview.some(item => item.family === 'packed' && item.operation === row.operation)).map(row => ({...row, family: 'packed'}));
+    const overviewPanels = panelsFor([...overview, ...packedReference], OPERATIONS);
     figures.push({id: `${device}-operations`, title: `${device.toUpperCase()} benchmark overview`,
-      panels: panelsFor([...overview, ...packedReference], OPERATIONS)});
+      panels: device === 'gpu' ? compactPartialRows(overviewPanels, OPERATIONS.length) : overviewPanels});
     const supplements = [
       ['prepared', 'Prepared-key point evaluation', selected.filter(row => row.library === 'fss' && row.group !== 'uint' && ['DPF', 'HalfTreeDPF'].includes(row.scheme) && ['prepare', 'eval'].includes(row.operation))],
       ['proof', 'Proof accumulators', selected.filter(row => row.scheme === 'VDPF' && row.library === 'fss' && row.operation === 'eval_all')],
@@ -93,7 +104,10 @@ export function figureGroups(records) {
         suffix === 'additional' && !rows.some(row => row.library !== 'fss') ||
         suffix === 'output-groups' && !rows.some(row => row.group === 'uint' || row.prg === 'AES-software') ||
         suffix === 'proof' && !rows.some(row => /-chains/.test(row.variant)) || !distinctVariants.size) continue;
-      figures.push({id: `${device}-${suffix}`, title: `${device.toUpperCase()}: ${title}`, panels: suffix === 'prepared' ? preparedPanels(rows) : panelsFor(rows, suffix === 'proof' ? ['eval_all'] : OPERATIONS)});
+      const operations = suffix === 'proof' ? ['eval_all'] : OPERATIONS;
+      const panels = suffix === 'prepared' ? preparedPanels(rows) : panelsFor(rows, operations);
+      figures.push({id: `${device}-${suffix}`, title: `${device.toUpperCase()}: ${title}`,
+        panels: device === 'gpu' && suffix !== 'prepared' ? compactPartialRows(panels, operations.length) : panels});
     }
     const speedup = pairedSpeedups(selected.filter(row => row.group !== 'uint'));
     if (speedup.length) figures.push({id: `${device}-prepared-speedup`, title: `${device.toUpperCase()}: prepared query speedup`,

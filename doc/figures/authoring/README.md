@@ -31,11 +31,12 @@ export command with `--publish` to copy SVG/PNG assets to `doc/figures` and
 write `doc/site/data.json`. Publication drops previously generated figures
 that this export no longer produces. Raw receipts remain under `build`.
 
-The overview has five rows: DCF, full-width DPF, packed DPF, VDPF, and
-DMPF/VDMPF. Its columns are Gen, Eval, and EvalAll. Default backends appear
-in the overview. A missing operation stays absent. An ordinary DPF reference
-joins a packed panel only when a packed method was actually measured there.
-The absolute log axes retain slow third-party baselines.
+The overviews group DCF, full-width DPF, packed DPF, VDPF, and DMPF/VDMPF.
+The CPU overview aligns Gen, Eval, and EvalAll by column.
+The GPU overview packs the available operations without empty slots.
+Default backends appear in the overview, and missing measurements stay absent.
+An ordinary DPF reference joins a packed panel only where a packed method was measured.
+The log axes retain slow third-party baselines.
 
 Supplementary figures separate prepared-key setup/query/one-shot costs,
 proof accumulators, PRP backends, and output groups or PRG backends. Prepared-key static panels focus on the default byte group. The site

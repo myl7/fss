@@ -245,9 +245,9 @@ byte-group curves. Preserve that failure if collecting optional integer
 variants with `--include-uint`. EzPC's strict DCF API rejects n=8. Historical
 FSS 0.7 has no native full-domain API. Keep these statuses in the dataset.
 
-The CPU and GPU overviews use five rows with Gen, Eval, and EvalAll columns:
+The overviews group measured operations by scheme family:
 
-| Row | Overview methods |
+| Family | Overview methods |
 | --- | --- |
 | DCF | Default FSS DCF, Grotto DCF, Google DCF, libfss DCF, and measured GPU references |
 | DPF full width | Default FSS DPF, HalfTree, Google DPF, libfss DPF, and GPU-DPF |
@@ -256,11 +256,13 @@ The CPU and GPU overviews use five rows with Gen, Eval, and EvalAll columns:
 | DMPF / VDMPF | Default DMPF and VDMPF with the same point count |
 
 These absolute comparisons retain the slow baselines on log time axes.
-CPU point operations use µs, GPU point operations use ns, and full-domain
-operations use ms. The focused setup panels use ns/key. Eval is per query. The other columns are per key. A
-single-key GPU batch and independent-key GPU point workload remain distinct
-in the records and site configuration. The full grid leaves missing operations
-absent, including GPU VDPF Gen/Eval and multi-point GPU Gen.
+CPU point operations use µs, GPU point operations use ns, and full-domain operations use ms.
+The focused setup panels use ns/key.
+Eval is per query, and the other operations are per key.
+Single-key batches and independent-key point workloads remain distinct in the records and site configuration.
+The CPU overview aligns Gen, Eval, and EvalAll by column.
+The GPU overview places available operations next to each other, without reserving space for missing operations.
+Missing GPU VDPF Gen/Eval and multi-point Gen measurements remain absent.
 
 Prepared-key variants have a focused default-byte-group comparison with separate setup,
 steady-state query, and pack-plus-query panels. A speedup panel is produced

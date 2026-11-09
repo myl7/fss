@@ -12,7 +12,8 @@ export function renderFigures(d3, figures, metadata) {
     const grid = !figure.isThreads;
     const cols = grid ? Math.max(...figure.panels.map(panel => panel.column)) + 1 : Math.min(2, figure.panels.length);
     const colGap = grid ? 34 : gap;
-    const panelW = (W - left - right - colGap * (cols - 1)) / cols;
+    const rowColumns = new Map();
+    if (grid && figure.id.startsWith('gpu')) for (const panel of figure.panels) rowColumns.set(panel.row, Math.max(rowColumns.get(panel.row) ?? 0, panel.column + 1));
     const panelH = figure.panels.length === 1 ? 370 : grid ? 292 : 310;
     // One legend per grid row keeps each entry close to the curves it names;
     // the supplementary block-size figure keeps one legend below its panels.
@@ -64,6 +65,8 @@ export function renderFigures(d3, figures, metadata) {
     figure.panels.forEach((panel, index) => {
       const timeUnit = unitOf(panel);
       const timeMultiplier = {ns: 1e6, 'µs': 1e3, ms: 1}[timeUnit];
+      const columns = grid && figure.id.startsWith('gpu') ? rowColumns.get(panel.row) : cols;
+      const panelW = (W - left - right - colGap * (columns - 1)) / columns;
       const x0 = left + (grid ? panel.column : index % cols) * (panelW + colGap);
       const y0 = grid ? legendStarts[panel.row] - panelH - 6 : top + Math.floor(index / cols) * (panelH + 18);
       const plotH = panelH - 96;
