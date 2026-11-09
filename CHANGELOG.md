@@ -55,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Uint<__uint128_t, mod>` moduli above `2^64 - 1`. Use `fss::group::Uint128` for wide moduli such as the 2^127 group.
 - Python `DmpfKey` and `VdmpfKey` wrappers.
 
+Migration notes: [v1.3.0 to v2.0.0 (unreleased)](doc/migration.md#v130-to-v200-unreleased).
+
 ## [1.3.0] - 2026-10-18
 
 ### Added
@@ -72,8 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keyword-only Python `par_depth` controls, explicit VDMPF `batch_eval_merkle`, and verification without constructing or compiling a scheme
 - Static benchmark comparison site (doc/site), scheme-family comparison figures, and benchmark coverage page (doc/benchmarks.md)
 - CPU benchmark curves for the newer schemes, with the Servan-Schreiber VDPF reference and the Mastic, PLASMA, sycret, dpf-cpp, and dpfplusplus (fetched on demand) baselines
-- Chart merges can drop a library-platform combination whose rows would otherwise survive every refresh
-- Endpoint CI matrix covering the oldest and newest CUDA toolkits and Python/torch pairs
 - README figures render on the Doxygen pages
 - Record of the attempt to replace the VDPF/VDMPF proof hash with an AES or ChaCha construction (doc/vdpf_proof_hash_exploration.md): the constructions were reviewed and measured, both approved candidates lost the performance comparison, and Blake3 stays
 
@@ -81,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added aggregate `Key` APIs, owning Grotto `PreprocessedTree`, and owning ChaCha nonce construction alongside the v1.2.0 raw-buffer and pointer APIs
 - Mutable generation APIs can retry and return effective seeds; released const-input VDPF and VDMPF calls retain fail-fast behavior. The mutable VDMPF overload requires explicit retry arguments
+- `Vdpf::Gen` also rejects an all-zero correction seed (`cs`) with the existing failure code, including through VDMPF's inner generation
 - Added `*RepackGpu` preparation names alongside the released `*RelayoutGpu` entry points
 - The DPF, Half-Tree, and DCF CPU full-domain evaluations walk a batched frontier, honoring `par_depth` throughout
 - `par_depth=0` executes on the calling thread; positive depths bound work partitions. DMPF forwards the option to its inner DPF
@@ -99,9 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Installed CMake packages discover their OpenMP dependency
 - `Vdmpf::BatchEval` no longer scans every collected record for duplicates, a quadratic pass the Cuckoo PRP's permutation property can never trigger
 
-### Removed
-
-- Repository pre-commit hook
+Migration notes: [v1.2.0 to v1.3.0](doc/migration.md#v120-to-v130).
 
 ## [1.2.0] - 2026-08-17
 

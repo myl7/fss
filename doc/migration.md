@@ -1,10 +1,16 @@
-# Migrating from v1.3.0
+# Migration guide
 
-This guide is for C++ callers of v1.3.0.
-It lists the v1.3.0 declarations that still compile, the ones that are gone, and the current API to move each one to.
+This guide is for C++ callers.
 Python code is out of scope.
+The newest migration is listed first.
+To upgrade from v1.2.0 to v2.0.0, first follow [v1.2.0 to v1.3.0](#v120-to-v130), then [v1.3.0 to v2.0.0](#v130-to-v200-unreleased).
 
-## Keep compiling with the compatibility switch
+## v1.3.0 to v2.0.0 (unreleased)
+
+This section is for callers of v1.3.0.
+It lists the v1.3.0 declarations that still compile, the ones that are gone, and the current API to move each one to.
+
+### Keep compiling with the compatibility switch
 
 The numeric macro `FSS_ENABLE_V1_COMPAT` controls a compatibility layer for the v1.3.0 API.
 The default 1 keeps the layer on.
@@ -24,15 +30,15 @@ The restored entries convert to the current component API internally, so they fo
 In particular, their `EvalAll()` runs sequentially, and generated keys and proofs match this version, not v1.3.0.
 The restored `Vdmpf` aggregate-Key `Gen()` is the v1.3.0 const-seed single-attempt form: it maps both current failure codes to the old failure code 1.
 
-The sections below cover the v1.3.0 calls that no longer compile or no longer behave the same with the switch on.
+The subsections below cover the v1.3.0 calls that no longer compile or no longer behave the same with the switch on.
 
-## Regenerate persisted keys and proofs
+### Regenerate persisted keys and proofs
 
 Blake3 and Sha256 tuple hashing changed: the domain-separation tag moved to the second hashed block, and hashing now preserves every coordinate bit.
 VDPF and VDMPF keys, correction seeds, and proofs from v1.3.0 therefore do not verify with this version, and this version's material does not verify with v1.3.0.
 Regenerate persisted key and proof material, and use one version and one proof mode, chain or Merkle, on both parties.
 
-## Construct schemes through their constructors
+### Construct schemes through their constructors
 
 In v1.3.0 the schemes exposed their backends as public fields:
 
@@ -71,7 +77,7 @@ PackedHalfTreeDpf<8, 8, Hash, In> packed{Hash{Aes{ctxs}}, instance_seed};
 
 `GrottoDcf` keeps its PRG backend and only changes to the explicit constructor.
 
-## Drop removed template parameters
+### Drop removed template parameters
 
 The seven schemes that took a trailing `par_depth` template parameter — `Dpf`, `Dcf`, `HalfTreeDpf`, `PackedHalfTreeDpf`, `GrottoDcf`, `Vdpf`, and `Dmpf` — lost it.
 `Vdmpf` never had one.
@@ -85,7 +91,7 @@ Positional template arguments after the input type shift meaning: an explicit v1
 The full v1.3.0 tails `Dmpf<..., In, 3, 80>` and `Dmpf<..., In, 3, 80, -1>` pass too many template arguments and no longer compile.
 Check every explicit template argument after the input type when porting.
 
-## Own the generation retry
+### Own the generation retry
 
 In v1.3.0, `Vdpf::Gen` and `Dmpf::Gen` over keys retried a failed generation up to 128 times by deterministically perturbing the seeds, and wrote the effective seeds back.
 The v1.3.0 `Vdmpf::Gen` overload over mutable sigma and mutable seed pairs ran the same retry loop.
@@ -151,7 +157,7 @@ for (;;) {
 Party `b` keeps the entries `s0s[b * kBucketCount .. (b + 1) * kBucketCount)`, and `cws`, `sigma`, `m_rt`, and `b_size_rt` are the shared key material that `BatchEval` and `EvalAll` take.
 The restored aggregate-Key `BatchEval` and `EvalAll` accept keys assembled in the current `Key` layout.
 
-## Multi-point keys store wider data
+### Multi-point keys store wider data
 
 `Dmpf::Key` and `Vdmpf::Key` keep their names but change their storage:
 
@@ -169,7 +175,7 @@ The restored aggregate-Key `BatchEval` and `EvalAll` accept keys assembled in th
 Build the packed beta block yourself: the beta of an input goes into the lane indexed by the low `log2(kLanes)` bits of that input, exactly as `Extract` reads it back.
 The public `Extract` keeps its v1.3.0 declaration.
 
-## Move wide groups to Uint128
+### Move wide groups to Uint128
 
 `fss::group::Uint<T, mod>` with `T` from `uint8_t` through `uint64_t` is the primary form.
 Use `fss::group::Uint128<fss::group::Uint128Modulus{.low = ..., .high = ...}>` for wide modular groups.
@@ -185,7 +191,7 @@ The value parses correctly, the warning is informational, and it is not a trunca
 The public `val` fields of `Uint` and `Bytes` were removed.
 Read a value through `Uint::Value()` or `Bytes::Into()`, and build values with `From`.
 
-## Update primitive backends
+### Update primitive backends
 
 - `ChaCha` lost its non-owning pointer-nonce constructor.
   `ChaCha(nonce0, nonce1)` copies the nonce values, so the scheme no longer observes later writes to an external nonce array.
@@ -199,13 +205,13 @@ Read a value through `Uint::Value()` or `Bytes::Into()`, and build values with `
   Use `Aes128Soft` or `Aes128Ccr<Aes128Soft<1>>` for device-side hashing.
 - OpenSSL failures now throw `std::runtime_error` instead of asserting, and failed context setup releases its resources.
 
-## Check errors where the library now throws
+### Check errors where the library now throws
 
 Host boundary entries validate buffer lengths, ranges, bucket sizes, and point counts, and throw `std::invalid_argument` in Debug and Release builds.
 Low-level requirements, such as the split Gen and Eval layouts, terminal group values, and the zero LSB that `Bytes::From` expects, remain caller preconditions: Debug builds abort with a diagnostic on the host and the device, and Release builds have undefined behavior.
 Not every host call throws, so keep checking preconditions near the calls that assume them.
 
-## Move off the deprecated entries
+### Move off the deprecated entries
 
 The deprecated entries convert through compile-time-sized scratch buffers, so they copy more than the current API.
 Migrate a call when convenient, and treat the deprecation message as the map to its replacement.
@@ -228,3 +234,62 @@ int4 y = dpf.Eval(false, s0s[0], cuda::std::span<const int4>(cws, 9), tr, x);
 
 The correction array now includes the terminal at `cws[in_bits]`, and the per-layer control bits arrive packed in `tr`.
 Each scheme's current usage is in `samples/`: `dpf_dcf_cpu.cu`, `half_tree_dpf_cpu.cu`, `packed_half_tree_dpf_cpu.cu`, `grotto_dcf_cpu.cu`, `vdpf_cpu.cu`, `dmpf_cpu.cu`, and `vdmpf_cpu.cu`, with GPU usage in `dpf_dcf_gpu.cu`.
+
+## v1.2.0 to v1.3.0
+
+This section is based on the released v1.2.0 and v1.3.0 tags.
+The raw-buffer scheme calls listed below retain their signatures in v1.3.0, so you do not need to adopt the new Key forms.
+Added overloads can affect address-of expressions such as `&DpfT::Gen` when no exact target type is supplied.
+Spell the exact member-function-pointer type, `static_cast` to it, or call through a lambda.
+
+### Keep your v1.2.0 calls
+
+- The raw `Gen`, `Eval`, and `EvalAll` of `Dpf`, `Dcf`, and `HalfTreeDpf`, the Grotto `Gen`, `Preprocess`, `Eval`, and `EvalAll` over `Cw` arrays and `ParityTree`, and the VDPF raw `Gen`, `Eval`, `EvalAll`, `Prove`, and `Verify` retain their signatures.
+- The `Vdmpf` const-seed `Gen`, the `std::span` `BatchEval`, and `Verify` retain their signatures, and `Key` and `BucketKey` keep their fields.
+- Existing `par_depth` template parameters keep their `-1` default.
+  `Vdmpf` keeps `kappa` and `ch_lambda` and has no `par_depth` template parameter.
+- The scheme classes still expose their backends as public fields, and the group headers are unchanged.
+
+### Review the behavior changes
+
+- `Vdpf::Gen` now also returns 1 when the correction seed `cs` is all zeros, where v1.2.0 rejected only equal final control bits.
+  VDMPF generation inherits the rejection through its inner VDPF.
+  Treat every nonzero return as a failure, resample, and never use the outputs of a failed call.
+  Regenerate persisted material whose `cs` is all zero, because v1.3.0 requires a nonzero correction seed.
+- Host `EvalAll` now honors `par_depth` end to end.
+  A depth of 0 runs on the calling thread without entering an OpenMP region, and positive and automatic depths are bounded by the domain depth and the work size.
+  The scheduling changes preserve the intended evaluation results.
+- ChaCha and BLAKE3 round additions are now defined unsigned arithmetic modulo 2^32, removing signed-overflow undefined behavior.
+- `Vdmpf::BatchEval` no longer runs a quadratic duplicate scan that the Cuckoo PRP's permutation property can never trigger.
+- VDMPF adds compile-time checks on the bucket parameters and the bucket capacity.
+- The `Aes128Mmo` PRG over OpenSSL contexts now documents that `Gen` is unsafe to call concurrently on instances sharing contexts.
+  The constraint is not new, so for parallel host evaluation pick a backend that is safe for concurrent calls, such as `ChaCha` or `Aes128MmoRaw`.
+
+### Keys and proofs
+
+- The existing chain-mode entry points remain available, and the tuple-hash domain tags did not change between these releases.
+- There is no identified requirement to regenerate every key or proof when moving from v1.2.0 to v1.3.0.
+- Cross-version key and proof verification has not been validated here.
+- ChaCha and BLAKE3 also remove signed-overflow undefined behavior, so this guide does not guarantee identical outputs from code that previously relied on that behavior.
+- The library does not promise a stable binary layout or a cross-compiler ABI for key structs, so persist material through your own serialization rather than raw struct bytes.
+
+### Adopt the v1.3.0 additions when useful
+
+- The aggregate `Key` form and its `Gen`, `Eval`, and `EvalAll` on `Dpf`, `Dcf`, `HalfTreeDpf`, `GrottoDcf`, and `Vdpf` manage the raw buffers for you.
+  The new `Vdpf` Key-form `Gen` can retry up to 128 attempts by deterministically perturbing the seeds.
+  It writes back the effective seeds, so keep the written-back values or the seeds in the returned keys.
+- The mutable `Vdmpf::Gen` takes `sigma` and the seed pairs by reference and requires explicit `ch_retry` and `retry` arguments, with no defaults.
+  It writes back the effective sigma and seed pairs and keeps the 0/1 return codes.
+- `Dmpf::Gen` also provides automatic retry and writes back its effective sigma and seeds.
+- The Merkle proof mode adds `ProveMerkle`, `EvalAllMerkle`, `BatchEvalMerkle`, and their GPU entries.
+  It produces the same 64B proof shape and verifies with the same `Verify`.
+  Both parties must pick the same mode, the same input order, and, for VDMPF, the same chunk rule.
+  Proofs of the same size from different modes are not interchangeable.
+- The Grotto `PreprocessedTree` owns the parity tree that `Preprocess(bool, const Key &)` returns, alongside the caller-owned `ParityTree` form.
+- `Dmpf` and `PackedHalfTreeDpf` are new schemes.
+  `ChaChaFeistel` and `Aes128FeistelRaw` are new PRP backends, and `Aes128MmoRaw` adds `Gen8`.
+- `Vdmpf::BatchEval` gained an overload taking `cuda::std::span`.
+- `ChaCha(nonce0, nonce1)` copies the nonce, so a host-built scheme object can be captured into a kernel by value.
+  The pointer constructor stays borrowed: keep the nonce storage alive and accessible in the executing memory space.
+- The GPU helper entries in `fss::gpu` are not part of the versioned class API.
+  They added `*RepackGpu` preparation names, whose `ExtBits` extra buffer supports domains wider than 32 bits, alongside the retained `*RelayoutGpu` entries, which forward to them.
