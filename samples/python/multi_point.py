@@ -35,8 +35,10 @@ def run(verifiable, cuda):
     else:
         scheme = Dmpf(**configuration)
 
-    # The current Cuckoo bucket estimate requires at least 30 secret points.
-    points = torch.tensor(secrets.SystemRandom().sample(range(256), 30), dtype=torch.uint8)
+    # kMinPoints is the smallest supported count for this bucket configuration;
+    # max_points=32 leaves headroom above it.
+    point_count = scheme.kMinPoints
+    points = torch.tensor(secrets.SystemRandom().sample(range(256), point_count), dtype=torch.uint8)
     payloads = torch.zeros((len(points), 4), dtype=torch.int32)
     payloads[:, 0] = torch.arange(1, len(points) + 1, dtype=torch.int32)
     cws = torch.empty(scheme.cws_shape, dtype=torch.uint8)
@@ -54,8 +56,10 @@ def run(verifiable, cuda):
         if status == 0:
             break
         if status == 1:
+            # Placement failure: only sigma is stale.
             sigma = random_blocks(1)[0]
         elif verifiable and status == 2:
+            # Inner VDPF failure: every bucket seed is stale.
             seed_pairs = random_blocks(scheme.kBucketCount * 2).view(
                 2, scheme.kBucketCount, 4)
         else:
@@ -92,13 +96,20 @@ def run(verifiable, cuda):
                     party, device_sigma, bucket_size,
                     device_seeds[int(party)], device_cws, device_cs,
                     device_queries, shares[int(party)], proofs[int(party)])
-            assert scheme.verify(*proofs)
+            if not scheme.verify(*proofs):
+                raise AssertionError("proof verification failed")
             for party in (False, True):
                 scheme.eval_all_merkle(
                     party, device_sigma, bucket_size,
                     device_seeds[int(party)], device_cws, device_cs,
                     full_shares[int(party)], proofs[int(party)])
-            assert scheme.verify(*proofs)
+            if not scheme.verify(*proofs):
+                raise AssertionError("proof verification failed")
+            # Check the Merkle outputs before the chain block reuses the buffers.
+            if not torch.equal((shares[0] ^ shares[1]).cpu(), query_expected):
+                raise AssertionError("query reconstruction mismatch")
+            if not torch.equal((full_shares[0] ^ full_shares[1]).cpu(), full_expected):
+                raise AssertionError("full-domain reconstruction mismatch")
             if device.type == "cpu":
                 # Chain proofs are CPU-only and must not be mixed with Merkle proofs.
                 for party in (False, True):
@@ -106,13 +117,15 @@ def run(verifiable, cuda):
                         party, device_sigma, bucket_size,
                         device_seeds[int(party)], device_cws, device_cs,
                         device_queries, shares[int(party)], proofs[int(party)])
-                assert scheme.verify(*proofs)
+                if not scheme.verify(*proofs):
+                    raise AssertionError("proof verification failed")
                 for party in (False, True):
                     scheme.eval_all(
                         party, device_sigma, bucket_size,
                         device_seeds[int(party)], device_cws, device_cs,
                         full_shares[int(party)], proofs[int(party)])
-                assert scheme.verify(*proofs)
+                if not scheme.verify(*proofs):
+                    raise AssertionError("proof verification failed")
         else:
             for party in (False, True):
                 scheme.batch_eval(party, device_sigma, bucket_size,
@@ -121,8 +134,10 @@ def run(verifiable, cuda):
                 scheme.eval_all(party, device_sigma, bucket_size,
                                 device_seeds[int(party)], device_cws,
                                 full_shares[int(party)])
-        assert torch.equal((shares[0] ^ shares[1]).cpu(), query_expected)
-        assert torch.equal((full_shares[0] ^ full_shares[1]).cpu(), full_expected)
+        if not torch.equal((shares[0] ^ shares[1]).cpu(), query_expected):
+            raise AssertionError("query reconstruction mismatch")
+        if not torch.equal((full_shares[0] ^ full_shares[1]).cpu(), full_expected):
+            raise AssertionError("full-domain reconstruction mismatch")
     print(f"{'VDMPF' if verifiable else 'DMPF'} shares agree")
 
 

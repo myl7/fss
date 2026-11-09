@@ -52,10 +52,12 @@ def run_single(scheme, device):
         )
         selected = x < point if isinstance(scheme, Dcf) else x == point
         if packed:
-            assert scheme.extract(result, x) == (beta if selected else 0)
+            if scheme.extract(result, x) != (beta if selected else 0):
+                raise AssertionError("packed point reconstruction mismatch")
         else:
             expected = payload if selected else torch.zeros_like(payload)
-            assert torch.equal(result, expected)
+            if not torch.equal(result, expected):
+                raise AssertionError("point reconstruction mismatch")
 
     output_count = 2**scheme.kDepth if packed else 2**scheme.in_bits
     outputs = [torch.empty((output_count, 4), dtype=torch.int32, device=device)
@@ -64,16 +66,20 @@ def run_single(scheme, device):
         scheme.eval_all(bool(party), seeds[party], cws, outputs[party])
     combined = torch.bitwise_xor(*outputs)
     if packed:
+        # One host copy, then per-lane Extract reads without CUDA sync per call.
+        host_combined = combined.cpu()
         for x in range(2**scheme.in_bits):
-            block = combined[x // scheme.kLanes]
-            assert scheme.extract(block, x) == (beta if x == point else 0)
+            block = host_combined[x // scheme.kLanes]
+            if scheme.extract(block, x) != (beta if x == point else 0):
+                raise AssertionError("packed lane reconstruction mismatch")
     else:
         expected = torch.zeros_like(combined)
         if isinstance(scheme, Dcf):
             expected[:point] = payload
         else:
             expected[point] = payload
-        assert torch.equal(combined, expected)
+        if not torch.equal(combined, expected):
+            raise AssertionError("full-domain reconstruction mismatch")
 
 
 def run_gpu_batch(scheme, device):
@@ -96,17 +102,20 @@ def run_gpu_batch(scheme, device):
         party_seeds = pairs[:, party].contiguous()
         scheme.eval_all_gpu_batch(bool(party), party_seeds, cws, outputs[party])
     combined = torch.bitwise_xor(*outputs)
+    host_combined = combined.cpu()
     for i, point in enumerate(points):
         if packed:
             for x in range(2**scheme.in_bits):
-                assert scheme.extract(combined[i, x // scheme.kLanes], x) == (7 if x == point else 0)
+                if scheme.extract(host_combined[i, x // scheme.kLanes], x) != (7 if x == point else 0):
+                    raise AssertionError("packed lane reconstruction mismatch")
         else:
             expected = torch.zeros_like(combined[i])
             if isinstance(scheme, Dcf):
                 expected[:point] = payload
             else:
                 expected[point] = payload
-            assert torch.equal(combined[i], expected)
+            if not torch.equal(combined[i], expected):
+                raise AssertionError("gpu batch reconstruction mismatch")
 
 
 def main():
@@ -114,8 +123,10 @@ def main():
     parser.add_argument("--device", default="cpu")
     device = torch.device(parser.parse_args().device)
     payload = torch.tensor([7, 0, 0, 0], dtype=torch.int32, device=device)
-    assert int(group.Uint(32).from_(payload)) == 7
-    assert bytes(group.Bytes().from_(payload)) == (7).to_bytes(16, "little")
+    if int(group.Uint(32).from_(payload)) != 7:
+        raise AssertionError("uint conversion mismatch")
+    if bytes(group.Bytes().from_(payload)) != (7).to_bytes(16, "little"):
+        raise AssertionError("bytes conversion mismatch")
     for scheme in make_schemes():
         run_single(scheme, device)
         if device.type == "cuda":

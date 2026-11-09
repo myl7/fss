@@ -23,13 +23,18 @@ def run_groups(device):
     payload = torch.tensor([7, 0, 0, 0], dtype=torch.int32, device=device)
     for numbers in (group.Uint(32), group.Uint(64, mod=11)):
         value = numbers.from_(payload)
-        assert int(value) == 7
-        assert int(value + -value) == 0
-        assert torch.equal(value.into(), payload)
+        if int(value) != 7:
+            raise AssertionError("uint conversion mismatch")
+        if int(value + -value) != 0:
+            raise AssertionError("additive inverse mismatch")
+        if not torch.equal(value.into(), payload):
+            raise AssertionError("group round trip mismatch")
     blocks = group.Bytes()
     value = blocks.from_(payload)
-    assert bytes(value) == (7).to_bytes(16, "little")
-    assert torch.equal((value + value).into(), blocks.zero(device=device).into())
+    if bytes(value) != (7).to_bytes(16, "little"):
+        raise AssertionError("bytes conversion mismatch")
+    if not torch.equal((value + value).into(), blocks.zero(device=device).into()):
+        raise AssertionError("bytes group self-inverse mismatch")
 
 
 def run_prgs(device):
@@ -44,10 +49,14 @@ def run_prgs(device):
     original = seed.clone()
     for generator in generators:
         output = generator.gen(seed)
-        assert tuple(output.shape) == (2, 4)
-        assert output.device == device
-        assert torch.equal(output, generator.gen(seed))
-    assert torch.equal(seed, original)
+        if tuple(output.shape) != (2, 4):
+            raise AssertionError("prg output shape mismatch")
+        if output.device != device:
+            raise AssertionError("prg output device mismatch")
+        if not torch.equal(output, generator.gen(seed)):
+            raise AssertionError("prg output is not deterministic")
+    if not torch.equal(seed, original):
+        raise AssertionError("seed was mutated")
 
 
 def run_hashes(device):
@@ -57,12 +66,15 @@ def run_hashes(device):
     message = random_blocks(4, device)
     for hasher in hashes:
         # These shapes select the two fixed-length C++ Hash overloads.
-        assert tuple(hasher.hash(message).shape) == (2, 4)
-        assert tuple(hasher.hash(message[:2]).shape) == (4, 4)
+        if tuple(hasher.hash(message).shape) != (2, 4):
+            raise AssertionError("hash output shape mismatch")
+        if tuple(hasher.hash(message[:2]).shape) != (4, 4):
+            raise AssertionError("hash half-message shape mismatch")
 
     aes = prg.Aes128Soft(mul=1, keys=(secrets.token_bytes(16),))
     ccr = hash.Aes128Ccr(aes)
-    assert tuple(ccr.hash(message[0]).shape) == (4,)
+    if tuple(ccr.hash(message[0]).shape) != (4,):
+        raise AssertionError("ccr output shape mismatch")
 
 
 def run_prps(device):
@@ -75,7 +87,8 @@ def run_prps(device):
         # Python integer results require a device-to-host transfer on CUDA.
         outputs = [permutation.permu(seed, x, domain_size)
                    for x in range(domain_size)]
-        assert sorted(outputs) == list(range(domain_size))
+        if sorted(outputs) != list(range(domain_size)):
+            raise AssertionError("permutation outputs are not a bijection")
 
 
 def run_seed_util(device):
@@ -83,8 +96,10 @@ def run_seed_util(device):
     original = seed.clone()
     for bit in (False, True):
         modified = util.set_seed_control_bit(seed, bit)
-        assert util.get_seed_control_bit(modified) is bit
-    assert torch.equal(seed, original)
+        if util.get_seed_control_bit(modified) is not bit:
+            raise AssertionError("seed control bit round trip failed")
+    if not torch.equal(seed, original):
+        raise AssertionError("seed was mutated")
 
 
 def main():
