@@ -1,5 +1,4 @@
 var searchData=
 [
-  ['permutable_0',['Permutable',['../conceptPermutable.html',1,'']]],
-  ['prgable_1',['Prgable',['../conceptPrgable.html',1,'']]]
+  ['validforinputbits_0',['ValidForInputBits',['../conceptfss_1_1ValidForInputBits.html',1,'fss']]]
 ];

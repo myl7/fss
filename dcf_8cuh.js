@@ -1,6 +1,6 @@
 var dcf_8cuh =
 [
-    [ "DcfPred", "dcf_8cuh.html#ga8ecd2814907c1c2c4adc57eea3f37509", [
+    [ "fss::DcfPred", "group__fss__api.html#ga8ecd2814907c1c2c4adc57eea3f37509", [
       [ "kLt", "dcf_8cuh.html#gga8ecd2814907c1c2c4adc57eea3f37509a79e0a0a6afb3ede6b7579b1c22fd5e66", null ],
       [ "kGt", "dcf_8cuh.html#gga8ecd2814907c1c2c4adc57eea3f37509af166c5f480408355d40fdedd40d08cd5", null ]
     ] ]

@@ -1,13 +1,19 @@
 var searchData=
 [
-  ['m_5frt_0',['m_rt',['../structfss_1_1Dmpf_1_1Key.html#a55ae80f9dd8b2b113136c598c3731cbd',1,'fss::Dmpf::Key::m_rt'],['../structfss_1_1Vdmpf_1_1Key.html#a419ba87c3ba3ec1c8c8b922ad0e1cbb1',1,'fss::Vdmpf::Key::m_rt']]],
-  ['mastic_20rust_1',['mastic (Rust)',['../md_doc_2bench__third__parties.html#autotoc_md64',1,'']]],
-  ['measure_20performance_2',['Measure performance',['../index.html#autotoc_md6',1,'']]],
-  ['merkle_20fold_20accumulation_3',['8. The VDMPF Merkle-fold accumulation',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md100',1,'']]],
-  ['merkle_20fold_20proof_20accumulation_3a_20security_20analysis_4',['VDPF and VDMPF Merkle-fold proof accumulation: security analysis',['../md_doc_2vdpf__merkle__fold__security.html',1,'']]],
-  ['merkle_20fold_20prove_5',['3. The Merkle-fold Prove',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md93',1,'']]],
-  ['methodology_6',['Benchmark curve methodology',['../md_doc_2bench__figures.html',1,'']]],
-  ['minbucketsize_7',['MinBucketSize',['../cuckoo__hash_8cuh.html#a80f9ab4f0b8787a570e57612b1fc43ff',1,'fss::cuckoo_hash::detail']]],
-  ['mmo_20software_20prg_3a_20t_20table_20vs_20textbook_8',['AES-128 MMO Software PRG: T-table vs Textbook',['../md_doc_2bench__aes128__soft.html',1,'']]],
-  ['myl7_20fss_9',['myl7/fss',['../index.html',1,'']]]
+  ['lane_20construction_20is_20broken_20at_20the_20target_20level_0',['4. The proposed two-lane construction is broken at the target level',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md124',1,'']]],
+  ['lane_20inputs_20vary_20together_1',['Attack 2: make both lane inputs vary together',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md126',1,'']]],
+  ['lane_20unchanged_2',['Attack 1: keep one lane unchanged',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md125',1,'']]],
+  ['launch_20control_3',['Full-domain launch control',['../md_doc_2bench__third__parties.html#autotoc_md77',1,'']]],
+  ['layer_20cannot_20repair_4',['5.1 What an invertible mixing layer cannot repair',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md128',1,'']]],
+  ['layout_5',['Layout',['../structfss_1_1Dcf_1_1Cw.html#autotoc_md18',1,'Layout'],['../structfss_1_1Dpf_1_1Cw.html#autotoc_md25',1,'Layout'],['../structfss_1_1PackedHalfTreeDpf_1_1Cw.html#autotoc_md38',1,'Layout'],['../structfss_1_1Vdpf_1_1Cw.html#autotoc_md46',1,'Layout']]],
+  ['level_6',['4. The proposed two-lane construction is broken at the target level',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md124',1,'']]],
+  ['libdpf_20rust_7',['libdpf (Rust)',['../md_doc_2bench__third__parties.html#autotoc_md56',1,'']]],
+  ['libfss_20c_8',['libfss (C++)',['../md_doc_2bench__third__parties.html#autotoc_md57',1,'']]],
+  ['libraries_9',['Libraries',['../md_doc_2bench__third__parties.html#autotoc_md53',1,'']]],
+  ['library_20now_20throws_10',['Check errors where the library now throws',['../md_doc_2migration.html#autotoc_md105',1,'']]],
+  ['license_11',['License',['../index.html#autotoc_md13',1,'']]],
+  ['license_20status_20and_20why_20nothing_20is_20vendored_12',['License status and why nothing is vendored',['../md_doc_2bench-dpfplusplus.html#autotoc_md82',1,'']]],
+  ['limits_13',['10. Performance budget and measurement limits',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md144',1,'']]],
+  ['local_20composition_20proof_14',['7.2 Ideal-cipher theorem and local composition proof',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md133',1,'']]],
+  ['low_15',['low',['../structfss_1_1group_1_1Uint128Modulus.html#adf1eb9f8f9069efb9f64b4ef900f1200',1,'fss::group::Uint128Modulus']]]
 ];

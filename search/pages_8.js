@@ -1,6 +1,5 @@
 var searchData=
 [
-  ['party_20dpf_20dcf_20library_20benchmarks_0',['Third-party DPF/DCF Library Benchmarks',['../md_doc_2bench__third__parties.html',1,'']]],
-  ['prg_3a_20t_20table_20vs_20textbook_1',['AES-128 MMO Software PRG: T-table vs Textbook',['../md_doc_2bench__aes128__soft.html',1,'']]],
-  ['proof_20accumulation_3a_20security_20analysis_2',['VDPF and VDMPF Merkle-fold proof accumulation: security analysis',['../md_doc_2vdpf__merkle__fold__security.html',1,'']]]
+  ['8_20protocol_20specific_20weakening_20of_20h_0',['8. Protocol-specific weakening of H&apos;',['../md_doc_2vdpf__proof__hash__exploration.html#autotoc_md141',1,'']]],
+  ['8_20the_20vdmpf_20merkle_20fold_20accumulation_1',['8. The VDMPF Merkle-fold accumulation',['../md_doc_2vdpf__merkle__fold__security.html#autotoc_md165',1,'']]]
 ];
