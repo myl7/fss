@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Python bindings require Python 3.11 or newer so every supported Python version can use the patched filelock dependency.
+
+### Security
+
+- Require filelock 4.2.1 or newer for runtime and isolated builds, fixing GHSA-69hj-f68j-2879 and GHSA-8mx5-7m5m-r77g.
+
 ### Fixed
 
 - Python packaging declares Ninja as a runtime dependency for JIT compilation.

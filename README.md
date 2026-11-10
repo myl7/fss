@@ -315,7 +315,7 @@ The samples project requires OpenSSL.
 
 ### Python
 
-Use Python 3.10 or newer and a CUDA-enabled PyTorch 2.6 or newer.
+Use Python 3.11 or newer and a CUDA-enabled PyTorch 2.6 or newer.
 Choose a PyTorch build whose CUDA major version matches your local CUDA toolkit, even for CPU execution.
 Then install the package from this checkout:
 
